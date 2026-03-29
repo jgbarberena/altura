@@ -8,9 +8,33 @@
 /* BASE */
 body {
     font-family: 'Inter', sans-serif;
-    background-color: #ffffff;
+    background-color: #f5f3ef;
     color: #222;
     line-height: 1.6;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    
+    background: radial-gradient( 
+        circle at center,
+        rgba(255,255,255,0) 40%,
+        rgba(0,0,0,0.3) 100% /*difuminado radial mas suave 0.03, más marcado 0.08*/
+    );
+}
+
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    
+    opacity: 0.5;
+    
+    background-image: url("img/textura_papiro.jpg");
 }
 
 h1, h2, h3 {
@@ -32,7 +56,6 @@ header {
     background: transparent;
 }
 
-/* ESTADO AL HACER SCROLL */
 header.scrolled {
     background: rgba(255,255,255,0.10);
     backdrop-filter: blur(12px);
@@ -51,6 +74,7 @@ nav {
     font-family: 'Playfair Display', serif;
     font-size: 26px;
     letter-spacing: 3px;
+    color: white;
 }
 
 .menu {
@@ -61,12 +85,46 @@ nav {
 
 .menu a {
     text-decoration: none;
-    color: #222;
     font-size: 14px;
+    color: white;
 }
 
 .menu a:hover {
     color: #b30000;
+    transition: color 0.2s ease;
+}
+
+.hamburger {
+    display: none;
+    font-size: 26px;
+    cursor: pointer;
+    color: white;
+    transition: color 0.3s ease;
+}
+
+/* ESTADOS */
+header.scrolled .logo {
+    color: #222;
+}
+
+header.scrolled .menu a {
+    color: #222;
+}
+
+header.scrolled .hamburger {
+    color: #222;
+}
+
+header.dark .logo {
+    color: white;
+}
+
+header.dark .menu a {
+    color: white;
+}
+
+header.dark .hamburger {
+    color: white;
 }
 
 /* HERO */
@@ -151,7 +209,7 @@ section {
 
 /* BALCONES */
 #balcones {
-    background-color: #f7f7f7;
+    background-color: rgba(245, 243, 239, 0.9);
 }
 
 .balcones-grid {
@@ -215,8 +273,11 @@ section {
 #sanfermin {
     padding: 120px 20px;
     text-align: center;
-    background: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)),
-                url("img/galeria2.jpg") center/cover;
+    background: linear-gradient(
+      rgba(245,243,239,0.8), /*0.85-0.9 para más sutil)*/
+      rgba(245,243,239,0.8) /*0.85-0.9 para más sutil)*/
+    ),
+    url("img/galeria2.jpg") center/cover;
 }
 
 .sanfermin-container {
@@ -252,7 +313,7 @@ section {
 
 /* GALERIA */
 #galeria {
-    background-color: #f7f7f7;
+    background-color:rgba(250, 248, 244, 0.95);
 }
 
 .gallery {
@@ -267,7 +328,7 @@ section {
 
 /* RESERVA */
 #reserva {
-    background-color: #ffffff;
+    background-color: rgba(245, 243, 239, 0.9);
 }
 
 form {
@@ -356,31 +417,17 @@ html {
     scroll-behavior: smooth;
 }
 
-header .menu a {
-    color: white;
-}
-
-header.scrolled .menu a {
-    color: #222;
-}
-
-header .logo {
-    color: white;
-}
-
-header.scrolled .logo {
-    color: #222;
-}
-
 /* HAMBURGER BASE */
 .hamburger {
     display: none;
     font-size: 26px;
     cursor: pointer;
+    color: white;
+    transition: color 0.3s ease;
 }
 
 /* MODO MÓVIL */
-@media (max-width: 768px) {
+@media (max-width: 980px) {
 
     nav {
         padding: 15px 20px;
@@ -401,10 +448,6 @@ header.scrolled .logo {
     /* HAMBURGER VISIBLE */
     .hamburger {
         display: block;
-        color: white;
-    }
-
-    header.scrolled .hamburger {
         color: white;
     }
 
