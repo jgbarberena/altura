@@ -32,7 +32,7 @@ body::after {
     inset: 0;
     pointer-events: none;
     
-    opacity: 0.5;
+    opacity: 0.08;
     
     background-image: url("img/textura_papiro.jpg");
 }
@@ -42,7 +42,7 @@ h1, h2, h3 {
 }
 
 a {
-    transition: all 0.3s ease;
+    transition: all 0.3s ease; 
 }
 
 /* NAV */
