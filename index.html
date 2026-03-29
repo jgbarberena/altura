@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiencia Exclusiva San Fermín</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header id="header">
+        <nav>
+            <div class="logo">San Fermín Exclusivo</div>
+            <div class="hamburger" id="hamburger">☰</div>
+            
+            <ul class="menu">
+                <li><a href="#balcones">Experiencias</a></li>
+                <li><a href="#galeria">Galería</a></li>
+                <li><a href="#reserva">Reserva</a></li>
+                <li><a href="#contacto">Contacto</a></li>
+            </ul>
+        </nav>
+    </header>
+
+<section id="hero">
+    <div class="overlay"></div>
+
+    <div class="hero-content">
+        <h1>ALTURA</h1>
+        <h2>San Fermín en su versión más exclusiva</h2>
+        <p>Balcones privados, vistas privilegiadas y experiencias diseñadas para quienes buscan algo más.</p>
+
+        <div class="buttons">
+            <a href="#experiencia" class="btn-primary">Descubrir</a>
+            <a href="#reserva" class="btn-secondary">Solicitar acceso</a>
+        </div>
+    </div>
+</section>
+
+<section id="balcones">
+    <h2>Experiencias Exclusivas</h2>
+
+    <div class="balcones-grid">
+
+        <div class="balcon-item">
+            <img src="img/Encierro_Estafeta.jpg">
+            <div class="balcon-overlay">
+                <h3>Encierro en Estafeta</h3>
+                <p>Vive el momento más emocionante desde una posición privilegiada.</p>
+                <a href="#" class="btn-mini">Consultar</a>
+            </div>
+        </div>
+
+        <div class="balcon-item">
+            <img src="img/hero.jpg">
+            <div class="balcon-overlay">
+                <h3>Chupinazo</h3>
+                <p>Disfruta del inicio de la fiesta desde un balcón exclusivo.</p>
+                <a href="#" class="btn-mini">Consultar</a>
+            </div>
+        </div>
+
+        <div class="balcon-item">
+            <img src="img/galeria1.jpg">
+            <div class="balcon-overlay">
+                <h3>Procesion</h3>
+                <p>Vive el momento más especial de las fiestas desde la altura.</p>
+                <a href="#" class="btn-mini">Consultar</a>
+            </div>
+        </div>
+
+        <div class="balcon-item">
+            <img src="img/PobreDeMi.jpg">
+            <div class="balcon-overlay">
+                <h3>Pobre de mí</h3>
+                <p>El cierre más emotivo desde una ubicación única.</p>
+                <a href="#" class="btn-mini">Consultar</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="sanfermin">
+    <div class="sanfermin-container">
+
+        <p class="tag">SAN FERMÍN</p>
+
+        <h2>
+            No es una fiesta.  
+            Es una emoción que se comparte.
+        </h2>
+
+        <p class="texto">
+            Durante nueve días, Pamplona se transforma en un escenario único donde tradición, intensidad y cultura se entrelazan en cada rincón.
+            Desde el primer chupinazo hasta el último “Pobre de mí”, cada instante se convierte en un recuerdo irrepetible.
+        </p>
+
+        <p class="frase">
+            San Fermín se vive una vez… y luego se repite.
+        </p>
+
+    </div>
+</section>
+
+    <!-- Galería -->
+    <section id="galeria">
+        <h2>Galería de Momentos</h2>
+        <div class="gallery">
+            <img src="img/galeria1.jpg" alt="Imagen 1">
+            <img src="img/galeria2.jpg" alt="Imagen 2">
+            <img src="img/galeria3.jpg" alt="Imagen 3">
+        </div>
+    </section>
+
+    <!-- Reserva -->
+    <section id="reserva">
+        <h2>Reserva tu Experiencia</h2>
+        <form>
+            <input type="text" placeholder="Nombre" required>
+            <input type="email" placeholder="Correo" required>
+            <input type="date" placeholder="Fecha de reserva" required>
+            <button type="submit">Enviar Reserva</button>
+        </form>
+    </section>
+
+    <!-- Contacto -->
+<section id="contacto">
+    <div class="contacto-container">
+
+        <h2>Solicita tu experiencia privada</h2>
+
+        <p class="contacto-texto">
+            Cuéntanos qué buscas y diseñaremos una propuesta a medida para ti o tu empresa.
+        </p>
+
+        <form class="formulario">
+            <input type="text" placeholder="Nombre" required>
+            <input type="email" placeholder="Email" required>
+            <input type="tel" placeholder="Teléfono">
+            
+            <select>
+                <option>Tipo de experiencia</option>
+                <option>Encierro</option>
+                <option>Chupinazo</option>
+                <option>Evento privado</option>
+            </select>
+
+            <textarea placeholder="Cuéntanos tu idea..." rows="4"></textarea>
+
+            <button type="submit">Solicitar propuesta</button>
+        </form>
+
+        <div class="contacto-extra">
+            <p>O si lo prefieres:</p>
+            <p><strong>📞 625 638 977</strong></p>
+            <p><strong>✉️ agencialemonmilk@lemonmilk.es</strong></p>
+        </div>
+
+    </div>
+</section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Experiencia San Fermín Exclusiva</p>
+    </footer>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+    const header = document.getElementById("header");
+    const hamburger = document.getElementById("hamburger");
+    const menu = document.querySelector(".menu");
+    const menuLinks = document.querySelectorAll(".menu a");
+
+    // SCROLL HEADER
+    window.addEventListener("scroll", function() {
+        if (window.scrollY > 50) {
+            header.classList.add("scrolled");
+        } else {
+            header.classList.remove("scrolled");
+        }
+    });
+
+    // ABRIR / CERRAR MENÚ
+    hamburger.addEventListener("click", function() {
+        menu.classList.toggle("active");
+    });
+
+    // CERRAR MENÚ AL HACER CLICK EN LINK
+    menuLinks.forEach(link => {
+        link.addEventListener("click", () => {
+            menu.classList.remove("active");
+        });
+    });
+
+});
+</script>
+
+</body>
+</html>

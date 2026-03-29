@@ -1,0 +1,437 @@
+/* RESET */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* BASE */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #ffffff;
+    color: #222;
+    line-height: 1.6;
+}
+
+h1, h2, h3 {
+    font-family: 'Playfair Display', serif;
+}
+
+a {
+    transition: all 0.3s ease;
+}
+
+/* NAV */
+header {
+    position: fixed;
+    width: 100%;
+    top: 0;
+    z-index: 1000;
+    padding: 10px 60px;
+    transition: all 0.3s ease;
+    background: transparent;
+}
+
+/* ESTADO AL HACER SCROLL */
+header.scrolled {
+    background: rgba(255,255,255,0.10);
+    backdrop-filter: blur(12px);
+    padding: 5px 60px;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+}
+
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 60px;
+}
+
+.logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px;
+    letter-spacing: 3px;
+}
+
+.menu {
+    list-style: none;
+    display: flex;
+    gap: 30px;
+}
+
+.menu a {
+    text-decoration: none;
+    color: #222;
+    font-size: 14px;
+}
+
+.menu a:hover {
+    color: #b30000;
+}
+
+/* HERO */
+#hero {
+    position: relative;
+    height: 100vh;
+    background: url("img/hero.jpg") center/cover no-repeat;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: white;
+}
+
+#hero .overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.6),
+        rgba(0,0,0,0.3),
+        rgba(0,0,0,0.7)
+    );
+}
+
+.hero-content {
+    position: relative;
+    max-width: 800px;
+}
+
+.hero-content h1 {
+    font-size: 60px;
+    letter-spacing: 6px;
+    margin-bottom: 10px;
+}
+
+.hero-content h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+}
+
+.hero-content p {
+    font-size: 18px;
+    color: #ddd;
+    margin-bottom: 30px;
+}
+
+.buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+.btn-primary {
+    background-color: #b30000;
+    color: white;
+    padding: 12px 30px;
+    text-decoration: none;
+}
+
+.btn-primary:hover {
+    background-color: #800000;
+}
+
+.btn-secondary {
+    border: 1px solid white;
+    padding: 12px 30px;
+    text-decoration: none;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: white;
+    color: black;
+}
+
+/* SECCIONES GENERALES */
+section {
+    padding: 120px 80px;
+}
+
+/* BALCONES */
+#balcones {
+    background-color: #f7f7f7;
+}
+
+.balcones-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 25px;
+}
+
+.balcon-item {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+}
+
+.balcon-item img {
+    width: 100%;
+    height: 500px;
+    object-fit: cover;
+    transition: 0.5s;
+    filter: contrast(1.1) brightness(0.95);
+}
+
+.balcon-overlay {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    padding: 20px;
+    background: rgba(50,50,50,0.6);
+    backdrop-filter: blur(4px);
+    color: white;
+}
+
+.balcon-overlay h3 {
+    margin-bottom: 10px;
+    font-size: 22px;
+}
+
+.balcon-overlay p {
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.btn-mini {
+    display: inline-block;
+    padding: 8px 20px;
+    background: #c40000;
+    color: white;
+    text-decoration: none;
+    font-size: 12px;
+}
+
+.balcon-item:hover img {
+    transform: scale(1.1);
+}
+
+.balcon-item:hover .balcon-overlay {
+    background: rgba(20,20,20,0.8);
+}
+
+/* SAN FERMIN */
+#sanfermin {
+    padding: 120px 20px;
+    text-align: center;
+    background: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)),
+                url("img/galeria2.jpg") center/cover;
+}
+
+.sanfermin-container {
+    max-width: 800px;
+    margin: auto;
+}
+
+.tag {
+    color: #b30000;
+    letter-spacing: 3px;
+    font-size: 12px;
+    margin-bottom: 20px;
+}
+
+#sanfermin h2 {
+    font-size: 36px;
+    margin-bottom: 30px;
+    line-height: 1.3;
+}
+
+.texto {
+    color: #555;
+    font-size: 18px;
+    margin-bottom: 40px;
+}
+
+.frase {
+    font-size: 26px;
+    font-style: italic;
+    color: #b30000;
+    letter-spacing: 1px;
+}
+
+/* GALERIA */
+#galeria {
+    background-color: #f7f7f7;
+}
+
+.gallery {
+    display: flex;
+    gap: 20px;
+}
+
+.gallery img {
+    width: 33%;
+    border-radius: 10px;
+}
+
+/* RESERVA */
+#reserva {
+    background-color: #ffffff;
+}
+
+form {
+    max-width: 400px;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+form input,
+form button {
+    padding: 12px;
+    border: 1px solid #ccc;
+}
+
+form button {
+    background-color: #b30000;
+    color: white;
+    cursor: pointer;
+}
+
+form button:hover {
+    background-color: #800000;
+}
+
+/* CONTACTO */
+#contacto {
+    padding: 120px 20px;
+    background: #111;
+    color: white;
+    text-align: center;
+}
+
+.contacto-container {
+    max-width: 600px;
+    margin: auto;
+}
+
+.contacto-texto {
+    color: #ccc;
+    margin-bottom: 40px;
+}
+
+.formulario {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.formulario input,
+.formulario select,
+.formulario textarea {
+    padding: 12px;
+    border: none;
+    background: #222;
+    color: white;
+}
+
+.formulario button {
+    background: #b30000;
+    color: white;
+    padding: 14px;
+    border: none;
+    cursor: pointer;
+}
+
+.formulario button:hover {
+    background: #800000;
+}
+
+.contacto-extra {
+    margin-top: 40px;
+    color: #aaa;
+}
+
+/* FOOTER */
+footer {
+    text-align: center;
+    padding: 20px;
+    background: #f2f2f2;
+}
+
+/* SCROLL SUAVE */
+html {
+    scroll-behavior: smooth;
+}
+
+header .menu a {
+    color: white;
+}
+
+header.scrolled .menu a {
+    color: #222;
+}
+
+header .logo {
+    color: white;
+}
+
+header.scrolled .logo {
+    color: #222;
+}
+
+/* HAMBURGER BASE */
+.hamburger {
+    display: none;
+    font-size: 26px;
+    cursor: pointer;
+}
+
+/* MODO MÓVIL */
+@media (max-width: 768px) {
+
+    nav {
+        padding: 15px 20px;
+    }
+
+    header {
+        padding: 15px 20px;
+    }
+
+    header.scrolled {
+        padding: 10px 20px;
+    }
+
+    .logo {
+        font-size: 18px;
+    }
+
+    /* HAMBURGER VISIBLE */
+    .hamburger {
+        display: block;
+        color: white;
+    }
+
+    header.scrolled .hamburger {
+        color: white;
+    }
+
+    /* MENÚ OCULTO */
+    .menu {
+        display: none;
+        position: absolute;
+        top: 60px;
+        right: 20px;
+        background: rgba(20,20,20,0.85);
+        backdrop-filter: blur(10px);
+        flex-direction: column;
+        padding: 20px;
+        border-radius: 8px;
+    }
+
+    /* MENÚ ACTIVO */
+    .menu.active {
+        display: flex;
+    }
+
+    .menu a {
+        color: white;
+        font-size: 14px;
+    }
+
+    .menu.active a {
+    color: white !important;
+}
+}
