@@ -51,7 +51,7 @@ header {
     width: 100%;
     top: 0;
     z-index: 1000;
-    padding: 10px clamp(20px, 5vw, 60px);
+    padding: 15px 20px;
     transition: all 0.3s ease;
     background: transparent;
 }
@@ -71,15 +71,37 @@ nav {
 }
 
 .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* separación entre logo y texto */
+
     font-family: 'Playfair Display', serif;
-    font-size: 26px;
+    font-size: 18px;
     letter-spacing: 3px;
     color: white;
 }
 
+.logo img {
+    height: 32px; /* ajusta el tamaño del logo */
+    margin-top: -2px; /* ajuste fino visual */
+    width: auto;
+}
+
+.logo-white {
+    display: block;
+}
+
+.logo-black {
+    display: none;
+}
+
+.logo-red {
+    display: none;
+}
+
 .menu {
     list-style: none;
-    display: flex;
+    display: none;
     gap: 30px;
 }
 
@@ -95,7 +117,7 @@ nav {
 }
 
 .hamburger {
-    display: none;
+    display: block;
     font-size: 26px;
     cursor: pointer;
     color: white;
@@ -107,6 +129,18 @@ header.scrolled .logo {
     color: #222;
 }
 
+header.scrolled .logo-white {
+    display: none;
+}
+
+header.scrolled .logo-black {
+    display: block;
+}
+
+header.scrolled .logo-red {
+    display: none;
+}
+
 header.scrolled .menu a {
     color: #222;
 }
@@ -116,15 +150,26 @@ header.scrolled .hamburger {
 }
 
 header.dark .logo {
-    color: white;
+    color: #b30000;
 }
 
+header.dark .logo-white {
+    display: none;
+}
+
+header.dark .logo-black {
+    display: none;
+}
+
+header.dark .logo-red {
+    display: block;
+}
 header.dark .menu a {
-    color: white;
+    color: #b30000;
 }
 
 header.dark .hamburger {
-    color: white;
+    color: #b30000;
 }
 
 /* HERO */
@@ -204,7 +249,7 @@ header.dark .hamburger {
 
 /* SECCIONES GENERALES */
 section {
-    padding: 120px 80px;
+    padding: 60px 8px;
 }
 
 /* BALCONES */
@@ -215,7 +260,7 @@ section {
 .balcones-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 25px;
+    gap: 20px;
 }
 
 .balcon-item {
@@ -326,13 +371,13 @@ section {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
-    gap: 20px;
-    padding: 0 clamp(0px, 8vw, 120px);
+    gap: 0; /*20px;*/
+    padding: 0; /*clamp(0px, 8vw, 120px);*/
 }
 
 .carousel-track img {
-    flex: 0 0 60%;
-    max-width: 60%;
+    flex: 0 0 100%;
+    max-width: 100%;
     border-radius: 10px;
     scroll-snap-align: center;
 
@@ -467,74 +512,53 @@ html {
     scroll-behavior: smooth;
 }
 
-/* Tablet */
-/*
-@media (max-width: 1024px) {
-    .carousel-track img {
-        flex: 0 0 30%;
-        max-width: 30%;
-    }
-}
-*/
-
-/* MODO MÓVIL*/
-@media (max-width: 769px) {
-
-    nav {
-        padding: 15px 20px;
-    }
-
+/* TABLET + DESKTOP */
+@media (min-width: 769px) {
     header {
-        padding: 15px 20px;
+        padding: 10px clamp(20px, 5vw, 60px);
     }
 
     header.scrolled {
-        padding: 10px 20px;
+        padding: 5px clamp(20px, 5vw, 60px);
     }
-
+        
     .logo {
-        font-size: 18px;
+        font-size: 26px;
     }
-
-    /* HAMBURGER VISIBLE */
-    .hamburger {
-        display: block;
-        color: white;
-    }
-
-    /* MENÚ OCULTO */
+    
     .menu {
-        display: none;
-        position: absolute;
-        top: 60px;
-        right: 20px;
-        background: rgba(20,20,20,0.85);
-        backdrop-filter: blur(10px);
-        flex-direction: column;
-        padding: 20px;
-        border-radius: 8px;
-    }
-
-    /* MENÚ ACTIVO */
-    .menu.active {
         display: flex;
+        gap: 30px;
     }
 
-    .menu a {
-        color: white;
-        font-size: 14px;
+    .hamburger {
+        display: none;
     }
 
-    .menu.active a {
-    color: white !important;
-    }
-
-    .carousel-track {
-        padding: 0;
+    section {
+        padding: 80px 40px;
     }
 
     .carousel-track img {
-        flex: 0 0 100%;
-        max-width: 100%;
+        flex: 0 0 60%;
+        max-width: 60%;
+    }
+}
+
+/* DESKTOP*/
+@media (min-width: 1024px) {
+
+    section {
+        padding: 100px 60px;
+    }
+
+    .balcones-grid {
+        justify-content: center;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
+        gap: 30px;
+    }
+    .carousel-track img {
+        flex: 0 0 30%;
+        max-width: 30%;
     }
 }
