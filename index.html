@@ -106,11 +106,19 @@
     <!-- Galería -->
     <section id="galeria">
         <h2>Galería de Momentos</h2>
-        <div class="gallery">
-            <img src="img/galeria1.jpg" alt="Imagen 1">
-            <img src="img/galeria2.jpg" alt="Imagen 2">
-            <img src="img/galeria3.jpg" alt="Imagen 3">
+    <div class="carousel">
+
+        <button class="carousel-btn prev">‹</button>
+
+        <div class="carousel-track">
+            <img src="img/galeria1.jpg" />
+            <img src="img/galeria2.jpg" />
+            <img src="img/galeria3.jpg" />
         </div>
+
+        <button class="carousel-btn next">›</button>
+
+    </div>
     </section>
 
     <!-- Reserva -->
@@ -212,6 +220,39 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
 });
+
+// =========================
+// CARRUSEL (SNAP + SWIPE)
+// =========================
+
+const track = document.querySelector('.carousel-track');
+const prevBtn = document.querySelector('.carousel-btn.prev');
+const nextBtn = document.querySelector('.carousel-btn.next');
+
+// BOTÓN SIGUIENTE
+nextBtn.addEventListener('click', () => {
+    track.scrollBy({
+        left: track.clientWidth,
+        behavior: 'smooth'
+    });
+});
+
+// BOTÓN ANTERIOR
+prevBtn.addEventListener('click', () => {
+    track.scrollBy({
+        left: -track.clientWidth,
+        behavior: 'smooth'
+    });
+});
+
+// AJUSTE AL REDIMENSIONAR (evita desajustes)
+window.addEventListener('resize', () => {
+    track.scrollTo({
+        left: 0,
+        behavior: 'instant'
+    });
+});
+
 </script>
 
 </body>

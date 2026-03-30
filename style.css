@@ -316,14 +316,54 @@ section {
     background-color:rgba(250, 248, 244, 0.95);
 }
 
-.gallery {
-    display: flex;
-    gap: 20px;
+.carousel {
+    position: relative;
+    overflow: hidden;
 }
 
-.gallery img {
-    width: 33%;
-    border-radius: 10px;
+.carousel-track {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+
+    /* IMPORTANTE: oculta scrollbar */
+    scrollbar-width: none; /* Firefox */
+}
+
+.carousel-track::-webkit-scrollbar {
+    display: none; /* Chrome, Safari */
+}
+
+.carousel-track img {
+    flex: 0 0 100%;
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+
+    scroll-snap-align: center;
+}
+
+/* BOTONES */
+.carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.5);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 24px;
+    z-index: 2;
+}
+
+.carousel-btn.prev {
+    left: 10px;
+}
+
+.carousel-btn.next {
+    right: 10px;
 }
 
 /* RESERVA */
@@ -415,15 +455,6 @@ footer {
 /* SCROLL SUAVE */
 html {
     scroll-behavior: smooth;
-}
-
-/* HAMBURGER BASE */
-.hamburger {
-    display: none;
-    font-size: 26px;
-    cursor: pointer;
-    color: white;
-    transition: color 0.3s ease;
 }
 
 /* MODO MÓVIL*/
