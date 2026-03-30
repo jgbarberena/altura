@@ -318,7 +318,7 @@ section {
 
 .carousel {
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .carousel-track {
@@ -326,23 +326,33 @@ section {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
+    gap: 20px;
+    padding: 0 clamp(0px, 8vw, 120px);
+}
 
-    /* IMPORTANTE: oculta scrollbar */
-    scrollbar-width: none; /* Firefox */
+.carousel-track img {
+    flex: 0 0 30%;
+    max-width: 30%;
+    border-radius: 10px;
+    scroll-snap-align: center;
+
+    /* efecto lateral base */
+    opacity: 0.6;
+    transform: scale(0.9);
+
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* IMAGEN ACTIVA */
+.carousel-track img.active {
+    opacity: 1;
+    transform: scale(1);
 }
 
 .carousel-track::-webkit-scrollbar {
     display: none; /* Chrome, Safari */
 }
 
-.carousel-track img {
-    flex: 0 0 100%;
-    width: 100%;
-    height: auto;
-    object-fit: cover;
-
-    scroll-snap-align: center;
-}
 
 /* BOTONES */
 .carousel-btn {
@@ -457,6 +467,14 @@ html {
     scroll-behavior: smooth;
 }
 
+/* Tablet */
+@media (max-width: 1024px) {
+    .carousel-track img {
+        flex: 0 0 60%;
+        max-width: 60%;
+    }
+}
+
 /* MODO MÓVIL*/
 @media (max-width: 769px) {
 
@@ -507,6 +525,14 @@ html {
 
     .menu.active a {
     color: white !important;
-}
+    }
 
+    .carousel-track {
+        padding: 0;
+    }
+
+    .carousel-track img {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
 }

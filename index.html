@@ -111,9 +111,23 @@
         <button class="carousel-btn prev">‹</button>
 
         <div class="carousel-track">
-            <img src="img/galeria1.jpg" />
-            <img src="img/galeria2.jpg" />
-            <img src="img/galeria3.jpg" />
+
+            <!-- clones del final -->
+            <img src="img/galeria5.jpg" class="clone">
+            <img src="img/galeria6.jpg" class="clone">
+
+            <!-- reales -->
+            <img src="img/galeria1.jpg">
+            <img src="img/galeria2.jpg">
+            <img src="img/galeria3.jpg">
+            <img src="img/galeria4.jpg">
+            <img src="img/galeria5.jpg">
+            <img src="img/galeria6.jpg">
+
+            <!-- clones del inicio -->
+            <img src="img/galeria1.jpg" class="clone">
+            <img src="img/galeria2.jpg" class="clone">
+
         </div>
 
         <button class="carousel-btn next">›</button>
@@ -222,35 +236,92 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 // =========================
-// CARRUSEL (SNAP + SWIPE)
+// CARRUSEL PRO (LOOP + SNAP)
 // =========================
 
 const track = document.querySelector('.carousel-track');
+const slides = document.querySelectorAll('.carousel-track img');
 const prevBtn = document.querySelector('.carousel-btn.prev');
 const nextBtn = document.querySelector('.carousel-btn.next');
 
-// BOTÓN SIGUIENTE
+let slideWidth = slides[0].clientWidth + 20; // incluye gap
+let isJumping = false; // 🔥 clave para evitar el "vuelo"
+
+// POSICIÓN INICIAL (saltamos clones)
+track.scrollLeft = slideWidth * 2;
+
+// BOTONES
 nextBtn.addEventListener('click', () => {
-    track.scrollBy({
-        left: track.clientWidth,
-        behavior: 'smooth'
-    });
+    track.scrollBy({ left: slideWidth, behavior: 'smooth' });
 });
 
-// BOTÓN ANTERIOR
 prevBtn.addEventListener('click', () => {
-    track.scrollBy({
-        left: -track.clientWidth,
-        behavior: 'smooth'
-    });
+    track.scrollBy({ left: -slideWidth, behavior: 'smooth' });
 });
 
-// AJUSTE AL REDIMENSIONAR (evita desajustes)
-window.addEventListener('resize', () => {
-    track.scrollTo({
-        left: 0,
-        behavior: 'instant'
+// LOOP INFINITO (CORREGIDO)
+track.addEventListener('scroll', () => {
+
+    if (isJumping) return;
+
+    const maxScroll = track.scrollWidth - track.clientWidth;
+
+    // IZQUIERDA
+    if (track.scrollLeft <= slideWidth) {
+        isJumping = true;
+
+        track.style.scrollBehavior = "auto";
+        track.style.scrollSnapType = "none";
+
+        track.scrollLeft = maxScroll - (slideWidth * 3);
+
+        setTimeout(() => {
+            track.style.scrollBehavior = "smooth";
+            track.style.scrollSnapType = "x mandatory";
+            isJumping = false;
+        }, 50);
+    }
+
+    // DERECHA
+    if (track.scrollLeft >= maxScroll - slideWidth) {
+        isJumping = true;
+
+        track.style.scrollBehavior = "auto";
+        track.style.scrollSnapType = "none";
+
+        track.scrollLeft = slideWidth * 2;
+
+        setTimeout(() => {
+            track.style.scrollBehavior = "smooth";
+            track.style.scrollSnapType = "x mandatory";
+            isJumping = false;
+        }, 50);
+    }
+
+    updateActive();
+});
+
+// DETECTAR IMAGEN CENTRAL
+function updateActive() {
+    const center = track.scrollLeft + track.clientWidth / 2;
+
+    slides.forEach(slide => {
+        const slideCenter = slide.offsetLeft + slide.clientWidth / 2;
+
+        if (Math.abs(center - slideCenter) < slide.clientWidth / 2) {
+            slide.classList.add('active');
+        } else {
+            slide.classList.remove('active');
+        }
     });
+}
+
+// RESIZE (IMPORTANTE recalcular + recolocar)
+window.addEventListener('resize', () => {
+    slideWidth = slides[0].clientWidth + 20;
+
+    // recolocar bien tras resize
+    track.scrollLeft = slideWidth * 2;
 });
 
 </script>
