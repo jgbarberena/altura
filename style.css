@@ -51,7 +51,7 @@ header {
     width: 100%;
     top: 0;
     z-index: 1000;
-    padding: 10px 60px;
+    padding: 10px clamp(20px, 5vw, 60px);
     transition: all 0.3s ease;
     background: transparent;
 }
@@ -214,7 +214,7 @@ section {
 
 .balcones-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 25px;
 }
 
@@ -426,8 +426,8 @@ html {
     transition: color 0.3s ease;
 }
 
-/* MODO MÓVIL */
-@media (max-width: 980px) {
+/* MODO MÓVIL*/
+@media (max-width: 769px) {
 
     nav {
         padding: 15px 20px;
@@ -477,4 +477,5 @@ html {
     .menu.active a {
     color: white !important;
 }
+
 }
