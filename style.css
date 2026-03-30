@@ -331,8 +331,8 @@ section {
 }
 
 .carousel-track img {
-    flex: 0 0 30%;
-    max-width: 30%;
+    flex: 0 0 60%;
+    max-width: 60%;
     border-radius: 10px;
     scroll-snap-align: center;
 
@@ -468,12 +468,14 @@ html {
 }
 
 /* Tablet */
+/*
 @media (max-width: 1024px) {
     .carousel-track img {
-        flex: 0 0 60%;
-        max-width: 60%;
+        flex: 0 0 30%;
+        max-width: 30%;
     }
 }
+*/
 
 /* MODO MÓVIL*/
 @media (max-width: 769px) {
