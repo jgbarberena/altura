@@ -82,6 +82,7 @@ nav {
 }
 
 .logo img {
+    display: none;
     height: 32px; /* ajusta el tamaño del logo */
     margin-top: -2px; /* ajuste fino visual */
     width: auto;
