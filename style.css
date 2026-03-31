@@ -82,7 +82,6 @@ nav {
 }
 
 .logo img {
-    display: none;
     height: 32px; /* ajusta el tamaño del logo */
     margin-top: -2px; /* ajuste fino visual */
     width: auto;
@@ -99,7 +98,7 @@ nav {
 .logo-red {
     display: none;
 }
-
+/*
 .menu {
     list-style: none;
     display: none;
@@ -110,6 +109,39 @@ nav {
     text-decoration: none;
     font-size: 14px;
     color: white;
+}
+*/
+
+/* MENU BASE (MÓVIL) */
+.menu {
+    list-style: none;
+
+    display: none; /* oculto por defecto */
+    flex-direction: column; /* 🔥 vertical */
+
+    position: absolute; /* 🔥 flotante */
+    top: 60px;
+    right: 20px;
+
+    background: rgba(20,20,20,0.85); /* 🔥 caja oscura */
+    backdrop-filter: blur(10px);
+
+    padding: 20px;
+    border-radius: 8px;
+
+    gap: 15px;
+}
+
+/* cuando se abre */
+.menu.active {
+    display: flex;
+}
+
+/* links dentro */
+.menu a {
+    color: white;
+    font-size: 14px;
+    text-decoration: none;
 }
 
 .menu a:hover {
@@ -123,9 +155,10 @@ nav {
     cursor: pointer;
     color: white;
     transition: color 0.3s ease;
+    z-index: 1001; /* 🔥 evita problemas de click */
 }
 
-/* ESTADOS */
+/* ESTADOS - SCROLLED*/
 header.scrolled .logo {
     color: #222;
 }
@@ -143,13 +176,14 @@ header.scrolled .logo-red {
 }
 
 header.scrolled .menu a {
-    color: #222;
+    color: White;
 }
 
 header.scrolled .hamburger {
     color: #222;
 }
 
+/* ESTADOS - DARK*/
 header.dark .logo {
     color: #b30000;
 }
@@ -526,7 +560,7 @@ html {
     .logo {
         font-size: 26px;
     }
-    
+    /*
     .menu {
         display: flex;
         gap: 30px;
@@ -534,6 +568,29 @@ html {
 
     .hamburger {
         display: none;
+    }
+*/
+    .menu {
+        display: flex !important; /* siempre visible */
+        flex-direction: row;
+
+        position: static; /* 🔥 deja de flotar */
+        background: none;
+        backdrop-filter: none;
+
+        padding: 0;
+        border-radius: 0;
+
+        gap: 30px;
+    }
+
+    .menu a {
+        color: white; /* o lo que ya tengas con scrolled/dark */
+        font-size: 14px;
+    }
+
+    .hamburger {
+        display: none; /* 🔥 desaparece */
     }
 
     section {
