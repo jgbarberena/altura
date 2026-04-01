@@ -1,0 +1,41 @@
+.toko-page {
+    min-height: 100vh;
+    background: black;
+}
+
+/* HERO */
+.toko-hero {
+    position: relative;
+    height: 100vh;
+
+    background-image: url('../img/toko/toko-product-bags.png');
+    background-size: cover;
+    background-position: center;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toko-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+}
+
+.toko-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    color: white;
+}
+
+.toko-content h1 {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.toko-content p {
+    font-size: 18px;
+    opacity: 0.8;
+}
