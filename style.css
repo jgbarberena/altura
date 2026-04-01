@@ -34,7 +34,7 @@ body::after {
     
     opacity: 0.08;
     
-    background-image: url("img/textura_papiro.jpg");
+    background-image: url("img/textura-exclusivo-papiro.jpg");
 }
 
 h1, h2, h3 {
@@ -51,7 +51,7 @@ header {
     width: 100%;
     top: 0;
     z-index: 1000;
-    padding: 15px 20px;
+    padding: 5px 10px;
     transition: all 0.3s ease;
     background: transparent;
 }
@@ -59,7 +59,7 @@ header {
 header.scrolled {
     background: rgba(255,255,255,0.10);
     backdrop-filter: blur(12px);
-    padding: 5px 60px;
+    padding: 5px 10px;
     border-bottom: 1px solid rgba(255,255,255,0.2);
 }
 
@@ -98,19 +98,6 @@ nav {
 .logo-red {
     display: none;
 }
-/*
-.menu {
-    list-style: none;
-    display: none;
-    gap: 30px;
-}
-
-.menu a {
-    text-decoration: none;
-    font-size: 14px;
-    color: white;
-}
-*/
 
 /* MENU BASE (MÓVIL) */
 .menu {
@@ -211,7 +198,7 @@ header.dark .hamburger {
 #hero {
     position: relative;
     height: 100vh;
-    background: url("img/hero.jpg") center/cover no-repeat;
+    background: url("img/balcon-chupinazo-ayuntamiento.jpg") center/cover no-repeat;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -284,7 +271,7 @@ header.dark .hamburger {
 
 /* SECCIONES GENERALES */
 section {
-    padding: 60px 8px;
+    padding: 20px 8px;
 }
 
 /* BALCONES */
@@ -354,10 +341,10 @@ section {
     padding: 120px 20px;
     text-align: center;
     background: linear-gradient(
-      rgba(245,243,239,0.8), /*0.85-0.9 para más sutil)*/
-      rgba(245,243,239,0.8) /*0.85-0.9 para más sutil)*/
+      rgba(245,243,239,0.85), /*0.85-0.9 para más sutil)*/
+      rgba(245,243,239,0.85) /*0.85-0.9 para más sutil)*/
     ),
-    url("img/galeria2.jpg") center/cover;
+    url("img/balcon-charla-corredor.jpg") center/cover;
 }
 
 .sanfermin-container {
@@ -456,33 +443,135 @@ section {
     right: 10px;
 }
 
-/* MERCHANDISING */
-#merchan {
-    background-color: rgba(245, 243, 239, 0.9);
+/* =========================
+   TO-KO COLLECTION - VERSIÓN CORREGIDA
+========================= */
+
+.toko {
+    position: relative;
+    height: 60vh; /* IDÉNTICO */
+    display: flex; /* IDÉNTICO */
+    align-items: center; /* IDÉNTICO */
+    justify-content: center; /* IDÉNTICO */
+    text-align: center; /* IDÉNTICO */
+    color: white; /* IDÉNTICO */
+    overflow: hidden; /* IDÉNTICO - Imprescindible para que el zoom no se salga */
+
+    /* Fondo de seguridad por si las imágenes tardan en cargar */
+    background-color: #111; 
 }
 
-form {
-    max-width: 400px;
-    margin: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+/* -----------------------------------------------------------
+   CAPAS DE IMAGEN (Corregido para ocupar el 100%)
+----------------------------------------------------------- */
+.toko-slide {
+    position: absolute;
+    /* CORRECCIÓN VITAL: Forzamos que empiecen en la esquina superior izquierda */
+    top: 0;
+    left: 0;
+    /* CORRECCIÓN: Aseguramos que ocupen el 100% del contenedor .toko */
+    width: 100%;
+    height: 100%;
+    /* CORRECCIÓN: Eliminamos cualquier margen predeterminado residual */
+    margin: 0; 
+    padding: 0;
+    border: none;
+    
+    /* Mantenemos tus propiedades de renderizado de imagen IDÉNTICAS */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+
+    opacity: 0; /* Empiezan invisibles */
+    z-index: 1; /* Por debajo del overlay y contenido */
+    
+    /* Animación: 18s total, linear, infinita. Nombre: suaveKenBurns */
+    animation: suaveKenBurns 18s linear infinite;
 }
 
-form input,
-form button {
-    padding: 12px;
-    border: 1px solid #ccc;
+/* Tiempos de retraso para el ciclo (Staggering) */
+.toko-slide:nth-of-type(1) { animation-delay: 0s; }
+.toko-slide:nth-of-type(2) { animation-delay: 6s; }
+.toko-slide:nth-of-type(3) { animation-delay: 12s; }
+
+/* -----------------------------------------------------------
+   ESTILOS ORIGINALES (Mantenidos IDÉNTICOS, solo ajustado z-index)
+----------------------------------------------------------- */
+
+/* Oscurecido elegante - Ahora vuelve a ocupar toda la sección */
+.toko-overlay {
+    position: absolute;
+    /* CORRECCIÓN: Aseguramos que cubra todo, igual que las imágenes */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2; /* Sobre las imágenes (.toko-slide tiene 1) */
+
+    /* TU DEGRADADO ORIGINAL - IDÉNTICO */
+    background: radial-gradient(
+        circle at center,
+        rgba(0,0,0,0.2) 0%,
+        rgba(0,0,0,0.5) 70%,
+        rgba(0,0,0,0.7) 100%
+    );
 }
 
-form button {
-    background-color: #b30000;
-    color: white;
-    cursor: pointer;
+/* Contenido */
+.toko-content {
+    position: relative;
+    z-index: 3; /* Sobre el overlay (z-index 2) */
+    max-width: 700px; /* IDÉNTICO */
+    padding: 20px; /* IDÉNTICO */
 }
 
-form button:hover {
-    background-color: #800000;
+.toko h2 {
+    font-size: 28px; /* IDÉNTICO */
+    margin-bottom: 20px; /* IDÉNTICO */
+    color: inherit; /* Asegurar color white */
+}
+
+.toko-subtitle {
+    font-size: 16px; /* IDÉNTICO */
+    line-height: 1.6; /* IDÉNTICO */
+    margin-bottom: 30px; /* IDÉNTICO */
+    opacity: 0.9; /* IDÉNTICO */
+    color: inherit; /* Asegurar color white */
+}
+
+/* Botones */
+.toko-buttons {
+    display: flex; /* IDÉNTICO */
+    gap: 15px; /* IDÉNTICO */
+    justify-content: center; /* IDÉNTICO */
+    flex-wrap: wrap; /* IDÉNTICO */
+}
+
+/* -----------------------------------------------------------
+   ANIMACIÓN: Fade Suave + Zoom Elegante (Ken Burns)
+----------------------------------------------------------- */
+@keyframes suaveKenBurns {
+    0% {
+        opacity: 0;
+        transform: scale(1); /* Tamaño original - 100% */
+    }
+    /* Fade in: Aparece en el primer 5% */
+    5% {
+        opacity: 1;
+    }
+    /* Se mantiene visible hasta el 33% del ciclo total */
+    33.33% {
+        opacity: 1;
+    }
+    /* Fade out: Se desvanece suavemente */
+    38.33% {
+        opacity: 0;
+    }
+    /* El zoom continúa hasta el final del ciclo para máxima suavidad */
+    100% {
+        opacity: 0;
+        transform: scale(1.1); /* Un zoom in suave del 10% */
+    }
 }
 
 /* CONTACTO */
@@ -547,6 +636,31 @@ html {
     scroll-behavior: smooth;
 }
 
+/*WhatsApp flotante*/
+/* El contenedor circular verde */
+.whatsapp-float {
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  bottom: 40px;
+  right: 40px;
+  background-color: #25d366;
+  color: #FFF;
+  border-radius: 50px;
+  text-align: center;
+  box-shadow: 2px 2px 3px #999;
+  z-index: 100;
+  display: flex; /* Usamos flex para centrar la imagen fácilmente */
+  align-items: center;
+  justify-content: center;
+}
+
+/* La imagen dentro del círculo */
+.my-float {
+  width: 35px; /* Ajusta el tamaño del logo aquí */
+  height: auto;
+}
+
 /* TABLET + DESKTOP */
 @media (min-width: 769px) {
     header {
@@ -560,16 +674,7 @@ html {
     .logo {
         font-size: 26px;
     }
-    /*
-    .menu {
-        display: flex;
-        gap: 30px;
-    }
 
-    .hamburger {
-        display: none;
-    }
-*/
     .menu {
         display: flex !important; /* siempre visible */
         flex-direction: row;
@@ -585,7 +690,7 @@ html {
     }
 
     .menu a {
-        color: white; /* o lo que ya tengas con scrolled/dark */
+        color: white; 
         font-size: 14px;
     }
 
@@ -594,12 +699,24 @@ html {
     }
 
     section {
-        padding: 80px 40px;
+        padding: 40px 20px;
     }
 
     .carousel-track img {
         flex: 0 0 60%;
         max-width: 60%;
+    }
+
+    .toko {
+        height: 80vh;
+    }
+
+    .toko h2 {
+        font-size: 42px;
+    }
+
+    .toko-subtitle {
+        font-size: 18px;
     }
 }
 
@@ -607,7 +724,7 @@ html {
 @media (min-width: 1024px) {
 
     section {
-        padding: 100px 60px;
+        padding: 60px 40px;
     }
 
     .balcones-grid {
