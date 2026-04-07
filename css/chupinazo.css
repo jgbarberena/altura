@@ -1,14 +1,14 @@
-.toko-page {
+.cupinazo-page {
     min-height: 100vh;
     background: black;
 }
 
 /* HERO */
-.toko-hero {
+.chupinazo-hero {
     position: relative;
     height: 100vh;
 
-    background-image: url('../img/toko/logo-toko-chupinazo.jpg');
+    background-image: url('../img/experiencias/chupinazo/Chupinazo_2.jpg');
     background-size: cover;
     background-position: center;
 
@@ -17,25 +17,25 @@
     justify-content: center;
 }
 
-.toko-overlay {
+.cupinazo-overlay {
     position: absolute;
     inset: 0;
     background: rgba(0,0,0,0.5);
 }
 
-.toko-content {
+.cupinazo-content {
     position: relative;
     z-index: 2;
     text-align: center;
     color: white;
 }
 
-.toko-content h1 {
+.cupinazo-content h1 {
     font-size: 48px;
     margin-bottom: 10px;
 }
 
-.toko-content p {
+.cupinazo-content p {
     font-size: 18px;
     opacity: 0.8;
 }

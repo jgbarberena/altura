@@ -16,7 +16,6 @@ function initHeader() {
     const hamburger = document.getElementById("hamburger");
     const menu = document.querySelector(".menu");
     const menuLinks = document.querySelectorAll(".menu a");
-    const contacto = document.getElementById("contacto");
 
     if (!header || !hamburger || !menu) return;
 
@@ -27,6 +26,8 @@ function initHeader() {
         } else {
             header.classList.remove("scrolled");
         }
+
+        const contacto = document.querySelector(".contacto"); //Posible cambio a IntersectionObserver
 
         if (contacto) {
             const rect = contacto.getBoundingClientRect();
@@ -189,4 +190,143 @@ function initCarousel() {
         track.scrollLeft = slideWidth * 2;
     });
 
+}
+
+// =========================
+// FORMULARIO → WHATSAPP + EMAIL (MEJORADO)
+// =========================
+
+function initFormulario() {
+
+    const form = document.getElementById("form-contacto");
+    if (!form) return;
+
+    const getFormData = () => {
+        return {
+            nombre: form.querySelector('input[type="text"]').value.trim(),
+            email: form.querySelector('input[type="email"]').value.trim(),
+            telefono: form.querySelector('input[type="tel"]').value.trim(),
+            interes: form.querySelector('select').value,
+            mensaje: form.querySelector('textarea').value.trim()
+        };
+    };
+
+    const buildMensaje = (data) => {
+
+        let texto = `Hola, quiero vivir una experiencia en San Fermín:\n\n`;
+
+        if (data.nombre) texto += `Nombre: ${data.nombre}\n`;
+        if (data.email) texto += `Email: ${data.email}\n`;
+        if (data.telefono) texto += `Teléfono: ${data.telefono}\n`;
+        if (data.interes && data.interes !== "Quiero vivir...") {
+            texto += `Interés: ${data.interes}\n`;
+        }
+
+        if (data.mensaje) {
+            texto += `\nMensaje:\n${data.mensaje}`;
+        }
+
+        return texto;
+    };
+
+    // =========================
+    // WHATSAPP (submit)
+    // =========================
+
+    form.addEventListener("submit", function(e) {
+        e.preventDefault();
+
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const data = getFormData();
+        const texto = buildMensaje(data);
+
+        const url = `https://wa.me/34625638977?text=${encodeURIComponent(texto)}`;
+        window.open(url, "_blank");
+    });
+
+    // =========================
+    // EMAIL
+    // =========================
+
+    const emailBtn = document.getElementById("btn-email");
+
+    if (emailBtn) {
+        emailBtn.addEventListener("click", function() {
+
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const data = getFormData();
+            const cuerpo = buildMensaje(data);
+
+            const asunto = "Solicitud experiencia San Fermín";
+
+            const mailto = `mailto:paula@lemonmilk.es?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+
+            window.location.href = mailto;
+        });
+    }
+}
+
+// =========================
+// PRESELECCION INTERES EN FORMULARIO
+// =========================
+
+function initContactoFromURL() {
+    const params = new URLSearchParams(window.location.search);
+
+    const interesParam = params.get("interes");
+    const hash = window.location.hash;
+
+    const select = document.getElementById("interes");
+
+    // ----------------------
+    // 1. PRESELECCIÓN SELECT
+    // ----------------------
+    if (select) {
+        const mapping = {
+            encierros: "Encierros",
+            chupinazo: "Chupinazo, procesion, gigantes",
+            toko: "To-Ko Collection",
+            personalizada: "Experiencia personalizada"
+        };
+
+        if (interesParam && mapping[interesParam.toLowerCase()]) {
+            select.value = mapping[interesParam.toLowerCase()];
+        } else {
+            // RESET
+            select.value = "";
+        }
+    }
+
+    // ----------------------
+    // 2. SCROLL A CONTACTO
+    // ----------------------
+    if (hash === "#contacto") {
+        const tryScroll = () => {
+            const contacto = document.querySelector("#contacto");
+
+            if (contacto) {
+                contacto.scrollIntoView({ behavior: "smooth" });
+                return true;
+            }
+            return false;
+        };
+
+        // intentamos varias veces por timing de includes
+        let attempts = 0;
+        const interval = setInterval(() => {
+            attempts++;
+
+            if (tryScroll() || attempts > 10) {
+                clearInterval(interval);
+            }
+        }, 50);
+    }
 }

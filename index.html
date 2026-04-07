@@ -3,7 +3,7 @@
 <head> 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Experiencia Exclusiva San Fermín</title>
+    <title>Vive San Fermin a tu medida</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/home.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
@@ -25,8 +25,8 @@
         <p>Balcones privados, vistas privilegiadas y experiencias diseñadas para quienes buscan algo más.</p>
 
         <div class="buttons">
-            <a href="#experiencias" class="btn-primary">Descubrir</a>
-            <a href="#contacto" class="btn-secondary">Reservar</a>
+            <a href="?interes=#contacto" class="btn btn-primary">Quiero vivirlo</a>
+            <a href="#experiencias" class="btn btn-secondary">Descubrir más</a>
         </div>
     </div>
 </section>
@@ -41,7 +41,10 @@
             <div class="experiencia-overlay">
                 <h3>Encierros</h3>
                 <p>Vive el momento más emocionante desde una posición privilegiada.</p>
-                <a href="#" class="btn-mini">Consultar</a>
+                <div class="buttons buttons--left">
+                    <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                    <a href="experiencias/encierro/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                </div>
             </div>
         </div>
 
@@ -50,7 +53,10 @@
             <div class="experiencia-overlay">
                 <h3>Chupinazo</h3>
                 <p>Disfruta del inicio de la fiesta desde un balcón exclusivo.</p>
-                <a href="#" class="btn-mini">Consultar</a>
+                <div class="buttons buttons--left">
+                    <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                    <a href="experiencias/chupinazo/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                </div>
             </div>
         </div>
 
@@ -59,7 +65,10 @@
             <div class="experiencia-overlay">
                 <h3>Procesion</h3>
                 <p>Vive el momento más especial de las fiestas desde la altura.</p>
-                <a href="#" class="btn-mini">Consultar</a>
+                <div class="buttons buttons--left">
+                    <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                    <a href="experiencias/procesion/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                </div>
             </div>
         </div>
 
@@ -68,7 +77,10 @@
             <div class="experiencia-overlay">
                 <h3>Pobre de mí</h3>
                 <p>El cierre más emotivo desde una ubicación única.</p>
-                <a href="#" class="btn-mini">Consultar</a>
+                <div class="buttons buttons--left">
+                    <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                    <a href="experiencias/pobre-de-mi/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                </div>
             </div>
         </div>
         
@@ -77,7 +89,10 @@
             <div class="experiencia-overlay">
                 <h3>Despedida de Gigantes</h3>
                 <p>Nuestros personajes más queridos desde arriba.</p>
-                <a href="#" class="btn-mini">Consultar</a>
+                <div class="buttons buttons--left">
+                    <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                    <a href="experiencias/gigantes/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                </div>
             </div>
         </div>
                 <div class="experiencia-item">
@@ -85,7 +100,10 @@
             <div class="experiencia-overlay">
                 <h3>Momenticos</h3>
                 <p>Disfruta de esos momentos pamplonicas al alcance de muy pocos.</p>
-                <a href="#" class="btn-mini">Consultar</a>
+                <div class="buttons buttons--left">
+                    <a href="?interes=personalizada#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                    <a href="experiencias/momenticos/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                </div>
             </div>
         </div>
     </div>
@@ -161,62 +179,26 @@
                 Objetos que prolongan la experiencia.<br>
                 Recuerdos que permanecen.
             </p>
-            <div class="toko-buttons">
-                <a href="#contacto" class="btn btn-primary">Me interesa</a>
-                <a href="toko/index.html" class="btn btn-secondary">Saber más</a>
+            <div class="buttons">
+                <a href="?interes=toko#contacto" class="btn btn-primary">Quiero algo asi</a>
+                <a href="toko/index.html" class="btn btn-secondary">Descurbir Colección</a>
             </div>
     </div>
 
 </section>
 
-    <!-- Contacto -->
-<section id="contacto">
-    <div class="contacto-container">
-
-        <h2>Solicita tu experiencia privada</h2>
-
-        <p class="contacto-texto">
-            Cuéntanos qué buscas y diseñaremos una propuesta a medida para ti o tu empresa.
-        </p>
-
-        <form class="formulario">
-            <input type="text" placeholder="Nombre" required>
-            <input type="email" placeholder="Email" required>
-            <input type="tel" placeholder="Teléfono">
-            
-            <select>
-                <option>Me interesa...</option>
-                <option>Encierros</option>
-                <option>Chupinazo, procesion, gigantes</option>
-                <option>To-Ko Collection</option>
-                <option>Experiencia personalizada</option>
-            </select>
-
-            <textarea placeholder="Cuéntanos tu idea..." rows="4"></textarea>
-
-            <button type="submit">Solicitar propuesta</button>
-        </form>
-
-        <div class="contacto-extra">
-            <p>O si lo prefieres:</p>
-            <p><strong>📞 +34 625 638 977 </i></strong></p>
-            <p><strong>✉️ paula@lemonmilk.es</strong></p>
-        </div>
-
-    </div>
-</section>
-
 <!-- ========================= END SECTIONS ========================= -->
+
+<!-- Contacto -->
+<div id="contact-placeholder"></div>
+
+<!--WhatsApp-->
+<div id="whatsapp-placeholder"></div>
+
 <!-- Footer -->
     <div id="footer-placeholder"></div> 
 
-/*WhatsApp*/
-<!-- El enlace con el número y el mensaje -->
-<a href="https://wa.me/34625638977?text=Hola,%20quiero%20vivir%20unas%20fiestas%20inolvidables%20y%20me%20gustaria..." class="whatsapp-float" target="_blank">
-    <img src="img/WhatsApp.svg.webp" alt="WhatsApp" class="my-float">
-</a>
-
-/*JScripts*/
+<!--JScripts-->
 
 <script src="js/include.js"></script>
 <script src="js/main.js"></script>

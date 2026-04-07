@@ -163,7 +163,7 @@ header.scrolled .logo-red {
 }
 
 header.scrolled .menu a {
-    color: White;
+    color:  white;
 }
 
 header.scrolled .hamburger {
@@ -192,6 +192,57 @@ header.dark .menu a {
 
 header.dark .hamburger {
     color: #b30000;
+}
+
+/* BOTONES (GENERAL) */
+.buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 20px;
+    justify-content: center;
+}
+
+.buttons--center { justify-content: center; }
+.buttons--left { justify-content: flex-start; }
+.buttons--right { justify-content: flex-end; }
+.buttons--space { justify-content: space-between; }
+
+.btn {
+    display: inline-block;
+    padding: 12px 30px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background-color: #b30000;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #800000;
+}
+
+.btn-secondary {
+    border: 1px solid white;
+    color: white;
+    background: transparent;
+}
+
+.btn-secondary:hover {
+    background: white;
+    color: black;
+}
+
+.btn-mini {
+    padding: 8px 16px;
+    font-size: 12px;
+}
+
+.btn-full {
+    width: 100%;
 }
 
 /* HERO */
@@ -240,38 +291,9 @@ header.dark .hamburger {
     margin-bottom: 30px;
 }
 
-.buttons {
-    display: flex;
-    gap: 20px;
-    justify-content: center;
-}
-
-.btn-primary {
-    background-color: #b30000;
-    color: white;
-    padding: 12px 30px;
-    text-decoration: none;
-}
-
-.btn-primary:hover {
-    background-color: #800000;
-}
-
-.btn-secondary {
-    border: 1px solid white;
-    padding: 12px 30px;
-    text-decoration: none;
-    color: white;
-}
-
-.btn-secondary:hover {
-    background: white;
-    color: black;
-}
-
 /* SECCIONES GENERALES */
 section {
-    padding: 20px 8px;
+    padding: 60px 8px;
 }
 
 /* EXPERIENCIAS */
@@ -317,15 +339,6 @@ section {
 .experiencia-overlay p {
     font-size: 14px;
     margin-bottom: 15px;
-}
-
-.btn-mini {
-    display: inline-block;
-    padding: 8px 20px;
-    background: #c40000;
-    color: white;
-    text-decoration: none;
-    font-size: 12px;
 }
 
 .experiencia-item:hover img {
@@ -539,14 +552,6 @@ section {
     color: inherit; /* Asegurar color white */
 }
 
-/* Botones */
-.toko-buttons {
-    display: flex; /* IDÉNTICO */
-    gap: 15px; /* IDÉNTICO */
-    justify-content: center; /* IDÉNTICO */
-    flex-wrap: wrap; /* IDÉNTICO */
-}
-
 /* -----------------------------------------------------------
    ANIMACIÓN: Fade Suave + Zoom Elegante (Ken Burns)
 ----------------------------------------------------------- */
@@ -575,7 +580,7 @@ section {
 }
 
 /* CONTACTO */
-#contacto {
+.contacto {
     padding: 120px 20px;
     background: #111;
     color: white;
@@ -605,18 +610,6 @@ section {
     border: none;
     background: #222;
     color: white;
-}
-
-.formulario button {
-    background: #b30000;
-    color: white;
-    padding: 14px;
-    border: none;
-    cursor: pointer;
-}
-
-.formulario button:hover {
-    background: #800000;
 }
 
 .contacto-extra {
@@ -692,6 +685,14 @@ html {
     .menu a {
         color: white; 
         font-size: 14px;
+    }
+
+    header.scrolled .menu a {
+        color:  #222;
+    }
+        
+    header.dark .menu a {
+        color:  #b30000;
     }
 
     .hamburger {
