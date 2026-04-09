@@ -30,6 +30,10 @@ function loadComponent(id, file) {
             if (id === "whatsapp-placeholder") {
                 initWhatsappIcon();
             }
+
+            if (id === "toko-placeholder") {
+                initTokoSection();
+            }
         })
         .catch(err => {
             console.error("Error cargando:", file, err);
@@ -37,6 +41,7 @@ function loadComponent(id, file) {
 }
 
 loadComponent("header-placeholder", "components/header.html");
+loadComponent("toko-placeholder", "components/toko.html");
 loadComponent("contact-placeholder", "components/contact.html");
 loadComponent("whatsapp-placeholder", "components/whatsapp.html");
 loadComponent("footer-placeholder", "components/footer.html");
@@ -86,4 +91,24 @@ function initWhatsappIcon() {
     if (icon) {
         icon.src = base + '/img/WhatsApp.svg.webp';
     }
+}
+
+function initTokoSection() {
+    const base = window.BASE_URL || '';
+
+    // Asignar imágenes de fondo
+    document.querySelectorAll('.toko-slide').forEach(slide => {
+        const file = slide.getAttribute('data-img');
+        slide.style.backgroundImage = `url('${base}/img/${file}')`;
+    });
+
+    // Botón 1 → contacto con interés preseleccionado
+    document.querySelectorAll('[data-toko-btn="contacto"]').forEach(btn => {
+        btn.href = '?interes=toko#contacto';
+    });
+
+    // Botón 2 → página de colección
+    document.querySelectorAll('[data-toko-btn="coleccion"]').forEach(btn => {
+        btn.href = base + '/toko/index.html';
+    });
 }
