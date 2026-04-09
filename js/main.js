@@ -1,3 +1,6 @@
+// URL base del proyecto (local, GitHub Pages, dominio…)
+window.BASE_URL = document.currentScript.src.replace(/\/js\/main\.js.*/, '');
+
 document.addEventListener("DOMContentLoaded", () => {
 
     initHeader();

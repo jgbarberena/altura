@@ -1,36 +1,89 @@
-function loadComponent(id, file, callback) {
-    fetch(file)
-        .then(res => res.text())
-        .then(data => {
-            const container = document.getElementById(id);
+// Aseguramos BASE_URL también desde este script (por si se carga antes que main.js)
+if (!window.BASE_URL) {
+    window.BASE_URL = document.currentScript.src.replace(/\/js\/include\.js.*/, '');
+}
 
-            if (!container) return;
+function loadComponent(id, file) {
+    const container = document.getElementById(id);
+    if (!container) return;
 
-            container.innerHTML = data;
+    const url = `${window.BASE_URL}/${file}`;
+
+    fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error(res.status);
+            return res.text();
+        })
+        .then(html => {
+            container.innerHTML = html;
 
             if (id === "header-placeholder") {
                 initHeader();
+                initHeaderAssetsAndLinks();
             }
 
             if (id === "contact-placeholder") {
                 initFormulario();
                 initContactoFromURL();
             }
-
-            // 🔥 NUEVO: callback opcional
-            if (callback) callback();
+            
+            if (id === "whatsapp-placeholder") {
+                initWhatsappIcon();
+            }
         })
         .catch(err => {
-            console.error("Error cargando componente:", file, err);
+            console.error("Error cargando:", file, err);
         });
 }
 
-// detectar si estamos en subcarpeta
-const basePath = window.location.pathname.includes('/toko/')
-    ? '../'
-    : '';
+loadComponent("header-placeholder", "components/header.html");
+loadComponent("contact-placeholder", "components/contact.html");
+loadComponent("whatsapp-placeholder", "components/whatsapp.html");
+loadComponent("footer-placeholder", "components/footer.html");
 
-loadComponent("header-placeholder", basePath + "components/header.html");
-loadComponent("contact-placeholder", basePath + "components/contact.html");
-loadComponent("whatsapp-placeholder", basePath + "components/whatsapp.html");
-loadComponent("footer-placeholder", basePath + "components/footer.html");
+function initHeaderAssetsAndLinks() {
+    const base = window.BASE_URL || '';
+
+    // LOGOS
+    document.querySelectorAll('.logo-white').forEach(img => {
+        img.src = base + '/img/sanfermin-logo-white.png';
+    });
+    document.querySelectorAll('.logo-black').forEach(img => {
+        img.src = base + '/img/sanfermin-logo-black.png';
+    });
+    document.querySelectorAll('.logo-red').forEach(img => {
+        img.src = base + '/img/sanfermin-logo-red.png';
+    });
+
+    // ENLACES DEL MENÚ
+    document.querySelectorAll('.menu a').forEach(a => {
+        const type = a.getAttribute('data-link');
+
+        if (type === 'empresa') {
+            a.href = base + '/empresa/index.html';
+            return;
+        }
+
+        const isHome =
+            window.location.pathname.endsWith('/index.html') ||
+            window.location.pathname.endsWith('/altura/') ||
+            window.location.pathname === '/' ||
+            window.location.pathname === '/altura';
+
+        const hash = '#' + type;
+
+        if (isHome) {
+            a.href = hash;
+        } else {
+            a.href = base + '/index.html' + hash;
+        }
+    });
+}
+
+function initWhatsappIcon() {
+    const base = window.BASE_URL || '';
+    const icon = document.querySelector('.my-float');
+    if (icon) {
+        icon.src = base + '/img/WhatsApp.svg.webp';
+    }
+}
