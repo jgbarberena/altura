@@ -70,34 +70,84 @@ nav {
     padding: 20px 60px;
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 10px; /* separación entre logo y texto */
-
-    font-family: 'Playfair Display', serif;
-    font-size: 18px;
-    letter-spacing: 3px;
-    color: white;
+/* ========================= */
+/* Logo como enlace (reemplaza .logo div por <a id="logo-link">) */
+/* ========================= */
+#logo-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;     /* quitar subrayado */
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  letter-spacing: 3px;
+  font-weight: 400;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.logo img {
-    height: 32px; /* ajusta el tamaño del logo */
-    margin-top: -2px; /* ajuste fino visual */
-    width: auto;
+/* Texto interno del logo (opcional: si envuelves el texto en <span class="logo-text">) */
+#logo-link .logo-text {
+  font-weight: 400;
+  color: inherit;
 }
 
-.logo-white {
-    display: block;
+/* Imágenes dentro del enlace no deben interceptar clicks */
+#logo-link img {
+  height: 32px;
+  width: auto;
+  margin-top: -2px;
+  pointer-events: none;
+  vertical-align: middle;
 }
 
-.logo-black {
-    display: none;
+/* Estado inicial: header sin scrolled ni dark → logo blanco y peso normal */
+header:not(.scrolled):not(.dark) #logo-link,
+header:not(.scrolled):not(.dark) #logo-link .logo-text {
+  color: #fff !important;
+  font-weight: 400 !important;
+  text-decoration: none;
 }
 
-.logo-red {
-    display: none;
+/* Mantener blanco en hover/active/visited cuando no hay scrolled ni dark */
+header:not(.scrolled):not(.dark) #logo-link:hover,
+header:not(.scrolled):not(.dark) #logo-link:active,
+header:not(.scrolled):not(.dark) #logo-link:visited {
+  color: #fff !important;
+  text-decoration: none;
 }
+
+/* Reglas generales del enlace (evitar subrayado y usar color heredado) */
+#logo-link,
+#logo-link:hover,
+#logo-link:active,
+#logo-link:visited {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Focus: no mostrar por click; mostrar indicador solo para teclado */
+#logo-link:focus { outline: none; }
+#logo-link:focus-visible {
+  box-shadow: 0 0 0 3px rgba(179,0,0,0.12);
+  border-radius: 4px;
+}
+
+
+/* Mostrar indicador de foco solo para navegación por teclado */
+#logo-link:focus-visible {
+  box-shadow: 0 0 0 3px rgba(179,0,0,0.12);
+  border-radius: 4px;
+}
+
+/* Iconos/variantes del logo (integradas con scrolled / dark más abajo) */
+.logo-white { display: block; }
+.logo-black { display: none; }
+.logo-red   { display: none; }
+
+
 
 /* MENU BASE (MÓVIL) */
 .menu {
@@ -145,54 +195,29 @@ nav {
     z-index: 1001; /* 🔥 evita problemas de click */
 }
 
-/* ESTADOS - SCROLLED*/
-header.scrolled .logo {
-    color: #222;
+/* ESTADOS - SCROLLED */
+header.scrolled #logo-link {
+  color: #222;
+  font-weight: 400;
+  text-decoration: none;
 }
+header.scrolled #logo-link .logo-white { display: none; }
+header.scrolled #logo-link .logo-black { display: block; }
+header.scrolled #logo-link .logo-red   { display: none; }
+header.scrolled .menu a { color: white; }
+header.scrolled .hamburger { color: #222; }
 
-header.scrolled .logo-white {
-    display: none;
+/* ESTADOS - DARK */
+header.dark #logo-link {
+  color: #b30000;
+  font-weight: 400;
+  text-decoration: none;
 }
-
-header.scrolled .logo-black {
-    display: block;
-}
-
-header.scrolled .logo-red {
-    display: none;
-}
-
-header.scrolled .menu a {
-    color:  white;
-}
-
-header.scrolled .hamburger {
-    color: #222;
-}
-
-/* ESTADOS - DARK*/
-header.dark .logo {
-    color: #b30000;
-}
-
-header.dark .logo-white {
-    display: none;
-}
-
-header.dark .logo-black {
-    display: none;
-}
-
-header.dark .logo-red {
-    display: block;
-}
-header.dark .menu a {
-    color: #b30000;
-}
-
-header.dark .hamburger {
-    color: #b30000;
-}
+header.dark #logo-link .logo-white { display: none; }
+header.dark #logo-link .logo-black { display: none; }
+header.dark #logo-link .logo-red   { display: block; }
+header.dark .menu a { color: #b30000; }
+header.dark .hamburger { color: #b30000; }
 
 /* BOTONES (GENERAL) */
 .buttons {

@@ -60,6 +60,34 @@ function initHeaderAssetsAndLinks() {
         img.src = base + '/img/sanfermin-logo-red.png';
     });
 
+    // LOGO → HOME o scroll arriba si ya estamos en la home
+    const logoLink = document.getElementById('logo-link');
+    if (logoLink) {
+    const base = window.BASE_URL || '';
+    const homePath = new URL(base + '/', window.location.origin).pathname;
+    const currentPath = window.location.pathname;
+    const isHome = currentPath === homePath;
+
+    // Aseguramos href siempre a la home real
+    logoLink.href = homePath;
+
+    // Si estamos en la home, interceptamos el clic para scroll suave
+    logoLink.addEventListener('click', function(e){
+        if (!isHome) return; // fuera de la home dejamos la navegación por defecto
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, false);
+
+    // Accesibilidad: Enter / Space también hacen scroll en la home
+    logoLink.addEventListener('keydown', function(e){
+        if (!isHome) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    });
+    }
+
     // ENLACES DEL MENÚ
     document.querySelectorAll('.menu a').forEach(a => {
         const type = a.getAttribute('data-link');
