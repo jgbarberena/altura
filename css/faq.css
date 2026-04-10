@@ -41,11 +41,15 @@ html {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+
     margin-bottom: 30px;
 
     position: sticky;
-    top: var(--header-height);
+    top: var(--header-height); /* 👈 debajo del header en móvil */
+    background: transparent;
+    backdrop-filter: blur(6px); /* opcional */
     padding: 8px 0;
+    z-index: 5;
 }
 
 .faq-nav a {
