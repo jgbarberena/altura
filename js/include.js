@@ -175,7 +175,6 @@ function initFooterLinks() {
       a.href = (baseRoot ? baseRoot : '') + target;
     });
 
-    console.info('initFooterLinks: enlaces inicializados', links.length);
   } catch (err) {
     console.error('initFooterLinks error', err);
   }

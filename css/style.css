@@ -22,7 +22,7 @@ body::before {
     background: radial-gradient( 
         circle at center,
         rgba(255,255,255,0) 40%,
-        rgba(0,0,0,0.3) 100% /*difuminado radial mas suave 0.03, más marcado 0.08*/
+        rgba(0,0,0,0.5) 100% /*difuminado radial mas suave 0.03, más marcado 0.08*/
     );
 }
 
@@ -32,7 +32,7 @@ body::after {
     inset: 0;
     pointer-events: none;
     
-    opacity: 0.08;
+    opacity: 0.15;
     
     background-image: url("../img/textura-exclusivo-papiro.jpg");
 }
@@ -63,11 +63,13 @@ header.scrolled {
     border-bottom: 1px solid rgba(255,255,255,0.2);
 }
 
-nav {
+/* Nav del header: evitar que la regla global afecte a footer u otros nav */
+header nav,
+.site-header nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 60px;
+    padding: 10px 24px; /* menos lateral y específico para header */
 }
 
 /* ========================= */
@@ -318,7 +320,7 @@ header.dark .hamburger { color: #b30000; }
 
 /* SECCIONES GENERALES */
 section {
-    padding: 60px 8px;
+    padding: 40px 8px;
 }
 
 /* EXPERIENCIAS */
@@ -606,7 +608,7 @@ section {
 
 /* CONTACTO */
 .contacto {
-    padding: 120px 20px;
+    padding: 120px 20px 40px 20px;
     background: #111;
     color: white;
     text-align: center;
@@ -664,6 +666,8 @@ section {
   align-items: center;
   gap: 5px; /* espacio entre columnas */
   align-content: center;
+  width: 100%;
+  min-width: 0; /* permite que los hijos en grid encojan */
 }
 
 /* Copyright (columna izquierda) */
@@ -715,6 +719,31 @@ section {
   color: #b30000;
   text-decoration: underline;
   outline: none;
+}
+
+.site-footer {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.site-footer .footer-inner,
+.footer-copy,
+.footer-nav,
+.footer-link {
+  min-width: 0;
+}
+
+.footer-nav {
+  padding: 6px 8px;
+  gap: 8px;
+  width: auto;
+  max-width: 100%;
+  justify-self: end;
+  justify-content: flex-end;
+}
+@media (min-width: 768px) {
+  .footer-nav { flex-wrap: nowrap; gap: 20px; max-width: 420px; }
 }
 
 
@@ -814,7 +843,6 @@ html {
         font-size: 18px;
     }
     
-
     /* FOOTER +/
     /* solo a partir de 768px cambiamos layout de la columna derecha */
     .site-footer {
@@ -841,6 +869,10 @@ html {
     /* Quitar separadores en desktop (se usan solo en mobile) */
     .footer-nav .footer-link + .footer-link::before {
         content: none;
+    }
+
+    .footer-nav { 
+        flex-wrap: nowrap; gap: 20px; max-width: 420px; 
     }
 
 }
@@ -884,4 +916,5 @@ html {
         margin: 0 4px;
         color: #ddd;
     }
+
 }
