@@ -1,0 +1,156 @@
+html {
+    scroll-behavior: smooth;
+}
+
+/* =========================
+   LAYOUT GENERAL (MOBILE FIRST)
+========================= */
+
+.legal-page {
+    width: 100%;
+    margin: 0;
+    padding: 110px 20px 60px;
+    padding-top: calc(var(--header-height) + 20px);
+}
+
+/* =========================
+   HERO
+========================= */
+
+.legal-hero {
+    margin-bottom: 25px;
+}
+
+.legal-hero h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.legal-hero p {
+    font-size: 14px;
+    color: #555;
+}
+
+
+/* =========================
+   NAV (MENÚ INTERNO)
+========================= */
+
+.legal-nav {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+
+    margin-bottom: 30px;
+
+    position: sticky;
+    top: var(--header-height); /* 👈 debajo del header en móvil */
+    background: transparent;
+    backdrop-filter: blur(6px); /* opcional */
+    padding: 8px 0;
+    z-index: 5;
+}
+
+.legal-nav a {
+    font-size: 13px;
+    padding: 6px 12px;
+
+    /*border-radius: 20px;*/
+
+    border: 1px solid rgba(255,255,255,0.2); /* 👈 más coherente */
+    color: inherit;
+
+    background: rgba(255,255,255,0.05); /* 👈 sutil */
+}
+
+.legal-nav a:hover {
+    background: #111;
+    color: #fff;
+    border-color: #111;
+}
+
+/* =========================
+   SECCIONES
+========================= */
+
+.legal-section {
+    max-width: 900px;
+    margin-bottom: 50px;
+    scroll-margin-top: calc(var(--header-height) + 20px); /* 👈 evita que el header tape */
+}
+
+.legal-section h2 {
+    font-size: 22px;
+    margin-bottom: 12px;
+}
+
+.legal-section h3 {
+    font-size: 16px;
+    margin-top: 18px;
+    margin-bottom: 6px;
+}
+
+.legal-section p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.legal-section ul {
+    padding-left: 18px;
+    margin-bottom: 10px;
+}
+
+.legal-section li {
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+
+/* =========================
+   TABLET + DESKTOP
+========================= */
+
+@media (min-width: 769px) {
+
+    .legal-page {
+        padding: 140px clamp(20px, 5vw, 80px) 80px;
+    }
+
+    .legal-hero h1 {
+        font-size: 40px;
+    }
+
+    .legal-hero p {
+        font-size: 16px;
+    }
+
+    .legal-nav {
+        top: 100px; /* 👈 ajustado a tu header desktop */
+        margin-bottom: 40px;
+    }
+
+    .legal-nav a {
+        font-size: 14px;
+        padding: 8px 14px;
+    }
+
+    .legal-section {
+        margin-bottom: 60px;
+        scroll-margin-top: 130px;
+    }
+
+    .legal-section h2 {
+        font-size: 26px;
+    }
+
+    .legal-section h3 {
+        font-size: 18px;
+    }
+
+    .legal-section p,
+    .legal-section li {
+        font-size: 15px;
+    }
+}

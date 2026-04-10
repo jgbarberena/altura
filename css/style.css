@@ -643,11 +643,80 @@ section {
 }
 
 /* FOOTER */
-footer {
-    text-align: center;
-    padding: 20px;
-    background: #f2f2f2;
+
+/* footer - mobile-first: texto a la izquierda, enlaces a la derecha; separadores en mobile */
+
+/* Contenedor general */
+.site-footer {
+  background: #f2f2f2;
+  padding: 10px 12px; /* padding reducido para evitar altura y espacio lateral excesivo */
+  font-size: 14px;
+  color: #222;
+  text-align: left; /* el layout interno (grid) controla la alineación; evitar centrado global */
 }
+
+/* Grid con dos columnas: izquierda = copyright, derecha = nav (siempre) */
+.site-footer .footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto; /* siempre dos columnas */
+  align-items: center;
+  gap: 5px; /* espacio entre columnas */
+  align-content: center;
+}
+
+/* Copyright (columna izquierda) */
+.footer-copy {
+  margin: 0;
+  color: #222;
+  font-weight: 400;
+  justify-self: start;
+  white-space: nowrap;
+  padding-right: 3px;     /* pequeño espaciado a la derecha para equilibrar */
+}
+
+/* NAV (columna derecha) - mobile por defecto */
+.footer-nav {
+  display: flex;
+  justify-self: end;       /* mantener la nav en la columna derecha */
+  justify-content: flex-end;
+  gap: 6px;                /* espacio reducido entre enlaces */
+  flex-wrap: wrap;         /* permite que los enlaces ocupen 2 líneas dentro de la columna */
+  align-items: center;
+  width: auto;             /* en mobile no forzamos ancho fijo */
+}
+
+/* Enlaces compactos (mobile por defecto) */
+.footer-link {
+  color: #222;
+  text-decoration: none;
+  padding: 2px 4px;        /* muy compacto */
+  white-space: nowrap;
+  transition: color 0.12s ease;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+/* Separador entre enlaces: por defecto (mobile) */
+.footer-nav .footer-link + .footer-link::before {
+  content: "|";
+  display: inline-block;
+  margin: 0 6px;
+  color: #cfcfcf;
+  font-weight: 400;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+/* Hover / focus */
+.footer-link:hover,
+.footer-link:focus {
+  color: #b30000;
+  text-decoration: underline;
+  outline: none;
+}
+
 
 /* SCROLL SUAVE */
 html {
@@ -744,6 +813,36 @@ html {
     .toko-subtitle {
         font-size: 18px;
     }
+    
+
+    /* FOOTER +/
+    /* solo a partir de 768px cambiamos layout de la columna derecha */
+    .site-footer {
+        padding: 12px 16px;
+    }
+
+    /* La columna derecha tiene un ancho flexible y los enlaces se reparten dentro de ella */
+    .footer-nav {
+        width: auto;               /* quitar clamp/max-width que limitaba el ancho */
+        max-width: none;
+        flex-wrap: nowrap;         /* evitar que los enlaces salten a varias líneas */
+        justify-content: flex-end; /* mantener la nav a la derecha de su columna */
+        gap: 28px;                 /* separación entre enlaces en desktop (ajusta si quieres más/menos) */
+    }
+
+  .footer-link {
+    padding: 6px 8px;
+    font-size: 14px;
+    flex: 0 0 auto;         /* cada enlace ocupa su ancho natural, no se encoge ni crece */
+    text-align: center;
+    white-space: nowrap;    /* asegurar que cada enlace no se rompa */
+  }
+
+    /* Quitar separadores en desktop (se usan solo en mobile) */
+    .footer-nav .footer-link + .footer-link::before {
+        content: none;
+    }
+
 }
 
 /* DESKTOP*/
@@ -761,5 +860,28 @@ html {
     .carousel-track img {
         flex: 0 0 30%;
         max-width: 30%;
+    }
+}
+
+/* Ajustes para pantallas muy estrechas */
+@media (max-width: 420px) {
+    /* FOOTER */
+    .site-footer {
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+    .site-footer .footer-inner {
+        gap: 6px;
+    }
+    .footer-nav {
+        gap: 6px;
+    }
+    .footer-link {
+        padding: 3px 4px;
+        font-size: 13px;
+    }
+    .footer-nav .footer-link + .footer-link::before {
+        margin: 0 4px;
+        color: #ddd;
     }
 }

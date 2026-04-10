@@ -34,6 +34,11 @@ function loadComponent(id, file) {
             if (id === "toko-placeholder") {
                 initTokoSection();
             }
+
+            if (id === "footer-placeholder") {
+                initFooterLinks();
+            }
+
         })
         .catch(err => {
             console.error("Error cargando:", file, err);
@@ -97,19 +102,24 @@ function initHeaderAssetsAndLinks() {
             return;
         }
 
-        const isHome =
-            window.location.pathname.endsWith('/index.html') ||
-            window.location.pathname.endsWith('/altura/') ||
-            window.location.pathname === '/' ||
-            window.location.pathname === '/altura';
+        // Base limpia (sin slash final) — si no existe, queda vacío y usamos rutas desde root
+        const baseRoot = (window.BASE_URL || '').replace(/\/$/, '');
 
-        const hash = '#' + type;
+        // Mapa de rutas por tipo (mantener aquí las rutas canonicas)
+        const linkMap = {
+            empresa: '/empresa/index.html',
+            experiencias: '/experiencias/index.html',
+            galeria: '/galeria/index.html',
+            toko: '/toko/index.html'
+            // Añadir más entradas aquí si aparecen nuevas secciones
+        };
 
-        if (isHome) {
-            a.href = hash;
-        } else {
-            a.href = base + '/index.html' + hash;
-        }
+        const target = linkMap[type];
+        if (!target) return; // si no está mapeado, no tocamos el href
+
+        // Construimos href respetando BASE_URL si existe
+        a.href = (baseRoot ? baseRoot : '') + target;
+
     });
 }
 
@@ -139,4 +149,34 @@ function initTokoSection() {
     document.querySelectorAll('[data-toko-btn="coleccion"]').forEach(btn => {
         btn.href = base + '/toko/index.html';
     });
+}
+
+function initFooterLinks() {
+  try {
+    const baseRoot = (window.BASE_URL || '').replace(/\/$/, '');
+    const linkMap = {
+      legal: '/legal/index.html',
+      faq: '/faq/index.html',
+      blog: '/blog/index.html'
+    };
+
+    const links = document.querySelectorAll('.footer-link');
+    if (!links || links.length === 0) {
+      console.warn('initFooterLinks: no se encontraron .footer-link en el DOM');
+      return;
+    }
+
+    links.forEach(a => {
+      const key = a.getAttribute('data-footer-link');
+      if (!key) return;
+      const target = linkMap[key];
+      if (!target) return;
+      // Construir href de forma segura
+      a.href = (baseRoot ? baseRoot : '') + target;
+    });
+
+    console.info('initFooterLinks: enlaces inicializados', links.length);
+  } catch (err) {
+    console.error('initFooterLinks error', err);
+  }
 }

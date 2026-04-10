@@ -333,3 +333,102 @@ function initContactoFromURL() {
         }, 50);
     }
 }
+
+// ----------------------
+// FUNCION PARA MEDIR ALTURA DEL SCROLL
+// ----------------------
+
+    // ----------------------
+    // HEADER HEIGHT SYSTEM (ROBUSTO)
+    // ----------------------
+
+    function setHeaderHeight() {
+        const header = document.querySelector("header");
+        if (!header) return;
+
+        const height = header.offsetHeight;
+        document.documentElement.style.setProperty("--header-height", `${height}px`);
+    }
+
+
+    // ----------------------
+    // OPTIMIZADOR DE RESIZE / SCROLL
+    // ----------------------
+
+    let ticking = false;
+
+    function updateHeaderHeight() {
+        if (ticking) return;
+
+        ticking = true;
+        requestAnimationFrame(() => {
+            setHeaderHeight();
+            ticking = false;
+        });
+    }
+
+
+    // ----------------------
+    // INIT SEGURO (INCLUDES + LAYOUT + FONTS)
+    // ----------------------
+
+    function initHeaderHeightSystem() {
+
+        // mediciones escalonadas (CLAVE para includes + fonts + render)
+        setHeaderHeight();
+
+        setTimeout(setHeaderHeight, 50);
+        setTimeout(setHeaderHeight, 200);
+        setTimeout(setHeaderHeight, 500);
+        setTimeout(setHeaderHeight, 1000);
+    }
+
+
+    // ----------------------
+    // OBSERVER (ULTRA ROBUSTO - CAMBIOS REALES DEL HEADER)
+    // ----------------------
+
+    function observeHeaderChanges() {
+        const header = document.querySelector("header");
+        if (!header) return;
+
+        const observer = new ResizeObserver(() => {
+            setHeaderHeight();
+        });
+
+        observer.observe(header);
+    }
+
+
+    // ----------------------
+    // EVENTOS GLOBALES
+    // ----------------------
+
+    document.addEventListener("DOMContentLoaded", () => {
+        initHeaderHeightSystem();
+        observeHeaderChanges();
+    });
+
+    window.addEventListener("load", () => {
+        initHeaderHeightSystem();
+    });
+
+    window.addEventListener("resize", updateHeaderHeight);
+    window.addEventListener("scroll", updateHeaderHeight);
+
+// ----------------------
+// ACORDEON DEL FAQ
+// ----------------------
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".faq-question").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const item = btn.closest(".faq-item");
+
+            document.querySelectorAll(".faq-item").forEach(i => {
+                if (i !== item) i.classList.remove("active");
+            });
+
+            item.classList.toggle("active");
+        });
+    });
+});
