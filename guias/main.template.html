@@ -1,8 +1,8 @@
 ﻿<main class="guias-page">
 
   <section class="guias-hero">
-    <h1>Guí­as para vivir San Fermí­n</h1>
-    <p>Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turí­stico.</p>
+    <h1>Guías para vivir San Fermín</h1>
+    <p>Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turístico.</p>
   </section>
 
   <section class="guias-destacados" id="guias-destacados">
@@ -10,7 +10,7 @@
   </section>
 
   <section class="guias-listado" id="guias-listado">
-    <h2>Más guí­as</h2>
+    <h2>Más guías</h2>
 
     <div class="grid-guias">
       {{LISTADO}}
@@ -19,33 +19,31 @@
 
   <section class="guias-cta">
     <a href="../#contacto" class="btn btn-primary">Quiero vivirlo</a>
-    <p>Cuéntanos qué te gustarí­a vivir y te ayudamos a diseñar una experiencia a tu medida.</p>
+    <p>Cuéntanos qué te gustaría vivir y te ayudamos a diseñar una experiencia a tu medida.</p>
   </section>
 
-  <!-- PLANTILLA PARA DESTACADOS -->
   <template id="tpl-destacado">
     <article class="card guia-destacada">
       <picture>
-        <source media="(max-width: 768px)" srcset="{{IMAGE_URL}}_mobile">
-        <source media="(min-width: 769px)" srcset="{{IMAGE_URL}}_desktop">
-        <img src="{{IMAGE_URL}}_desktop" alt="{{IMAGE_ALT}}" loading="lazy">
-    </picture>
+        <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
+        <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
+        <img src="{{IMAGE_MOBILE}}" alt="{{IMAGE_ALT}}" loading="lazy">
+      </picture>
       <div class="card-overlay">
         <h2>{{TITLE}}</h2>
         <p>{{RESUMEN}}</p>
-        <a href="{{PAGE_URL}}" class="btn btn-primary btn-mini">Leer guí­a</a>
+        <a href="{{PAGE_URL}}" class="btn btn-primary btn-mini">Leer guía</a>
       </div>
     </article>
   </template>
 
-  <!-- PLANTILLA PARA LISTADO -->
   <template id="tpl-listado">
     <article class="guia-card">
       <picture>
-        <source media="(max-width: 768px)" srcset="{{IMAGE_URL}}_mobile">
-        <source media="(min-width: 769px)" srcset="{{IMAGE_URL}}_desktop">
-        <img src="{{IMAGE_URL}}_desktop" alt="{{IMAGE_ALT}}" loading="lazy">
-    </picture>
+        <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
+        <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
+        <img src="{{IMAGE_MOBILE}}" alt="{{IMAGE_ALT}}" loading="lazy">
+      </picture>
 
       <div class="guia-content">
         <h3>{{TITLE}}</h3>
@@ -56,5 +54,3 @@
   </template>
 
 </main>
-
-

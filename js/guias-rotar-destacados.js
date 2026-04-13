@@ -23,17 +23,13 @@ document.addEventListener("DOMContentLoaded", () => {
             "": 1
         };
 
-        // Si hay algún fixed, ese gana automáticamente
         const fixed = items.find(i => i.Feature === "fixed");
         if (fixed) return fixed;
 
-        // Construir bolsa ponderada
         const bag = [];
         for (const item of items) {
             const w = weights[item.Feature] ?? 1;
-            for (let i = 0; i < w; i++) {
-                bag.push(item);
-            }
+            for (let i = 0; i < w; i++) bag.push(item);
         }
 
         return bag[Math.floor(Math.random() * bag.length)];
@@ -58,10 +54,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (corePick) picks.push(corePick);
     if (restPick) picks.push(restPick);
 
+    // Función para generar <picture>
+    function pictureHTML(g) {
+        return `
+            <picture>
+                <source media="(max-width: 768px)" srcset="${g.ImgMobile}">
+                <source media="(min-width: 769px)" srcset="${g.ImgDesktop}">
+                <img src="${g.ImgMobile}" alt="${g.Alt}" loading="lazy">
+            </picture>
+        `;
+    }
+
     // Pintar destacados
     destacados.innerHTML = picks.map(g => `
         <article class="card guia-destacada">
-            <img src="${g.Img}" alt="${g.Alt}">
+            ${pictureHTML(g)}
             <div class="card-overlay">
                 <h2>${g.Title}</h2>
                 <p>${g.Resumen}</p>
@@ -96,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Pintar listado
     listado.innerHTML = ordenFinal.map(g => `
         <article class="guia-card">
-            <img src="${g.Img}" alt="${g.Alt}">
+            ${pictureHTML(g)}
             <div class="guia-content">
                 <h3>${g.Title}</h3>
                 <p>${g.Resumen}</p>
