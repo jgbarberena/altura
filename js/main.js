@@ -60,118 +60,53 @@ function initHeader() {
 // =========================
 
 function initCarousel() {
-
-    // 🔍 Selección de elementos
     const track = document.querySelector('.carousel-track');
-
-    // 👉 Si no existe (en otras páginas), no hacer nada
     if (!track) return;
 
-    const slides = document.querySelectorAll('.carousel-track img');
+    const slides = Array.from(document.querySelectorAll('.carousel-track picture'));
     const prevBtn = document.querySelector('.carousel-btn.prev');
     const nextBtn = document.querySelector('.carousel-btn.next');
 
-    // 📏 Ancho de cada slide (incluyendo gap)
-    let slideWidth = slides[0].clientWidth + 20;
+    if (slides.length === 0) return;
 
-    // 🔒 Flag para evitar "saltos visuales" durante el loop
     let isJumping = false;
 
-    // =========================
-    // POSICIÓN INICIAL
-    // =========================
-    // 👉 Empezamos en los slides reales (saltando los clones)
-    track.scrollLeft = slideWidth * 2;
+    // índice lógico (empezamos en el primer real, que en tu estructura es el 2)
+    let currentIndex = 2;
 
+    function getSlideWidth() {
+        return slides[0].getBoundingClientRect().width;
+    }
 
-    // =========================
-    // BOTONES
-    // =========================
+    function goToIndex(index, smooth = true) {
+        const slideWidth = getSlideWidth();
+        const targetScroll = slideWidth * index;
 
-    nextBtn.addEventListener('click', () => {
-        track.scrollBy({
-            left: slideWidth,
-            behavior: 'smooth'
-        });
-    });
+        isJumping = !smooth;
 
-    prevBtn.addEventListener('click', () => {
-        track.scrollBy({
-            left: -slideWidth,
-            behavior: 'smooth'
-        });
-    });
+        track.style.scrollBehavior = smooth ? "smooth" : "auto";
+        track.style.scrollSnapType = smooth ? "x mandatory" : "none";
 
+        track.scrollLeft = targetScroll;
 
-    // =========================
-    // LOOP INFINITO
-    // =========================
-
-    track.addEventListener('scroll', () => {
-
-        // 🚫 Evita ejecutar lógica mientras reposicionamos
-        if (isJumping) return;
-
-        const maxScroll = track.scrollWidth - track.clientWidth;
-
-        // ⬅️ LLEGAMOS AL PRINCIPIO (zona clones izquierda)
-        if (track.scrollLeft <= slideWidth) {
-
-            isJumping = true;
-
-            // ⚡ Quitamos animación para salto invisible
-            track.style.scrollBehavior = "auto";
-            track.style.scrollSnapType = "none";
-
-            // 👉 Saltamos al final real
-            track.scrollLeft = maxScroll - (slideWidth * 3);
-
-            // 🔁 Restauramos comportamiento normal
+        if (!smooth) {
             setTimeout(() => {
                 track.style.scrollBehavior = "smooth";
                 track.style.scrollSnapType = "x mandatory";
                 isJumping = false;
-            }, 50);
+            }, 20);
         }
 
-        // ➡️ LLEGAMOS AL FINAL (zona clones derecha)
-        if (track.scrollLeft >= maxScroll - slideWidth) {
-
-            isJumping = true;
-
-            track.style.scrollBehavior = "auto";
-            track.style.scrollSnapType = "none";
-
-            // 👉 Saltamos al inicio real
-            track.scrollLeft = slideWidth * 2;
-
-            setTimeout(() => {
-                track.style.scrollBehavior = "smooth";
-                track.style.scrollSnapType = "x mandatory";
-                isJumping = false;
-            }, 50);
-        }
-
-        // 🎯 Actualizamos cuál está activa (zoom / efecto visual)
         updateActive();
-    });
-
-
-    // =========================
-    // DETECTAR IMAGEN ACTIVA
-    // =========================
+    }
 
     function updateActive() {
-
-        // 📍 Centro del viewport del carrusel
         const center = track.scrollLeft + track.clientWidth / 2;
 
         slides.forEach(slide => {
-
-            const slideCenter = slide.offsetLeft + slide.clientWidth / 2;
-
-            // 👉 Si está cerca del centro → activa
-            if (Math.abs(center - slideCenter) < slide.clientWidth / 2) {
+            const rect = slide.getBoundingClientRect();
+            const slideCenter = slide.offsetLeft + rect.width / 2;
+            if (Math.abs(center - slideCenter) < rect.width / 2) {
                 slide.classList.add('active');
             } else {
                 slide.classList.remove('active');
@@ -179,21 +114,85 @@ function initCarousel() {
         });
     }
 
+    // posición inicial
+    goToIndex(currentIndex, false);
 
-    // =========================
-    // RESIZE (MUY IMPORTANTE)
-    // =========================
-
-    window.addEventListener('resize', () => {
-
-        // 🔄 recalculamos ancho
-        slideWidth = slides[0].clientWidth + 20;
-
-        // 📍 recolocamos correctamente en zona real
-        track.scrollLeft = slideWidth * 2;
+    nextBtn.addEventListener('click', () => {
+        const lastIndex = slides.length - 3; // antes de clones finales
+        if (currentIndex >= lastIndex) {
+            // estamos en el último real → saltamos al primero real
+            currentIndex = 2;
+            goToIndex(currentIndex, false);
+        } else {
+            currentIndex++;
+            goToIndex(currentIndex, true);
+        }
     });
 
+    prevBtn.addEventListener('click', () => {
+        const firstIndex = 2; // primer real
+        if (currentIndex <= firstIndex) {
+            // estamos en el primero real → saltamos al último real
+            currentIndex = slides.length - 3;
+            goToIndex(currentIndex, false);
+        } else {
+            currentIndex--;
+            goToIndex(currentIndex, true);
+        }
+    });
+
+    // sincronizar en scroll manual (táctil / ratón)
+    track.addEventListener('scroll', () => {
+        if (isJumping) return;
+
+        const slideWidth = getSlideWidth();
+        const approxIndex = Math.round(track.scrollLeft / slideWidth);
+
+        // límites reales
+        const firstReal = 2;
+        const lastReal = slides.length - 3;
+
+        if (approxIndex <= 1) {
+            currentIndex = lastReal;
+            goToIndex(currentIndex, false);
+            return;
+        }
+
+        if (approxIndex >= slides.length - 2) {
+            currentIndex = firstReal;
+            goToIndex(currentIndex, false);
+            return;
+        }
+
+        currentIndex = approxIndex;
+        updateActive();
+    });
+
+    window.addEventListener('resize', () => {
+        goToIndex(currentIndex, false);
+    });
+
+    // =========================
+    // CLICK SOLO EN LA ACTIVA
+    // =========================
+
+    track.addEventListener('click', (e) => {
+        const active = document.querySelector('.carousel-track picture.active');
+        if (!active) return;
+
+        // Si ya estamos en la galería, no hacemos nada
+        const path = window.location.pathname;
+        if (path.includes("galeria")) return;
+
+        // Si el click fue dentro de la imagen activa → navegar
+        if (active.contains(e.target)) {
+            window.location.href = "galeria/index.html";
+        }
+    });
+
+
 }
+
 
 // =========================
 // FORMULARIO → WHATSAPP + EMAIL (MEJORADO)

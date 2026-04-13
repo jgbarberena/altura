@@ -1,0 +1,272 @@
+/* ============================
+   PORTADA DE GUÍAS / ARTÍCULOS
+   Estilo editorial premium
+============================ */
+
+.guias-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: calc(var(--header-height, 80px) + 50px) 20px 80px;
+}
+
+/* HERO */
+.guias-hero {
+    text-align: center;
+    margin-bottom: 50px;
+    padding-bottom: 30px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+.guias-hero h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 38px;
+    line-height: 1.25;
+    color: #222;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+}
+
+.guias-hero p {
+    font-size: 18px;
+    color: #555;
+    max-width: 700px;
+    margin: 0 auto;
+    line-height: 1.6;
+    font-style: italic;   /* ✔ coherente con los artículos */
+}
+
+/* ============================
+   DESKTOP
+============================ */
+
+@media (min-width: 769px) {
+
+    .guias-hero h1 {
+        font-size: 52px;
+    }
+
+    .guias-hero p {
+        font-size: 20px;
+    }
+}
+
+
+/* =========================
+   DESTACADOS
+========================= */
+
+.guias-destacados {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 50px;
+}
+
+.guia-destacada img {
+    height: 500px;
+}
+
+/* =========================
+   LISTADO GUÍAS
+========================= */
+
+/* BASE LISTADO */
+
+.guias-listado h2 {
+    font-size: 22px;
+    margin-bottom: 25px;
+}
+
+/*CONTENEDOR (TIMELINE REAL)
+clave: NO flex, NO grid raro → flujo editorial vertical*/
+
+.grid-guias {
+    display: flex;
+    flex-direction: column;
+}
+
+/*CARD (TIMELINE STYLE)
+esto es lo que crea sensación “revista / editorial”*/
+
+.guia-card {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 16px;
+
+    padding: 18px 0;
+    border-bottom: 2px solid rgba(0,0,0,0.08);
+
+    align-items: start;
+}
+
+/* alternamos tamaños de columnas */
+/*
+.guia-card:nth-child(even) {
+    grid-template-columns: 1fr 120px;
+}
+    */
+
+/*IMAGEN (CLAVE: FIX VISUAL CONSISTENTE)*/
+.guia-card img {
+    width: 100%;
+    height: 100%;
+    min-height: 90px;
+    object-fit: cover;
+    border-radius: 6px;
+
+    transition: transform 0.4s ease;
+
+    /*order: 1;*//* por defecto izquierda */
+}
+
+/*HOVER (SUAVE, EDITORIAL)*/
+.guia-card:hover img {
+    transform: scale(1.03);
+}
+
+/*CONTENIDO (IMPORTANTE)*/
+.guia-content {
+    display: block;
+    flex-direction: column;
+    gap: 4px;
+
+    /*order: 2;*//* por defecto derecha */
+}
+
+/* en pares invertimos */
+/*
+.guia-card:nth-child(even) img {
+    order: 2;
+}
+
+.guia-card:nth-child(even) .guia-content {
+    order: 1;
+}
+*/
+
+/*TÍTULO*/
+.guia-content h3 {
+    font-size: 16px;
+    margin: 0;
+    line-height: 1.3;
+    color: #111;
+}
+
+/*TEXTO*/
+.guia-content p {
+    display: inline;
+    font-size: 13px;
+    color: #666;
+    margin: 0;
+    line-height: 1.4;
+}
+
+/*LINK (EDITORIAL CTA)*/
+.guia-content a {
+    font-size: 13px;
+    color: #b30000;
+    text-decoration: none;
+    font-weight: 500;
+
+    transition: all 0.2s ease;
+}
+
+/*HOVER LINK*/
+.guia-content a:hover {
+    color: #800000;
+    transform: translateX(3px) scale(1.03);
+}
+
+/* =========================
+   CTA
+========================= */
+
+.guias-cta {
+    margin-top: 60px;
+    text-align: center;
+}
+
+.guias-cta p {
+    font-size: 13px;
+    color: #555;
+    margin-top: 10px;
+}
+
+
+/* =========================
+   DESKTOP
+========================= */
+
+@media (min-width: 769px) {
+
+    .guias-page {
+        padding: calc(var(--header-height) + 40px) clamp(20px, 5vw, 80px) 80px;
+    }
+
+    .guias-hero h1 {
+        font-size: 52px;
+    }
+
+    .guias-hero p {
+        font-size: 20px;
+    }
+
+    /* DESTACADOS */
+    .guias-destacados {
+        flex-direction: row;
+    }
+
+    .guia-destacada {
+        flex: 1;
+    }
+
+    .grid-guias {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .guia-card h3 {
+        font-size: 18px;
+    }
+
+    .guia-card p {
+        font-size: 14px;
+    }
+
+    /* LISTADO */
+    .guias-listado h2 {
+        font-size: 26px;
+    }
+
+    .guia-card {
+        grid-template-columns: 160px 1fr;
+        gap: 22px;
+    }
+    /*
+    .guia-card:nth-child(even) {
+        grid-template-columns: 1fr 160px;
+    }
+    */
+    .guia-card img {
+        height: 140px;
+    }
+    .guia-content {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .guia-content h3 {
+        font-size: 18px;
+    }
+
+    .guia-content p {
+        display: block;
+        font-size: 14px;
+    }
+
+    .guia-content a {
+        padding-top: 4px;
+        margin-top: 6px;
+        display: inline-block;
+    }
+
+}

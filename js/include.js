@@ -110,6 +110,7 @@ function initHeaderAssetsAndLinks() {
             empresa: '/empresa/index.html',
             experiencias: '/experiencias/index.html',
             galeria: '/galeria/index.html',
+            guias: '/guias/index.html',
             toko: '/toko/index.html'
             // Añadir más entradas aquí si aparecen nuevas secciones
         };
@@ -156,8 +157,7 @@ function initFooterLinks() {
     const baseRoot = (window.BASE_URL || '').replace(/\/$/, '');
     const linkMap = {
       legal: '/legal/index.html',
-      faq: '/faq/index.html',
-      blog: '/blog/index.html'
+      faq: '/faq/index.html'
     };
 
     const links = document.querySelectorAll('.footer-link');

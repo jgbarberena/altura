@@ -323,6 +323,66 @@ section {
     padding: 40px 8px;
 }
 
+/* =========================
+   CARD BASE
+========================= */
+
+.card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+}
+
+
+/* imagen */
+
+.card img {
+    width: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+    filter: contrast(1.1) brightness(0.95);
+}
+
+
+/* overlay */
+
+.card-overlay {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    padding: 20px;
+
+    background: rgba(50,50,50,0.6);
+    backdrop-filter: blur(4px);
+    color: white;
+
+    transition: background 0.3s ease;
+}
+
+
+/* texto */
+
+.card-overlay h3,
+.card-overlay h2 {
+    margin-bottom: 10px;
+}
+
+.card-overlay p {
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+
+/* hover */
+
+.card:hover img {
+    transform: scale(1.1);
+}
+
+.card:hover .card-overlay {
+    background: rgba(20,20,20,0.8);
+}
+
 /* EXPERIENCIAS */
 #experiencias {
     background-color: rgba(245, 243, 239, 0.9);
@@ -334,46 +394,8 @@ section {
     gap: 20px;
 }
 
-.experiencia-item {
-    position: relative;
-    overflow: hidden;
-    border-radius: 10px;
-}
-
 .experiencia-item img {
-    width: 100%;
     height: 500px;
-    object-fit: cover;
-    transition: 0.5s;
-    filter: contrast(1.1) brightness(0.95);
-}
-
-.experiencia-overlay {
-    position: absolute;
-    bottom: 0;
-    width: 100%;
-    padding: 20px;
-    background: rgba(50,50,50,0.6);
-    backdrop-filter: blur(4px);
-    color: white;
-}
-
-.experiencia-overlay h3 {
-    margin-bottom: 10px;
-    font-size: 22px;
-}
-
-.experiencia-overlay p {
-    font-size: 14px;
-    margin-bottom: 15px;
-}
-
-.experiencia-item:hover img {
-    transform: scale(1.1);
-}
-
-.experiencia-item:hover .experiencia-overlay {
-    background: rgba(20,20,20,0.8);
 }
 
 /* SAN FERMIN */
@@ -437,18 +459,32 @@ section {
     padding: 0; /*clamp(0px, 8vw, 120px);*/
 }
 
-.carousel-track img {
+.carousel-track picture {
     flex: 0 0 100%;
     max-width: 100%;
     border-radius: 10px;
     scroll-snap-align: center;
 
-    /* efecto lateral base */
     opacity: 0.6;
     transform: scale(0.9);
-
     transition: transform 0.3s ease, opacity 0.3s ease;
+
+    cursor: default;
 }
+
+.carousel-track picture.active {
+    opacity: 1;
+    transform: scale(1);
+
+    cursor: pointer;
+}
+
+.carousel-track picture img {
+    width: 100%;
+    height: auto;
+    border-radius: inherit;
+}
+
 
 /* IMAGEN ACTIVA */
 .carousel-track img.active {
@@ -826,9 +862,9 @@ html {
         padding: 40px 20px;
     }
 
-    .carousel-track img {
-        flex: 0 0 60%;
-        max-width: 60%;
+    .carousel-track picture {
+        flex: 0 0 70%;
+        max-width: 70%;
     }
 
     .toko {
@@ -889,9 +925,9 @@ html {
         grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
         gap: 30px;
     }
-    .carousel-track img {
-        flex: 0 0 30%;
-        max-width: 30%;
+    .carousel-track picture {
+        flex: 0 0 50%;
+        max-width: 50%;
     }
 }
 
