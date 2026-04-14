@@ -86,7 +86,7 @@ html {
 .faq-section {
     max-width: 900px;
     margin-bottom: 40px;
-    scroll-margin-top: calc(var(--header-height) + 20px); /* 👈 evita que el header tape */
+    scroll-margin-top: calc(var(--header-height) ); /* 👈 evita que el header tape */
 }
 
 .faq-section h2 {

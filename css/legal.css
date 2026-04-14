@@ -75,7 +75,7 @@ html {
 .legal-section {
     max-width: 900px;
     margin-bottom: 50px;
-    scroll-margin-top: calc(var(--header-height) + 20px); /* 👈 evita que el header tape */
+    scroll-margin-top: calc(var(--header-height)); /* 👈 evita que el header tape */
 }
 
 .legal-section h2 {
