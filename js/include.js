@@ -21,6 +21,10 @@ function loadComponent(id, file) {
                 initHeader();
                 initHeaderAssetsAndLinks();
             }
+            
+            if (id === "sticky-placeholder") {
+                initStickyNav();
+            }
 
             if (id === "contact-placeholder") {
                 initFormulario();
@@ -46,6 +50,7 @@ function loadComponent(id, file) {
 }
 
 loadComponent("header-placeholder", "components/header.html");
+loadComponent("sticky-placeholder", "components/stickyNav.html");
 loadComponent("toko-placeholder", "components/toko.html");
 loadComponent("contact-placeholder", "components/contact.html");
 loadComponent("whatsapp-placeholder", "components/whatsapp.html");

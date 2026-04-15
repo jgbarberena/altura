@@ -9,17 +9,11 @@ html {
 .legal-page {
     width: 100%;
     margin: 0;
-    padding: 110px 20px 60px;
-    padding-top: calc(var(--header-height) + 20px);
 }
 
 /* =========================
    HERO
 ========================= */
-
-.legal-hero {
-    margin-bottom: 25px;
-}
 
 .legal-hero h1 {
     font-size: 28px;
@@ -74,8 +68,6 @@ html {
 
 .legal-section {
     max-width: 900px;
-    margin-bottom: 50px;
-    scroll-margin-top: calc(var(--header-height)); /* 👈 evita que el header tape */
 }
 
 .legal-section h2 {
@@ -112,10 +104,6 @@ html {
 ========================= */
 
 @media (min-width: 769px) {
-
-    .legal-page {
-        padding: 140px clamp(20px, 5vw, 80px) 80px;
-    }
 
     .legal-hero h1 {
         font-size: 40px;

@@ -54,6 +54,42 @@ function initHeader() {
     });
 }
 
+// =========================
+// MENU STICKY
+// =========================
+function initStickyNav() {
+    
+    // 1. Detecta el componente
+    const nav = document.querySelector('[data-sticky-nav]');
+    if (!nav) return;
+    
+    // 2. Detecta las secciones sticky
+    const sections = [...document.querySelectorAll('[data-sticky-section]')];
+    if (sections.length === 0) return;
+    
+    // 3. Genera el menú automáticamente
+    const ul = nav.querySelector('ul');
+    ul.innerHTML = sections.map(sec => {
+            const id = sec.id;
+            const title = sec.dataset.stickySection || sec.querySelector('h2')?.textContent || id;
+            return `<li><a href="#${id}">${title}</a></li>`;
+    }).join('');
+
+    // 4. Medir la altura real del sticky nav
+    function updateStickyHeight() {
+        const height = nav.offsetHeight;
+        document.documentElement.style.setProperty('--sticky-height', `${height}px`);
+    }
+
+    // 6. Inicializar
+    updateStickyHeight();
+
+    // 7. Recalcular en resize
+        window.addEventListener('resize', () => {
+        updateStickyHeight();
+    });
+}
+
 
 // =========================
 // CAROUSEL PRO (LOOP + SNAP)

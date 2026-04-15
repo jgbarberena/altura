@@ -5,55 +5,114 @@
     box-sizing: border-box;
 }
 
+/* =========================
+   VARIABLES GLOBALES
+========================= */
 :root {
-    --header-height: 80px; /* fallback */
+    --header-height: 80px;   /* fallback, luego se actualiza por JS */
+    --sticky-height: 40px;   /* fallback para stickyNav */
 }
 
-/* ========================= */
-/* SECCIONES (CON HEADER OVERLAY Y CON HEADER OFFSET */
-/* ========================= */
+/* =========================
+   BASE SECTION
+========================= */
 
-/* Secciones que deben quedar por detrás del header (hero con imagen) */
-.header-overlay {
+.section {
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-bottom: 15px;
+}
+
+/* =========================
+   FIRST SECTION (no fullscreen)
+========================= */
+
+.section--first {
+    padding-top: calc(var(--header-height) + 20px);
+    scroll-margin-top: 0;
+}
+
+/* =========================
+   FIRST SECTION FULLSCREEN
+========================= */
+
+.section--first--fullscreen {
+    height: 100vh;
     margin-top: calc(-1 * var(--header-height));
-    height: calc(100vh - var(--header-height));
     padding-top: var(--header-height);
+    position: relative;
+    scroll-margin-top: 0;
+}
+
+/* =========================
+   INNER SECTIONS
+========================= */
+
+.section--inner {
+    padding-top: calc(var(--header-height) + 10px);
+    scroll-margin-top: 0px;
+}
+
+/* =========================
+   INNER WITH OVERLAY (sin padding)
+========================= */
+
+.section--inner--overlay {
+    padding-top: 0;
+    scroll-margin-top: 0;
+    position: relative;
+    z-index: 0; /* el header queda encima */
+}
+
+/* =========================
+   INNER WITH STICKY CONTEXT
+========================= */
+
+.section--inner--sticky {
+    padding-top: var(--sticky-height);
+    scroll-margin-top: var(--header-height);
+}
+
+/* =========================
+   SECCIÓN INNER FLUSH (sin padding-top, pero con scroll-margin-top)
+========================= */
+
+.section--inner--flush {
+    padding-top: 0;
+    scroll-margin-top: var(--header-height);
+    position: relative;
+    z-index: 0;
+}
+
+/* =========================
+   OVERLAY UNIVERSAL
+========================= */
+
+.has-overlay {
     position: relative;
 }
 
-/* Overlay que cubre exactamente el hero desplazado */
-.header-overlay .overlay {
+.has-overlay .overlay {
     position: absolute;
-    top: calc(-1 * var(--header-height));
-    left: 0;
-    right: 0;
-    width: 100%;
-    height: calc(100% + var(--header-height));
-    pointer-events: none;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.6),
+        rgba(0,0,0,0.3),
+        rgba(0,0,0,0.7)
+    );
+    z-index: 1;
 }
 
-/* Secciones normales: respetan el header dinámico */
-.section-offset {
-    scroll-margin-top: var(--header-height);
-    padding-top: calc(var(--header-height) + 20px);
+.has-overlay > *:not(.overlay) {
+    position: relative;
+    z-index: 2;
 }
 
-/* SECCIONES NORMALES */
-.section-offset {
-    padding-left: 8px;
-    padding-right: 8px;
-    padding-bottom: 40px;
-}
+/* =========================
+   BASE
+========================= */
 
-/*
-section {
-    min-height: 100vh;
-    scroll-snap-align: start;
-    scroll-margin-top: var(--header-height);
-}
-*/
-
-/* BASE */
 body {
     font-family: 'Inter', sans-serif;
     background-color: #f5f3ef;
@@ -66,11 +125,10 @@ body::before {
     position: fixed;
     inset: 0;
     pointer-events: none;
-    
-    background: radial-gradient( 
+    background: radial-gradient(
         circle at center,
         rgba(255,255,255,0) 40%,
-        rgba(0,0,0,0.5) 100% /*difuminado radial mas suave 0.03, más marcado 0.08*/
+        rgba(0,0,0,0.5) 100%
     );
 }
 
@@ -79,9 +137,7 @@ body::after {
     position: fixed;
     inset: 0;
     pointer-events: none;
-    
     opacity: 0.15;
-    
     background-image: url("../img/textura-exclusivo-papiro.jpg");
 }
 
@@ -90,195 +146,13 @@ h1, h2, h3 {
 }
 
 a {
-    transition: all 0.3s ease; 
-}
-
-/* SCROLL SNAP */
-/*
-html, body {
-    scroll-behavior: smooth;
-}
-
-body {
-    scroll-snap-type: y proximity;
-}
-*/
-/* NAV */
-header {
-    position: fixed;
-    width: 100%;
-    top: 0;
-    z-index: 1000;
-    padding: 5px 10px;
     transition: all 0.3s ease;
-    background: transparent;
 }
 
-header.scrolled {
-    background: rgba(255,255,255,0.10);
-    backdrop-filter: blur(12px);
-    padding: 5px 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.2);
-}
+/* =========================
+   BOTONES (GENERAL)
+========================= */
 
-/* Nav del header: evitar que la regla global afecte a footer u otros nav */
-header nav,
-.site-header nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 24px; /* menos lateral y específico para header */
-}
-
-/* ========================= */
-/* Logo como enlace (reemplaza .logo div por <a id="logo-link">) */
-/* ========================= */
-#logo-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;     /* quitar subrayado */
-  font-family: 'Playfair Display', serif;
-  font-size: 18px;
-  letter-spacing: 3px;
-  font-weight: 400;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Texto interno del logo (opcional: si envuelves el texto en <span class="logo-text">) */
-#logo-link .logo-text {
-  font-weight: 400;
-  color: inherit;
-}
-
-/* Imágenes dentro del enlace no deben interceptar clicks */
-#logo-link img {
-  height: 32px;
-  width: auto;
-  margin-top: -2px;
-  pointer-events: none;
-  vertical-align: middle;
-}
-
-/* Estado inicial: header sin scrolled ni dark → logo blanco y peso normal */
-header:not(.scrolled):not(.dark) #logo-link,
-header:not(.scrolled):not(.dark) #logo-link .logo-text {
-  color: #fff !important;
-  font-weight: 400 !important;
-  text-decoration: none;
-}
-
-/* Mantener blanco en hover/active/visited cuando no hay scrolled ni dark */
-header:not(.scrolled):not(.dark) #logo-link:hover,
-header:not(.scrolled):not(.dark) #logo-link:active,
-header:not(.scrolled):not(.dark) #logo-link:visited {
-  color: #fff !important;
-  text-decoration: none;
-}
-
-/* Reglas generales del enlace (evitar subrayado y usar color heredado) */
-#logo-link,
-#logo-link:hover,
-#logo-link:active,
-#logo-link:visited {
-  text-decoration: none;
-  color: inherit;
-}
-
-/* Focus: no mostrar por click; mostrar indicador solo para teclado */
-#logo-link:focus { outline: none; }
-#logo-link:focus-visible {
-  box-shadow: 0 0 0 3px rgba(179,0,0,0.12);
-  border-radius: 4px;
-}
-
-
-/* Mostrar indicador de foco solo para navegación por teclado */
-#logo-link:focus-visible {
-  box-shadow: 0 0 0 3px rgba(179,0,0,0.12);
-  border-radius: 4px;
-}
-
-/* Iconos/variantes del logo (integradas con scrolled / dark más abajo) */
-.logo-white { display: block; }
-.logo-black { display: none; }
-.logo-red   { display: none; }
-
-
-/* MENU BASE (MÓVIL) */
-.menu {
-    list-style: none;
-
-    display: none; /* oculto por defecto */
-    flex-direction: column; /* 🔥 vertical */
-
-    position: absolute; /* 🔥 flotante */
-    top: 60px;
-    right: 20px;
-
-    background: rgba(20,20,20,0.85); /* 🔥 caja oscura */
-    backdrop-filter: blur(10px);
-
-    padding: 20px;
-    border-radius: 8px;
-
-    gap: 15px;
-}
-
-/* cuando se abre */
-.menu.active {
-    display: flex;
-}
-
-/* links dentro */
-.menu a {
-    color: white;
-    font-size: 14px;
-    text-decoration: none;
-}
-
-.menu a:hover {
-    color: #b30000;
-    transition: color 0.2s ease;
-}
-
-.hamburger {
-    display: block;
-    font-size: 26px;
-    cursor: pointer;
-    color: white;
-    transition: color 0.3s ease;
-    z-index: 1001; /* 🔥 evita problemas de click */
-}
-
-/* ESTADOS - SCROLLED */
-header.scrolled #logo-link {
-  color: #222;
-  font-weight: 400;
-  text-decoration: none;
-}
-header.scrolled #logo-link .logo-white { display: none; }
-header.scrolled #logo-link .logo-black { display: block; }
-header.scrolled #logo-link .logo-red   { display: none; }
-header.scrolled .menu a { color: white; }
-header.scrolled .hamburger { color: #222; }
-
-/* ESTADOS - DARK */
-header.dark #logo-link {
-  color: #b30000;
-  font-weight: 400;
-  text-decoration: none;
-}
-header.dark #logo-link .logo-white { display: none; }
-header.dark #logo-link .logo-black { display: none; }
-header.dark #logo-link .logo-red   { display: block; }
-header.dark .menu a { color: #b30000; }
-header.dark .hamburger { color: #b30000; }
-
-/* BOTONES (GENERAL) */
 .buttons {
     display: inline-flex;
     align-items: center;
@@ -329,54 +203,6 @@ header.dark .hamburger { color: #b30000; }
     width: 100%;
 }
 
-/* HERO */
-#hero {
-    position: relative;
-    background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    color: white;
-
-    /*scroll-snap-align: start;
-    scroll-margin-top: 0;
-    min-height: 100vh; /* clave para que el navegador entienda su tamaño */
-}
-
-#hero .overlay {
-    position: absolute;
-    width: 100%;
-    background: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.6),
-        rgba(0,0,0,0.3),
-        rgba(0,0,0,0.7)
-    );
-}
-
-.hero-content {
-    position: relative;
-    max-width: 800px;
-}
-
-.hero-content h1 {
-    font-size: 60px;
-    letter-spacing: 6px;
-    margin-bottom: 10px;
-}
-
-.hero-content h2 {
-    font-size: 28px;
-    margin-bottom: 20px;
-}
-
-.hero-content p {
-    font-size: 18px;
-    color: #ddd;
-    margin-bottom: 30px;
-}
-
 /* =========================
    CARD BASE
 ========================= */
@@ -387,9 +213,6 @@ header.dark .hamburger { color: #b30000; }
     border-radius: 10px;
 }
 
-
-/* imagen */
-
 .card img {
     width: 100%;
     object-fit: cover;
@@ -397,24 +220,16 @@ header.dark .hamburger { color: #b30000; }
     filter: contrast(1.1) brightness(0.95);
 }
 
-
-/* overlay */
-
 .card-overlay {
     position: absolute;
     bottom: 0;
     width: 100%;
     padding: 20px;
-
     background: rgba(50,50,50,0.6);
     backdrop-filter: blur(4px);
     color: white;
-
     transition: background 0.3s ease;
 }
-
-
-/* texto */
 
 .card-overlay h3,
 .card-overlay h2 {
@@ -426,9 +241,6 @@ header.dark .hamburger { color: #b30000; }
     margin-bottom: 15px;
 }
 
-
-/* hover */
-
 .card:hover img {
     transform: scale(1.1);
 }
@@ -437,597 +249,24 @@ header.dark .hamburger { color: #b30000; }
     background: rgba(20,20,20,0.8);
 }
 
-/* EXPERIENCIAS */
-#experiencias {
-    background-color: rgba(245, 243, 239, 0.9);
-}
-/*
-#experiencias {
-    scroll-margin-top: 0;
-}
-*/
-.experiencias-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-}
-
-.experiencia-item img {
-    height: 500px;
-}
-
-/* SAN FERMIN */
-#sanfermin {
-    position: relative;
-    padding-top: calc(var(--header-height) + 40px); /* espacio para que el texto no quede tapado */
-    padding-bottom: 60px;
-    padding-left: 20px;
-    padding-right: 20px;
-    text-align: center;
-    background: linear-gradient(
-      rgba(245,243,239,0.85), /*0.85-0.9 para más sutil)*/
-      rgba(245,243,239,0.85) /*0.85-0.9 para más sutil)*/
-    ),
-    url("../img/balcon-charla-corredor_mobile.jpg") center/cover;
-}
-
-.sanfermin-container {
-    max-width: 800px;
-    margin: auto;
-}
-
-.tag {
-    color: #b30000;
-    letter-spacing: 3px;
-    font-size: 50px;
-    margin-bottom: 20px;
-}
-
-#sanfermin h2 {
-    font-size: 36px;
-    margin-bottom: 30px;
-    line-height: 1.3;
-}
-
-.texto {
-    color: #555;
-    font-size: 18px;
-    margin-bottom: 40px;
-}
-
-.frase {
-    font-size: 26px;
-    font-style: italic;
-    color: #b30000;
-    letter-spacing: 1px;
-}
-
-/* GALERIA */
-#galeria {
-    background-color:rgba(250, 248, 244, 0.95);
-}
-
-.carousel {
-    position: relative;
-    overflow: visible;
-}
-
-.carousel-track {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-behavior: smooth;
-    gap: 0; /*20px;*/
-    padding: 0; /*clamp(0px, 8vw, 120px);*/
-}
-
-.carousel-track picture {
-    flex: 0 0 100%;
-    max-width: 100%;
-    border-radius: 10px;
-    scroll-snap-align: center;
-
-    opacity: 0.6;
-    transform: scale(0.9);
-    transition: transform 0.3s ease, opacity 0.3s ease;
-
-    cursor: default;
-}
-
-.carousel-track picture.active {
-    opacity: 1;
-    transform: scale(1);
-
-    cursor: pointer;
-}
-
-.carousel-track picture img {
-    width: 100%;
-    height: auto;
-    border-radius: inherit;
-}
-
-
-/* IMAGEN ACTIVA */
-.carousel-track img.active {
-    opacity: 1;
-    transform: scale(1);
-}
-
-.carousel-track::-webkit-scrollbar {
-    display: none; /* Chrome, Safari */
-}
-
-
-/* BOTONES */
-.carousel-btn {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    background: rgba(0,0,0,0.5);
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    cursor: pointer;
-    font-size: 24px;
-    z-index: 2;
-}
-
-.carousel-btn.prev {
-    left: 10px;
-}
-
-.carousel-btn.next {
-    right: 10px;
-}
-
 /* =========================
-   TO-KO COLLECTION - VERSIÓN CORREGIDA
+   SCROLL SUAVE
 ========================= */
 
-.toko {
-    position: relative;
-    height: 60vh; /* IDÉNTICO */
-    display: flex; /* IDÉNTICO */
-    align-items: center; /* IDÉNTICO */
-    justify-content: center; /* IDÉNTICO */
-    text-align: center; /* IDÉNTICO */
-    color: white; /* IDÉNTICO */
-    overflow: hidden; /* IDÉNTICO - Imprescindible para que el zoom no se salga */
-
-    /* Fondo de seguridad por si las imágenes tardan en cargar */
-    background-color: #111; 
-}
-
-/* -----------------------------------------------------------
-   CAPAS DE IMAGEN (Corregido para ocupar el 100%)
------------------------------------------------------------ */
-.toko-slide {
-    position: absolute;
-    /* CORRECCIÓN VITAL: Forzamos que empiecen en la esquina superior izquierda */
-    top: 0;
-    left: 0;
-    /* CORRECCIÓN: Aseguramos que ocupen el 100% del contenedor .toko */
-    width: 100%;
-    height: 100%;
-    /* CORRECCIÓN: Eliminamos cualquier margen predeterminado residual */
-    margin: 0; 
-    padding: 0;
-    border: none;
-    
-    /* Mantenemos tus propiedades de renderizado de imagen IDÉNTICAS */
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-
-    opacity: 0; /* Empiezan invisibles */
-    z-index: 1; /* Por debajo del overlay y contenido */
-    
-    /* Animación: 18s total, linear, infinita. Nombre: suaveKenBurns */
-    animation: suaveKenBurns 18s linear infinite;
-}
-
-/* Tiempos de retraso para el ciclo (Staggering) */
-.toko-slide:nth-of-type(1) { animation-delay: 0s; }
-.toko-slide:nth-of-type(2) { animation-delay: 6s; }
-.toko-slide:nth-of-type(3) { animation-delay: 12s; }
-
-/* -----------------------------------------------------------
-   ESTILOS ORIGINALES (Mantenidos IDÉNTICOS, solo ajustado z-index)
------------------------------------------------------------ */
-
-/* Oscurecido elegante - Ahora vuelve a ocupar toda la sección */
-.toko-overlay {
-    position: absolute;
-    /* CORRECCIÓN: Aseguramos que cubra todo, igual que las imágenes */
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 2; /* Sobre las imágenes (.toko-slide tiene 1) */
-
-    /* TU DEGRADADO ORIGINAL - IDÉNTICO */
-    background: radial-gradient(
-        circle at center,
-        rgba(0,0,0,0.2) 0%,
-        rgba(0,0,0,0.5) 70%,
-        rgba(0,0,0,0.7) 100%
-    );
-}
-
-/* Contenido */
-.toko-content {
-    position: relative;
-    z-index: 3; /* Sobre el overlay (z-index 2) */
-    max-width: 700px; /* IDÉNTICO */
-    padding: 20px; /* IDÉNTICO */
-}
-
-.toko h2 {
-    font-size: 28px; /* IDÉNTICO */
-    margin-bottom: 20px; /* IDÉNTICO */
-    color: inherit; /* Asegurar color white */
-}
-
-.toko-subtitle {
-    font-size: 16px; /* IDÉNTICO */
-    line-height: 1.6; /* IDÉNTICO */
-    margin-bottom: 30px; /* IDÉNTICO */
-    opacity: 0.9; /* IDÉNTICO */
-    color: inherit; /* Asegurar color white */
-}
-
-/* -----------------------------------------------------------
-   ANIMACIÓN: Fade Suave + Zoom Elegante (Ken Burns)
------------------------------------------------------------ */
-@keyframes suaveKenBurns {
-    0% {
-        opacity: 0;
-        transform: scale(1); /* Tamaño original - 100% */
-    }
-    /* Fade in: Aparece en el primer 5% */
-    5% {
-        opacity: 1;
-    }
-    /* Se mantiene visible hasta el 33% del ciclo total */
-    33.33% {
-        opacity: 1;
-    }
-    /* Fade out: Se desvanece suavemente */
-    38.33% {
-        opacity: 0;
-    }
-    /* El zoom continúa hasta el final del ciclo para máxima suavidad */
-    100% {
-        opacity: 0;
-        transform: scale(1.1); /* Un zoom in suave del 10% */
-    }
-}
-
-/* CONTACTO */
-.contacto {
-    padding: 120px 20px 40px 20px;
-    background: #111;
-    color: white;
-    text-align: center;
-}
-
-.contacto-container {
-    max-width: 600px;
-    margin: auto;
-}
-
-.contacto-texto {
-    color: #ccc;
-    margin-bottom: 40px;
-}
-
-.formulario {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.formulario input,
-.formulario select,
-.formulario textarea {
-    padding: 12px;
-    border: none;
-    background: #222;
-    color: white;
-}
-
-.contacto-extra {
-    margin-top: 40px;
-    color: #aaa;
-}
-
-/* FOOTER */
-
-/* footer - mobile-first: texto a la izquierda, enlaces a la derecha; separadores en mobile */
-
-/* Contenedor general */
-.site-footer {
-  background: #f2f2f2;
-  padding: 10px 12px; /* padding reducido para evitar altura y espacio lateral excesivo */
-  font-size: 14px;
-  color: #222;
-  text-align: left; /* el layout interno (grid) controla la alineación; evitar centrado global */
-}
-
-/* Grid con dos columnas: izquierda = copyright, derecha = nav (siempre) */
-.site-footer .footer-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: auto 1fr auto; /* siempre dos columnas */
-  align-items: center;
-  gap: 5px; /* espacio entre columnas */
-  align-content: center;
-  width: 100%;
-  min-width: 0; /* permite que los hijos en grid encojan */
-}
-
-/* Copyright (columna izquierda) */
-.footer-copy {
-  margin: 0;
-  color: #222;
-  font-weight: 400;
-  justify-self: start;
-  white-space: nowrap;
-  padding-right: 3px;     /* pequeño espaciado a la derecha para equilibrar */
-}
-
-/* NAV (columna derecha) - mobile por defecto */
-.footer-nav {
-  display: flex;
-  justify-self: end;       /* mantener la nav en la columna derecha */
-  justify-content: flex-end;
-  gap: 6px;                /* espacio reducido entre enlaces */
-  flex-wrap: wrap;         /* permite que los enlaces ocupen 2 líneas dentro de la columna */
-  align-items: center;
-  width: auto;             /* en mobile no forzamos ancho fijo */
-}
-
-/* Enlaces compactos (mobile por defecto) */
-.footer-link {
-  color: #222;
-  text-decoration: none;
-  padding: 2px 4px;        /* muy compacto */
-  white-space: nowrap;
-  transition: color 0.12s ease;
-  font-weight: 500;
-  font-size: 13px;
-}
-
-/* Separador entre enlaces: por defecto (mobile) */
-.footer-nav .footer-link + .footer-link::before {
-  content: "|";
-  display: inline-block;
-  margin: 0 6px;
-  color: #cfcfcf;
-  font-weight: 400;
-  font-size: 13px;
-  vertical-align: middle;
-}
-
-/* Hover / focus */
-.footer-link:hover,
-.footer-link:focus {
-  color: #b30000;
-  text-decoration: underline;
-  outline: none;
-}
-
-.site-footer {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.site-footer .footer-inner,
-.footer-copy,
-.footer-nav,
-.footer-link {
-  min-width: 0;
-}
-
-.footer-nav {
-  padding: 6px 8px;
-  gap: 8px;
-  width: auto;
-  max-width: 100%;
-  justify-self: end;
-  justify-content: flex-end;
-}
-@media (min-width: 768px) {
-  .footer-nav { flex-wrap: nowrap; gap: 20px; max-width: 420px; }
-}
-
-
-/* SCROLL SUAVE */
 html {
     scroll-behavior: smooth;
 }
 
-/*WhatsApp flotante*/
-/* El contenedor circular verde */
-.whatsapp-float {
-  position: fixed;
-  width: 60px;
-  height: 60px;
-  bottom: 40px;
-  right: 40px;
-  background-color: #25d366;
-  color: #FFF;
-  border-radius: 50px;
-  text-align: center;
-  box-shadow: 2px 2px 3px #999;
-  z-index: 100;
-  display: flex; /* Usamos flex para centrar la imagen fácilmente */
-  align-items: center;
-  justify-content: center;
-}
+/* =========================
+   TABLET + DESKTOP
+========================= */
 
-/* La imagen dentro del círculo */
-.my-float {
-  width: 35px; /* Ajusta el tamaño del logo aquí */
-  height: auto;
-}
-
-/* TABLET + DESKTOP */
 @media (min-width: 769px) {
+
+    /* Si en algún momento usas .section-offset, la mantenemos aquí */
     .section-offset {
         padding-left: 20px;
         padding-right: 20px;
         padding-bottom: 40px;
     }
-
-    header {
-        padding: 10px clamp(20px, 5vw, 60px);
-    }
-
-    header.scrolled {
-        padding: 5px clamp(20px, 5vw, 60px);
-    }
-        
-    .logo {
-        font-size: 26px;
-    }
-
-    .menu {
-        display: flex !important; /* siempre visible */
-        flex-direction: row;
-
-        position: static; /* 🔥 deja de flotar */
-        background: none;
-        backdrop-filter: none;
-
-        padding: 0;
-        border-radius: 0;
-
-        gap: 30px;
-    }
-
-    .menu a {
-        color: white; 
-        font-size: 14px;
-    }
-
-    header.scrolled .menu a {
-        color:  #222;
-    }
-        
-    header.dark .menu a {
-        color:  #b30000;
-    }
-
-    .hamburger {
-        display: none; /* 🔥 desaparece */
-    }
-
-    #hero {
-        background-image: url("../img/balcon-chupinazo-ayuntamiento_desktop.jpg");
-    }
-
-    #sanfermin {
-        background: linear-gradient(
-        rgba(245,243,239,0.85), /*0.85-0.9 para más sutil)*/
-        rgba(245,243,239,0.85) /*0.85-0.9 para más sutil)*/
-        ),
-        url("../img/balcon-charla-corredor_desktop.jpg") center/cover;
-    }
-    .carousel-track picture {
-        flex: 0 0 70%;
-        max-width: 70%;
-    }
-
-    .toko {
-        height: 80vh;
-    }
-
-    .toko h2 {
-        font-size: 42px;
-    }
-
-    .toko-subtitle {
-        font-size: 18px;
-    }
-    
-    /* FOOTER +/
-    /* solo a partir de 768px cambiamos layout de la columna derecha */
-    .site-footer {
-        padding: 12px 16px;
-    }
-
-    /* La columna derecha tiene un ancho flexible y los enlaces se reparten dentro de ella */
-    .footer-nav {
-        width: auto;               /* quitar clamp/max-width que limitaba el ancho */
-        max-width: none;
-        flex-wrap: nowrap;         /* evitar que los enlaces salten a varias líneas */
-        justify-content: flex-end; /* mantener la nav a la derecha de su columna */
-        gap: 28px;                 /* separación entre enlaces en desktop (ajusta si quieres más/menos) */
-    }
-
-  .footer-link {
-    padding: 6px 8px;
-    font-size: 14px;
-    flex: 0 0 auto;         /* cada enlace ocupa su ancho natural, no se encoge ni crece */
-    text-align: center;
-    white-space: nowrap;    /* asegurar que cada enlace no se rompa */
-  }
-
-    /* Quitar separadores en desktop (se usan solo en mobile) */
-    .footer-nav .footer-link + .footer-link::before {
-        content: none;
-    }
-
-    .footer-nav { 
-        flex-wrap: nowrap; gap: 20px; max-width: 420px; 
-    }
-
-}
-
-/* DESKTOP*/
-@media (min-width: 1024px) {
-
-    .section-offset {
-        padding-left: 40px;
-        padding-right: 40px;
-        padding-bottom: 60px;
-    }
-
-    .experiencias-grid {
-        justify-content: center;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
-        gap: 30px;
-    }
-    .carousel-track picture {
-        flex: 0 0 50%;
-        max-width: 50%;
-    }
-}
-
-/* Ajustes para pantallas muy estrechas */
-@media (max-width: 420px) {
-    /* FOOTER */
-    .site-footer {
-        padding: 8px 10px;
-        font-size: 13px;
-    }
-    .site-footer .footer-inner {
-        gap: 6px;
-    }
-    .footer-nav {
-        gap: 6px;
-    }
-    .footer-link {
-        padding: 3px 4px;
-        font-size: 13px;
-    }
-    .footer-nav .footer-link + .footer-link::before {
-        margin: 0 4px;
-        color: #ddd;
-    }
-
 }
