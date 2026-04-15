@@ -25,43 +25,6 @@ html {
     color: #555;
 }
 
-
-/* =========================
-   NAV (MENÚ INTERNO)
-========================= */
-
-.legal-nav {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-
-    margin-bottom: 30px;
-
-    position: sticky;
-    top: var(--header-height); /* 👈 debajo del header en móvil */
-    background: transparent;
-    backdrop-filter: blur(6px); /* opcional */
-    padding: 8px 0;
-    z-index: 5;
-}
-
-.legal-nav a {
-    font-size: 13px;
-    padding: 6px 12px;
-
-    /*border-radius: 20px;*/
-    border: 1px solid rgba(255,255,255,0.2); /* 👈 más coherente */
-    color: inherit;
-
-    background: rgba(255,255,255,0.05); /* 👈 sutil */
-}
-
-.legal-nav a:hover {
-    background: #111;
-    color: #fff;
-    border-color: #111;
-}
-
 /* =========================
    SECCIONES
 ========================= */
@@ -105,27 +68,21 @@ html {
 
 @media (min-width: 769px) {
 
+    .legal-page {
+        padding: calc(var(--header-height)+30px) 0 80px;
+    }
+
+    .section {
+        padding-left: clamp(20px, 5vw, 80px);
+        padding-right: clamp(20px, 5vw, 80px);
+    }
+
     .legal-hero h1 {
         font-size: 40px;
     }
 
     .legal-hero p {
         font-size: 16px;
-    }
-
-    .legal-nav {
-        top: 100px; /* 👈 ajustado a tu header desktop */
-        margin-bottom: 40px;
-    }
-
-    .legal-nav a {
-        font-size: 14px;
-        padding: 8px 14px;
-    }
-
-    .legal-section {
-        margin-bottom: 60px;
-        scroll-margin-top: 130px;
     }
 
     .legal-section h2 {

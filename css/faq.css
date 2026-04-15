@@ -1,9 +1,7 @@
 html {
     scroll-behavior: smooth;
 }
-:root {
-    --faq-nav-height: 40px; /* ajustable si cambia el diseño */
-}
+
 /* =========================
    LAYOUT
 ========================= */
