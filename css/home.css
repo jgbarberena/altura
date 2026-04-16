@@ -113,71 +113,6 @@
 }
 
 /* =========================
-   GALERÍA HOME
-========================= */
-
-#galeria {
-    background-color: rgba(250, 248, 244, 0.95);
-}
-
-.carousel {
-    position: relative;
-    overflow: visible;
-}
-
-.carousel-track {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-behavior: smooth;
-    gap: 0;
-    padding: 0;
-}
-
-.carousel-track picture {
-    flex: 0 0 100%;
-    max-width: 100%;
-    border-radius: 10px;
-    scroll-snap-align: center;
-    opacity: 0.6;
-    transform: scale(0.9);
-    transition: transform 0.3s ease, opacity 0.3s ease;
-    cursor: default;
-}
-
-.carousel-track picture.active {
-    opacity: 1;
-    transform: scale(1);
-    cursor: pointer;
-}
-
-.carousel-track picture img {
-    width: 100%;
-    height: auto;
-    border-radius: inherit;
-}
-
-.carousel-track::-webkit-scrollbar {
-    display: none;
-}
-
-.carousel-btn {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    background: rgba(0,0,0,0.5);
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    cursor: pointer;
-    font-size: 24px;
-    z-index: 2;
-}
-
-.carousel-btn.prev { left: 10px; }
-.carousel-btn.next { right: 10px; }
-
-/* =========================
    MEDIA QUERIES HOME
 ========================= */
 
@@ -195,10 +130,6 @@
         url("../img/balcon-charla-corredor_desktop.jpg") center/cover;
     }
 
-    .carousel-track picture {
-        flex: 0 0 70%;
-        max-width: 70%;
-    }
 }
 
 @media (min-width: 1024px) {
@@ -209,8 +140,4 @@
         gap: 30px;
     }
 
-    .carousel-track picture {
-        flex: 0 0 50%;
-        max-width: 50%;
-    }
 }

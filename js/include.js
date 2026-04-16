@@ -26,17 +26,22 @@ function loadComponent(id, file) {
                 initStickyNav();
             }
 
-            if (id === "contact-placeholder") {
-                initFormulario();
-                initContactoFromURL();
-            }
-            
-            if (id === "whatsapp-placeholder") {
-                initWhatsappIcon();
+            if (id === "miniGallery-placeholder") {
+                const gallery = container.querySelector('.miniGallery');
+                initMiniGallery(gallery);
             }
 
             if (id === "toko-placeholder") {
                 initTokoSection();
+            }
+
+            if (id === "contact-placeholder") {
+                initFormulario();
+                initContactoFromURL();
+            }
+
+            if (id === "whatsapp-placeholder") {
+                initWhatsappIcon();
             }
 
             if (id === "footer-placeholder") {
@@ -51,6 +56,7 @@ function loadComponent(id, file) {
 
 loadComponent("header-placeholder", "components/header.html");
 loadComponent("sticky-placeholder", "components/stickyNav.html");
+loadComponent("miniGallery-placeholder", "components/miniGallery.html");
 loadComponent("toko-placeholder", "components/toko.html");
 loadComponent("contact-placeholder", "components/contact.html");
 loadComponent("whatsapp-placeholder", "components/whatsapp.html");

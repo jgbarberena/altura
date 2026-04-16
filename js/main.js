@@ -229,6 +229,196 @@ function initCarousel() {
 
 }
 
+// =========================
+// MINI GALLERY (CAROUSEL PRO)
+// =========================
+
+// =========================
+// MINI GALLERY (CAROUSEL PRO)
+// =========================
+
+async function initMiniGallery(root) {
+    if (!root) return;
+
+    // 1) Cargar imágenes desde galeria.json
+    await loadMiniGalleryImages(root);
+
+    // 2) A partir de aquí, tu lógica tal cual, pero
+    //    usando los slides que ya existen en el DOM
+
+    const track = root.querySelector('.carousel-track');
+    if (!track) return;
+
+    const slides = Array.from(root.querySelectorAll('.carousel-track picture'));
+    const prevBtn = root.querySelector('.carousel-btn.prev');
+    const nextBtn = root.querySelector('.carousel-btn.next');
+
+    if (slides.length === 0) return;
+
+    let isJumping = false;
+    let currentIndex = 2; // primer real
+
+    function getSlideWidth() {
+        return slides[0].getBoundingClientRect().width;
+    }
+
+    function goToIndex(index, smooth = true) {
+        const slideWidth = getSlideWidth();
+        const targetScroll = slideWidth * index;
+
+        isJumping = !smooth;
+
+        track.style.scrollBehavior = smooth ? "smooth" : "auto";
+        track.style.scrollSnapType = smooth ? "x mandatory" : "none";
+
+        track.scrollLeft = targetScroll;
+
+        if (!smooth) {
+            setTimeout(() => {
+                track.style.scrollBehavior = "smooth";
+                track.style.scrollSnapType = "x mandatory";
+                isJumping = false;
+            }, 20);
+        }
+
+        updateActive();
+    }
+
+    function updateActive() {
+        const center = track.scrollLeft + track.clientWidth / 2;
+
+        slides.forEach(slide => {
+            const rect = slide.getBoundingClientRect();
+            const slideCenter = slide.offsetLeft + rect.width / 2;
+            if (Math.abs(center - slideCenter) < rect.width / 2) {
+                slide.classList.add('active');
+            } else {
+                slide.classList.remove('active');
+            }
+        });
+    }
+
+    // posición inicial
+    goToIndex(currentIndex, false);
+
+    nextBtn.addEventListener('click', () => {
+        const lastIndex = slides.length - 3;
+        if (currentIndex >= lastIndex) {
+            currentIndex = 2;
+            goToIndex(currentIndex, false);
+        } else {
+            currentIndex++;
+            goToIndex(currentIndex, true);
+        }
+    });
+
+    prevBtn.addEventListener('click', () => {
+        const firstIndex = 2;
+        if (currentIndex <= firstIndex) {
+            currentIndex = slides.length - 3;
+            goToIndex(currentIndex, false);
+        } else {
+            currentIndex--;
+            goToIndex(currentIndex, true);
+        }
+    });
+
+    track.addEventListener('scroll', () => {
+        if (isJumping) return;
+
+        const slideWidth = getSlideWidth();
+        const approxIndex = Math.round(track.scrollLeft / slideWidth);
+
+        const firstReal = 2;
+        const lastReal = slides.length - 3;
+
+        if (approxIndex <= 1) {
+            currentIndex = lastReal;
+            goToIndex(currentIndex, false);
+            return;
+        }
+
+        if (approxIndex >= slides.length - 2) {
+            currentIndex = firstReal;
+            goToIndex(currentIndex, false);
+            return;
+        }
+
+        currentIndex = approxIndex;
+        updateActive();
+    });
+
+    window.addEventListener('resize', () => {
+        goToIndex(currentIndex, false);
+    });
+
+    track.addEventListener('click', (e) => {
+        const active = root.querySelector('.carousel-track picture.active');
+        if (!active) return;
+
+        const path = window.location.pathname;
+        if (path.includes("galeria")) return;
+
+        if (active.contains(e.target)) {
+            window.location.href = "galeria/index.html";
+        }
+    });
+}
+
+async function loadMiniGalleryImages(root) {
+    const track = root.querySelector('.carousel-track');
+    if (!track) return;
+
+    const res = await fetch('/img/galeria/galeria.json');
+    const images = await res.json();
+
+    // reales
+    images.forEach(img => {
+        const picture = document.createElement('picture');
+
+        picture.innerHTML = `
+            <source media="(max-width: 768px)" srcset="${img.mobile}">
+            <source media="(min-width: 769px)" srcset="${img.desktop}">
+            <img src="${img.desktop}" alt="${img.alt}" loading="lazy">
+        `;
+
+        track.appendChild(picture);
+    });
+
+    // clones del final (últimas 2)
+    const last1 = images[images.length - 2];
+    const last2 = images[images.length - 1];
+
+    [last1, last2].forEach(img => {
+        const picture = document.createElement('picture');
+        picture.classList.add('clone');
+
+        picture.innerHTML = `
+            <source media="(max-width: 768px)" srcset="${img.mobile}">
+            <source media="(min-width: 769px)" srcset="${img.desktop}">
+            <img src="${img.desktop}" alt="${img.alt}" loading="lazy">
+        `;
+
+        track.insertBefore(picture, track.firstChild);
+    });
+
+    // clones del inicio (primeras 2)
+    const first1 = images[0];
+    const first2 = images[1];
+
+    [first1, first2].forEach(img => {
+        const picture = document.createElement('picture');
+        picture.classList.add('clone');
+
+        picture.innerHTML = `
+            <source media="(max-width: 768px)" srcset="${img.mobile}">
+            <source media="(min-width: 769px)" srcset="${img.desktop}">
+            <img src="${img.desktop}" alt="${img.alt}" loading="lazy">
+        `;
+
+        track.appendChild(picture);
+    });
+}
 
 // =========================
 // FORMULARIO → WHATSAPP + EMAIL (MEJORADO)

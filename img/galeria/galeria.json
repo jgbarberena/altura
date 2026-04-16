@@ -1,0 +1,50 @@
+﻿[
+    {
+        "id":  "balcon-charla-corredor",
+        "desktop":  "/img/galeria/balcon-charla-corredor_desktop.jpg",
+        "mobile":  "/img/galeria/balcon-charla-corredor_mobile.jpg",
+        "alt":  "Experiencia exclusiva: charla con Corredores histÔö£Ôöéricos del Encierro",
+        "clasificacion":  "personalizada",
+        "weight":  "4"
+    },
+    {
+        "id":  "balcon-chupinazo-panuelos",
+        "desktop":  "/img/galeria/balcon-chupinazo-panuelos_desktop.jpg",
+        "mobile":  "/img/galeria/balcon-chupinazo-panuelos_mobile.jpg",
+        "alt":  "Balcon privado para ver el Chupinazo en la Plaza del Ayuntamiento",
+        "clasificacion":  "chupinazo",
+        "weight":  "2"
+    },
+    {
+        "id":  "balcon-despedida-gigantes",
+        "desktop":  "/img/galeria/balcon-despedida-gigantes_desktop.jpg",
+        "mobile":  "/img/galeria/balcon-despedida-gigantes_mobile.jpg",
+        "alt":  "Balcon privado para ver la Despedida de los Gigantes en la Plaza del Ayuntamiento",
+        "clasificacion":  "gigantes",
+        "weight":  "4"
+    },
+    {
+        "id":  "balcon-exclusivo-fuegos",
+        "desktop":  "/img/galeria/balcon-exclusivo-fuegos_desktop.jpg",
+        "mobile":  "/img/galeria/balcon-exclusivo-fuegos_mobile.jpg",
+        "alt":  "Terraza exclusiva para ver los Fuegos Artificiales en la noche de San Fermin",
+        "clasificacion":  "personalizada",
+        "weight":  "1"
+    },
+    {
+        "id":  "balcon-procesion-mercaderes",
+        "desktop":  "/img/galeria/balcon-procesion-mercaderes_desktop.jpg",
+        "mobile":  "/img/galeria/balcon-procesion-mercaderes_mobile.jpg",
+        "alt":  "Balcon privado para ver la Procesion de San FermÔö£┬ín en la calle Mercaderes",
+        "clasificacion":  "procesion",
+        "weight":  "3"
+    },
+    {
+        "id":  "experiencia-pasacalles-pamplona",
+        "desktop":  "/img/galeria/experiencia-pasacalles-pamplona_desktop.jpg",
+        "mobile":  "/img/galeria/experiencia-pasacalles-pamplona_mobile.jpg",
+        "alt":  "Guia privado para disfrutar de la Salida de las Penas en Pamplona",
+        "clasificacion":  "personalizada",
+        "weight":  "5"
+    }
+]
