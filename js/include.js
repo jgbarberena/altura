@@ -29,6 +29,7 @@ function loadComponent(id, file) {
             if (id === "miniGallery-placeholder") {
                 const gallery = container.querySelector('.miniGallery');
                 initMiniGallery(gallery);
+                initMiniGalleryAssets(gallery);
             }
 
             if (id === "toko-placeholder") {
@@ -133,6 +134,32 @@ function initHeaderAssetsAndLinks() {
         a.href = (baseRoot ? baseRoot : '') + target;
 
     });
+}
+
+function initMiniGalleryAssets(root) {
+    const base = window.BASE_URL || '';
+
+    // Reescribir <img src="">
+    root.querySelectorAll('img').forEach(img => {
+        const original = img.getAttribute('data-src') || img.getAttribute('src');
+        if (!original) return;
+        img.src = base + original;
+    });
+
+    // Reescribir <source srcset="">
+    root.querySelectorAll('source').forEach(source => {
+        const original = source.getAttribute('data-srcset') || source.getAttribute('srcset');
+        if (!original) return;
+        source.srcset = base + original;
+    });
+
+    // Reescribir enlace al hacer clic en la imagen activa
+    const link = root.querySelector('.mini-gallery-link');
+    if (link) {
+        link.addEventListener('click', () => {
+            window.location.href = base + '/galeria/index.html';
+        });
+    }
 }
 
 function initWhatsappIcon() {
