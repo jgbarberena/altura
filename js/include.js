@@ -1,219 +1,78 @@
-// Aseguramos BASE_URL también desde este script (por si se carga antes que main.js)
-if (!window.BASE_URL) {
-    window.BASE_URL = document.currentScript.src.replace(/\/js\/include\.js.*/, '');
-}
+// ======================================================
+// 1. DETECTAR BASE_URL (local, GitHub Pages, dominio)
+// ======================================================
 
-function loadComponent(id, file) {
-    const container = document.getElementById(id);
+// Este script está en /js/include.js dentro del proyecto.
+// Eliminamos "/js/include.js" de su URL absoluta para obtener
+// la raíz real del proyecto en cualquier entorno.
+window.BASE_URL = document.currentScript.src.replace(/\/js\/include\.js.*/, '');
+
+
+// ======================================================
+// 2. FUNCIONES UNIVERSALES DE RESOLUCIÓN DE RUTAS
+// ======================================================
+
+// Archivos dentro del proyecto (imágenes, JSON, etc.)
+window.resolveAsset = function(path) {
+    // path es relativo al proyecto, por ejemplo:
+    // "img/logos/logoSF.png"
+    return `${window.BASE_URL}/${path}`;
+};
+
+// Páginas internas del proyecto
+window.resolvePage = function(path) {
+    // path es relativo al proyecto, por ejemplo:
+    // "galeria/index.html"
+    return `${window.BASE_URL}/${path}`;
+};
+
+
+// ======================================================
+// 3. CARGADOR UNIVERSAL DE COMPONENTES
+// ======================================================
+
+function loadComponent(placeholderId, componentPath, initFn) {
+    const container = document.getElementById(placeholderId);
     if (!container) return;
 
-    const url = `${window.BASE_URL}/${file}`;
+    const url = `${window.BASE_URL}/${componentPath}`;
 
     fetch(url)
         .then(res => {
-            if (!res.ok) throw new Error(res.status);
+            if (!res.ok) throw new Error(`Error ${res.status} cargando ${componentPath}`);
             return res.text();
         })
         .then(html => {
             container.innerHTML = html;
 
-            if (id === "header-placeholder") {
-                initHeader();
-                initHeaderAssetsAndLinks();
+            // Llamamos al init del componente, pasándole:
+            // - root: el nodo raíz del componente
+            // - resolveAsset: función universal para archivos
+            // - resolvePage: función universal para páginas
+            if (typeof initFn === "function") {
+                initFn(container, window.resolveAsset, window.resolvePage);
             }
-            
-            if (id === "sticky-placeholder") {
-                initStickyNav();
-            }
-
-            if (id === "miniGallery-placeholder") {
-                const gallery = container.querySelector('.miniGallery');
-                initMiniGallery(gallery);
-                initMiniGalleryAssets(gallery);
-            }
-
-            if (id === "toko-placeholder") {
-                initTokoSection();
-            }
-
-            if (id === "contact-placeholder") {
-                initFormulario();
-                initContactoFromURL();
-            }
-
-            if (id === "whatsapp-placeholder") {
-                initWhatsappIcon();
-            }
-
-            if (id === "footer-placeholder") {
-                initFooterLinks();
-            }
-
         })
         .catch(err => {
-            console.error("Error cargando:", file, err);
+            console.error(`Error cargando componente ${componentPath}:`, err);
         });
+    
+        setTimeout(() => {
+            if (typeof initContactoFromURL === "function") {
+                initContactoFromURL();
+            }
+        }, 100);
 }
 
-loadComponent("header-placeholder", "components/header.html");
-loadComponent("sticky-placeholder", "components/stickyNav.html");
-loadComponent("miniGallery-placeholder", "components/miniGallery.html");
-loadComponent("toko-placeholder", "components/toko.html");
-loadComponent("contact-placeholder", "components/contact.html");
-loadComponent("whatsapp-placeholder", "components/whatsapp.html");
-loadComponent("footer-placeholder", "components/footer.html");
 
-function initHeaderAssetsAndLinks() {
-    const base = window.BASE_URL || '';
+// ======================================================
+// 4. LISTA DE COMPONENTES A CARGAR
+// ======================================================
 
-    // LOGOS
-    document.querySelectorAll('.logo-white').forEach(img => {
-        img.src = base + '/img/sanfermin-logo-white.png';
-    });
-    document.querySelectorAll('.logo-black').forEach(img => {
-        img.src = base + '/img/sanfermin-logo-black.png';
-    });
-    document.querySelectorAll('.logo-red').forEach(img => {
-        img.src = base + '/img/sanfermin-logo-red.png';
-    });
-
-    // LOGO → HOME o scroll arriba si ya estamos en la home
-    const logoLink = document.getElementById('logo-link');
-    if (logoLink) {
-    const base = window.BASE_URL || '';
-    const homePath = new URL(base + '/', window.location.origin).pathname;
-    const currentPath = window.location.pathname;
-    const isHome = currentPath === homePath;
-
-    // Aseguramos href siempre a la home real
-    logoLink.href = homePath;
-
-    // Si estamos en la home, interceptamos el clic para scroll suave
-    logoLink.addEventListener('click', function(e){
-        if (!isHome) return; // fuera de la home dejamos la navegación por defecto
-        e.preventDefault();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, false);
-
-    // Accesibilidad: Enter / Space también hacen scroll en la home
-    logoLink.addEventListener('keydown', function(e){
-        if (!isHome) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    });
-    }
-
-    // ENLACES DEL MENÚ
-    document.querySelectorAll('.menu a').forEach(a => {
-        const type = a.getAttribute('data-link');
-
-        if (type === 'empresa') {
-            a.href = base + '/empresa/index.html';
-            return;
-        }
-
-        // Base limpia (sin slash final) — si no existe, queda vacío y usamos rutas desde root
-        const baseRoot = (window.BASE_URL || '').replace(/\/$/, '');
-
-        // Mapa de rutas por tipo (mantener aquí las rutas canonicas)
-        const linkMap = {
-            empresa: '/empresa/index.html',
-            experiencias: '/experiencias/index.html',
-            galeria: '/galeria/index.html',
-            guias: '/guias/index.html',
-            toko: '/toko/index.html'
-            // Añadir más entradas aquí si aparecen nuevas secciones
-        };
-
-        const target = linkMap[type];
-        if (!target) return; // si no está mapeado, no tocamos el href
-
-        // Construimos href respetando BASE_URL si existe
-        a.href = (baseRoot ? baseRoot : '') + target;
-
-    });
-}
-
-function initMiniGalleryAssets(root) {
-    const base = window.BASE_URL || '';
-
-    // Reescribir <img src="">
-    root.querySelectorAll('img').forEach(img => {
-        const original = img.getAttribute('data-src') || img.getAttribute('src');
-        if (!original) return;
-        img.src = base + original;
-    });
-
-    // Reescribir <source srcset="">
-    root.querySelectorAll('source').forEach(source => {
-        const original = source.getAttribute('data-srcset') || source.getAttribute('srcset');
-        if (!original) return;
-        source.srcset = base + original;
-    });
-
-    // Reescribir enlace al hacer clic en la imagen activa
-    const link = root.querySelector('.mini-gallery-link');
-    if (link) {
-        link.addEventListener('click', () => {
-            window.location.href = base + '/galeria/index.html';
-        });
-    }
-}
-
-function initWhatsappIcon() {
-    const base = window.BASE_URL || '';
-    const icon = document.querySelector('.my-float');
-    if (icon) {
-        icon.src = base + '/img/WhatsApp.svg.webp';
-    }
-}
-
-function initTokoSection() {
-    const base = window.BASE_URL || '';
-
-    // Asignar imágenes de fondo
-    document.querySelectorAll('.toko-slide').forEach(slide => {
-        const file = slide.getAttribute('data-img');
-        slide.style.backgroundImage = `url('${base}/img/${file}')`;
-    });
-
-    // Botón 1 → contacto con interés preseleccionado
-    document.querySelectorAll('[data-toko-btn="contacto"]').forEach(btn => {
-        btn.href = '?interes=toko#contacto';
-    });
-
-    // Botón 2 → página de colección
-    document.querySelectorAll('[data-toko-btn="coleccion"]').forEach(btn => {
-        btn.href = base + '/toko/index.html';
-    });
-}
-
-function initFooterLinks() {
-  try {
-    const baseRoot = (window.BASE_URL || '').replace(/\/$/, '');
-    const linkMap = {
-      legal: '/legal/index.html',
-      faq: '/faq/index.html'
-    };
-
-    const links = document.querySelectorAll('.footer-link');
-    if (!links || links.length === 0) {
-      console.warn('initFooterLinks: no se encontraron .footer-link en el DOM');
-      return;
-    }
-
-    links.forEach(a => {
-      const key = a.getAttribute('data-footer-link');
-      if (!key) return;
-      const target = linkMap[key];
-      if (!target) return;
-      // Construir href de forma segura
-      a.href = (baseRoot ? baseRoot : '') + target;
-    });
-
-  } catch (err) {
-    console.error('initFooterLinks error', err);
-  }
-}
+loadComponent("header-placeholder",      "components/header.html",      initHeader);
+loadComponent("sticky-placeholder",      "components/stickyNav.html",   initStickyNav);
+loadComponent("miniGallery-placeholder", "components/miniGallery.html", initMiniGallery);
+loadComponent("toko-placeholder",        "components/toko.html",        initTokoSection);
+loadComponent("contact-placeholder",     "components/contact.html",     initFormulario);
+loadComponent("whatsapp-placeholder",    "components/whatsapp.html",    initWhatsappIcon);
+loadComponent("footer-placeholder",      "components/footer.html",      initFooter);

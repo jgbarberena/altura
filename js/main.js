@@ -1,28 +1,35 @@
-// URL base del proyecto (local, GitHub Pages, dominio…)
-window.BASE_URL = document.currentScript.src.replace(/\/js\/main\.js.*/, '');
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    initHeader();
-    initCarousel();
-
-});
+// ======================================================
+// MAIN.JS — LÓGICA GENERAL + INIT DE COMPONENTES
+// (sin rutas, sin includes, sin BASE_URL)
+// ======================================================
 
 
-// =========================
-// HEADER
-// =========================
 
-function initHeader() {
+// ======================================================
+// 1. HEADER (comportamiento + assets + links)
+// ======================================================
 
-    const header = document.getElementById("header");
-    const hamburger = document.getElementById("hamburger");
-    const menu = document.querySelector(".menu");
-    const menuLinks = document.querySelectorAll(".menu a");
+function initHeader(root, resolveAsset, resolvePage) {
+
+    // --- Reescritura de rutas de LOGOS ---
+    root.querySelectorAll('[data-file]').forEach(img => {
+        img.src = resolveAsset(img.dataset.file);
+    });
+
+    // --- Reescritura de enlaces del menú ---
+    root.querySelectorAll('[data-page]').forEach(a => {
+        a.href = resolvePage(a.dataset.page);
+    });
+
+    // --- Comportamiento del header ---
+    const header = root.querySelector("#header");
+    const hamburger = root.querySelector("#hamburger");
+    const menu = root.querySelector(".menu");
+    const menuLinks = root.querySelectorAll(".menu a");
 
     if (!header || !hamburger || !menu) return;
 
-    window.addEventListener("scroll", function() {
+    window.addEventListener("scroll", function () {
 
         if (window.scrollY > 50) {
             header.classList.add("scrolled");
@@ -30,7 +37,7 @@ function initHeader() {
             header.classList.remove("scrolled");
         }
 
-        const contacto = document.querySelector(".contacto"); //Posible cambio a IntersectionObserver
+        const contacto = document.querySelector(".contacto");
 
         if (contacto) {
             const rect = contacto.getBoundingClientRect();
@@ -43,7 +50,7 @@ function initHeader() {
         }
     });
 
-    hamburger.addEventListener("click", function() {
+    hamburger.addEventListener("click", function () {
         menu.classList.toggle("active");
     });
 
@@ -54,60 +61,61 @@ function initHeader() {
     });
 }
 
-// =========================
-// MENU STICKY
-// =========================
-function initStickyNav() {
-    
-    // 1. Detecta el componente
-    const nav = document.querySelector('[data-sticky-nav]');
+
+
+
+// ======================================================
+// 2. STICKY NAV
+// ======================================================
+
+function initStickyNav(root, resolveAsset, resolvePage) {
+
+    const nav = root.querySelector('[data-sticky-nav]');
     if (!nav) return;
-    
-    // 2. Detecta las secciones sticky
+
     const sections = [...document.querySelectorAll('[data-sticky-section]')];
     if (sections.length === 0) return;
-    
-    // 3. Genera el menú automáticamente
+
     const ul = nav.querySelector('ul');
     ul.innerHTML = sections.map(sec => {
-            const id = sec.id;
-            const title = sec.dataset.stickySection || sec.querySelector('h2')?.textContent || id;
-            return `<li><a href="#${id}">${title}</a></li>`;
+        const id = sec.id;
+        const title = sec.dataset.stickySection || sec.querySelector('h2')?.textContent || id;
+        return `<li><a href="#${id}">${title}</a></li>`;
     }).join('');
 
-    // 4. Medir la altura real del sticky nav
     function updateStickyHeight() {
         const height = nav.offsetHeight;
         document.documentElement.style.setProperty('--sticky-height', `${height}px`);
     }
 
-    // 6. Inicializar
     updateStickyHeight();
-
-    // 7. Recalcular en resize
-        window.addEventListener('resize', () => {
-        updateStickyHeight();
-    });
+    window.addEventListener('resize', updateStickyHeight);
 }
 
 
-// =========================
-// CAROUSEL PRO (LOOP + SNAP)
-// =========================
 
-function initCarousel() {
-    const track = document.querySelector('.carousel-track');
+
+// ======================================================
+// 3. MINI GALLERY (comportamiento + carga dinámica)
+// ======================================================
+
+async function initMiniGallery(root, resolveAsset, resolvePage) {
+
+    if (!root) return;
+
+    // --- Cargar imágenes desde JSON ---
+    await loadMiniGalleryImages(root, resolveAsset);
+
+    const track = root.querySelector('.carousel-track');
     if (!track) return;
 
-    const slides = Array.from(document.querySelectorAll('.carousel-track picture'));
-    const prevBtn = document.querySelector('.carousel-btn.prev');
-    const nextBtn = document.querySelector('.carousel-btn.next');
+    const slides = Array.from(root.querySelectorAll('.carousel-track picture'));
+    const prevBtn = root.querySelector('.carousel-btn.prev');
+    const nextBtn = root.querySelector('.carousel-btn.next');
 
     if (slides.length === 0) return;
 
     let isJumping = false;
-
-    // índice lógico (empezamos en el primer real, que en tu estructura es el 2)
     let currentIndex = 2;
 
     function getSlideWidth() {
@@ -150,155 +158,6 @@ function initCarousel() {
         });
     }
 
-    // posición inicial
-    goToIndex(currentIndex, false);
-
-    nextBtn.addEventListener('click', () => {
-        const lastIndex = slides.length - 3; // antes de clones finales
-        if (currentIndex >= lastIndex) {
-            // estamos en el último real → saltamos al primero real
-            currentIndex = 2;
-            goToIndex(currentIndex, false);
-        } else {
-            currentIndex++;
-            goToIndex(currentIndex, true);
-        }
-    });
-
-    prevBtn.addEventListener('click', () => {
-        const firstIndex = 2; // primer real
-        if (currentIndex <= firstIndex) {
-            // estamos en el primero real → saltamos al último real
-            currentIndex = slides.length - 3;
-            goToIndex(currentIndex, false);
-        } else {
-            currentIndex--;
-            goToIndex(currentIndex, true);
-        }
-    });
-
-    // sincronizar en scroll manual (táctil / ratón)
-    track.addEventListener('scroll', () => {
-        if (isJumping) return;
-
-        const slideWidth = getSlideWidth();
-        const approxIndex = Math.round(track.scrollLeft / slideWidth);
-
-        // límites reales
-        const firstReal = 2;
-        const lastReal = slides.length - 3;
-
-        if (approxIndex <= 1) {
-            currentIndex = lastReal;
-            goToIndex(currentIndex, false);
-            return;
-        }
-
-        if (approxIndex >= slides.length - 2) {
-            currentIndex = firstReal;
-            goToIndex(currentIndex, false);
-            return;
-        }
-
-        currentIndex = approxIndex;
-        updateActive();
-    });
-
-    window.addEventListener('resize', () => {
-        goToIndex(currentIndex, false);
-    });
-
-    // =========================
-    // CLICK SOLO EN LA ACTIVA
-    // =========================
-
-    track.addEventListener('click', (e) => {
-        const active = document.querySelector('.carousel-track picture.active');
-        if (!active) return;
-
-        // Si ya estamos en la galería, no hacemos nada
-        const path = window.location.pathname;
-        if (path.includes("galeria")) return;
-
-        // Si el click fue dentro de la imagen activa → navegar
-        if (active.contains(e.target)) {
-            window.location.href = "galeria/index.html";
-        }
-    });
-
-
-}
-
-// =========================
-// MINI GALLERY (CAROUSEL PRO)
-// =========================
-
-// =========================
-// MINI GALLERY (CAROUSEL PRO)
-// =========================
-
-async function initMiniGallery(root) {
-    if (!root) return;
-
-    // 1) Cargar imágenes desde galeria.json
-    await loadMiniGalleryImages(root);
-
-    // 2) A partir de aquí, tu lógica tal cual, pero
-    //    usando los slides que ya existen en el DOM
-
-    const track = root.querySelector('.carousel-track');
-    if (!track) return;
-
-    const slides = Array.from(root.querySelectorAll('.carousel-track picture'));
-    const prevBtn = root.querySelector('.carousel-btn.prev');
-    const nextBtn = root.querySelector('.carousel-btn.next');
-
-    if (slides.length === 0) return;
-
-    let isJumping = false;
-    let currentIndex = 2; // primer real
-
-    function getSlideWidth() {
-        return slides[0].getBoundingClientRect().width;
-    }
-
-    function goToIndex(index, smooth = true) {
-        const slideWidth = getSlideWidth();
-        const targetScroll = slideWidth * index;
-
-        isJumping = !smooth;
-
-        track.style.scrollBehavior = smooth ? "smooth" : "auto";
-        track.style.scrollSnapType = smooth ? "x mandatory" : "none";
-
-        track.scrollLeft = targetScroll;
-
-        if (!smooth) {
-            setTimeout(() => {
-                track.style.scrollBehavior = "smooth";
-                track.style.scrollSnapType = "x mandatory";
-                isJumping = false;
-            }, 20);
-        }
-
-        updateActive();
-    }
-
-    function updateActive() {
-        const center = track.scrollLeft + track.clientWidth / 2;
-
-        slides.forEach(slide => {
-            const rect = slide.getBoundingClientRect();
-            const slideCenter = slide.offsetLeft + rect.width / 2;
-            if (Math.abs(center - slideCenter) < rect.width / 2) {
-                slide.classList.add('active');
-            } else {
-                slide.classList.remove('active');
-            }
-        });
-    }
-
-    // posición inicial
     goToIndex(currentIndex, false);
 
     nextBtn.addEventListener('click', () => {
@@ -360,32 +219,37 @@ async function initMiniGallery(root) {
         if (path.includes("galeria")) return;
 
         if (active.contains(e.target)) {
-            window.location.href = "galeria/index.html";
+            window.location.href = resolvePage("galeria/index.html");
         }
     });
 }
 
-async function loadMiniGalleryImages(root) {
+
+
+// --- Carga dinámica de imágenes desde JSON ---
+async function loadMiniGalleryImages(root, resolveAsset) {
+
     const track = root.querySelector('.carousel-track');
     if (!track) return;
 
-    const res = await fetch('/img/galeria/galeria.json');
+    const jsonPath = track.dataset.json;
+    const res = await fetch(resolveAsset(jsonPath));
     const images = await res.json();
 
-    // reales
+    // --- Imágenes reales ---
     images.forEach(img => {
         const picture = document.createElement('picture');
 
         picture.innerHTML = `
-            <source media="(max-width: 768px)" srcset="${img.mobile}">
-            <source media="(min-width: 769px)" srcset="${img.desktop}">
-            <img src="${img.desktop}" alt="${img.alt}" loading="lazy">
+            <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
+            <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
+            <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
         `;
 
         track.appendChild(picture);
     });
 
-    // clones del final (últimas 2)
+    // --- Clones para loop infinito ---
     const last1 = images[images.length - 2];
     const last2 = images[images.length - 1];
 
@@ -394,15 +258,14 @@ async function loadMiniGalleryImages(root) {
         picture.classList.add('clone');
 
         picture.innerHTML = `
-            <source media="(max-width: 768px)" srcset="${img.mobile}">
-            <source media="(min-width: 769px)" srcset="${img.desktop}">
-            <img src="${img.desktop}" alt="${img.alt}" loading="lazy">
+            <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
+            <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
+            <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
         `;
 
         track.insertBefore(picture, track.firstChild);
     });
 
-    // clones del inicio (primeras 2)
     const first1 = images[0];
     const first2 = images[1];
 
@@ -411,22 +274,52 @@ async function loadMiniGalleryImages(root) {
         picture.classList.add('clone');
 
         picture.innerHTML = `
-            <source media="(max-width: 768px)" srcset="${img.mobile}">
-            <source media="(min-width: 769px)" srcset="${img.desktop}">
-            <img src="${img.desktop}" alt="${img.alt}" loading="lazy">
+            <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
+            <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
+            <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
         `;
 
         track.appendChild(picture);
     });
 }
 
-// =========================
-// FORMULARIO → WHATSAPP + EMAIL (MEJORADO)
-// =========================
 
-function initFormulario() {
 
-    const form = document.getElementById("form-contacto");
+
+// ======================================================
+// 4. TOKO SECTION
+// ======================================================
+
+function initTokoSection(root, resolveAsset, resolvePage) {
+
+    // --- Imágenes de fondo ---
+    root.querySelectorAll('.toko-slide').forEach(slide => {
+        const file = slide.dataset.file;
+        slide.style.backgroundImage = `url('${resolveAsset(file)}')`;
+    });
+
+    // --- Botón contacto con interés preseleccionado ---
+    root.querySelectorAll('[data-toko-btn="contacto"]').forEach(btn => {
+        btn.href = resolvePage('index.html') + '?interes=toko#contacto';
+    });
+
+    // --- Botón colección ---
+    root.querySelectorAll('[data-toko-btn="coleccion"]').forEach(btn => {
+        const page = btn.dataset.page;
+        btn.href = resolvePage(page);
+    });
+}
+
+
+
+
+// ======================================================
+// 5. FORMULARIO
+// ======================================================
+
+function initFormulario(root, resolveAsset, resolvePage) {
+
+    const form = root.querySelector("#form-contacto");
     if (!form) return;
 
     const getFormData = () => {
@@ -457,11 +350,7 @@ function initFormulario() {
         return texto;
     };
 
-    // =========================
-    // WHATSAPP (submit)
-    // =========================
-
-    form.addEventListener("submit", function(e) {
+    form.addEventListener("submit", function (e) {
         e.preventDefault();
 
         if (!form.checkValidity()) {
@@ -476,14 +365,10 @@ function initFormulario() {
         window.open(url, "_blank");
     });
 
-    // =========================
-    // EMAIL
-    // =========================
-
-    const emailBtn = document.getElementById("btn-email");
+    const emailBtn = root.querySelector("#btn-email");
 
     if (emailBtn) {
-        emailBtn.addEventListener("click", function() {
+        emailBtn.addEventListener("click", function () {
 
             if (!form.checkValidity()) {
                 form.reportValidity();
@@ -502,9 +387,9 @@ function initFormulario() {
     }
 }
 
-// =========================
-// PRESELECCION INTERES EN FORMULARIO
-// =========================
+// ======================================================
+// 6. CONTACTO DESDE URL
+// ======================================================
 
 function initContactoFromURL() {
     const params = new URLSearchParams(window.location.search);
@@ -513,6 +398,11 @@ function initContactoFromURL() {
     const hash = window.location.hash;
 
     const select = document.getElementById("interes");
+
+    // Evitar que el navegador haga scroll automático al hash
+    if (window.location.hash === "#contacto") {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
 
     // ----------------------
     // 1. PRESELECCIÓN SELECT
@@ -528,7 +418,6 @@ function initContactoFromURL() {
         if (interesParam && mapping[interesParam.toLowerCase()]) {
             select.value = mapping[interesParam.toLowerCase()];
         } else {
-            // RESET
             select.value = "";
         }
     }
@@ -536,114 +425,127 @@ function initContactoFromURL() {
     // ----------------------
     // 2. SCROLL A CONTACTO
     // ----------------------
-    if (hash === "#contacto") {
+    // NUEVO: si hay interesParam, SIEMPRE queremos ir a contacto
+    const mustScroll = (hash === "#contacto") || (interesParam !== null);
+
+    if (mustScroll) {
         const tryScroll = () => {
             const contacto = document.querySelector("#contacto");
 
             if (contacto) {
                 contacto.scrollIntoView({ behavior: "smooth" });
+                // Restaurar el hash después del scroll
+                history.replaceState(null, "", window.location.pathname + window.location.search + "#contacto");
                 return true;
             }
             return false;
         };
 
-        // intentamos varias veces por timing de includes
         let attempts = 0;
         const interval = setInterval(() => {
             attempts++;
 
-            if (tryScroll() || attempts > 10) {
+            if (tryScroll() || attempts > 20) {
                 clearInterval(interval);
             }
         }, 50);
     }
 }
 
-// ----------------------
-// FUNCION PARA MEDIR ALTURA DEL SCROLL
-// ----------------------
 
-    // ----------------------
-    // HEADER HEIGHT SYSTEM (ROBUSTO)
-    // ----------------------
+// ======================================================
+// 7. WHATSAPP ICON
+// ======================================================
 
-    function setHeaderHeight() {
-        const header = document.querySelector("header");
-        if (!header) return;
+function initWhatsappIcon(root, resolveAsset, resolvePage) {
 
-        const height = header.offsetHeight;
-        document.documentElement.style.setProperty("--header-height", `${height}px`);
+    const icon = root.querySelector('.my-float');
+    if (icon) {
+        const file = icon.dataset.file;
+        icon.src = resolveAsset(file);
     }
+}
 
 
-    // ----------------------
-    // OPTIMIZADOR DE RESIZE / SCROLL
-    // ----------------------
-
-    let ticking = false;
-
-    function updateHeaderHeight() {
-        if (ticking) return;
-
-        ticking = true;
-        requestAnimationFrame(() => {
-            setHeaderHeight();
-            ticking = false;
-        });
-    }
 
 
-    // ----------------------
-    // INIT SEGURO (INCLUDES + LAYOUT + FONTS)
-    // ----------------------
+// ======================================================
+// 8. FOOTER
+// ======================================================
 
-    function initHeaderHeightSystem() {
+function initFooter(root, resolveAsset, resolvePage) {
 
-        // mediciones escalonadas (CLAVE para includes + fonts + render)
+    root.querySelectorAll('[data-page]').forEach(a => {
+        a.href = resolvePage(a.dataset.page);
+    });
+}
+
+
+
+
+// ======================================================
+// 9. HEADER HEIGHT SYSTEM (igual que antes)
+// ======================================================
+
+function setHeaderHeight() {
+    const header = document.querySelector("header");
+    if (!header) return;
+
+    const height = header.offsetHeight;
+    document.documentElement.style.setProperty("--header-height", `${height}px`);
+}
+
+let ticking = false;
+
+function updateHeaderHeight() {
+    if (ticking) return;
+
+    ticking = true;
+    requestAnimationFrame(() => {
         setHeaderHeight();
+        ticking = false;
+    });
+}
 
-        setTimeout(setHeaderHeight, 50);
-        setTimeout(setHeaderHeight, 200);
-        setTimeout(setHeaderHeight, 500);
-        setTimeout(setHeaderHeight, 1000);
-    }
+function initHeaderHeightSystem() {
+    setHeaderHeight();
 
+    setTimeout(setHeaderHeight, 50);
+    setTimeout(setHeaderHeight, 200);
+    setTimeout(setHeaderHeight, 500);
+    setTimeout(setHeaderHeight, 1000);
+}
 
-    // ----------------------
-    // OBSERVER (ULTRA ROBUSTO - CAMBIOS REALES DEL HEADER)
-    // ----------------------
+function observeHeaderChanges() {
+    const header = document.querySelector("header");
+    if (!header) return;
 
-    function observeHeaderChanges() {
-        const header = document.querySelector("header");
-        if (!header) return;
-
-        const observer = new ResizeObserver(() => {
-            setHeaderHeight();
-        });
-
-        observer.observe(header);
-    }
-
-
-    // ----------------------
-    // EVENTOS GLOBALES
-    // ----------------------
-
-    document.addEventListener("DOMContentLoaded", () => {
-        initHeaderHeightSystem();
-        observeHeaderChanges();
+    const observer = new ResizeObserver(() => {
+        setHeaderHeight();
     });
 
-    window.addEventListener("load", () => {
-        initHeaderHeightSystem();
-    });
+    observer.observe(header);
+}
 
-    window.addEventListener("resize", updateHeaderHeight);
-    window.addEventListener("scroll", updateHeaderHeight);
+document.addEventListener("DOMContentLoaded", () => {
+    initHeaderHeightSystem();
+    observeHeaderChanges();
+});
 
-// ----------------------
-// ACORDEON DEL FAQ
-// ----------------------
+window.addEventListener("load", () => {
+    initHeaderHeightSystem();
+});
+
+window.addEventListener("resize", updateHeaderHeight);
+window.addEventListener("scroll", updateHeaderHeight);
+
+
+
+
+// ======================================================
+// 10. FAQ ACORDEÓN (igual que antes)
+// ======================================================
+
 document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".faq-question").forEach(btn => {
         btn.addEventListener("click", () => {
