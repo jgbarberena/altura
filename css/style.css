@@ -21,6 +21,8 @@
     padding-left: 20px;
     padding-right: 20px;
     padding-bottom: 15px;
+
+    scroll-snap-align: start;
 }
 
 /* =========================
@@ -282,10 +284,5 @@ html {
 
 @media (min-width: 769px) {
 
-    /* Si en algún momento usas .section-offset, la mantenemos aquí */
-    .section-offset {
-        padding-left: 20px;
-        padding-right: 20px;
-        padding-bottom: 40px;
-    }
+
 }

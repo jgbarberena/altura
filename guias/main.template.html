@@ -1,18 +1,21 @@
 ﻿<main class="guias-page">
 
-  <section class="guias-hero">
+  <section class="guias-hero section section--first">
     <h1>Guías para vivir San Fermín</h1>
     <p>Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turístico.</p>
   </section>
 
-  <section class="guias-destacados" id="guias-destacados">
-    {{CARDS}}
+  <section class="section section--inner guias-destacados" id="guias-destacados">
+    <div id="guias-destacados-cards">
+      {{CARDS}}
+    </div>
+  
   </section>
 
-  <section class="guias-listado" id="guias-listado">
+  <section class="section section--inner guias-listado" id="guias-listado">
     <h2>Más guías</h2>
 
-    <div class="grid-guias">
+    <div class="grid-guias" id="guias-listado-cards">
       {{LISTADO}}
     </div>
   </section>

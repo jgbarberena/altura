@@ -7,8 +7,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const data = JSON.parse(raw.textContent);
 
     // Contenedores
-    const destacados = document.getElementById("guias-destacados");
-    const listado = document.getElementById("guias-listado");
+    const destacadosCards = document.getElementById("guias-destacados-cards");
+    const listadoCards = document.getElementById("guias-listado-cards");
     if (!destacados || !listado) return;
 
     // Función de selección ponderada
@@ -66,7 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Pintar destacados
-    destacados.innerHTML = picks.map(g => `
+    destacadosCards.innerHTML = picks.map(g => `
         <article class="card guia-destacada">
             ${pictureHTML(g)}
             <div class="card-overlay">
@@ -101,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const ordenFinal = [...coreShuffled, ...restShuffled];
 
     // Pintar listado
-    listado.innerHTML = ordenFinal.map(g => `
+    listadoCards.innerHTML = ordenFinal.map(g => `
         <article class="guia-card">
             ${pictureHTML(g)}
             <div class="guia-content">
