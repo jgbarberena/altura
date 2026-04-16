@@ -3,15 +3,23 @@
         "id":  "balcon-charla-corredor",
         "desktop":  "balcon-charla-corredor_desktop.jpg",
         "mobile":  "balcon-charla-corredor_mobile.jpg",
-        "alt":  "Experiencia exclusiva: charla con Corredores históricos del Encierro",
+        "alt":  "Experiencia exclusiva: charla con Corredores hist├│ricos del Encierro",
         "clasificacion":  "personalizada",
+        "weight":  "4"
+    },
+    {
+        "id":  "balcon-chupinazo-ayuntamiento",
+        "desktop":  "balcon-chupinazo-ayuntamiento_desktop.jpg",
+        "mobile":  "balcon-chupinazo-ayuntamiento_mobile.jpg",
+        "alt":  "Balcon privado en el chupinazo de San Fermin.",
+        "clasificacion":  "chupinazo",
         "weight":  "4"
     },
     {
         "id":  "balcon-chupinazo-panuelos",
         "desktop":  "balcon-chupinazo-panuelos_desktop.jpg",
         "mobile":  "balcon-chupinazo-panuelos_mobile.jpg",
-        "alt":  "Balcon privado para ver el Chupinazo en la Plaza del Ayuntamiento",
+        "alt":  "Balc├│n privado para ver el Chupinazo en la Plaza del Ayuntamiento",
         "clasificacion":  "chupinazo",
         "weight":  "2"
     },
@@ -24,12 +32,36 @@
         "weight":  "4"
     },
     {
+        "id":  "balcon-encierro-aerea",
+        "desktop":  "balcon-encierro-aerea_desktop.jpg",
+        "mobile":  "balcon-encierro-aerea_mobile.jpg",
+        "alt":  "Balcon exclusivo para disfurat del encierro en Estafeta.",
+        "clasificacion":  "encierros",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-exclusivo-chupinazo",
+        "desktop":  "balcon-exclusivo-chupinazo_desktop.jpg",
+        "mobile":  "balcon-exclusivo-chupinazo_mobile.jpg",
+        "alt":  "Balcon privado en el chupinazo de San Fermin.",
+        "clasificacion":  "chupinazo",
+        "weight":  "4"
+    },
+    {
         "id":  "balcon-exclusivo-fuegos",
         "desktop":  "balcon-exclusivo-fuegos_desktop.jpg",
         "mobile":  "balcon-exclusivo-fuegos_mobile.jpg",
         "alt":  "Terraza exclusiva para ver los Fuegos Artificiales en la noche de San Fermin",
         "clasificacion":  "personalizada",
         "weight":  "1"
+    },
+    {
+        "id":  "balcon-pobre-de-mi-ayuntamiento",
+        "desktop":  "balcon-pobre-de-mi-ayuntamiento_desktop.jpg",
+        "mobile":  "balcon-pobre-de-mi-ayuntamiento_mobile.jpg",
+        "alt":  "Pobre de mi desde un balcon enla Plaza del Ayuntamiento.",
+        "clasificacion":  "pobre-de-mi",
+        "weight":  "4"
     },
     {
         "id":  "balcon-procesion-mercaderes",
@@ -40,11 +72,27 @@
         "weight":  "3"
     },
     {
+        "id":  "encierro-barrera-estafeta",
+        "desktop":  "encierro-barrera-estafeta_desktop.jpg",
+        "mobile":  "encierro-barrera-estafeta_mobile.jpg",
+        "alt":  "Encierro a pie de calle en entrada a Plaza de Toros.",
+        "clasificacion":  "personalizada; encierros;",
+        "weight":  "4"
+    },
+    {
         "id":  "experiencia-pasacalles-pamplona",
         "desktop":  "experiencia-pasacalles-pamplona_desktop.jpg",
         "mobile":  "experiencia-pasacalles-pamplona_mobile.jpg",
         "alt":  "Guia privado para disfrutar de la Salida de las Penas en Pamplona",
         "clasificacion":  "personalizada",
         "weight":  "5"
+    },
+    {
+        "id":  "guia-experiencia-gigantes",
+        "desktop":  "guia-experiencia-gigantes_desktop.jpg",
+        "mobile":  "guia-experiencia-gigantes_mobile.jpg",
+        "alt":  "Comparsa de gigantes y cabezudos a pie de calle.",
+        "clasificacion":  "personalizada; gigantes;",
+        "weight":  "2"
     }
 ]

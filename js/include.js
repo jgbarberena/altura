@@ -52,6 +52,15 @@ function loadComponent(placeholderId, componentPath, initFn) {
             if (typeof initFn === "function") {
                 initFn(container, window.resolveAsset, window.resolvePage);
             }
+
+            // --- COPIAR ATRIBUTOS DEL PLACEHOLDER AL COMPONENTE ---
+            const root = placeholder.firstElementChild;
+
+            for (const attr of placeholder.attributes) {
+                if (attr.name.startsWith("data-")) {
+                    root.setAttribute(attr.name, attr.value);
+                }
+            }
         })
         .catch(err => {
             console.error(`Error cargando componente ${componentPath}:`, err);

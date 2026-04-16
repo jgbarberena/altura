@@ -236,8 +236,53 @@ async function loadMiniGalleryImages(root, resolveAsset) {
     const res = await fetch(resolveAsset(jsonPath));
     const images = await res.json();
 
-    // --- Imágenes reales ---
-    images.forEach(img => {
+    const categoryAttr = root.dataset.miniGalleryId;
+
+    // Si no hay categoría → mostrar todas
+    if (!categoryAttr || categoryAttr.trim() === "") {
+        filtered = images;
+    } else {
+        // Convertir categorías del HTML en array
+        const requested = categoryAttr
+            .split(";")
+            .map(c => c.trim().toLowerCase());
+
+        filtered = images.filter(img => {
+            if (!img.clasificacion) return false;
+
+            // Convertir clasificacion del JSON en array
+            const tags = img.clasificacion
+                .split(";")
+                .map(t => t.trim().toLowerCase());
+
+            // Coincidencia si al menos una coincide
+            return tags.some(tag => requested.includes(tag));
+        });
+    }
+
+    // Si no hay imágenes, salimos
+    if (filtered.length === 0) {
+        console.warn("MiniGallery: no hay imágenes para la categoría:", category);
+        return;
+    }
+    // Si no hay suficientes imágenes para clones, salimos
+    if (filtered.length === 1 || filtered.length === 2) {
+        // Mostrar imágenes tal cual, sin carrusel ni clones
+        filtered.forEach(img => {
+            const picture = document.createElement('picture');
+            picture.innerHTML = `
+                <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
+                <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
+                <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
+            `;
+            track.appendChild(picture);
+        });
+        // No clones, no carrusel
+        return;
+    }
+
+    // --- 3. Imágenes reales ---
+    filtered.forEach(img => {
         const picture = document.createElement('picture');
 
         picture.innerHTML = `
@@ -249,9 +294,9 @@ async function loadMiniGalleryImages(root, resolveAsset) {
         track.appendChild(picture);
     });
 
-    // --- Clones para loop infinito ---
-    const last1 = images[images.length - 2];
-    const last2 = images[images.length - 1];
+    // --- 4. Clones para loop infinito ---
+    const last1 = filtered[filtered.length - 2];
+    const last2 = filtered[filtered.length - 1];
 
     [last1, last2].forEach(img => {
         const picture = document.createElement('picture');
@@ -266,8 +311,8 @@ async function loadMiniGalleryImages(root, resolveAsset) {
         track.insertBefore(picture, track.firstChild);
     });
 
-    const first1 = images[0];
-    const first2 = images[1];
+    const first1 = filtered[0];
+    const first2 = filtered[1];
 
     [first1, first2].forEach(img => {
         const picture = document.createElement('picture');
