@@ -32,8 +32,8 @@ window.resolvePage = function(path) {
 // ======================================================
 
 function loadComponent(placeholderId, componentPath, initFn) {
-    const container = document.getElementById(placeholderId);
-    if (!container) return;
+    const placeholder = document.getElementById(placeholderId);
+    if (!placeholder) return;
 
     const url = `${window.BASE_URL}/${componentPath}`;
 
@@ -43,35 +43,36 @@ function loadComponent(placeholderId, componentPath, initFn) {
             return res.text();
         })
         .then(html => {
-            container.innerHTML = html;
+            // Insertar el HTML del componente dentro del placeholder
+            placeholder.innerHTML = html;
 
-            // Llamamos al init del componente, pasándole:
-            // - root: el nodo raíz del componente
-            // - resolveAsset: función universal para archivos
-            // - resolvePage: función universal para páginas
-            if (typeof initFn === "function") {
-                initFn(container, window.resolveAsset, window.resolvePage);
-            }
-
-            // --- COPIAR ATRIBUTOS DEL PLACEHOLDER AL COMPONENTE ---
+            // Root real del componente (primer hijo)
             const root = placeholder.firstElementChild;
 
+            // Copiar data-attributes del placeholder al root
             for (const attr of placeholder.attributes) {
                 if (attr.name.startsWith("data-")) {
                     root.setAttribute(attr.name, attr.value);
                 }
             }
+
+            // Mantener el comportamiento anterior:
+            // initFn recibe el placeholder (como antes), no el root
+            if (typeof initFn === "function") {
+                initFn(placeholder, window.resolveAsset, window.resolvePage);
+            }
         })
         .catch(err => {
             console.error(`Error cargando componente ${componentPath}:`, err);
         });
-    
-        setTimeout(() => {
-            if (typeof initContactoFromURL === "function") {
-                initContactoFromURL();
-            }
-        }, 100);
+
+    setTimeout(() => {
+        if (typeof initContactoFromURL === "function") {
+            initContactoFromURL();
+        }
+    }, 100);
 }
+
 
 
 // ======================================================
@@ -81,6 +82,7 @@ function loadComponent(placeholderId, componentPath, initFn) {
 loadComponent("header-placeholder",      "components/header.html",      initHeader);
 loadComponent("sticky-placeholder",      "components/stickyNav.html",   initStickyNav);
 loadComponent("miniGallery-placeholder", "components/miniGallery.html", initMiniGallery);
+loadComponent("miniFAQ-placeholder",     "components/miniFAQ.html",     initMiniFAQ);
 loadComponent("toko-placeholder",        "components/toko.html",        initTokoSection);
 loadComponent("contact-placeholder",     "components/contact.html",     initFormulario);
 loadComponent("whatsapp-placeholder",    "components/whatsapp.html",    initWhatsappIcon);

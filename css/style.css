@@ -203,6 +203,25 @@ a {
     width: 100%;
 }
 
+/* ======= BOTÓN LINK (EDITORIAL) ======== */
+
+.btn-link {
+    font-size: 13px;
+    color: #b30000;
+    text-decoration: none;
+    font-weight: 500;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-link:hover {
+    color: #800000;
+    transform: translateX(3px) scale(1.03);
+}
+
 /* =========================
    CARD BASE
 ========================= */

@@ -62,8 +62,6 @@ function initHeader(root, resolveAsset, resolvePage) {
 }
 
 
-
-
 // ======================================================
 // 2. STICKY NAV
 // ======================================================
@@ -91,8 +89,6 @@ function initStickyNav(root, resolveAsset, resolvePage) {
     updateStickyHeight();
     window.addEventListener('resize', updateStickyHeight);
 }
-
-
 
 
 // ======================================================
@@ -328,11 +324,56 @@ async function loadMiniGalleryImages(root, resolveAsset) {
     });
 }
 
+// ======================================================
+// 4. MINI FAQ SECTION
+// ======================================================
 
+async function initMiniFAQ(root, resolveAsset) {
+
+    const container = root.querySelector('.miniFAQ__list');
+    const categoriesAttr = root.dataset.miniFaqId;
+
+    // Convertir categorías del HTML en array
+    const categories = categoriesAttr
+        ? categoriesAttr.split(";").map(c => c.trim().toLowerCase())
+        : null;
+
+    // Cargar el HTML de faq/index.html
+    const res = await fetch(resolveAsset("faq/index.html"));
+    const html = await res.text();
+
+    // Crear DOM temporal
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+
+    // Seleccionar todas las secciones FAQ
+    const sections = temp.querySelectorAll('.faq-section');
+
+    sections.forEach(section => {
+
+        const sectionId = section.id.toLowerCase();
+
+        // Si hay categorías, filtrar
+        if (categories && !categories.includes(sectionId)) return;
+
+        // Copiar solo los faq-item
+        section.querySelectorAll('.faq-item').forEach(item => {
+            container.appendChild(item.cloneNode(true));
+        });
+    });
+
+    // Si no hay FAQ, no romper nada
+    if (!container.children.length) {
+        container.innerHTML = "<p>No hay preguntas frecuentes disponibles.</p>";
+    }
+
+    // Aquí activamos el acordeón SOLO dentro de miniFAQ
+    initFAQAccordionIn(container);
+}
 
 
 // ======================================================
-// 4. TOKO SECTION
+// 5. TOKO SECTION
 // ======================================================
 
 function initTokoSection(root, resolveAsset, resolvePage) {
@@ -359,7 +400,7 @@ function initTokoSection(root, resolveAsset, resolvePage) {
 
 
 // ======================================================
-// 5. FORMULARIO
+// 6. FORMULARIO
 // ======================================================
 
 function initFormulario(root, resolveAsset, resolvePage) {
@@ -433,7 +474,7 @@ function initFormulario(root, resolveAsset, resolvePage) {
 }
 
 // ======================================================
-// 6. CONTACTO DESDE URL
+// 7. CONTACTO DESDE URL
 // ======================================================
 
 function initContactoFromURL() {
@@ -499,7 +540,7 @@ function initContactoFromURL() {
 
 
 // ======================================================
-// 7. WHATSAPP ICON
+// 8. WHATSAPP ICON
 // ======================================================
 
 function initWhatsappIcon(root, resolveAsset, resolvePage) {
@@ -515,7 +556,7 @@ function initWhatsappIcon(root, resolveAsset, resolvePage) {
 
 
 // ======================================================
-// 8. FOOTER
+// 9. FOOTER
 // ======================================================
 
 function initFooter(root, resolveAsset, resolvePage) {
@@ -604,3 +645,17 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 });
+
+function initFAQAccordionIn(root) {
+    root.querySelectorAll(".faq-question").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const item = btn.closest(".faq-item");
+
+            root.querySelectorAll(".faq-item").forEach(i => {
+                if (i !== item) i.classList.remove("active");
+            });
+
+            item.classList.toggle("active");
+        });
+    });
+}

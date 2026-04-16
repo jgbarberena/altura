@@ -672,9 +672,7 @@ header.dark .hamburger {
 .miniGallery .carousel-btn.prev { left: 10px; }
 .miniGallery .carousel-btn.next { right: 10px; }
 
-/* =========================
-   MEDIA QUERIES
-========================= */
+/* =========MEDIA QUERIES========= */
 
 @media (min-width: 769px) {
     .miniGallery .carousel-track picture {
@@ -688,4 +686,67 @@ header.dark .hamburger {
         flex: 0 0 50%;
         max-width: 50%;
     }
+}
+
+/* =========================
+   miniFAQ (component)
+========================= */
+
+.miniFAQ {
+    margin: 40px 0;
+    padding: 20px 22px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: #fafafa;
+}
+
+/* Título + enlace "Ver todas" alineados */
+.miniFAQ__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 15px;
+}
+
+.miniFAQ__title {
+    font-size: 20px;
+    margin: 0;
+}
+
+/* Lista de FAQ */
+.miniFAQ__list .faq-item {
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    padding: 8px 0;
+}
+
+.miniFAQ__list .faq-question {
+    width: 100%;
+    text-align: left;
+    padding: 6px 0;
+    background: none;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.miniFAQ__list .faq-answer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+}
+
+.miniFAQ__list .faq-answer p {
+    padding: 0 0 10px 0;
+    font-size: 13px;
+    color: #444;
+}
+
+.miniFAQ__list .faq-item.active .faq-answer {
+    max-height: 500px;
+}
+
+/* Footer eliminado porque el botón va arriba */
+.miniFAQ__footer {
+    display: none;
 }
