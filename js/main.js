@@ -96,135 +96,172 @@ function initStickyNav(root, resolveAsset, resolvePage) {
 // ======================================================
 
 async function initMiniGallery(root, resolveAsset, resolvePage) {
-
     if (!root) return;
 
-    // --- Cargar imágenes desde JSON ---
     await loadMiniGalleryImages(root, resolveAsset);
 
     const track = root.querySelector('.carousel-track');
     if (!track) return;
 
-    const slides = Array.from(root.querySelectorAll('.carousel-track picture'));
+    const slides = Array.from(track.querySelectorAll('picture'));
     const prevBtn = root.querySelector('.carousel-btn.prev');
     const nextBtn = root.querySelector('.carousel-btn.next');
+    const realCount = slides.filter(s => !s.classList.contains('clone')).length;
 
-    if (slides.length === 0) return;
+    // --- Casos especiales: 0 o 1 imagen ---
+    if (realCount === 0) return;
 
-    let isJumping = false;
-    let currentIndex = 2;
+    if (realCount === 1) {
+        prevBtn.classList.add('hidden');
+        nextBtn.classList.add('hidden');
+        slides[0].classList.add('active');
+        return;
+    }
+
+    // --- Caso 2 imágenes: sin clones, sin loop ---
+    if (realCount === 2) {
+        let idx = 0;
+
+        function scrollTo2(i, smooth = true) {
+            idx = i;
+            const currentSlides = Array.from(track.querySelectorAll('picture'));
+            const slideWidth = currentSlides[0]?.offsetWidth ?? 0;
+            track.style.transition = smooth ? 'transform 0.45s cubic-bezier(0.4,0,0.2,1)' : 'none';
+            track.style.transform = `translateX(${-slideWidth * idx}px)`;
+            currentSlides.forEach((s, j) => s.classList.toggle('active', j === idx));
+            prevBtn.classList.toggle('disabled', idx === 0);
+            nextBtn.classList.toggle('disabled', idx === 1);
+        }
+
+        function initPosition2() {
+            if (track.querySelector('picture')?.offsetWidth > 0) {
+                scrollTo2(0, false);
+            } else {
+                const ro = new ResizeObserver(() => {
+                    if (track.querySelector('picture')?.offsetWidth > 0) {
+                        ro.disconnect();
+                        scrollTo2(0, false);
+                    }
+                });
+                ro.observe(track);
+            }
+        }
+        initPosition2();
+
+        prevBtn.addEventListener('click', () => { if (idx > 0) scrollTo2(idx - 1); });
+        nextBtn.addEventListener('click', () => { if (idx < 1) scrollTo2(idx + 1); });
+
+        window.addEventListener('resize', () => scrollTo2(idx, false));
+
+        // Swipe
+        addSwipe(track, () => { if (idx < 1) scrollTo2(idx + 1); }, () => { if (idx > 0) scrollTo2(idx - 1); });
+        return;
+    }
+
+    // --- Caso normal: 3+ imágenes con loop infinito ---
+    // Los clones ya fueron insertados en loadMiniGalleryImages
+    // 2 clones al inicio (últimas 2 reales) + reales + 2 clones al final (primeras 2 reales)
+    const allSlides = Array.from(track.querySelectorAll('picture'));
+    const clonesBefore = 2;
+    let currentIndex = clonesBefore; // empieza en la primera real
 
     function getSlideWidth() {
-        return slides[0].getBoundingClientRect().width;
+        return track.querySelector('picture')?.offsetWidth ?? 0;
     }
 
     function goToIndex(index, smooth = true) {
         const slideWidth = getSlideWidth();
-        const targetScroll = slideWidth * index;
+        const offset = slideWidth * index;
 
-        isJumping = !smooth;
+        track.style.transition = smooth ? 'transform 0.45s cubic-bezier(0.4,0,0.2,1)' : 'none';
+        track.style.transform = `translateX(${-offset}px)`;
 
-        track.style.scrollBehavior = smooth ? "smooth" : "auto";
-        track.style.scrollSnapType = smooth ? "x mandatory" : "none";
-
-        track.scrollLeft = targetScroll;
-
-        if (!smooth) {
-            setTimeout(() => {
-                track.style.scrollBehavior = "smooth";
-                track.style.scrollSnapType = "x mandatory";
-                isJumping = false;
-            }, 20);
-        }
-
-        updateActive();
+        updateActive(index);
     }
 
-    function updateActive() {
-        const center = track.scrollLeft + track.clientWidth / 2;
-
-        slides.forEach(slide => {
-            const rect = slide.getBoundingClientRect();
-            const slideCenter = slide.offsetLeft + rect.width / 2;
-            if (Math.abs(center - slideCenter) < rect.width / 2) {
-                slide.classList.add('active');
-            } else {
-                slide.classList.remove('active');
-            }
-        });
+    function updateActive(index) {
+        allSlides.forEach((s, i) => s.classList.toggle('active', i === index));
     }
 
-    goToIndex(currentIndex, false);
+    function afterTransition() {
+        const lastReal = clonesBefore + realCount - 1;
 
-    nextBtn.addEventListener('click', () => {
-        const lastIndex = slides.length - 3;
-        if (currentIndex >= lastIndex) {
-            currentIndex = 2;
+        // Si estamos en un clon del final → saltar al real del inicio
+        if (currentIndex > lastReal) {
+            currentIndex = clonesBefore;
             goToIndex(currentIndex, false);
-        } else {
-            currentIndex++;
-            goToIndex(currentIndex, true);
+            return;
         }
-    });
-
-    prevBtn.addEventListener('click', () => {
-        const firstIndex = 2;
-        if (currentIndex <= firstIndex) {
-            currentIndex = slides.length - 3;
-            goToIndex(currentIndex, false);
-        } else {
-            currentIndex--;
-            goToIndex(currentIndex, true);
-        }
-    });
-
-    track.addEventListener('scroll', () => {
-        if (isJumping) return;
-
-        const slideWidth = getSlideWidth();
-        const approxIndex = Math.round(track.scrollLeft / slideWidth);
-
-        const firstReal = 2;
-        const lastReal = slides.length - 3;
-
-        if (approxIndex <= 1) {
+        // Si estamos en un clon del inicio → saltar al real del final
+        if (currentIndex < clonesBefore) {
             currentIndex = lastReal;
             goToIndex(currentIndex, false);
             return;
         }
+    }
 
-        if (approxIndex >= slides.length - 2) {
-            currentIndex = firstReal;
+    track.addEventListener('transitionend', afterTransition);
+
+    // Ir al inicio sin animación
+    function initPosition() {
+        if (getSlideWidth() > 0) {
             goToIndex(currentIndex, false);
-            return;
+        } else {
+            // Layout aún no listo, esperar
+            const ro = new ResizeObserver(() => {
+                if (getSlideWidth() > 0) {
+                    ro.disconnect();
+                    goToIndex(currentIndex, false);
+                }
+            });
+            ro.observe(track);
         }
+    }
+    initPosition();
 
-        currentIndex = approxIndex;
-        updateActive();
+    nextBtn.addEventListener('click', () => {
+        currentIndex++;
+        goToIndex(currentIndex, true);
     });
 
-    window.addEventListener('resize', () => {
-        goToIndex(currentIndex, false);
+    prevBtn.addEventListener('click', () => {
+        currentIndex--;
+        goToIndex(currentIndex, true);
     });
 
+    window.addEventListener('resize', () => goToIndex(currentIndex, false));
+
+    // Click en imagen activa → galería
     track.addEventListener('click', (e) => {
-        const active = root.querySelector('.carousel-track picture.active');
-        if (!active) return;
-
+        const active = track.querySelector('picture.active');
+        if (!active || !active.contains(e.target)) return;
         const path = window.location.pathname;
         if (path.includes("galeria")) return;
-
-        if (active.contains(e.target)) {
-            window.location.href = resolvePage("galeria/index.html");
-        }
+        window.location.href = resolvePage("galeria/index.html");
     });
+
+    // Swipe
+    addSwipe(track,
+        () => { currentIndex++; goToIndex(currentIndex, true); },
+        () => { currentIndex--; goToIndex(currentIndex, true); }
+    );
 }
 
-
+// --- Swipe helper ---
+function addSwipe(el, onLeft, onRight) {
+    let startX = 0;
+    el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener('touchend', e => {
+        const diff = startX - e.changedTouches[0].clientX;
+        if (Math.abs(diff) > 40) {
+            if (diff > 0) onLeft();
+            else onRight();
+        }
+    }, { passive: true });
+}
 
 // --- Carga dinámica de imágenes desde JSON ---
 async function loadMiniGalleryImages(root, resolveAsset) {
-
     const track = root.querySelector('.carousel-track');
     if (!track) return;
 
@@ -233,95 +270,47 @@ async function loadMiniGalleryImages(root, resolveAsset) {
     const images = await res.json();
 
     const categoryAttr = root.dataset.miniGalleryId;
+    let filtered;
 
-    // Si no hay categoría → mostrar todas
     if (!categoryAttr || categoryAttr.trim() === "") {
         filtered = images;
     } else {
-        // Convertir categorías del HTML en array
-        const requested = categoryAttr
-            .split(";")
-            .map(c => c.trim().toLowerCase());
-
+        const requested = categoryAttr.split(";").map(c => c.trim().toLowerCase());
         filtered = images.filter(img => {
             if (!img.clasificacion) return false;
-
-            // Convertir clasificacion del JSON en array
-            const tags = img.clasificacion
-                .split(";")
-                .map(t => t.trim().toLowerCase());
-
-            // Coincidencia si al menos una coincide
+            const tags = img.clasificacion.split(";").map(t => t.trim().toLowerCase());
             return tags.some(tag => requested.includes(tag));
         });
     }
 
-    // Si no hay imágenes, salimos
     if (filtered.length === 0) {
-        console.warn("MiniGallery: no hay imágenes para la categoría:", category);
-        return;
-    }
-    // Si no hay suficientes imágenes para clones, salimos
-    if (filtered.length === 1 || filtered.length === 2) {
-        // Mostrar imágenes tal cual, sin carrusel ni clones
-        filtered.forEach(img => {
-            const picture = document.createElement('picture');
-            picture.innerHTML = `
-                <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
-                <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
-                <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
-            `;
-            track.appendChild(picture);
-        });
-        // No clones, no carrusel
+        console.warn("MiniGallery: no hay imágenes para:", categoryAttr);
         return;
     }
 
-    // --- 3. Imágenes reales ---
-    filtered.forEach(img => {
+    function makePicture(img, isClone = false) {
         const picture = document.createElement('picture');
-
+        if (isClone) picture.classList.add('clone');
         picture.innerHTML = `
             <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
             <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
             <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
         `;
+        return picture;
+    }
 
-        track.appendChild(picture);
-    });
+    // Casos 1 y 2: sin clones
+    if (filtered.length <= 2) {
+        filtered.forEach(img => track.appendChild(makePicture(img)));
+        return;
+    }
 
-    // --- 4. Clones para loop infinito ---
-    const last1 = filtered[filtered.length - 2];
-    const last2 = filtered[filtered.length - 1];
-
-    [last1, last2].forEach(img => {
-        const picture = document.createElement('picture');
-        picture.classList.add('clone');
-
-        picture.innerHTML = `
-            <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
-            <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
-            <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
-        `;
-
-        track.insertBefore(picture, track.firstChild);
-    });
-
-    const first1 = filtered[0];
-    const first2 = filtered[1];
-
-    [first1, first2].forEach(img => {
-        const picture = document.createElement('picture');
-        picture.classList.add('clone');
-
-        picture.innerHTML = `
-            <source media="(max-width: 768px)" srcset="${resolveAsset('img/galeria/' + img.mobile)}">
-            <source media="(min-width: 769px)" srcset="${resolveAsset('img/galeria/' + img.desktop)}">
-            <img src="${resolveAsset('img/galeria/' + img.desktop)}" alt="${img.alt}" loading="lazy">
-        `;
-
-        track.appendChild(picture);
-    });
+    // 3+: clones al inicio (últimas 2) y al final (primeras 2)
+    track.appendChild(makePicture(filtered[filtered.length - 2], true));
+    track.appendChild(makePicture(filtered[filtered.length - 1], true));
+    filtered.forEach(img => track.appendChild(makePicture(img)));
+    track.appendChild(makePicture(filtered[0], true));
+    track.appendChild(makePicture(filtered[1], true));
 }
 
 // ======================================================

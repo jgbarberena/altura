@@ -617,39 +617,51 @@ header.dark .hamburger {
 
 .miniGallery .carousel {
     position: relative;
-    overflow: visible;
+    overflow: hidden; /* CLAVE: recorta las imágenes que salen */
 }
 
 .miniGallery .carousel-track {
     display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-behavior: smooth;
+    width: 100%;
+    overflow: visible; /* el track se desborda, el carousel lo recorta */
     gap: 0;
     padding: 0;
+    will-change: transform;
 }
 
 .miniGallery .carousel-track picture {
     flex: 0 0 100%;
     max-width: 100%;
     border-radius: 10px;
-    scroll-snap-align: center;
-    opacity: 0.6;
-    transform: scale(0.9);
-    transition: transform 0.3s ease, opacity 0.3s ease;
+    opacity: 0.5;
+    transform: scale(0.92);
+    transition: transform 0.4s ease, opacity 0.4s ease, box-shadow 0.4s ease;
     cursor: default;
+    overflow: hidden;
 }
 
 .miniGallery .carousel-track picture.active {
     opacity: 1;
     transform: scale(1);
     cursor: pointer;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+
+.miniGallery .carousel-track picture:not(.active):hover {
+    opacity: 0.7;
+    transform: scale(0.94);
+}
+
+.miniGallery .carousel-track picture.active:hover img {
+    transform: scale(1.04);
 }
 
 .miniGallery .carousel-track picture img {
     width: 100%;
     height: auto;
     border-radius: inherit;
+    display: block;
+    transition: transform 0.4s ease;
 }
 
 .miniGallery .carousel-track::-webkit-scrollbar {
@@ -667,6 +679,22 @@ header.dark .hamburger {
     cursor: pointer;
     font-size: 24px;
     z-index: 2;
+    transition: background 0.2s ease, opacity 0.2s ease;
+    border-radius: 4px;
+}
+
+.miniGallery .carousel-btn:hover {
+    background: rgba(0,0,0,0.75);
+}
+
+.miniGallery .carousel-btn.disabled {
+    opacity: 0.2;
+    cursor: default;
+    pointer-events: none;
+}
+
+.miniGallery .carousel-btn.hidden {
+    display: none;
 }
 
 .miniGallery .carousel-btn.prev { left: 10px; }
@@ -694,7 +722,6 @@ header.dark .hamburger {
 
 .miniFAQ {
     margin: 40px 0;
-    padding: 20px 22px;
     border: 1px solid rgba(0,0,0,0.08);
     border-radius: 10px;
     background: #fafafa;
