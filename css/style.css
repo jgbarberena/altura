@@ -25,18 +25,14 @@
     scroll-snap-align: start;
 }
 
-/* =========================
-   FIRST SECTION (no fullscreen)
-========================= */
+/* ==== FIRST SECTION (no fullscreen) ==== */
 
 .section--first {
     padding-top: calc(var(--header-height) + 20px);
     scroll-margin-top: 0;
 }
 
-/* =========================
-   FIRST SECTION FULLSCREEN
-========================= */
+/* ==== FIRST SECTION FULLSCREEN ==== */
 
 .section--first--fullscreen {
     height: 100vh;
@@ -46,18 +42,14 @@
     scroll-margin-top: 0;
 }
 
-/* =========================
-   INNER SECTIONS
-========================= */
+/* ==== INNER SECTIONS ==== */
 
 .section--inner {
     padding-top: calc(var(--header-height) + 10px);
     scroll-margin-top: 0px;
 }
 
-/* =========================
-   INNER WITH OVERLAY (sin padding)
-========================= */
+/* ==== INNER WITH OVERLAY (sin padding) ==== */
 
 .section--inner--overlay {
     padding-top: 0;
@@ -66,18 +58,14 @@
     z-index: 0; /* el header queda encima */
 }
 
-/* =========================
-   INNER WITH STICKY CONTEXT
-========================= */
+/* ==== INNER WITH STICKY CONTEXT ==== */
 
 .section--inner--sticky {
     padding-top: var(--sticky-height);
     scroll-margin-top: var(--header-height);
 }
 
-/* =========================
-   SECCIÓN INNER FLUSH (sin padding-top, pero con scroll-margin-top)
-========================= */
+/* ==== SECCIÓN INNER FLUSH (sin padding-top, pero con scroll-margin-top) ==== */
 
 .section--inner--flush {
     padding-top: 0;
@@ -86,9 +74,7 @@
     z-index: 0;
 }
 
-/* =========================
-   OVERLAY UNIVERSAL
-========================= */
+/* ==== OVERLAY UNIVERSAL ==== */
 
 .has-overlay {
     position: relative;
@@ -109,6 +95,17 @@
 .has-overlay > *:not(.overlay) {
     position: relative;
     z-index: 2;
+}
+
+/* ==== NO SNAP ==== */
+/* Excepción: esta sección concreta no hace snap */
+.no-snap {
+    scroll-snap-align: none !important;
+}
+
+/* Excepción: ningún descendiente de esta sección hace snap */
+.no-snap-children * {
+    scroll-snap-align: none !important;
 }
 
 /* =========================

@@ -1,8 +1,9 @@
 // ======================================================
-// MAIN.JS — LÓGICA GENERAL + INIT DE COMPONENTES
+// MAIN.JS — INIT DE COMPONENTES + LÓGICA GENERAL
 // (sin rutas, sin includes, sin BASE_URL)
 // ======================================================
 
+// ================================ INIT DE COMPONENTES =====================================//
 
 
 // ======================================================
@@ -386,8 +387,6 @@ function initTokoSection(root, resolveAsset, resolvePage) {
 }
 
 
-
-
 // ======================================================
 // 6. FORMULARIO
 // ======================================================
@@ -542,8 +541,6 @@ function initWhatsappIcon(root, resolveAsset, resolvePage) {
 }
 
 
-
-
 // ======================================================
 // 9. FOOTER
 // ======================================================
@@ -556,10 +553,91 @@ function initFooter(root, resolveAsset, resolvePage) {
 }
 
 
+// ======================================================
+// 10. MINI GUIAS
+// ======================================================
+
+async function initMiniGuias(root, resolveAsset, resolvePage) {
+
+    const container = root.querySelector('.miniGuias__list');
+    const filterAttr = root.dataset.miniGuiasId;
+
+    // Convertir filtros en array
+    const filters = filterAttr
+        ? filterAttr.split(";").map(f => f.trim().toLowerCase())
+        : [];
+
+    // Cargar guias/index.html
+    const res = await fetch(resolveAsset("guias/index.html"));
+    const html = await res.text();
+
+    // DOM temporal
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+
+    // Extraer JSON
+    const script = temp.querySelector("#guias-data");
+    if (!script) {
+        console.error("miniGuias: no se encontró #guias-data");
+        return;
+    }
+
+    const guias = JSON.parse(script.textContent);
+
+    // Preselección por Topic o Category
+    let preselected = guias.filter(g => {
+
+        const topicList = g.Topic
+            ? g.Topic.split(";").map(t => t.trim().toLowerCase())
+            : [];
+
+        const category = g.Category ? g.Category.toLowerCase() : "";
+
+        // Si no hay filtros → todas
+        if (filters.length === 0) return true;
+
+        // Coincidencia por categoría
+        if (filters.includes(category)) return true;
+
+        // Coincidencia por topic
+        return topicList.some(t => filters.includes(t));
+    });
+
+    if (preselected.length === 0) {
+        container.innerHTML = "<p>No hay guías disponibles.</p>";
+        return;
+    }
+
+    const selected = selectEditorialItems(preselected, 2);
+
+    // Renderizado
+    selected.forEach(g => {
+        const url = resolvePage(g.Url);
+        const img = resolveAsset(g.ImgDesktop || g.Img || g.ImgMobile);
+
+        const card = document.createElement("div");
+        card.className = "guia-card";
+
+        card.innerHTML = `
+            <img src="${img}" alt="${g.Alt || g.Title}">
+            <div class="guia-content">
+                <h3>${g.Title}</h3>
+                <p>${g.Resumen}</p>
+                <a href="${url}">Leer más →</a>
+            </div>
+        `;
+
+        container.appendChild(card);
+    });
+}
+
+
+
+// ================================ LOGICA =====================================//
 
 
 // ======================================================
-// 9. HEADER HEIGHT SYSTEM (igual que antes)
+// 20. HEADER HEIGHT SYSTEM 
 // ======================================================
 
 function setHeaderHeight() {
@@ -615,10 +693,8 @@ window.addEventListener("resize", updateHeaderHeight);
 window.addEventListener("scroll", updateHeaderHeight);
 
 
-
-
 // ======================================================
-// 10. FAQ ACORDEÓN (igual que antes)
+// 21. FAQ ACORDEÓN 
 // ======================================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -648,3 +724,93 @@ function initFAQAccordionIn(root) {
         });
     });
 }
+
+// ======================================================
+// 22. SELECCION ALEATORIA PONDERADA (con fixed, high, medium, low)
+// ======================================================
+
+function selectEditorialItems(items, count) {
+
+    const weights = {
+        high: 3,
+        medium: 2,
+        low: 1
+    };
+
+    // --- 1. Separar fixed ---
+    const fixed = items.filter(i => i.Feature === "fixed");
+    const nonFixed = items.filter(i => i.Feature !== "fixed");
+
+    // --- 2. Caso A: suficientes fixed ---
+    if (fixed.length >= count) {
+        const pool = [...fixed];
+        const selected = [];
+
+        for (let i = 0; i < count; i++) {
+            const idx = Math.floor(Math.random() * pool.length);
+            selected.push(pool[idx]);
+            pool.splice(idx, 1);
+        }
+
+        return selected;
+    }
+
+    // --- 3. Caso B: 1 fixed ---
+    if (fixed.length === 1) {
+        const selected = [fixed[0]];
+
+        // Seleccionar el resto ponderado
+        const remaining = count - 1;
+
+        if (remaining > 0 && nonFixed.length > 0) {
+            const pool = [];
+
+            nonFixed.forEach(item => {
+                const w = weights[item.Feature] || 1;
+                for (let i = 0; i < w; i++) pool.push(item);
+            });
+
+            const used = new Set();
+
+            while (selected.length < count && pool.length > 0) {
+                const idx = Math.floor(Math.random() * pool.length);
+                const candidate = pool[idx];
+
+                if (!used.has(candidate)) {
+                    selected.push(candidate);
+                    used.add(candidate);
+                }
+
+                pool.splice(idx, 1);
+            }
+        }
+
+        return selected;
+    }
+
+    // --- 4. Caso C: 0 fixed → ponderado puro ---
+    const pool = [];
+
+    items.forEach(item => {
+        const w = weights[item.Feature] || 1;
+        for (let i = 0; i < w; i++) pool.push(item);
+    });
+
+    const selected = [];
+    const used = new Set();
+
+    while (selected.length < count && pool.length > 0) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const candidate = pool[idx];
+
+        if (!used.has(candidate)) {
+            selected.push(candidate);
+            used.add(candidate);
+        }
+
+        pool.splice(idx, 1);
+    }
+
+    return selected;
+}
+

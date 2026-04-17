@@ -82,6 +82,7 @@ function loadComponent(placeholderId, componentPath, initFn) {
 loadComponent("header-placeholder",      "components/header.html",      initHeader);
 loadComponent("sticky-placeholder",      "components/stickyNav.html",   initStickyNav);
 loadComponent("miniGallery-placeholder", "components/miniGallery.html", initMiniGallery);
+loadComponent("miniGuias-placeholder",   "components/miniGuias.html",   initMiniGuias);
 loadComponent("miniFAQ-placeholder",     "components/miniFAQ.html",     initMiniFAQ);
 loadComponent("toko-placeholder",        "components/toko.html",        initTokoSection);
 loadComponent("contact-placeholder",     "components/contact.html",     initFormulario);
