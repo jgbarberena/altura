@@ -1,5 +1,6 @@
-# generate-index.ps1 (version limpia sin tildes en literales)
-# ejecutar desde carpeta guias con: powershell -NoProfile -ExecutionPolicy Bypass -File .\generate-index.ps1
+# generate-index.ps1
+# Ejecutar desde carpeta guias con:
+# powershell -NoProfile -ExecutionPolicy Bypass -File .\generate-index.ps1
 
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $dir
@@ -26,6 +27,11 @@ function Split-ImagePath($path) {
     return @{ Base = $base; Ext = $ext }
 }
 
+# Normalizar rutas para JSON (quitar ../ o ../../)
+function Normalize-ImagePath($p) {
+    return $p -replace '^\.\./', '' -replace '^\.\./', ''
+}
+
 # Archivos a ignorar
 $skip = @('index.html','generate-index.ps1','main.template.html')
 
@@ -41,37 +47,58 @@ foreach ($file in $htmlFiles) {
     if (-not $m.Success) { continue }
     $tag = $m.Value
 
-    $title = Get-Attr $tag 'data-title'
+    $title   = Get-Attr $tag 'data-title'
     $resumen = Get-Attr $tag 'data-resumen'
-    $img = Get-Attr $tag 'data-img'
+    $img     = Get-Attr $tag 'data-img'
     if (-not $title -or -not $resumen -or -not $img) { continue }
 
-    $alt = Get-Attr $tag 'data-alt'; if (-not $alt) { $alt = $title }
-    $cat = Get-Attr $tag 'data-category'; if (-not $cat) { $cat = 'rest' }
+    $alt  = Get-Attr $tag 'data-alt'; if (-not $alt) { $alt = $title }
+    $cat  = Get-Attr $tag 'data-category'; if (-not $cat) { $cat = 'rest' }
     $feat = Get-Attr $tag 'data-feature'; if (-not $feat) { $feat = '' }
+    $topics = Get-Attr $tag 'data-topics'; if (-not $topics) { $topics = '' }
 
+    # Construir rutas desktop/mobile
     $imgParts   = Split-ImagePath $img
     $base       = $imgParts.Base
     $ext        = $imgParts.Ext
     $imgMobile  = "$base`_mobile$ext"
     $imgDesktop = "$base`_desktop$ext"
 
+    # Versiones HTML (relativas)
+    $imgHtml        = $img
+    $imgMobileHtml  = $imgMobile
+    $imgDesktopHtml = $imgDesktop
+
+    # Versiones JSON (absolutas)
+    $imgAbs        = Normalize-ImagePath $img
+    $imgMobileAbs  = Normalize-ImagePath $imgMobile
+    $imgDesktopAbs = Normalize-ImagePath $imgDesktop
+
     $metas += [PSCustomObject]@{
-        File       = $file.Name
-        Url        = "./$($file.Name)"
-        Title      = $title
-        Resumen    = $resumen
-        Img        = $img
-        ImgMobile  = $imgMobile
-        ImgDesktop = $imgDesktop
-        Alt        = $alt
-        Category   = $cat.ToLower()
-        Feature    = $feat.ToLower()
+        File            = $file.Name
+        Url             = "./$($file.Name)"
+        Title           = $title
+        Resumen         = $resumen
+
+        # HTML (relativo)
+        ImgHtml         = $imgHtml
+        ImgMobileHtml   = $imgMobileHtml
+        ImgDesktopHtml  = $imgDesktopHtml
+
+        # JSON (absoluto)
+        Img             = $imgAbs
+        ImgMobile       = $imgMobileAbs
+        ImgDesktop      = $imgDesktopAbs
+
+        Alt             = $alt
+        Category        = $cat.ToLower()
+        Feature         = $feat.ToLower()
+        Topic           = $topics.ToLower()
     }
 }
 
-# Seleccion de destacados
-$fixed = $metas | Where-Object { $_.Feature -in @('fixed','primary') }
+# Selección de destacados por defecto (igual que antes)
+$fixed = $metas | Where-Object { $_.Feature -eq 'fixed' }
 $core  = $metas | Where-Object { $_.Category -eq 'core' } | Select-Object -First 1
 $rest  = $metas | Where-Object { $_.Category -eq 'rest' } | Select-Object -First 1
 
@@ -101,7 +128,7 @@ $tplList = [regex]::Match(
     '(?s)<template id="tpl-listado">\s*(.*?)\s*</template>'
 ).Groups[1].Value
 
-# Extraer solo el interior del <main> de main.template.html
+# Extraer solo el interior del <main>
 $mainInnerMatch = [regex]::Match(
     $mainTpl,
     '(?s)<main[^>]*>\s*(.*?)\s*</main>'
@@ -111,62 +138,54 @@ if (-not $mainInnerMatch.Success) {
 }
 $mainInner = $mainInnerMatch.Groups[1].Value
 
-# Eliminar los bloques <template> del contenido que se va a inyectar
-$mainInner = [regex]::Replace(
-    $mainInner,
-    '(?s)<template id="tpl-destacado">\s*.*?\s*</template>',
-    ''
-)
-$mainInner = [regex]::Replace(
-    $mainInner,
-    '(?s)<template id="tpl-listado">\s*.*?\s*</template>',
-    ''
-)
+# Eliminar templates del contenido
+$mainInner = [regex]::Replace($mainInner, '(?s)<template id="tpl-destacado">.*?</template>', '')
+$mainInner = [regex]::Replace($mainInner, '(?s)<template id="tpl-listado">.*?</template>', '')
 
-# Generar destacados
+# Generar destacados (HTML relativo)
 $cards = ""
 foreach ($m in $dest) {
     $c = $tplDest
-    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  [regex]::Escape($m.ImgMobile).Replace('\','\\')
-    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', [regex]::Escape($m.ImgDesktop).Replace('\','\\')
-    $c = $c -replace '\{\{IMAGE_ALT\}\}',     [regex]::Escape($m.Alt).Replace('\','\\')
-    $c = $c -replace '\{\{TITLE\}\}',         [regex]::Escape($m.Title).Replace('\','\\')
-    $c = $c -replace '\{\{RESUMEN\}\}',       [regex]::Escape($m.Resumen).Replace('\','\\')
-    $c = $c -replace '\{\{PAGE_URL\}\}',      [regex]::Escape($m.Url).Replace('\','\\')
+    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  $m.ImgMobileHtml
+    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', $m.ImgDesktopHtml
+    $c = $c -replace '\{\{IMAGE_ALT\}\}',     $m.Alt
+    $c = $c -replace '\{\{TITLE\}\}',         $m.Title
+    $c = $c -replace '\{\{RESUMEN\}\}',       $m.Resumen
+    $c = $c -replace '\{\{PAGE_URL\}\}',      $m.Url
     $cards += $c + "`n"
 }
 
-# Generar listado
+# Generar listado (HTML relativo)
 $listHtml = ""
 foreach ($m in $listado) {
     $c = $tplList
-    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  [regex]::Escape($m.ImgMobile).Replace('\','\\')
-    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', [regex]::Escape($m.ImgDesktop).Replace('\','\\')
-    $c = $c -replace '\{\{IMAGE_ALT\}\}',     [regex]::Escape($m.Alt).Replace('\','\\')
-    $c = $c -replace '\{\{TITLE\}\}',         [regex]::Escape($m.Title).Replace('\','\\')
-    $c = $c -replace '\{\{RESUMEN\}\}',       [regex]::Escape($m.Resumen).Replace('\','\\')
-    $c = $c -replace '\{\{PAGE_URL\}\}',      [regex]::Escape($m.Url).Replace('\','\\')
+    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  $m.ImgMobileHtml
+    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', $m.ImgDesktopHtml
+    $c = $c -replace '\{\{IMAGE_ALT\}\}',     $m.Alt
+    $c = $c -replace '\{\{TITLE\}\}',         $m.Title
+    $c = $c -replace '\{\{RESUMEN\}\}',       $m.Resumen
+    $c = $c -replace '\{\{PAGE_URL\}\}',      $m.Url
     $listHtml += $c + "`n"
 }
 
-# Rellenar el interior del main.template (ya sin templates)
+# Rellenar main
 $mainFilled = $mainInner -replace '\{\{CARDS\}\}',   $cards
 $mainFilled = $mainFilled -replace '\{\{LISTADO\}\}', $listHtml
 
 # Leer index.template.html
 $template = Read-File .\index.template.html
 
-# Sustituir solo el contenido del <main> del index.template.html
+# Sustituir contenido del <main>
 $new = [regex]::Replace(
     $template,
     '(?s)(<main[^>]*>)(.*?)(</main>)',
     "`$1$mainFilled`$3"
 )
- 
-# Crear JSON
+
+# Crear JSON (con rutas absolutas)
 $json = $metas | ConvertTo-Json -Depth 5
 
-# Insertar JSON al final del <body>
+# Insertar JSON
 $new = $new -replace '<!--GUIAS_JSON-->', "<!--GUIAS_JSON-->`n<script id='guias-data' type='application/json'>$json</script>`n"
 
 # Escribir index.html

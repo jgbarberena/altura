@@ -1,30 +1,44 @@
 document.addEventListener("DOMContentLoaded", () => {
 
-    // Leer JSON
+    // 1. Leer JSON generado por PowerShell
     const raw = document.getElementById("guias-data");
-    if (!raw) return;
+    if (!raw) {
+        console.warn("Destacados: no se encontró #guias-data");
+        return;
+    }
 
-    const data = JSON.parse(raw.textContent);
+    let data;
+    try {
+        data = JSON.parse(raw.textContent);
+    } catch (e) {
+        console.error("Destacados: JSON inválido", e);
+        return;
+    }
 
-    // Contenedores
+    if (!Array.isArray(data) || data.length === 0) {
+        console.warn("Destacados: JSON vacío");
+        return;
+    }
+
+    // 2. Contenedores
     const destacadosCards = document.getElementById("guias-destacados-cards");
     const listadoCards = document.getElementById("guias-listado-cards");
-    if (!destacados || !listado) return;
 
-    // Función de selección ponderada
+    if (!destacadosCards || !listadoCards) {
+        console.error("Destacados: contenedores no encontrados");
+        return;
+    }
+
+    // 3. Función ponderada (igual que tu lógica original)
     function pickWeighted(items) {
         if (!items.length) return null;
 
         const weights = {
-            fixed: Infinity,
             high: 3,
             medium: 2,
             low: 1,
             "": 1
         };
-
-        const fixed = items.find(i => i.Feature === "fixed");
-        if (fixed) return fixed;
 
         const bag = [];
         for (const item of items) {
@@ -35,40 +49,35 @@ document.addEventListener("DOMContentLoaded", () => {
         return bag[Math.floor(Math.random() * bag.length)];
     }
 
-    // 1. Fijos
+    // 4. Lógica editorial EXACTA que querías mantener
+
+    // A) Fijos (van siempre)
     const fixed = data.filter(g => g.Feature === "fixed");
 
-    // 2. Candidatos restantes
-    const candidates = data.filter(g => !fixed.some(f => f.File === g.File));
+    // B) Resto de candidatos
+    const remaining = data.filter(g => !fixed.some(f => f.File === g.File));
 
-    // 3. Core ponderado
-    const coreCandidates = candidates.filter(g => g.Category === "core");
+    // C) Core ponderado
+    const coreCandidates = remaining.filter(g => g.Category === "core");
     const corePick = pickWeighted(coreCandidates);
 
-    // 4. Rest ponderado
-    const restCandidates = candidates.filter(g => g.Category === "rest");
+    // D) Rest ponderado
+    const restCandidates = remaining.filter(g => g.Category === "rest");
     const restPick = pickWeighted(restCandidates);
 
-    // 5. Destacados finales
+    // E) Destacados finales (orden: fixed → core → rest)
     const picks = [...fixed];
     if (corePick) picks.push(corePick);
     if (restPick) picks.push(restPick);
 
-    // Función para generar <picture>
-    function pictureHTML(g) {
-        return `
-            <picture>
-                <source media="(max-width: 768px)" srcset="${g.ImgMobile}">
-                <source media="(min-width: 769px)" srcset="${g.ImgDesktop}">
-                <img src="${g.ImgMobile}" alt="${g.Alt}" loading="lazy">
-            </picture>
-        `;
-    }
-
-    // Pintar destacados
+    // 5. Renderizar destacados (HTML usa rutas relativas)
     destacadosCards.innerHTML = picks.map(g => `
         <article class="card guia-destacada">
-            ${pictureHTML(g)}
+            <picture>
+                <source media="(max-width: 768px)" srcset="${g.ImgMobileHtml}">
+                <source media="(min-width: 769px)" srcset="${g.ImgDesktopHtml}">
+                <img src="${g.ImgMobileHtml}" alt="${g.Alt}" loading="lazy">
+            </picture>
             <div class="card-overlay">
                 <h2>${g.Title}</h2>
                 <p>${g.Resumen}</p>
@@ -81,11 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const used = new Set(picks.map(g => g.File));
     const restantes = data.filter(g => !used.has(g.File));
 
-    // Separar por categoría
-    const restantesCore = restantes.filter(g => g.Category === "core");
-    const restantesRest = restantes.filter(g => g.Category === "rest");
-
-    // Mezcla aleatoria (Fisher–Yates)
+    // 7. Mezcla aleatoria (Fisher–Yates)
     function shuffle(arr) {
         const a = [...arr];
         for (let i = a.length - 1; i > 0; i--) {
@@ -95,15 +100,17 @@ document.addEventListener("DOMContentLoaded", () => {
         return a;
     }
 
-    const coreShuffled = shuffle(restantesCore);
-    const restShuffled = shuffle(restantesRest);
+    const ordenFinal = shuffle(restantes);
 
-    const ordenFinal = [...coreShuffled, ...restShuffled];
-
-    // Pintar listado
+    // 8. Renderizar listado (HTML usa rutas relativas)
     listadoCards.innerHTML = ordenFinal.map(g => `
         <article class="guia-card">
-            ${pictureHTML(g)}
+            <picture>
+                <source media="(max-width: 768px)" srcset="${g.ImgMobileHtml}">
+                <source media="(min-width: 769px)" srcset="${g.ImgDesktopHtml}">
+                <img src="${g.ImgMobileHtml}" alt="${g.Alt}" loading="lazy">
+            </picture>
+
             <div class="guia-content">
                 <h3>${g.Title}</h3>
                 <p>${g.Resumen}</p>
