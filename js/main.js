@@ -623,7 +623,7 @@ async function initMiniGuias(root, resolveAsset, resolvePage) {
             <div class="guia-content">
                 <h3>${g.Title}</h3>
                 <p>${g.Resumen}</p>
-                <a href="${url}">Leer más →</a>
+                <a href="${url}">Leer más</a>
             </div>
         `;
 
