@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
     }
 
-    // 3. Función ponderada (igual que tu lógica original)
+    // 3. Función ponderada
     function pickWeighted(items) {
         if (!items.length) return null;
 
@@ -49,48 +49,41 @@ document.addEventListener("DOMContentLoaded", () => {
         return bag[Math.floor(Math.random() * bag.length)];
     }
 
-    // 4. Lógica editorial EXACTA que querías mantener
-
-    // A) Fijos (van siempre)
+    // 4. Lógica editorial
     const fixed = data.filter(g => g.Feature === "fixed");
-
-    // B) Resto de candidatos
     const remaining = data.filter(g => !fixed.some(f => f.File === g.File));
 
-    // C) Core ponderado
     const coreCandidates = remaining.filter(g => g.Category === "core");
     const corePick = pickWeighted(coreCandidates);
 
-    // D) Rest ponderado
     const restCandidates = remaining.filter(g => g.Category === "rest");
     const restPick = pickWeighted(restCandidates);
 
-    // E) Destacados finales (orden: fixed → core → rest)
     const picks = [...fixed];
     if (corePick) picks.push(corePick);
     if (restPick) picks.push(restPick);
 
-    // 5. Renderizar destacados (HTML usa rutas relativas)
+    // 5. Renderizar destacados
     destacadosCards.innerHTML = picks.map(g => `
         <article class="card guia-destacada">
             <picture>
-                <source media="(max-width: 768px)" srcset="${g.ImgMobileHtml}">
-                <source media="(min-width: 769px)" srcset="${g.ImgDesktopHtml}">
-                <img src="${g.ImgMobileHtml}" alt="${g.Alt}" loading="lazy">
+                <source media="(max-width: 768px)" srcset="${resolveAsset(g.ImgMobile)}">
+                <source media="(min-width: 769px)" srcset="${resolveAsset(g.ImgDesktop)}">
+                <img src="${resolveAsset(g.ImgMobile)}" alt="${g.Alt}" loading="lazy">
             </picture>
             <div class="card-overlay">
                 <h2>${g.Title}</h2>
                 <p>${g.Resumen}</p>
-                <a href="${g.Url}" class="btn btn-primary btn-mini">Leer guía</a>
+                <a href="${resolvePage(g.Url)}" class="btn btn-primary btn-mini">Leer guía</a>
             </div>
         </article>
     `).join("");
 
-    // 6. Listado = todos los demás
+    // 6. Listado
     const used = new Set(picks.map(g => g.File));
     const restantes = data.filter(g => !used.has(g.File));
 
-    // 7. Mezcla aleatoria (Fisher–Yates)
+    // 7. Mezcla aleatoria
     function shuffle(arr) {
         const a = [...arr];
         for (let i = a.length - 1; i > 0; i--) {
@@ -102,19 +95,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const ordenFinal = shuffle(restantes);
 
-    // 8. Renderizar listado (HTML usa rutas relativas)
+    // 8. Renderizar listado
     listadoCards.innerHTML = ordenFinal.map(g => `
         <article class="guia-card">
             <picture>
-                <source media="(max-width: 768px)" srcset="${g.ImgMobileHtml}">
-                <source media="(min-width: 769px)" srcset="${g.ImgDesktopHtml}">
-                <img src="${g.ImgMobileHtml}" alt="${g.Alt}" loading="lazy">
+                <source media="(max-width: 768px)" srcset="${resolveAsset(g.ImgMobile)}">
+                <source media="(min-width: 769px)" srcset="${resolveAsset(g.ImgDesktop)}">
+                <img src="${resolveAsset(g.ImgMobile)}" alt="${g.Alt}" loading="lazy">
             </picture>
 
             <div class="guia-content">
                 <h3>${g.Title}</h3>
                 <p>${g.Resumen}</p>
-                <a href="${g.Url}">Leer más</a>
+                <a href="${resolvePage(g.Url)}">Leer más</a>
             </div>
         </article>
     `).join("");

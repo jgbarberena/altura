@@ -27,9 +27,9 @@ function Split-ImagePath($path) {
     return @{ Base = $base; Ext = $ext }
 }
 
-# Normalizar rutas para JSON (quitar ../ o ../../)
+# Normalizar rutas para JSON (quitar ../)
 function Normalize-ImagePath($p) {
-    return $p -replace '^\.\./', '' -replace '^\.\./', ''
+    return $p -replace '^\.\./', ''
 }
 
 # Archivos a ignorar
@@ -64,40 +64,33 @@ foreach ($file in $htmlFiles) {
     $imgMobile  = "$base`_mobile$ext"
     $imgDesktop = "$base`_desktop$ext"
 
-    # Versiones HTML (relativas)
-    $imgHtml        = $img
-    $imgMobileHtml  = $imgMobile
-    $imgDesktopHtml = $imgDesktop
-
-    # Versiones JSON (absolutas)
+    # Versiones JSON (relativas al proyecto)
     $imgAbs        = Normalize-ImagePath $img
     $imgMobileAbs  = Normalize-ImagePath $imgMobile
     $imgDesktopAbs = Normalize-ImagePath $imgDesktop
 
+    # URL relativa al proyecto
+    $url = "guias/$($file.Name)"
+
     $metas += [PSCustomObject]@{
-        File            = $file.Name
-        Url             = "./$($file.Name)"
-        Title           = $title
-        Resumen         = $resumen
+        File       = $file.Name
+        Url        = $url
+        Title      = $title
+        Resumen    = $resumen
 
-        # HTML (relativo)
-        ImgHtml         = $imgHtml
-        ImgMobileHtml   = $imgMobileHtml
-        ImgDesktopHtml  = $imgDesktopHtml
+        # SOLO rutas relativas al proyecto
+        Img        = $imgAbs
+        ImgMobile  = $imgMobileAbs
+        ImgDesktop = $imgDesktopAbs
 
-        # JSON (absoluto)
-        Img             = $imgAbs
-        ImgMobile       = $imgMobileAbs
-        ImgDesktop      = $imgDesktopAbs
-
-        Alt             = $alt
-        Category        = $cat.ToLower()
-        Feature         = $feat.ToLower()
-        Topic           = $topics.ToLower()
+        Alt        = $alt
+        Category   = $cat.ToLower()
+        Feature    = $feat.ToLower()
+        Topic      = $topics.ToLower()
     }
 }
 
-# Selección de destacados por defecto (igual que antes)
+# Selección de destacados por defecto
 $fixed = $metas | Where-Object { $_.Feature -eq 'fixed' }
 $core  = $metas | Where-Object { $_.Category -eq 'core' } | Select-Object -First 1
 $rest  = $metas | Where-Object { $_.Category -eq 'rest' } | Select-Object -First 1
@@ -146,12 +139,12 @@ $mainInner = [regex]::Replace($mainInner, '(?s)<template id="tpl-listado">.*?</t
 $cards = ""
 foreach ($m in $dest) {
     $c = $tplDest
-    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  $m.ImgMobileHtml
-    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', $m.ImgDesktopHtml
+    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  "../$($m.ImgMobile)"
+    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', "../$($m.ImgDesktop)"
     $c = $c -replace '\{\{IMAGE_ALT\}\}',     $m.Alt
     $c = $c -replace '\{\{TITLE\}\}',         $m.Title
     $c = $c -replace '\{\{RESUMEN\}\}',       $m.Resumen
-    $c = $c -replace '\{\{PAGE_URL\}\}',      $m.Url
+    $c = $c -replace '\{\{PAGE_URL\}\}',      "../$($m.Url)"
     $cards += $c + "`n"
 }
 
@@ -159,12 +152,12 @@ foreach ($m in $dest) {
 $listHtml = ""
 foreach ($m in $listado) {
     $c = $tplList
-    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  $m.ImgMobileHtml
-    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', $m.ImgDesktopHtml
+    $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  "../$($m.ImgMobile)"
+    $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', "../$($m.ImgDesktop)"
     $c = $c -replace '\{\{IMAGE_ALT\}\}',     $m.Alt
     $c = $c -replace '\{\{TITLE\}\}',         $m.Title
     $c = $c -replace '\{\{RESUMEN\}\}',       $m.Resumen
-    $c = $c -replace '\{\{PAGE_URL\}\}',      $m.Url
+    $c = $c -replace '\{\{PAGE_URL\}\}',      "../$($m.Url)"
     $listHtml += $c + "`n"
 }
 
@@ -182,7 +175,7 @@ $new = [regex]::Replace(
     "`$1$mainFilled`$3"
 )
 
-# Crear JSON (con rutas absolutas)
+# Crear JSON limpio
 $json = $metas | ConvertTo-Json -Depth 5
 
 # Insertar JSON

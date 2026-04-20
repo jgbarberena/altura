@@ -359,6 +359,11 @@ async function initMiniFAQ(root, resolveAsset) {
 
     // Aquí activamos el acordeón SOLO dentro de miniFAQ
     initFAQAccordionIn(container);
+
+    // Resolver enlaces internos
+    root.querySelectorAll('[data-page]').forEach(a => {
+        a.href = resolvePage(a.dataset.page);
+    });
 }
 
 
@@ -628,6 +633,10 @@ async function initMiniGuias(root, resolveAsset, resolvePage) {
         `;
 
         container.appendChild(card);
+    });
+
+    root.querySelectorAll('[data-page]').forEach(a => {
+        a.href = resolvePage(a.dataset.page);
     });
 }
 
