@@ -1,41 +1,180 @@
-.cupinazo-page {
-    min-height: 100vh;
-    background: black;
+/* =========================
+   ENCierro PAGE
+========================= */
+
+/* Activamos snap como en home */
+html {
+    scroll-snap-type: y proximity;
 }
 
-/* HERO */
-.chupinazo-hero {
+/* =========================
+   HERO ENCierro (aislado)
+========================= */
+
+#encierro-hero {
     position: relative;
-    height: 100vh;
-
-    background-image: url('../img/experiencias/chupinazo/Chupinazo_2.jpg');
-    background-size: cover;
-    background-position: center;
-
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.cupinazo-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-}
-
-.cupinazo-content {
-    position: relative;
-    z-index: 2;
     text-align: center;
     color: white;
+
+    /* IMPORTANTE: la imagen correcta */
+    background: url("../img/experiencias/encierro/balcon-encierro-aerea_mobile.jpg") center/cover no-repeat;
 }
 
-.cupinazo-content h1 {
+/* Overlay (reutiliza lógica global pero aseguramos) */
+#encierro-hero .overlay {
+    position: absolute;
+    inset: 0;
+}
+
+/* Contenido */
+#encierro-hero .hero-content {
+    max-width: 800px;
+    padding: 0 20px;
+}
+
+#encierro-hero h1 {
     font-size: 48px;
+    letter-spacing: 4px;
     margin-bottom: 10px;
 }
 
-.cupinazo-content p {
-    font-size: 18px;
-    opacity: 0.8;
+#encierro-hero h2 {
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+#encierro-hero p {
+    font-size: 17px;
+    color: #ddd;
+    margin-bottom: 25px;
+}
+
+.hero-microcopy {
+    font-size: 13px;
+    color: #ccc;
+    margin-top: 15px;
+}
+
+
+/* =========================
+   INTRO (solo spacing interno)
+========================= */
+
+.experiencias-intro .intro-container {
+    max-width: 800px;
+    margin: auto;
+}
+
+.experiencias-intro h2 {
+    margin-bottom: 20px;
+}
+
+.experiencias-intro p {
+    margin-bottom: 18px;
+    color: #444;
+}
+
+
+/* =========================
+   GRID EXPERIENCIAS (FIX REAL)
+========================= */
+
+.experiencias-grid {
+    display: grid;
+    grid-template-columns: 1fr; /* MOBILE: 1 columna */
+    gap: 20px; /* separación real (antes no había) */
+}
+
+/* ALTURA consistente */
+.experiencia-item img {
+    height: 420px;
+}
+
+
+/* =========================
+   SECCIÓN PRECIO
+========================= */
+
+.experiencias-precio .intro-container {
+    max-width: 800px;
+    margin: auto;
+}
+
+.experiencias-precio h2 {
+    margin-bottom: 20px;
+}
+
+.experiencias-precio p {
+    margin-bottom: 15px;
+}
+
+.experiencias-precio .microcopy {
+    font-size: 14px;
+    color: #777;
+}
+
+
+/* =========================
+   LISTAS (bloque enlaces)
+========================= */
+
+.intro-container ul {
+    margin: 15px 0;
+    padding-left: 18px;
+}
+
+.intro-container li {
+    margin-bottom: 8px;
+}
+
+.intro-container a {
+    color: #b30000;
+    text-decoration: none;
+}
+
+.intro-container a:hover {
+    text-decoration: underline;
+}
+
+
+/* =========================
+   TABLET
+========================= */
+
+@media (min-width: 769px) {
+
+    #encierro-hero {
+        background-image: url("../img/experiencias/encierro/balcon-encierro-aerea_desktop.jpg");
+    }
+
+    #encierro-hero h1 {
+        font-size: 60px;
+    }
+
+    #encierro-hero h2 {
+        font-size: 28px;
+    }
+
+    .experiencias-grid {
+        grid-template-columns: repeat(2, 1fr); /* 2 columnas */
+        gap: 25px;
+    }
+
+}
+
+
+/* =========================
+   DESKTOP
+========================= */
+
+@media (min-width: 1024px) {
+
+    .experiencias-grid {
+        grid-template-columns: repeat(3, 1fr); /* 3 columnas */
+        gap: 30px;
+    }
+
 }
