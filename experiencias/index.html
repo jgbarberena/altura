@@ -1,163 +1,254 @@
 ﻿<!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Experiencias Exclusivas en San Fermí­n</title>
+    <title>Experiencias en San Fermín | Vive San Fermín</title>
+
     <link rel="stylesheet" href="../css/style.css">
     <link rel="stylesheet" href="../css/components.css">
     <link rel="stylesheet" href="../css/experiencias.css">
-<!-- TEMPORAL A ELIMINAR!!!-->    <link rel="stylesheet" href="../css/home.css"> <!-- TEMPORAL A ELIMINAR!!!-->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-    
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap"
+        rel="stylesheet">
 </head>
+
 <body>
-<!-- Header -->
-<div id="header-placeholder"></div>
 
-<!-- CONTENIDO -->
-<main class="experiencias-page">
+    <!-- Header -->
+    <div id="header-placeholder"></div>
 
-    <section class="hero section section--first--fullscreen has-overlay" id="hero">
-        <div class="overlay"></div>
+    <!-- CONTENIDO -->
+    <main class="experiencias-page">
 
-        <div class="hero-content">
-            <h1>VIVE SAN FERMÍN</h1>
-            <h2>San Fermí­n en su versión más exclusiva</h2>
-            <p>Balcones privados, vistas privilegiadas y experiencias diseñadas para quienes buscan algo más.</p>
+        <!-- HERO -->
+        <section class="hero section section--first--fullscreen has-overlay" id="hero">
+            <div class="overlay"></div>
 
-            <div class="buttons">
-                <a href="?interes=#contacto" class="btn btn-primary">Quiero vivirlo</a>
-                <a href="#experiencias" class="btn btn-secondary">Descubrir más</a>
-            </div>
-        </div>
-    </section>
+            <div class="hero-content">
+                <h1>Experiencias en San Fermín</h1>
+                <h2>Una forma diferente de vivir San Fermín</h2>
+                <p>Balcones privados, vistas privilegiadas y experiencias diseñadas para quienes buscan algo más.</p>
 
-    <section id="experiencias" class="experiencias section section--inner no-snap-children">
-        <h2>Experiencias Exclusivas</h2>
-
-        <div class="experiencias-grid">
-
-            <div class="card experiencia-item">
-                <picture>
-                    <source media="(max-width: 768px)" srcset="../img/balcon-encierro-aerea_mobile.jpg">
-                    <source media="(min-width: 769px)" srcset="../img/balcon-encierro-aerea_desktop.jpg">
-                    <img src="../img/balcon-encierro-aerea_desktop.jpg" alt="Balcón privado para ver el Encierro en la calle Estafeta" loading="lazy">
-                </picture>
-                <div class="experiencia-overlay card-overlay">
-                    <h3>Encierros</h3>
-                    <p>Vive el momento más emocionante desde una posición privilegiada.</p>
-                    <div class="buttons buttons--left">
-                        <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
-                        <a href="../experiencias/encierro/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
-                    </div>
+                <div class="buttons">
+                    <a href="?interes=#contacto" class="btn btn-primary">Quiero vivirlo</a>
+                    <a href="#experiencias" class="btn btn-secondary">Descubrir más</a>
+                </div>
+                <div class="hero-microcopy">
+                    <p>Cuéntanos qué te gustaría vivir y te proponemos una experiencia a tu medida</p>
                 </div>
             </div>
+        </section>
 
-            <div class="card experiencia-item">
-                <picture>
-                    <source media="(max-width: 768px)" srcset="../img/balcon-exclusivo-chupinazo_mobile.jpg">
-                    <source media="(min-width: 769px)" srcset="../img/balcon-exclusivo-chupinazo_desktop.jpg">
-                    <img src="../img/balcon-exclusivo-chupinazo_desktop.jpg" alt="Balcón exclusivo para ver el Chupinazo en la Plaza del Ayuntamiento" loading="lazy">
-                </picture>
-                <div class="experiencia-overlay card-overlay">
-                    <h3>Chupinazo</h3>
-                    <p>Disfruta del inicio de la fiesta desde un balcón exclusivo.</p>
-                    <div class="buttons buttons--left">
-                        <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
-                        <a href="../experiencias/chupinazo/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+        <!-- INTRO SEO -->
+        <section class="experiencias-intro section section--inner">
+            <h2>Una forma diferente de vivir San Fermín</h2>
+
+            <p>
+                San Fermín es mucho más que una fiesta. Durante ocho días, Pamplona se transforma en un entorno lleno de
+                momentos únicos donde tradición, emoción y ambiente se viven de forma continua.
+            </p>
+
+            <p>
+                Nuestras experiencias están pensadas para quienes buscan algo más que estar: desde ver el encierro desde
+                un balcón privado hasta vivir el chupinazo o descubrir momentos más exclusivos de la fiesta. Cada
+                propuesta se adapta a lo que quieres vivir, con un enfoque cuidado y personalizado.
+            </p>
+
+            <p>
+                Si es tu primera vez o quieres entender mejor cómo organizar tu experiencia, puedes empezar por nuestras
+                <a href="../guias/que-hacer-san-fermin.html">guías sobre qué hacer en San Fermín</a>.
+            </p>
+        </section>
+
+        <!-- CARDS EXPERIENCIAS -->
+        <section id="experiencias" class="experiencias section section--inner no-snap-children">
+            <h2>Explora las experiencias</h2>
+
+            <div class="experiencias-grid">
+
+                <!-- Encierros -->
+                <div class="card experiencia-item">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/balcon-encierro-aerea_mobile.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/balcon-encierro-aerea_desktop.jpg">
+                        <img src="../img/balcon-encierro-aerea_desktop.jpg"
+                            alt="Balcón privado para ver el Encierro en Pamplona" loading="lazy">
+                    </picture>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Encierros</h3>
+                        <p>Vive el momento más emocionante desde una posición privilegiada.</p>
+                        <div class="buttons buttons--left">
+                            <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <a href="../experiencias/encierro/index.html" class="btn btn-secondary btn-mini">Descubrir
+                                más</a>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="card experiencia-item">
-                <picture>
-                    <source media="(max-width: 768px)" srcset="../img/balcon-procesion-mercaderes_mobile.jpg">
-                    <source media="(min-width: 769px)" srcset="../img/balcon-procesion-mercaderes_desktop.jpg">
-                    <img src="../img/balcon-procesion-mercaderes_desktop.jpg" alt="Balcón privado para ver la Procesión de San Fermin en calle Mercaderes" loading="lazy">
-                </picture>
-                <div class="experiencia-overlay card-overlay">
-                    <h3>Procesión</h3>
-                    <p>Vive el momento más especial de las fiestas desde la altura.</p>
-                    <div class="buttons buttons--left">
-                        <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
-                        <a href="../experiencias/procesion/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                <!-- Chupinazo -->
+                <div class="card experiencia-item">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/balcon-exclusivo-chupinazo_mobile.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/balcon-exclusivo-chupinazo_desktop.jpg">
+                        <img src="../img/balcon-exclusivo-chupinazo_desktop.jpg"
+                            alt="Balcón exclusivo para ver el Chupinazo en Pamplona" loading="lazy">
+                    </picture>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Chupinazo</h3>
+                        <p>Disfruta del inicio de la fiesta desde un balcón exclusivo.</p>
+                        <div class="buttons buttons--left">
+                            <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <a href="../experiencias/chupinazo/index.html" class="btn btn-secondary btn-mini">Descubrir
+                                más</a>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="card experiencia-item">
-                <picture>
-                    <source media="(max-width: 768px)" srcset="../img/balcon-pobre-de-mi-ayuntamiento_mobile.jpg">
-                    <source media="(min-width: 769px)" srcset="../img/balcon-pobre-de-mi-ayuntamiento_desktop.jpg">
-                    <img src="../img/balcon-pobre-de-mi-ayuntamiento_desktop.jpg" alt="Balcón privado para ver el Pobre de Mí en la Plaza del Ayuntamiento" loading="lazy">
-                </picture>
-                <div class="experiencia-overlay card-overlay">
-                    <h3>Pobre de mí­</h3>
-                    <p>El cierre más emotivo desde una ubicación única.</p>
-                    <div class="buttons buttons--left">
-                        <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
-                        <a href="../experiencias/pobre-de-mi/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+                <!-- Procesión -->
+                <div class="card experiencia-item">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/balcon-procesion-mercaderes_mobile.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/balcon-procesion-mercaderes_desktop.jpg">
+                        <img src="../img/balcon-procesion-mercaderes_desktop.jpg"
+                            alt="Procesión de San Fermín desde balcón en Pamplona" loading="lazy">
+                    </picture>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Procesión</h3>
+                        <p>Vive uno de los momentos más especiales de las fiestas.</p>
+                        <div class="buttons buttons--left">
+                            <a href="?interes=procesion#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <a href="../experiencias/procesion/index.html" class="btn btn-secondary btn-mini">Descubrir
+                                más</a>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="card experiencia-item">
-                <picture>
-                    <source media="(max-width: 768px)" srcset="../img/balcon-despedida-gigantes_mobile.jpg">
-                    <source media="(min-width: 769px)" srcset="../img/balcon-despedida-gigantes_desktop.jpg">
-                    <img src="../img/balcon-despedida-gigantes_desktop.jpg" alt="Balcón privado para ver la Despedida de los Gigantes en la Plaza del Ayuntamiento" loading="lazy">
-                </picture>
-                <div class="experiencia-overlay card-overlay">
-                    <h3>Despedida de Gigantes</h3>
-                    <p>Nuestros personajes más queridos desde arriba.</p>
-                    <div class="buttons buttons--left">
-                        <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
-                        <a href="../experiencias/gigantes/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+
+                <!-- Pobre de mí -->
+                <div class="card experiencia-item">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/balcon-pobre-de-mi-ayuntamiento_mobile.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/balcon-pobre-de-mi-ayuntamiento_desktop.jpg">
+                        <img src="../img/balcon-pobre-de-mi-ayuntamiento_desktop.jpg"
+                            alt="Pobre de mí en la Plaza del Ayuntamiento desde balcón" loading="lazy">
+                    </picture>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Pobre de mí</h3>
+                        <p>El cierre más emotivo desde una ubicación única.</p>
+                        <div class="buttons buttons--left">
+                            <a href="?interes=pobre#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <a href="../experiencias/pobre-de-mi/index.html"
+                                class="btn btn-secondary btn-mini">Descubrir más</a>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="card experiencia-item">
-                <picture>
-                    <source media="(max-width: 768px)" srcset="../img/encierro-barrera-estafeta_mobile.jpg">
-                    <source media="(min-width: 769px)" srcset="../img/encierro-barrera-estafeta_desktop.jpg">
-                    <img src="../img/encierro-barrera-estafeta_desktop.jpg" alt="Barrera exclusiva para ver el Encierro en calle Estafeta" loading="lazy">
-                </picture>
-                <div class="experiencia-overlay card-overlay">
-                    <h3>Momenticos</h3>
-                    <p>Disfruta de esos momentos pamplonicas al alcance de muy pocos.</p>
-                    <div class="buttons buttons--left">
-                        <a href="?interes=personalizada#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
-                        <a href="../experiencias/momenticos/index.html" class="btn btn-secondary btn-mini btn-secondary">Descubrir más</a>
+
+                <!-- Gigantes -->
+                <div class="card experiencia-item">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/balcon-despedida-gigantes_mobile.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/balcon-despedida-gigantes_desktop.jpg">
+                        <img src="../img/balcon-despedida-gigantes_desktop.jpg" alt="Gigantes de Pamplona desde balcón"
+                            loading="lazy">
+                    </picture>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Gigantes</h3>
+                        <p>Tradición y emoción desde una perspectiva privilegiada.</p>
+                        <div class="buttons buttons--left">
+                            <a href="?interes=gigantes#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <a href="../experiencias/gigantes/index.html" class="btn btn-secondary btn-mini">Descubrir
+                                más</a>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Momenticos -->
+                <div class="card experiencia-item">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/encierro-barrera-estafeta_mobile.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/encierro-barrera-estafeta_desktop.jpg">
+                        <img src="../img/encierro-barrera-estafeta_desktop.jpg"
+                            alt="Experiencias personalizadas en San Fermín" loading="lazy">
+                    </picture>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Momenticos</h3>
+                        <p>Experiencias diseñadas a medida para vivir San Fermín desde dentro.</p>
+                        <div class="buttons buttons--left">
+                            <a href="?interes=personalizada#contacto" class="btn btn-primary btn-mini">Quiero
+                                vivirlo</a>
+                            <a href="../experiencias/momenticos/index.html" class="btn btn-secondary btn-mini">Descubrir
+                                más</a>
+                        </div>
+                    </div>
+                </div>
+
             </div>
-        </div>
-    </section>
+        </section>
 
-</main>
+        <!-- BLOQUE EXPLICATIVO -->
+        <section class="experiencias-info section section--inner">
+            <h2>Cómo elegir tu experiencia</h2>
 
-<!-- ========================= END SECTIONS ========================= -->
-<!-- Mini Guias-->
-<div id="miniGuias-placeholder" data-mini-guias-id="core; chupinazo; encierros"></div>
+            <p>
+                Cada momento de San Fermín se vive de forma diferente. El encierro concentra intensidad y emoción, el
+                chupinazo marca el inicio de la fiesta y la procesión refleja su lado más tradicional.
+            </p>
 
-<!-- To-Ko Collection -->
-<div id="toko-placeholder"></div> 
+            <p>
+                Si buscas una experiencia completa, puedes combinar varias propuestas o explorar opciones más
+                personalizadas como los
+                <a href="../experiencias/momenticos/index.html">momenticos</a>, diseñados a medida.
+            </p>
 
-<!-- Contacto -->
-<div id="contact-placeholder"></div>
+            <p>
+                Muchas de estas experiencias forman parte de una forma más amplia de vivir San Fermín, como explicamos
+                en nuestras
+                <a href="../guias/experiencias-exclusivas-san-fermin.html">guías sobre experiencias exclusivas</a>.
+            </p>
+        </section>
 
-<!--WhatsApp-->
-<div id="whatsapp-placeholder"></div>
+        <!-- MINI GUIAS -->
+        <div id="miniGuias-placeholder" data-mini-guias-id="core; chupinazo; encierros"></div>
 
-<!-- Footer -->
-    <div id="footer-placeholder"></div> 
+        <!-- NARRATIVA -->
+        <section class="experiencias-narrativa section section--inner">
+            <h2>Una historia que se vive desde dentro</h2>
 
+            <p>Hay fiestas. Y luego está San Fermín.</p>
 
-<!--JScripts-->
-<script src="../js/main.js"></script>
-<script src="../js/include.js"></script>
+            <p>
+                Durante ocho días, Pamplona se transforma con una intensidad difícil de explicar. No es solo una
+                celebración; es una forma de estar, de compartir y de formar parte de algo que viene de lejos.
+            </p>
+
+            <p>
+                Este proyecto nace desde dentro, desde una relación real con la fiesta. No como una oferta más, sino
+                como una forma de compartir San Fermín con quienes buscan vivirlo de una manera diferente.
+            </p>
+        </section>
+
+        <!-- MINI FAQ -->
+        <div id="miniFAQ-placeholder" data-mini-faq-id="experiencias"></div>
+
+        <!-- TO-KO -->
+        <div id="toko-placeholder"></div>
+
+    </main>
+
+    <!-- Contacto -->
+    <div id="contact-placeholder"></div>
+
+    <!-- WhatsApp -->
+    <div id="whatsapp-placeholder"></div>
+
+    <!-- Footer -->
+    <div id="footer-placeholder"></div>
+
+    <!-- JS -->
+    <script src="../js/main.js"></script>
+    <script src="../js/include.js"></script>
 
 </body>
+
 </html>
