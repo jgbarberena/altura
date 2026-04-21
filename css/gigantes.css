@@ -1,11 +1,11 @@
 /* =========================
-   CHUPINAZO PAGE
+   GIGANTES PAGE
 ========================= */
 
 /* =========================
-   HERO Chupinazo
+   HERO GIGANTES
 ========================= */
-#chupinazo-hero {
+#gigantes-hero {
     position: relative;
     display: flex;
     align-items: center;
@@ -14,33 +14,33 @@
     color: white;
 
     /* IMPORTANTE: la imagen correcta */
-    background: url("../img/experiencias/chupinazo/Chupinazo_2.jpg") center/cover no-repeat;
+    background: url("../img/experiencias/gigantes/ver-encierro_desktop.jpg") center/cover no-repeat;
 }
 
 /* Overlay (reutiliza lógica global pero aseguramos) */
-#chupinazo-hero .overlay {
+#gigantes-hero .overlay {
     position: absolute;
     inset: 0;
 }
 
 /* Contenido */
-#chupinazo-hero .hero-content {
+#gigantes-hero .hero-content {
     max-width: 800px;
     padding: 0 20px;
 }
 
-#chupinazo-hero h1 {
+#gigantes-hero h1 {
     font-size: 48px;
     letter-spacing: 4px;
     margin-bottom: 10px;
 }
 
-#chupinazo-hero h2 {
+#gigantes-hero h2 {
     font-size: 24px;
     margin-bottom: 20px;
 }
 
-#chupinazo-hero p {
+#gigantes-hero p {
     font-size: 17px;
     color: #ddd;
     margin-bottom: 25px;
@@ -138,15 +138,15 @@
 
 @media (min-width: 769px) {
 
-    #chupinazo-hero {
-        background-image: url("../img/experiencias/chupinazo/balcon-chupinazo-aerea_desktop.jpg");
+    #gigantes-hero {
+        background-image: url("../img/experiencias/gigantes/balcon-chupinazo-aerea_desktop.jpg");
     }
 
-    #chupinazo-hero h1 {
+    #gigantes-hero h1 {
         font-size: 60px;
     }
 
-    #chupinazo-hero h2 {
+    #gigantes-hero h2 {
         font-size: 28px;
     }
 
