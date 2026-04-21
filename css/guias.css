@@ -2,12 +2,6 @@
    PORTADA DE GUÍAS / ARTÍCULOS
    Estilo editorial premium
 ============================ */
-html {
-    scroll-behavior: smooth;
-
-    scroll-snap-type: y proximity;
-}
-
 
 .guias-page {
     max-width: 1600px;
@@ -59,10 +53,6 @@ html {
    DESTACADOS
 ========================= */
 
-.guias-destacados {
-    margin-bottom: 20px;
-}
-
 #guias-destacados-cards {
     display: flex;
     flex-direction: column;
@@ -78,11 +68,6 @@ html {
 ========================= */
 
 /* BASE LISTADO */
-
-.guias-listado h2 {
-    font-size: 22px;
-    margin-bottom: 25px;
-}
 
 /*CONTENEDOR (TIMELINE REAL)
 clave: NO flex, NO grid raro → flujo editorial vertical*/

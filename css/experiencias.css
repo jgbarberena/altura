@@ -3,12 +3,6 @@
    EXPERIENCIAS
    ============================ */
 
-/* Scroll suave + ligera sensación editorial */
-html {
-    scroll-behavior: smooth;
-    scroll-snap-type: y proximity;
-}
-
 /* ============================
    HERO
    ============================ */

@@ -13,33 +13,78 @@
     --sticky-height: 40px;
 
     /* --- TIPOGRAFÍA: Fuentes --- */
-    --font-sans:    'Inter', sans-serif;
-    --font-serif:   'Playfair Display', serif;
+    --font-sans:  'Inter', sans-serif;
+    --font-serif: 'Playfair Display', serif;
 
     /* --- TIPOGRAFÍA: Tamaños --- */
+    --text-display: 52px;
+    --text-section: 26px;
+    --text-mid:     22px;
+    --text-base:    17px;
+    --text-quote:   22px;
     --text-tag:     13px;
     --text-small:   14px;
-    --text-base:    18px;
-    --text-quote:   24px;
-    --text-sub:     26px;
-    --text-section: 38px;
-    --text-hero:    56px;
 
     /* --- TIPOGRAFÍA: Colores --- */
-    --color-heading:    #222;
-    --color-body:       #444;
-    --color-subtle:     #777;
-    --color-accent:     #b30000;
-    --color-accent-dark:#800000;
-    --color-on-dark:    #f5f3ef;
-    --color-on-dark-dim:#ddd;
+    --color-heading:     #222;
+    --color-body:        #444;
+    --color-subtle:      #777;
+    --color-accent:      #b30000;
+    --color-accent-dark: #800000;
+    --color-light:       #ffffff;
+    --color-light-dim:   #ffffff;
 }
 
 /* =========================
    ROLES TIPOGRÁFICOS
 ========================= */
 
-/* Etiqueta tipo "SAN FERMÍN" */
+.text-display {
+    font-family: var(--font-sans);
+    font-size: var(--text-display);
+    font-weight: 500;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    line-height: 1.1;
+    color: var(--color-light);
+    margin-bottom: 16px;
+}
+
+.text-title {
+    font-family: var(--font-serif);
+    font-size: var(--text-section);
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--color-heading);
+    margin-bottom: 20px;
+}
+
+.text-sub {
+    font-family: var(--font-serif);
+    font-size: var(--text-mid);
+    font-weight: 400;
+    line-height: 1.3;
+    color: var(--color-light-dim);
+    margin-bottom: 16px;
+}
+
+.text-body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.7;
+    color: var(--color-body);
+    margin-bottom: 16px;
+}
+
+.text-quote {
+    font-family: var(--font-serif);
+    font-size: var(--text-quote);
+    font-style: italic;
+    line-height: 1.4;
+    color: var(--color-accent);
+    margin-bottom: 0;
+}
+
 .text-tag {
     font-family: var(--font-sans);
     font-size: var(--text-tag);
@@ -47,80 +92,28 @@
     letter-spacing: 3px;
     text-transform: uppercase;
     color: var(--color-accent);
+    margin-bottom: 12px;
 }
 
-/* Título principal de hero */
-.text-hero-title {
-    font-family: var(--font-sans);
-    font-size: var(--text-hero);
-    font-weight: 700;
-    letter-spacing: 4px;
-    color: var(--color-on-dark);
-    line-height: 1.1;
-}
-
-/* Subtítulo de hero */
-.text-hero-sub {
-    font-family: var(--font-serif);
-    font-size: var(--text-sub);
-    font-weight: 400;
-    color: var(--color-on-dark-dim);
-    line-height: 1.3;
-}
-
-/* Título grande de sección interior */
-.text-section-title {
-    font-family: var(--font-sans);
-    font-size: var(--text-section);
-    font-weight: 700;
-    color: var(--color-heading);
-    line-height: 1.2;
-}
-
-/* Subtítulo segundo nivel de sección */
-.text-section-sub {
-    font-family: var(--font-serif);
-    font-size: var(--text-sub);
-    font-weight: 400;
-    color: var(--color-heading);
-    line-height: 1.3;
-}
-
-/* Texto explicativo normal */
-.text-body {
-    font-family: var(--font-sans);
-    font-size: var(--text-base);
-    color: var(--color-body);
-    line-height: 1.7;
-}
-
-/* Frase destacada / cita */
-.text-quote {
-    font-family: var(--font-serif);
-    font-size: var(--text-quote);
-    font-style: italic;
-    color: var(--color-accent);
-    line-height: 1.4;
-}
-
-/* Texto pequeño secundario (cards, labels) */
 .text-small {
     font-family: var(--font-sans);
     font-size: var(--text-small);
     color: var(--color-subtle);
+    font-weight: 400;
     line-height: 1.5;
+    margin-bottom: 0;
 }
 
 /* =========================
    VARIANTES ON-DARK
-   Aplica al contenedor padre
 ========================= */
 
-.on-dark .text-section-title { color: var(--color-on-dark); }
-.on-dark .text-section-sub   { color: var(--color-on-dark-dim); }
-.on-dark .text-body          { color: var(--color-on-dark-dim); }
-.on-dark .text-small         { color: var(--color-on-dark-dim); }
-.on-dark .text-quote         { color: var(--color-on-dark); }
+.on-dark .text-display { color: var(--color-light); }
+.on-dark .text-title   { color: var(--color-light); }
+.on-dark .text-sub     { color: var(--color-light-dim); }
+.on-dark .text-body    { color: var(--color-light-dim); }
+.on-dark .text-small   { color: var(--color-light-dim); }
+.on-dark .text-quote   { color: var(--color-light); }
 
 /* =========================
    BASE SECTION
@@ -133,14 +126,10 @@
     scroll-snap-align: start;
 }
 
-/* ==== FIRST SECTION (no fullscreen) ==== */
-
 .section--first {
     padding-top: calc(var(--header-height) + 20px);
     scroll-margin-top: 0;
 }
-
-/* ==== FIRST SECTION FULLSCREEN ==== */
 
 .section--first--fullscreen {
     height: 100vh;
@@ -150,14 +139,10 @@
     scroll-margin-top: 0;
 }
 
-/* ==== INNER SECTIONS ==== */
-
 .section--inner {
     padding-top: calc(var(--header-height) + 10px);
-    scroll-margin-top: 0px;
+    scroll-margin-top: 0;
 }
-
-/* ==== INNER WITH OVERLAY (sin padding) ==== */
 
 .section--inner--overlay {
     padding-top: 0;
@@ -166,14 +151,10 @@
     z-index: 0;
 }
 
-/* ==== INNER WITH STICKY CONTEXT ==== */
-
 .section--inner--sticky {
     padding-top: var(--sticky-height);
     scroll-margin-top: var(--header-height);
 }
-
-/* ==== SECCIÓN INNER FLUSH ==== */
 
 .section--inner--flush {
     padding-top: 0;
@@ -184,9 +165,7 @@
 
 /* ==== OVERLAY UNIVERSAL ==== */
 
-.has-overlay {
-    position: relative;
-}
+.has-overlay { position: relative; }
 
 .has-overlay .overlay {
     position: absolute;
@@ -205,15 +184,18 @@
     z-index: 2;
 }
 
+/* =========================
+   SNAP Y SCROLL SUAVE
+========================= */
+
+html {
+    scroll-behavior: smooth;
+    scroll-snap-type: y proximity;
+}
+
 /* ==== NO SNAP ==== */
-
-.no-snap {
-    scroll-snap-align: none !important;
-}
-
-.no-snap-children * {
-    scroll-snap-align: none !important;
-}
+.no-snap { scroll-snap-align: none !important; }
+.no-snap-children * { scroll-snap-align: none !important; }
 
 /* =========================
    BASE
@@ -248,15 +230,13 @@ body::after {
 }
 
 h1, h2, h3 {
-    font-family: 'Playfair Display', serif;
+    font-family: var(--font-serif);
 }
 
-a {
-    transition: all 0.3s ease;
-}
+a { transition: all 0.3s ease; }
 
 /* =========================
-   BOTONES (GENERAL)
+   BOTONES
 ========================= */
 
 .buttons {
@@ -274,45 +254,41 @@ a {
 .btn {
     display: inline-block;
     padding: 12px 30px;
-    text-decoration: none;
+    font-size: var(--text-small);
+    font-family: var(--font-sans);
     font-weight: 500;
+    text-decoration: none;
     transition: all 0.3s ease;
     cursor: pointer;
 }
 
 .btn-primary {
     background-color: var(--color-accent);
-    color: white;
+    color: var(--color-light);
 }
 
-.btn-primary:hover {
-    background-color: var(--color-accent-dark);
-}
+.btn-primary:hover { background-color: var(--color-accent-dark); }
 
 .btn-secondary {
-    border: 1px solid white;
-    color: white;
+    border: 1px solid var(--color-light);
+    color: var(--color-light);
     background: transparent;
 }
 
 .btn-secondary:hover {
-    background: white;
-    color: black;
+    background: var(--color-light);
+    color: var(--color-heading);
 }
 
 .btn-mini {
     padding: 8px 16px;
-    font-size: 12px;
+    font-size: var(--text-tag);
 }
 
-.btn-full {
-    width: 100%;
-}
-
-/* ======= BOTÓN LINK (EDITORIAL) ======== */
+.btn-full { width: 100%; }
 
 .btn-link {
-    font-size: 13px;
+    font-size: var(--text-tag);
     color: var(--color-accent);
     text-decoration: none;
     font-weight: 500;
@@ -352,40 +328,24 @@ a {
     padding: 20px;
     background: rgba(50,50,50,0.6);
     backdrop-filter: blur(4px);
-    color: white;
+    color: var(--color-light);
     transition: background 0.3s ease;
 }
 
 .card-overlay h3,
-.card-overlay h2 {
-    margin-bottom: 10px;
-}
+.card-overlay h2 { margin-bottom: 10px; }
 
 .card-overlay p {
-    font-size: 14px;
+    font-size: var(--text-small);
     margin-bottom: 15px;
 }
 
-.card:hover img {
-    transform: scale(1.1);
-}
+.card:hover img { transform: scale(1.1); }
 
-.card:hover .card-overlay {
-    background: rgba(20,20,20,0.8);
-}
-
-/* =========================
-   SCROLL SUAVE
-========================= */
-
-html {
-    scroll-behavior: smooth;
-}
+.card:hover .card-overlay { background: rgba(20,20,20,0.8); }
 
 /* =========================
    TABLET + DESKTOP
 ========================= */
 
-@media (min-width: 769px) {
-
-}
+@media (min-width: 769px) {}

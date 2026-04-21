@@ -1,37 +1,13 @@
-
-/* ============================
-   HOME
-============================ */
-
-html {
-    scroll-behavior: smooth;
-
-    scroll-snap-type: y proximity;
-}
-
 /* =========================
    HERO HOME
 ========================= */
 
 #hero {
-    position: relative;
     background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    color: white;
-}
-
-#hero .overlay {
-    position: absolute;
-    width: 100%;
-    background: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.6),
-        rgba(0,0,0,0.3),
-        rgba(0,0,0,0.7)
-    );
 }
 
 .hero-content {
@@ -39,22 +15,8 @@ html {
     max-width: 800px;
 }
 
-.hero-content h1 {
-    font-size: 60px;
-    letter-spacing: 6px;
-    margin-bottom: 10px;
-}
-
-.hero-content h2 {
-    font-size: 28px;
-    margin-bottom: 20px;
-}
-
-.hero-content p {
-    font-size: 18px;
-    color: #ddd;
-    margin-bottom: 30px;
-}
+/* Solo sobreescribes donde necesitas más margen que el defecto */
+.hero-content .text-body { margin-bottom: 30px; }
 
 /* =========================
    EXPERIENCIAS HOME
@@ -62,6 +24,10 @@ html {
 
 #experiencias {
     background-color: rgba(245, 243, 239, 0.9);
+}
+
+#experiencias .text-title {
+    margin-bottom: 20px;
 }
 
 .experiencias-grid {
@@ -75,19 +41,16 @@ html {
 }
 
 /* =========================
-   SAN FERMIN HOME
+   SAN FERMÍN HOME
 ========================= */
 
 #sanfermin {
-    position: relative;
     padding-top: calc(var(--header-height) + 40px);
     padding-bottom: 60px;
-    padding-left: 20px;
-    padding-right: 20px;
     text-align: center;
     background: linear-gradient(
-      rgba(245,243,239,0.85),
-      rgba(245,243,239,0.85)
+        rgba(245,243,239,0.85),
+        rgba(245,243,239,0.85)
     ),
     url("../img/balcon-charla-corredor_mobile.jpg") center/cover;
 }
@@ -97,30 +60,8 @@ html {
     margin: auto;
 }
 
-.tag {
-    color: #b30000;
-    letter-spacing: 3px;
-    font-size: 50px;
-    margin-bottom: 20px;
-}
-
-#sanfermin h2 {
-    font-size: 36px;
-    margin-bottom: 30px;
-    line-height: 1.3;
-}
-
-.texto {
-    color: #555;
-    font-size: 18px;
-    margin-bottom: 40px;
-}
-
-.frase {
-    font-size: 26px;
-    font-style: italic;
-    color: #b30000;
-    letter-spacing: 1px;
+.sanfermin-container .text-display {
+    color: var(--color-accent);
 }
 
 /* =========================
@@ -128,27 +69,22 @@ html {
 ========================= */
 
 @media (min-width: 769px) {
-
     #hero {
         background-image: url("../img/balcon-chupinazo-ayuntamiento_desktop.jpg");
     }
-
     #sanfermin {
         background: linear-gradient(
-        rgba(245,243,239,0.85),
-        rgba(245,243,239,0.85)
+            rgba(245,243,239,0.85),
+            rgba(245,243,239,0.85)
         ),
         url("../img/balcon-charla-corredor_desktop.jpg") center/cover;
     }
-
 }
 
 @media (min-width: 1024px) {
-
     .experiencias-grid {
         justify-content: center;
         grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
         gap: 30px;
     }
-
 }

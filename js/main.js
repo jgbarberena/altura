@@ -626,8 +626,8 @@ async function initMiniGuias(root, resolveAsset, resolvePage) {
         card.innerHTML = `
             <img src="${img}" alt="${g.Alt || g.Title}">
             <div class="guia-content">
-                <h3>${g.Title}</h3>
-                <p>${g.Resumen}</p>
+                <h3 class="text-small">${g.Title}</h3>
+                <p class="text-small">${g.Resumen}</p>
                 <a href="${url}">Leer más</a>
             </div>
         `;

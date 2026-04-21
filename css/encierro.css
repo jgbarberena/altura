@@ -2,13 +2,8 @@
    ENCierro PAGE
 ========================= */
 
-/* Activamos snap como en home */
-html {
-    scroll-snap-type: y proximity;
-}
-
 /* =========================
-   HERO ENCierro (aislado)
+   HERO Encierro
 ========================= */
 
 #encierro-hero {
@@ -131,7 +126,6 @@ html {
 }
 
 .intro-container a {
-    color: #b30000;
     text-decoration: none;
 }
 

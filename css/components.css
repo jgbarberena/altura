@@ -13,10 +13,10 @@ header {
 }
 
 header.scrolled {
-    background: rgba(255,255,255,0.10);
+    background: rgba(255, 255, 255, 0.10);
     backdrop-filter: blur(12px);
     padding: 5px 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* Nav del header */
@@ -32,47 +32,47 @@ header nav {
 ========================= */
 
 #logo-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  font-family: 'Playfair Display', serif;
-  font-size: 18px;
-  letter-spacing: 3px;
-  font-weight: 400;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-family: var(--font-serif);
+    font-size: var(--text-small);
+    letter-spacing: 3px;
+    font-weight: 400;
+    color: inherit;
+    cursor: pointer;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 #logo-link .logo-text {
-  font-weight: 400;
-  color: inherit;
+    font-weight: 400;
+    color: inherit;
 }
 
 #logo-link img {
-  height: 32px;
-  width: auto;
-  margin-top: -2px;
-  pointer-events: none;
-  vertical-align: middle;
+    height: 32px;
+    width: auto;
+    margin-top: -2px;
+    pointer-events: none;
+    vertical-align: middle;
 }
 
 /* Estado inicial: header sin scrolled ni dark → logo blanco */
 header:not(.scrolled):not(.dark) #logo-link,
 header:not(.scrolled):not(.dark) #logo-link .logo-text {
-  color: #fff !important;
-  font-weight: 400 !important;
-  text-decoration: none;
+    color: var(--color-light) !important;
+    font-weight: 400 !important;
+    text-decoration: none;
 }
 
 /* Mantener blanco en hover/active/visited cuando no hay scrolled ni dark */
 header:not(.scrolled):not(.dark) #logo-link:hover,
 header:not(.scrolled):not(.dark) #logo-link:active,
 header:not(.scrolled):not(.dark) #logo-link:visited {
-  color: #fff !important;
-  text-decoration: none;
+    color: var(--color-light) !important;
+    text-decoration: none;
 }
 
 /* Reglas generales del enlace */
@@ -80,41 +80,66 @@ header:not(.scrolled):not(.dark) #logo-link:visited {
 #logo-link:hover,
 #logo-link:active,
 #logo-link:visited {
-  text-decoration: none;
-  color: inherit;
+    text-decoration: none;
+    color: inherit;
 }
 
 /* Focus accesible */
-#logo-link:focus { outline: none; }
+#logo-link:focus {
+    outline: none;
+}
+
 #logo-link:focus-visible {
-  box-shadow: 0 0 0 3px rgba(179,0,0,0.12);
-  border-radius: 4px;
+    box-shadow: 0 0 0 3px rgba(179, 0, 0, 0.12);
+    border-radius: 4px;
 }
 
 /* Variantes de logo */
-.logo-white { display: block; }
-.logo-black { display: none; }
-.logo-red   { display: none; }
+.logo-white {
+    display: block;
+}
+
+.logo-black {
+    display: none;
+}
+
+.logo-red {
+    display: none;
+}
 
 /* ESTADOS - SCROLLED */
 header.scrolled #logo-link {
-  color: #222;
-  font-weight: 400;
-  text-decoration: none;
+    color: var(--color-heading);
 }
-header.scrolled #logo-link .logo-white { display: none; }
-header.scrolled #logo-link .logo-black { display: block; }
-header.scrolled #logo-link .logo-red   { display: none; }
+
+header.scrolled #logo-link .logo-white {
+    display: none;
+}
+
+header.scrolled #logo-link .logo-black {
+    display: block;
+}
+
+header.scrolled #logo-link .logo-red {
+    display: none;
+}
 
 /* ESTADOS - DARK */
 header.dark #logo-link {
-  color: #b30000;
-  font-weight: 400;
-  text-decoration: none;
+    color: var(--color-accent);
 }
-header.dark #logo-link .logo-white { display: none; }
-header.dark #logo-link .logo-black { display: none; }
-header.dark #logo-link .logo-red   { display: block; }
+
+header.dark #logo-link .logo-white {
+    display: none;
+}
+
+header.dark #logo-link .logo-black {
+    display: none;
+}
+
+header.dark #logo-link .logo-red {
+    display: block;
+}
 
 /* =========================
    MENÚ PRINCIPAL
@@ -122,12 +147,13 @@ header.dark #logo-link .logo-red   { display: block; }
 
 .menu {
     list-style: none;
-    display: none;              /* mobile: oculto por defecto */
+    display: none;
+    /* mobile: oculto por defecto */
     flex-direction: column;
     position: absolute;
     top: 60px;
     right: 20px;
-    background: rgba(20,20,20,0.85);
+    background: rgba(20, 20, 20, 0.85);
     backdrop-filter: blur(10px);
     padding: 20px;
     border-radius: 8px;
@@ -139,41 +165,45 @@ header.dark #logo-link .logo-red   { display: block; }
 }
 
 .menu a {
-    color: white;
-    font-size: 14px;
+    color: var(--color-light);
+    font-size: var(--text-small);
     text-decoration: none;
 }
 
 .menu a:hover {
-    color: #b30000;
+    color: var(--color-accent);
     transition: color 0.2s ease;
 }
 
 /* Colores del menú según estado (mobile) */
-header.scrolled .menu a {
-    color: white;       /* en mobile, el menú flotante sigue siendo blanco */
+header.scrolled .hamburger {
+    color: var(--color-heading);
 }
 
-header.dark .menu a {
-    color: #b30000;     /* en dark, siempre rojo */
+/* en mobile, el menú flotante sigue siendo blanco */
+header.dark .hamburger {
+    color: var(--color-accent);
 }
+
+/* en dark, siempre rojo */
+
 
 /* Hamburguesa */
 .hamburger {
     display: block;
-    font-size: 26px;
+    font-size: var(--text-section);
     cursor: pointer;
-    color: white;
+    color: var(--color-light);
     transition: color 0.3s ease;
     z-index: 1001;
 }
 
 header.scrolled .hamburger {
-    color: #222;
+    color: var(--color-heading);
 }
 
 header.dark .hamburger {
-    color: #b30000;
+    color: var(--color-accent);
 }
 
 /* =========================
@@ -202,18 +232,18 @@ header.dark .hamburger {
     }
 
     .menu a {
-        color: white;
-        font-size: 14px;
+        color: var(--color-light);
+        font-size: var(--text-small);
     }
 
     /* En desktop, en scrolled el menú pasa a gris */
     header.scrolled .menu a {
-        color: #222;
+        color: var(--color-heading);
     }
 
     /* En desktop, en dark el menú pasa a rojo */
     header.dark .menu a {
-        color: #b30000;
+        color: var(--color-accent);
     }
 
     .hamburger {
@@ -237,8 +267,8 @@ header.dark .hamburger {
     background: transparent;
     backdrop-filter: blur(6px);
 
-    border-top: 1px solid rgba(255,255,255,0.2);
-    border-bottom: 1px solid rgba(255,255,255,0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 
     /* opcional: si quieres el mismo “respiro” que en FAQ */
     margin-bottom: 30px;
@@ -266,7 +296,8 @@ header.dark .hamburger {
 
 /* Links: igual que .faq-nav a */
 .sticky-nav a {
-    font-size: 13px;
+    font-size: var(--text-tag);
+    font-family: var(--font-sans);
     padding: 6px 12px;
 
     border: none;
@@ -277,15 +308,10 @@ header.dark .hamburger {
 }
 
 /* Estado activo y hover: igual que FAQ */
-.sticky-nav a.active {
-    background: #111;
-    color: #fff;
-    border-color: #111;
-}
-
+.sticky-nav a.active,
 .sticky-nav a:hover {
-    background: #111;
-    color: #fff;
+    background: var(--color-heading);
+    color: var(--color-light);
 }
 
 /* =========================
@@ -297,7 +323,7 @@ header.dark .hamburger {
     padding-left: 20px;
     padding-right: 20px;
     background: #111;
-    color: white;
+    color: var(--color-light);
     text-align: center;
 }
 
@@ -307,7 +333,6 @@ header.dark .hamburger {
 }
 
 .contacto-texto {
-    color: #ccc;
     margin-bottom: 40px;
 }
 
@@ -323,12 +348,15 @@ header.dark .hamburger {
     padding: 12px;
     border: none;
     background: #222;
-    color: white;
+    color: var(--color-light);
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
 }
 
 .contacto-extra {
     margin-top: 40px;
     color: #aaa;
+    font-size: var(--text-small);
 }
 
 /* =========================
@@ -342,7 +370,6 @@ header.dark .hamburger {
     align-items: center;
     justify-content: center;
     text-align: center;
-    color: white;
     overflow: hidden;
     background-color: #111;
 }
@@ -369,24 +396,32 @@ header.dark .hamburger {
 }
 
 .toko .toko-slide {
-    position: absolute; /* restauramos */
-    z-index: 0 !important; /* anulamos la regla global */
+    position: absolute;
+    /* restauramos */
+    z-index: 0 !important;
+    /* anulamos la regla global */
 }
 
 /* Delays para el ciclo */
 
-.toko-slide:nth-of-type(1) { animation-delay: 0s; }
-.toko-slide:nth-of-type(2) { animation-delay: 6s; }
-.toko-slide:nth-of-type(3) { animation-delay: 12s; }
+.toko-slide:nth-of-type(1) {
+    animation-delay: 0s;
+}
+
+.toko-slide:nth-of-type(2) {
+    animation-delay: 6s;
+}
+
+.toko-slide:nth-of-type(3) {
+    animation-delay: 12s;
+}
 
 /* Overlay oscuro */
 .toko .overlay {
-    background: radial-gradient(
-        circle at center,
-        rgba(0,0,0,0.2) 0%,
-        rgba(0,0,0,0.5) 70%,
-        rgba(0,0,0,0.7) 100%
-    );
+    background: radial-gradient(circle at center,
+            rgba(0, 0, 0, 0.2) 0%,
+            rgba(0, 0, 0, 0.5) 70%,
+            rgba(0, 0, 0, 0.7) 100%);
 }
 
 /* Contenido */
@@ -419,15 +454,19 @@ header.dark .hamburger {
         opacity: 0;
         transform: scale(1);
     }
+
     5% {
         opacity: 1;
     }
+
     33.33% {
         opacity: 1;
     }
+
     38.33% {
         opacity: 0;
     }
+
     100% {
         opacity: 0;
         transform: scale(1.1);
@@ -455,74 +494,74 @@ header.dark .hamburger {
 ========================= */
 
 .site-footer {
-  background: #f2f2f2;
-  padding: 10px 12px;
-  font-size: 14px;
-  color: #222;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
+    background: #f2f2f2;
+    padding: 10px 12px;
+    font-size: var(--text-small);
+    color: var(--color-heading);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .footer-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 5px;
-  align-content: center;
-  width: 100%;
-  min-width: 0;
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 5px;
+    align-content: center;
+    width: 100%;
+    min-width: 0;
 }
 
 .footer-copy {
-  margin: 0;
-  color: #222;
-  font-weight: 400;
-  justify-self: start;
-  white-space: nowrap;
-  padding-right: 3px;
+    margin: 0;
+    color: var(--color-heading);
+    font-weight: 400;
+    justify-self: start;
+    white-space: nowrap;
+    padding-right: 3px;
 }
 
 .footer-nav {
-  display: flex;
-  justify-self: end;
-  justify-content: flex-end;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-  width: auto;
-  max-width: 100%;
-  padding: 6px 8px;
+    display: flex;
+    justify-self: end;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    width: auto;
+    max-width: 100%;
+    padding: 6px 8px;
 }
 
 .footer-link {
-  color: #222;
-  text-decoration: none;
-  padding: 2px 4px;
-  white-space: nowrap;
-  transition: color 0.12s ease;
-  font-weight: 500;
-  font-size: 13px;
+    color: var(--color-heading);
+    text-decoration: none;
+    padding: 2px 4px;
+    white-space: nowrap;
+    transition: color 0.12s ease;
+    font-weight: 500;
+    font-size: var(--text-tag);
 }
 
 /* Separador entre enlaces: mobile por defecto */
-.footer-nav .footer-link + .footer-link::before {
-  content: "|";
-  display: inline-block;
-  margin: 0 6px;
-  color: #cfcfcf;
-  font-weight: 400;
-  font-size: 13px;
-  vertical-align: middle;
+.footer-nav .footer-link+.footer-link::before {
+    content: "|";
+    display: inline-block;
+    margin: 0 6px;
+    color: #cfcfcf;
+    font-weight: 400;
+    font-size: var(--text-tag);
+    vertical-align: middle;
 }
 
 .footer-link:hover,
 .footer-link:focus {
-  color: #b30000;
-  text-decoration: underline;
-  outline: none;
+    color: var(--color-accent);
+    text-decoration: underline;
+    outline: none;
 }
 
 /* FOOTER – tablet/desktop */
@@ -542,14 +581,14 @@ header.dark .hamburger {
 
     .footer-link {
         padding: 6px 8px;
-        font-size: 14px;
+        font-size: var(--text-small);
         flex: 0 0 auto;
         text-align: center;
         white-space: nowrap;
     }
 
     /* Quitar separadores en desktop */
-    .footer-nav .footer-link + .footer-link::before {
+    .footer-nav .footer-link+.footer-link::before {
         content: none;
     }
 }
@@ -575,7 +614,7 @@ header.dark .hamburger {
         font-size: 13px;
     }
 
-    .footer-nav .footer-link + .footer-link::before {
+    .footer-nav .footer-link+.footer-link::before {
         margin: 0 4px;
         color: #ddd;
     }
@@ -586,25 +625,25 @@ header.dark .hamburger {
 ========================= */
 
 .whatsapp-float {
-  position: fixed;
-  width: 50px;
-  height: 50px;
-  bottom: 35px;
-  right: 35px;
-  background-color: #25d366;
-  color: #FFF;
-  border-radius: 40px;
-  text-align: center;
-  box-shadow: 2px 2px 3px #999;
-  z-index: 2000; /* por encima de toko, carrusel, etc. */
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    position: fixed;
+    width: 50px;
+    height: 50px;
+    bottom: 35px;
+    right: 35px;
+    background-color: #25d366;
+    border-radius: 40px;
+    text-align: center;
+    box-shadow: 2px 2px 3px #999;
+    z-index: 2000;
+    /* por encima de toko, carrusel, etc. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .my-float {
-  width: 35px;
-  height: auto;
+    width: 35px;
+    height: auto;
 }
 
 /* =========================
@@ -617,13 +656,15 @@ header.dark .hamburger {
 
 .miniGallery .carousel {
     position: relative;
-    overflow: hidden; /* CLAVE: recorta las imágenes que salen */
+    overflow: hidden;
+    /* CLAVE: recorta las imágenes que salen */
 }
 
 .miniGallery .carousel-track {
     display: flex;
     width: 100%;
-    overflow: visible; /* el track se desborda, el carousel lo recorta */
+    overflow: visible;
+    /* el track se desborda, el carousel lo recorta */
     gap: 0;
     padding: 0;
     will-change: transform;
@@ -644,7 +685,7 @@ header.dark .hamburger {
     opacity: 1;
     transform: scale(1);
     cursor: pointer;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
 
 .miniGallery .carousel-track picture:not(.active):hover {
@@ -672,19 +713,19 @@ header.dark .hamburger {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    background: rgba(0,0,0,0.5);
-    color: white;
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--color-light);
     border: none;
     padding: 10px 15px;
     cursor: pointer;
-    font-size: 24px;
+    font-size: var(--text-section);
     z-index: 2;
     transition: background 0.2s ease, opacity 0.2s ease;
     border-radius: 4px;
 }
 
 .miniGallery .carousel-btn:hover {
-    background: rgba(0,0,0,0.75);
+    background: rgba(0, 0, 0, 0.75);
 }
 
 .miniGallery .carousel-btn.disabled {
@@ -697,8 +738,13 @@ header.dark .hamburger {
     display: none;
 }
 
-.miniGallery .carousel-btn.prev { left: 10px; }
-.miniGallery .carousel-btn.next { right: 10px; }
+.miniGallery .carousel-btn.prev {
+    left: 10px;
+}
+
+.miniGallery .carousel-btn.next {
+    right: 10px;
+}
 
 /* =========MEDIA QUERIES========= */
 
@@ -722,7 +768,7 @@ header.dark .hamburger {
 
 .miniFAQ {
     margin: 40px 0;
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 10px;
     background: #fafafa;
 }
@@ -736,13 +782,12 @@ header.dark .hamburger {
 }
 
 .miniFAQ__title {
-    font-size: 20px;
     margin: 0;
 }
 
 /* Lista de FAQ */
 .miniFAQ__list .faq-item {
-    border-bottom: 1px solid rgba(0,0,0,0.1);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
     padding: 8px 0;
 }
 
@@ -752,9 +797,11 @@ header.dark .hamburger {
     padding: 6px 0;
     background: none;
     border: none;
-    font-size: 14px;
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
     font-weight: 500;
     cursor: pointer;
+    color: var(--color-heading);
 }
 
 .miniFAQ__list .faq-answer {
@@ -765,19 +812,13 @@ header.dark .hamburger {
 
 .miniFAQ__list .faq-answer p {
     padding: 0 0 10px 0;
-    font-size: 13px;
-    color: #444;
+    font-size: var(--text-tag);
+    color: var(--color-body);
 }
 
 .miniFAQ__list .faq-item.active .faq-answer {
     max-height: 500px;
 }
-
-/* Footer eliminado porque el botón va arriba */
-.miniFAQ__footer {
-    display: none;
-}
-
 
 /* =========================
    miniGuias (component)
@@ -785,10 +826,10 @@ header.dark .hamburger {
 
 .miniGuias {
     margin: 40px 0;
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 12px;
     background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .miniGuias__header {
@@ -799,9 +840,7 @@ header.dark .hamburger {
 }
 
 .miniGuias__title {
-    font-size: 20px;
     margin: 0;
-    font-weight: 600;
 }
 
 .miniGuias__list {
@@ -816,7 +855,7 @@ header.dark .hamburger {
     grid-template-columns: 120px 1fr;
     gap: 16px;
     padding: 14px 0;
-    border-bottom: 2px solid rgba(0,0,0,0.06);
+    border-bottom: 2px solid rgba(0, 0, 0, 0.06);
 }
 
 .miniGuias .guia-card img {
@@ -833,28 +872,24 @@ header.dark .hamburger {
 }
 
 .miniGuias .guia-content h3 {
-    font-size: 16px;
-    margin: 0;
-    line-height: 1.3;
-    color: #111;
+    margin: 5px 0;
+    color: var(--color-heading);
+    font-weight: 500;
 }
 
 .miniGuias .guia-content p {
-    font-size: 13px;
-    color: #666;
     margin: 0 0 4px 0;
 }
 
 .miniGuias .guia-content a {
-    font-size: 13px;
-    color: #b30000;
+    font-size: var(--text-tag);
+    color: var(--color-accent);
     text-decoration: none;
     font-weight: 500;
     transition: all 0.2s ease;
 }
 
 .miniGuias .guia-content a:hover {
-    color: #800000;
+    color: var(--color-accent-dark);
     transform: translateX(3px) scale(1.03);
 }
-
