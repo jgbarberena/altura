@@ -75,6 +75,17 @@
     color: var(--color-body);
     margin-bottom: 16px;
 }
+/* variante intro para artículos */
+.text-body--intro {
+    font-family: var(--font-serif);
+    font-size: var(--text-mid);
+    font-weight: 400;
+    color: var(--color-heading);
+    line-height: 1.7;
+    padding-left: 20px;
+    border-left: 3px solid var(--color-accent);
+    margin-bottom: 32px;
+}
 
 .text-quote {
     font-family: var(--font-serif);

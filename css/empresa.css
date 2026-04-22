@@ -1,58 +1,96 @@
-.empresa-page {
-    min-height: 100vh;
-    background: black;
-}
+/* =========================
+   HERO EMPRESA
+========================= */
 
-/* HERO */
-.empresa-hero {
-    position: relative;
-    height: 100vh;
-
-    background-image: url('../img/empresa/hospitality-fake.jpg');
-    background-size: cover;
-    background-position: center;
-
+#empresa-hero {
+    background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.empresa-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-}
-
-.empresa-content {
-    position: relative;
-    z-index: 2;
     text-align: center;
     color: white;
 }
 
-.empresa-content h1 {
-    font-size: 48px;
-    margin-bottom: 10px;
-}
-
-.empresa-content p {
-    font-size: 18px;
+.hero-microcopy {
+    font-size: 13px;
+    color: #ddd;
+    margin-top: 15px;
     opacity: 0.8;
 }
 
-/* Fix: aplicar fondo tanto si el hero es id o clase, sin tocar .overlay */
-#empresa-hero,
-.empresa-hero {
-  background-image: url('../img/empresa/hospitality-fake.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+
+/* =========================
+   INTRO / TEXTO
+========================= */
+
+.intro-container {
+    max-width: 800px;
+    margin: auto;
 }
 
-/* Mantener overlay genérico (no lo cambiamos) */
-#empresa-hero .overlay,
-.empresa-hero .overlay {
-  position: absolute;
-  inset: 0;
-  /* no modificamos el color ni la opacidad para mantener la estética */
+.intro-container h2 {
+    margin-bottom: 20px;
+}
+
+.intro-container p {
+    margin-bottom: 20px;
+    color: #444;
+}
+
+.intro-container ul {
+    margin-bottom: 20px;
+    padding-left: 20px;
+    color: #444;
+}
+
+.intro-container li {
+    margin-bottom: 8px;
+}
+
+
+/* =========================
+   GRID CARDS
+========================= */
+
+.experiencias-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.experiencia-item img {
+    height: 420px;
+}
+
+
+/* =========================
+   PRECIO BLOQUE
+========================= */
+
+.experiencias-precio {
+    background-color: rgba(245,243,239,0.9);
+}
+
+.microcopy {
+    font-size: 14px;
+    color: #777;
+    margin-top: 10px;
+}
+
+
+/* =========================
+   DESKTOP
+========================= */
+
+@media (min-width: 769px) {
+
+    #empresa-hero {
+        background-image: url("../img/empresa/hospitality-fake.jpg");
+    }
+
+    .experiencias-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
+        justify-content: center;
+        gap: 30px;
+    }
+
 }

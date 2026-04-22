@@ -1,15 +1,15 @@
 
 /* ============================
-   EXPERIENCIAS
+   EXPERIENCIAS PAGE
    ============================ */
 
 /* ============================
-   HERO
+   HERO EXPERIENCIAS
    ============================ */
 
 #hero {
     position: relative;
-    background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
+    background: url("../img/experiencias/balcon-chupinazo-ayuntamiento_desktop.jpg") center/cover no-repeat;
 
     display: flex;
     align-items: center;

@@ -131,6 +131,18 @@
     text-decoration: underline;
 }
 
+/* =========================
+   TO-KO UPSELL
+========================= */
+
+.toko-upsell {
+    background: rgba(0,0,0,0.02);
+    text-align: center;
+}
+
+.toko-upsell .microcopy {
+    margin-top: 10px;
+}
 
 /* =========================
    TABLET

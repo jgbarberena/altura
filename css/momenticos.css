@@ -86,6 +86,13 @@
     height: 420px;
 }
 
+/* =========================
+   TO-KO MOMENTICOS
+========================= */
+
+.momenticos-toko {
+    background: rgba(245,243,239,0.6);
+}
 
 /* =========================
    SECCIÓN PRECIO
@@ -131,6 +138,18 @@
     text-decoration: underline;
 }
 
+/* =========================
+   TO-KO UPSELL
+========================= */
+
+.toko-upsell {
+    background: rgba(0,0,0,0.02);
+    text-align: center;
+}
+
+.toko-upsell .microcopy {
+    margin-top: 10px;
+}
 
 /* =========================
    TABLET
