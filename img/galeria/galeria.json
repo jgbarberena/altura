@@ -4,7 +4,7 @@
         "desktop":  "balcon-charla-corredor_desktop.jpg",
         "mobile":  "balcon-charla-corredor_mobile.jpg",
         "alt":  "Experiencia exclusiva: charla con Corredores hist├│ricos del Encierro",
-        "clasificacion":  "personalizada;encierros",
+        "clasificacion":  "personalizada; encierros",
         "weight":  "4"
     },
     {
@@ -76,7 +76,7 @@
         "desktop":  "encierro-barrera-estafeta_desktop.jpg",
         "mobile":  "encierro-barrera-estafeta_mobile.jpg",
         "alt":  "Encierro a pie de calle en entrada a Plaza de Toros.",
-        "clasificacion":  "personalizada; encierros;",
+        "clasificacion":  "personalizada; encierros",
         "weight":  "4"
     },
     {

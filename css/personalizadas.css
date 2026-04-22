@@ -1,11 +1,11 @@
 /* =========================
-   MOMENTICOS PAGE
+   PERSONALIZADAS PAGE
 ========================= */
 
 /* =========================
-   HERO MOMENTICOS
+   HERO PERSONALIZADAS
 ========================= */
-#momenticos-hero {
+#personalizadas-hero {
     position: relative;
     display: flex;
     align-items: center;
@@ -14,33 +14,33 @@
     color: white;
 
     /* IMPORTANTE: la imagen correcta */
-    background: url("../img/experiencias/momenticos/ver-encierro_desktop.jpg") center/cover no-repeat;
+    background: url("../img/experiencias/personalizadas/ver-encierro_desktop.jpg") center/cover no-repeat;
 }
 
 /* Overlay (reutiliza lógica global pero aseguramos) */
-#momenticos-hero .overlay {
+#personalizadas-hero .overlay {
     position: absolute;
     inset: 0;
 }
 
 /* Contenido */
-#momenticos-hero .hero-content {
+#personalizadas-hero .hero-content {
     max-width: 800px;
     padding: 0 20px;
 }
 
-#momenticos-hero h1 {
+#personalizadas-hero h1 {
     font-size: 48px;
     letter-spacing: 4px;
     margin-bottom: 10px;
 }
 
-#momenticos-hero h2 {
+#personalizadas-hero h2 {
     font-size: 24px;
     margin-bottom: 20px;
 }
 
-#momenticos-hero p {
+#personalizadas-hero p {
     font-size: 17px;
     color: #ddd;
     margin-bottom: 25px;
@@ -87,10 +87,10 @@
 }
 
 /* =========================
-   TO-KO MOMENTICOS
+   TO-KO PERSONALIZADAS
 ========================= */
 
-.momenticos-toko {
+.personalizadas-toko {
     background: rgba(245,243,239,0.6);
 }
 
@@ -157,15 +157,15 @@
 
 @media (min-width: 769px) {
 
-    #momenticos-hero {
-        background-image: url("../img/experiencias/momenticos/ver-encierro_desktop.jpg");
+    #personalizadas-hero {
+        background-image: url("../img/experiencias/personalizadas/ver-encierro_desktop.jpg");
     }
 
-    #momenticos-hero h1 {
+    #personalizadas-hero h1 {
         font-size: 60px;
     }
 
-    #momenticos-hero h2 {
+    #personalizadas-hero h2 {
         font-size: 28px;
     }
 

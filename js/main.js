@@ -491,7 +491,7 @@ function initContactoFromURL() {
             encierros: "Encierros",
             chupinazo: "Chupinazo, procesion, gigantes",
             toko: "To-Ko Collection",
-            personalizada: "Experiencia personalizada"
+            personalizadas: "Experiencia personalizada"
         };
 
         if (interesParam && mapping[interesParam.toLowerCase()]) {
