@@ -68,6 +68,16 @@
     margin-bottom: 16px;
 }
 
+.text-title2 {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    font-weight: 500;
+    line-height: 1.7;
+    color: var(--color-body);
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
 .text-body {
     font-family: var(--font-sans);
     font-size: var(--text-base);
@@ -146,6 +156,7 @@
 .on-dark .text-display { color: var(--color-light); }
 .on-dark .text-title   { color: var(--color-light); }
 .on-dark .text-sub     { color: var(--color-light-dim); }
+.on-dark .text-title2  { color: var(--color-light-dim); }
 .on-dark .text-body    { color: var(--color-light-dim); }
 .on-dark .text-small   { color: var(--color-light-dim); }
 .on-dark .text-quote   { color: var(--color-light); }

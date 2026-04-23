@@ -36,16 +36,16 @@
     <main class="toko-page">
 
         <!-- ========================= HERO ========================= -->
-        <section class="hero section section--first--fullscreen has-overlay" id="toko2-hero">
+        <section class="hero section section--first--fullscreen has-overlay" id="toko-hero">
 
             <div class="overlay"></div>
 
-            <div class="hero-content">
-                <h1>TO-KO COLLECTION</h1>
+            <div class="hero-content on-dark">
+                <h1 class="text-display">TO-KO COLLECTION</h1>
 
-                <h2>Vive y recuerda la experiencia con To-Ko</h2>
+                <h2 class="text-sub">Vive y recuerda la experiencia con To-Ko</h2>
 
-                <p>
+                <p class="text-body">
                     Diseños que nacen desde dentro de San Fermín y acompañan cada experiencia con identidad,
                     coherencia y sensibilidad.
                 </p>
@@ -55,9 +55,10 @@
                     <a href="#intro" class="btn btn-secondary">Descubrir más</a>
                 </div>
 
-                <p class="hero-microcopy">
-                    Pensado para grupos, empresas y experiencias que quieren ir un paso más allá.
-                </p>
+                <div class="hero-microcopy">
+                    <p class="text-small">Pensado para grupos, empresas y experiencias que quieren ir un paso más allá.
+                    </p>
+                </div>
             </div>
 
         </section>
@@ -66,27 +67,23 @@
         <!-- ========================= QUÉ ES ========================= -->
         <section id="intro" class="section section--inner">
 
-            <div class="intro-container">
+            <h2 class="text-title">Más que un recuerdo, parte de la experiencia</h2>
 
-                <h2>Más que un recuerdo, parte de la experiencia</h2>
+            <p class="text-body">
+                To-Ko Collection no nace como una colección de productos, sino como una forma de extender lo que se
+                vive.
+                Son piezas que acompañan la experiencia, que la refuerzan y que, en muchos casos, la hacen aún más
+                personal.
+            </p>
 
-                <p>
-                    To-Ko Collection no nace como una colección de productos, sino como una forma de extender lo que se
-                    vive.
-                    Son piezas que acompañan la experiencia, que la refuerzan y que, en muchos casos, la hacen aún más
-                    personal.
-                </p>
+            <p class="text-body">
+                Cada propuesta se plantea desde el mismo lugar que el resto de experiencias:
+                entender el contexto, el momento y a las personas que lo van a vivir.
+            </p>
 
-                <p>
-                    Cada propuesta se plantea desde el mismo lugar que el resto de experiencias:
-                    entender el contexto, el momento y a las personas que lo van a vivir.
-                </p>
-
-                <p class="microcopy">
-                    Porque hay experiencias que no terminan cuando acaba el día.
-                </p>
-
-            </div>
+            <p class="text-quote-small">
+                Porque hay experiencias que no terminan cuando acaba el día.
+            </p>
 
         </section>
 
@@ -94,35 +91,31 @@
         <!-- ========================= CÓMO FUNCIONA ========================= -->
         <section class="section section--inner">
 
-            <div class="intro-container">
+            <h2 class="text-title">Cómo se construye cada propuesta</h2>
 
-                <h2>Cómo se construye cada propuesta</h2>
+            <p class="text-body">
+                No hay un catálogo cerrado. Cada diseño se plantea en función del tipo de experiencia,
+                del grupo y del tipo de recuerdo que se quiere generar.
+            </p>
 
-                <p>
-                    No hay un catálogo cerrado. Cada diseño se plantea en función del tipo de experiencia,
-                    del grupo y del tipo de recuerdo que se quiere generar.
-                </p>
+            <p class="text-body">
+                A partir de ahí, trabajamos sobre una base común: la iconografía y el lenguaje visual de To-Ko,
+                adaptándolo a cada caso concreto.
+            </p>
 
-                <p>
-                    A partir de ahí, trabajamos sobre una base común: la iconografía y el lenguaje visual de To-Ko,
-                    adaptándolo a cada caso concreto.
-                </p>
-
-                <p>
-                    El resultado no es algo genérico, sino algo coherente con lo que se está viviendo.
-                </p>
-
-            </div>
+            <p class="text-body">
+                El resultado no es algo genérico, sino algo coherente con lo que se está viviendo.
+            </p>
 
         </section>
 
 
         <!-- ========================= EJEMPLOS VISUALES ========================= -->
-        <section class="section section--inner toko-ejemplos">
+        <section class="section section--inner no-snap-children toko-ejemplos">
 
-            <h2>Algunas piezas</h2>
+            <h2 class="text-title">Algunas piezas</h2>
 
-            <p class="intro-container">
+            <p class="text-body intro-container">
                 Cada grupo y cada experiencia es diferente, pero estas son algunas de las formas que puede tomar.
             </p>
 
@@ -170,55 +163,53 @@
         <!-- ========================= TO-KO WINE (PIEZA DE COLECCIÓN) ========================= -->
         <section class="section section--inner toko-wine">
 
-            <div class="intro-container">
+            <h2 class="text-title">Ediciones To-Ko</h2>
 
-                <h2>Ediciones To-Ko</h2>
-
-                <p>
-                    Algunas piezas no solo acompañan la experiencia. La representan.
-                </p>
-
-            </div>
+            <p class="text-body">
+                Algunas piezas no solo acompañan la experiencia. La representan.
+            </p>
 
             <div class="toko-wine-container">
 
                 <!-- IMAGEN -->
                 <div class="toko-wine-image">
-                    <img src="../img/toko/foto-bodega.jpg" alt="Edición especial de vino To-Ko Collection">
+                    <picture>
+                        <source media="(max-width: 768px)" srcset="../img/toko/foto-bodega.jpg">
+                        <source media="(min-width: 769px)" srcset="../img/toko/foto-bodega.jpg">
+                        <img src="../img/toko/foto-bodega.jpg" alt="Edición especial de vino To-Ko Collection">
+                    </picture>
                 </div>
+
+
 
                 <!-- CONTENIDO -->
-                <div class="toko-wine-content">
+                <h3 class="text-title2">Vino To-Ko · Edición San Fermín</h3>
 
-                    <h3>Vino To-Ko · Edición San Fermín</h3>
+                <p class="text-body">
+                    Una edición especial desarrollada junto a una bodega reconocida, pensada para acompañar y
+                    prolongar la experiencia.
+                </p>
 
-                    <p>
-                        Una edición especial desarrollada junto a una bodega reconocida, pensada para acompañar y
-                        prolongar la experiencia.
-                    </p>
+                <p class="text-body">
+                    Cada botella mantiene el equilibrio entre origen y diseño: el carácter del vino, el cuidado de
+                    la producción
+                    y la identidad visual de To-Ko.
+                </p>
 
-                    <p>
-                        Cada botella mantiene el equilibrio entre origen y diseño: el carácter del vino, el cuidado de
-                        la producción
-                        y la identidad visual de To-Ko.
-                    </p>
+                <p class="text-body">
+                    Puede formar parte del propio momento —una comida, un encuentro, un cierre— o quedarse como
+                    recuerdo de algo
+                    que solo ocurre una vez al año.
+                </p>
 
-                    <p>
-                        Puede formar parte del propio momento —una comida, un encuentro, un cierre— o quedarse como
-                        recuerdo de algo
-                        que solo ocurre una vez al año.
-                    </p>
+                <p class="text-body">
+                    En grupos y entornos de empresa, se convierte además en un gesto compartido: algo que permanece
+                    más allá de la experiencia.
+                </p>
 
-                    <p>
-                        En grupos y entornos de empresa, se convierte además en un gesto compartido: algo que permanece
-                        más allá de la experiencia.
-                    </p>
-
-                    <p class="microcopy">
-                        Una forma de guardar San Fermín cuando ya ha pasado.
-                    </p>
-
-                </div>
+                <p class="text-quote-small">
+                    Una forma de guardar San Fermín cuando ya ha pasado.
+                </p>
 
             </div>
 
@@ -227,25 +218,21 @@
         <!-- ========================= PROPUESTA ========================= -->
         <section class="section section--inner">
 
-            <div class="intro-container">
+            <h2 class="text-title">Diseñado para cada experiencia</h2>
 
-                <h2>Diseñado para cada experiencia</h2>
+            <p class="text-body">
+                En algunos casos, se trata de reforzar la identidad de un grupo. En otros, de crear un recuerdo
+                tangible de algo que solo ocurre una vez.
+            </p>
 
-                <p>
-                    En algunos casos, se trata de reforzar la identidad de un grupo. En otros, de crear un recuerdo
-                    tangible de algo que solo ocurre una vez.
-                </p>
+            <p class="text-body">
+                También puede formar parte de experiencias más amplias: eventos de empresa, encuentros privados
+                o propuestas personalizadas dentro de San Fermín.
+            </p>
 
-                <p>
-                    También puede formar parte de experiencias más amplias: eventos de empresa, encuentros privados
-                    o propuestas personalizadas dentro de San Fermín.
-                </p>
-
-                <p>
-                    Siempre con la misma idea: que todo tenga sentido dentro de lo que se está viviendo.
-                </p>
-
-            </div>
+            <p class="text-body">
+                Siempre con la misma idea: que todo tenga sentido dentro de lo que se está viviendo.
+            </p>
 
         </section>
 
@@ -269,17 +256,17 @@
 
             <div class="intro-container">
 
-                <h2>De dónde nace To-Ko</h2>
+                <h2 class="text-title">De dónde nace To-Ko</h2>
 
-                <p>
+                <p class="text-body">
                     To-Ko surge de la misma raíz que el resto de experiencias: vivir San Fermín desde dentro.
                 </p>
 
-                <p>
+                <p class="text-body">
                     No como algo que se observa, sino como algo que se entiende, se comparte y se transmite.
                 </p>
 
-                <p class="microcopy">
+                <p class="text-quote-small">
                     Por eso cada diseño tiene algo más detrás que una simple imagen.
                 </p>
 

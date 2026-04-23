@@ -3,50 +3,43 @@
 ========================= */
 
 #empresa-hero {
-    background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    color: white;
+
+    background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
 }
 
+/* Contenido del hero */
+.hero-content {
+    max-width: 800px;
+}
+
+/* Texto descriptivo */
+.hero-content p {
+    margin-bottom: 30px;
+}
+
+/* Microcopy (clave UX + conversión) */
 .hero-microcopy {
-    font-size: 13px;
-    color: #ddd;
-    margin-top: 15px;
     opacity: 0.8;
+    margin-top: 12px;
 }
-
 
 /* =========================
-   INTRO / TEXTO
+   LISTAS 
 ========================= */
 
-.intro-container {
-    max-width: 800px;
-    margin: auto;
+.list-container ul {
+    margin: 12px 0;
+    padding-left: 18px;
 }
 
-.intro-container h2 {
-    margin-bottom: 20px;
+.list-container li {
+    margin-bottom: 4px;
 }
-
-.intro-container p {
-    margin-bottom: 20px;
-    color: #444;
-}
-
-.intro-container ul {
-    margin-bottom: 20px;
-    padding-left: 20px;
-    color: #444;
-}
-
-.intro-container li {
-    margin-bottom: 8px;
-}
-
 
 /* =========================
    GRID CARDS
@@ -61,24 +54,8 @@
     height: 420px;
 }
 
-
 /* =========================
-   PRECIO BLOQUE
-========================= */
-
-.experiencias-precio {
-    background-color: rgba(245,243,239,0.9);
-}
-
-.microcopy {
-    font-size: 14px;
-    color: #777;
-    margin-top: 10px;
-}
-
-
-/* =========================
-   DESKTOP
+   TABLET
 ========================= */
 
 @media (min-width: 769px) {
@@ -88,8 +65,21 @@
     }
 
     .experiencias-grid {
-        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
-        justify-content: center;
+        grid-template-columns: repeat(2, 1fr); /* 2 columnas */
+        gap: 25px;
+    }
+
+}
+
+
+/* =========================
+   DESKTOP
+========================= */
+
+@media (min-width: 1024px) {
+
+    .experiencias-grid {
+        grid-template-columns: repeat(3, 1fr); /* 3 columnas */
         gap: 30px;
     }
 

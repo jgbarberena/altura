@@ -1,45 +1,10 @@
 /* =========================
-   LAYOUT
-========================= */
-
-.faq-page {
-    width: 100%;
-    margin: 0;
-    padding: 0;
-}
-
-
-/* =========================
-   HERO
-========================= */
-
-.faq-hero {
-    margin-bottom: 25px;
-}
-
-.faq-hero h1 {
-    font-size: 28px;
-    margin-bottom: 8px;
-}
-
-.faq-hero p {
-    font-size: 14px;
-    color: #555;
-}
-
-
-/* =========================
    SECCIONES
 ========================= */
 
 .faq-section {
     max-width: 1100px;
 }
-
-.faq-section h2 {
-    font-size: 22px;
-}
-
 
 /* =========================
    FAQ ITEMS
@@ -93,32 +58,4 @@
 
 @media (min-width: 769px) {
 
-    .faq-page {
-        padding: calc(var(--header-height)+30px) 0 80px;
-    }
-
-    .section {
-        padding-left: clamp(20px, 5vw, 80px);
-        padding-right: clamp(20px, 5vw, 80px);
-    }
-
-    .faq-hero h1 {
-        font-size: 40px;
-    }
-
-    .faq-hero p {
-        font-size: 16px;
-    }
-
-    .faq-section h2 {
-        font-size: 26px;
-    }
-
-    .faq-question {
-        font-size: 16px;
-    }
-
-    .faq-answer p {
-        font-size: 15px;
-    }
 }
