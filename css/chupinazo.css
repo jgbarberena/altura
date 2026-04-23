@@ -5,69 +5,42 @@
 /* =========================
    HERO Chupinazo
 ========================= */
-#chupinazo-hero {
+#experiencia-hero {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    color: white;
 
     /* IMPORTANTE: la imagen correcta */
     background: url("../img/experiencias/chupinazo/Chupinazo_2.jpg") center/cover no-repeat;
 }
 
-/* Overlay (reutiliza lógica global pero aseguramos) */
-#chupinazo-hero .overlay {
-    position: absolute;
-    inset: 0;
-}
-
 /* Contenido */
-#chupinazo-hero .hero-content {
+#experiencia-hero .hero-content {
     max-width: 800px;
-    padding: 0 20px;
 }
 
-#chupinazo-hero h1 {
-    font-size: 48px;
-    letter-spacing: 4px;
-    margin-bottom: 10px;
-}
-
-#chupinazo-hero h2 {
-    font-size: 24px;
-    margin-bottom: 20px;
-}
-
-#chupinazo-hero p {
-    font-size: 17px;
-    color: #ddd;
-    margin-bottom: 25px;
+#experiencia-hero p {
+    margin-bottom: 30px;
 }
 
 .hero-microcopy {
-    font-size: 13px;
-    color: #ccc;
-    margin-top: 15px;
+    opacity: 0.8;
+    margin-top: 12px;
 }
 
 /* =========================
-   INTRO (solo spacing interno)
+   LISTAS 
 ========================= */
 
-.experiencias-intro .intro-container {
-    max-width: 800px;
-    margin: auto;
+.list-container ul {
+    margin: 12px 0;
+    padding-left: 18px;
 }
 
-.experiencias-intro h2 {
-    margin-bottom: 20px;
-}
-
-.experiencias-intro p {
-    margin-bottom: 18px;
-    color: #444;
+.list-container li {
+    margin-bottom: 4px;
 }
 
 
@@ -86,80 +59,14 @@
     height: 420px;
 }
 
-
-/* =========================
-   SECCIÓN PRECIO
-========================= */
-
-.experiencias-precio .intro-container {
-    max-width: 800px;
-    margin: auto;
-}
-
-.experiencias-precio h2 {
-    margin-bottom: 20px;
-}
-
-.experiencias-precio p {
-    margin-bottom: 15px;
-}
-
-.experiencias-precio .microcopy {
-    font-size: 14px;
-    color: #777;
-}
-
-
-/* =========================
-   LISTAS (bloque enlaces)
-========================= */
-
-.intro-container ul {
-    margin: 15px 0;
-    padding-left: 18px;
-}
-
-.intro-container li {
-    margin-bottom: 8px;
-}
-
-.intro-container a {
-    text-decoration: none;
-}
-
-.intro-container a:hover {
-    text-decoration: underline;
-}
-
-/* =========================
-   TO-KO UPSELL
-========================= */
-
-.toko-upsell {
-    background: rgba(0,0,0,0.02);
-    text-align: center;
-}
-
-.toko-upsell .microcopy {
-    margin-top: 10px;
-}
-
 /* =========================
    TABLET
 ========================= */
 
 @media (min-width: 769px) {
 
-    #chupinazo-hero {
-        background-image: url("../img/experiencias/chupinazo/balcon-chupinazo-aerea_desktop.jpg");
-    }
-
-    #chupinazo-hero h1 {
-        font-size: 60px;
-    }
-
-    #chupinazo-hero h2 {
-        font-size: 28px;
+    #experiencia-hero {
+        background-image: url("../img/experiencias/chupinazo/Chupinazo_2.jpg");
     }
 
     .experiencias-grid {

@@ -18,6 +18,12 @@
 /* Solo sobreescribes donde necesitas más margen que el defecto */
 .hero-content .text-body { margin-bottom: 30px; }
 
+/* Microcopy (clave UX + conversión) */
+.hero-microcopy {
+    opacity: 0.8;
+    margin-top: 12px;
+}
+
 /* =========================
    EXPERIENCIAS HOME
 ========================= */

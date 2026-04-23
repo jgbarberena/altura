@@ -9,81 +9,28 @@
 
 #hero {
     position: relative;
-    background: url("../img/experiencias/balcon-chupinazo-ayuntamiento_desktop.jpg") center/cover no-repeat;
-
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    color: white;
-}
 
-/* Overlay ya definido en style.css → no duplicamos */
+    background: url("../img/experiencias/balcon-chupinazo-ayuntamiento_desktop.jpg") center/cover no-repeat;
+}
 
 /* Contenido del hero */
 .hero-content {
-    position: relative;
     max-width: 800px;
-    padding: 0 20px;
-}
-
-/* Título principal */
-.hero-content h1 {
-    font-size: 56px;
-    letter-spacing: 6px;
-    margin-bottom: 10px;
-}
-
-/* Subtítulo SEO (más discreto) */
-.hero-content h2 {
-    font-size: 22px;
-    font-weight: 400;
-    margin-bottom: 20px;
-    opacity: 0.9;
 }
 
 /* Texto descriptivo */
 .hero-content p {
-    font-size: 18px;
-    color: #ddd;
     margin-bottom: 30px;
 }
 
 /* Microcopy (clave UX + conversión) */
 .hero-microcopy {
-    font-size: 10px;
     opacity: 0.8;
     margin-top: 12px;
-    color: #ccc;
-}
-
-/* ============================
-   INTRO EDITORIAL (SEO + IA)
-   ============================ */
-
-.experiencias-intro {
-    background-color: rgba(245, 243, 239, 0.9);
-}
-
-.intro-container {
-    max-width: 750px;
-    margin: auto;
-    text-align: center;
-}
-
-/* Título editorial */
-.intro-container h2 {
-    font-size: 32px;
-    margin-bottom: 25px;
-    line-height: 1.3;
-}
-
-/* Párrafos con mejor ritmo */
-.intro-container p {
-    font-size: 17px;
-    color: #444;
-    margin-bottom: 18px;
-    line-height: 1.7;
 }
 
 /* ============================
@@ -96,7 +43,6 @@
 
 /* Título sección */
 #experiencias h2 {
-    font-size: 34px;
     margin-bottom: 20px;
 }
 
@@ -112,15 +58,6 @@
     height: 420px;
 }
 
-/* Overlay ya heredado → ajustamos un poco */
-.experiencia-overlay h3 {
-    font-size: 22px;
-}
-
-.experiencia-overlay p {
-    font-size: 14px;
-}
-
 /* ============================
    AJUSTES TIPOGRÁFICOS GENERALES
    ============================ */
@@ -130,26 +67,6 @@
 
     #hero {
         background-image: url("../img/balcon-chupinazo-ayuntamiento_desktop.jpg");
-    }
-
-    .hero-content h1 {
-        font-size: 64px;
-    }
-
-    .hero-content h2 {
-        font-size: 24px;
-    }
-
-    .hero-content p {
-        font-size: 19px;
-    }
-
-    .intro-container h2 {
-        font-size: 36px;
-    }
-
-    .intro-container p {
-        font-size: 18px;
     }
 
     .experiencias-grid {
@@ -168,10 +85,6 @@
 
     .hero-content {
         max-width: 900px;
-    }
-
-    .intro-container {
-        max-width: 800px;
     }
 
 }
