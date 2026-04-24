@@ -16,14 +16,14 @@
     --font-sans:  'Inter', sans-serif;
     --font-serif: 'Playfair Display', serif;
 
-    /* --- TIPOGRAFÍA: Tamaños fluidos --- */
-    --text-display: clamp(28px, 6.5vw, 56px);
-    --text-section: clamp(20px, 3.5vw, 26px);
-    --text-mid:     clamp(17px, 2.8vw, 22px);
-    --text-base:    clamp(14px, 2vw,   17px);
-    --text-quote:   clamp(17px, 2.8vw, 22px);
-    --text-tag:     clamp(11px, 1.5vw, 13px);
-    --text-small:   clamp(12px, 1.7vw, 14px);
+    /* --- TIPOGRAFÍA: Tamaños --- */
+    --text-display: 56px;
+    --text-section: 26px;
+    --text-mid:     22px;
+    --text-base:    17px;
+    --text-quote:   22px;
+    --text-tag:     13px;
+    --text-small:   14px;
 
     /* --- TIPOGRAFÍA: Colores --- */
     --color-heading:     #222;
@@ -43,9 +43,9 @@
     font-family: var(--font-sans);
     font-size: var(--text-display);
     font-weight: 500;
-    letter-spacing: clamp(2px, 0.8vw, 5px);
+    letter-spacing: 5px;
     text-transform: uppercase;
-    line-height: 1.2;
+    line-height: 1.5;
     color: var(--color-heading);
     margin-bottom: 16px;
 }
@@ -85,14 +85,14 @@
     color: var(--color-body);
     margin-bottom: 16px;
 }
-
+/* variante intro para artículos */
 .text-body--intro {
     font-family: var(--font-serif);
     font-size: var(--text-mid);
     font-weight: 400;
     color: var(--color-heading);
     line-height: 1.7;
-    padding-left: clamp(14px, 3vw, 28px);
+    padding-left: 20px;
     border-left: 3px solid var(--color-accent);
     margin-bottom: 32px;
 }
@@ -119,7 +119,7 @@
     font-family: var(--font-sans);
     font-size: var(--text-tag);
     font-weight: 600;
-    letter-spacing: clamp(1px, 0.5vw, 3px);
+    letter-spacing: 3px;
     text-transform: uppercase;
     color: var(--color-accent);
     margin-bottom: 12px;
@@ -128,8 +128,8 @@
 .text-small {
     font-family: var(--font-sans);
     font-size: var(--text-small);
-    font-weight: 400;
     color: var(--color-subtle);
+    font-weight: 400;
     line-height: 1.5;
     margin-bottom: 0;
 }
@@ -143,6 +143,8 @@
     margin-bottom: 0;
     opacity: 0.8;
 }
+
+/* Enlace en texto */
 
 .text-link {
     color: var(--color-accent);
@@ -161,34 +163,33 @@
    VARIANTES ON-DARK
 ========================= */
 
-.on-dark .text-display   { color: var(--color-light); }
-.on-dark .text-title     { color: var(--color-light); }
-.on-dark .text-sub       { color: var(--color-light-dim); }
-.on-dark .text-title2    { color: var(--color-light-dim); }
-.on-dark .text-body      { color: var(--color-light-dim); }
-.on-dark .text-small     { color: var(--color-light-dim); }
-.on-dark .text-microcopy { color: var(--color-light-dim); }
-.on-dark .text-quote     { color: var(--color-light); }
+.on-dark .text-display      { color: var(--color-light); }
+.on-dark .text-title        { color: var(--color-light); }
+.on-dark .text-sub          { color: var(--color-light-dim); }
+.on-dark .text-title2       { color: var(--color-light-dim); }
+.on-dark .text-body         { color: var(--color-light-dim); }
+.on-dark .text-small        { color: var(--color-light-dim); }
+.on-dark .text-microcopy    { color: var(--color-light-dim); }
+.on-dark .text-quote        { color: var(--color-light); }
 
 /* =========================
    BASE SECTION
 ========================= */
 
 .section {
-    padding-left:   clamp(16px, 5vw, 40px);
-    padding-right:  clamp(16px, 5vw, 40px);
-    padding-bottom: clamp(15px, 4vw, 30px);
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-bottom: 15px;
     scroll-snap-align: start;
 }
 
 .section--first {
-    padding-top: calc(var(--header-height) + clamp(16px, 4vw, 40px));
+    padding-top: calc(var(--header-height) + 20px);
     scroll-margin-top: 0;
 }
 
 .section--first--fullscreen {
-    min-height: 100vh;
-    height: auto;
+    height: 100vh;
     margin-top: calc(-1 * var(--header-height));
     padding-top: var(--header-height);
     position: relative;
@@ -196,7 +197,7 @@
 }
 
 .section--inner {
-    padding-top: calc(var(--header-height) + clamp(8px, 3vw, 30px));
+    padding-top: calc(var(--header-height) + 10px);
     scroll-margin-top: 0;
 }
 
@@ -240,8 +241,16 @@
     z-index: 2;
 }
 
-/* ==== NO SNAP ==== */
+/* =========================
+   SNAP Y SCROLL SUAVE
+========================= */
 
+html {
+    scroll-behavior: smooth;
+    scroll-snap-type: y proximity;
+}
+
+/* ==== NO SNAP ==== */
 .no-snap { scroll-snap-align: none !important; }
 .no-snap-children * { scroll-snap-align: none !important; }
 
@@ -277,21 +286,14 @@ body::after {
     background-image: url("../img/textura-exclusivo-papiro.jpg");
 }
 
-/* Headings base — cada rol tipográfico sobreescribe cuando hace falta */
-h1 { font-family: var(--font-sans); }
-h2 { font-family: var(--font-serif); }
-h3 { font-family: var(--font-sans); }
+h1, h3 {
+    font-family: var(--font-sans);
+}
+h2 {
+    font-family: var(--font-serif);
+}
 
 a { transition: all 0.3s ease; }
-
-/* =========================
-   SCROLL
-========================= */
-
-html {
-    scroll-behavior: smooth;
-    scroll-snap-type: y proximity;
-}
 
 /* =========================
    BOTONES
@@ -300,9 +302,8 @@ html {
 .buttons {
     display: inline-flex;
     align-items: center;
-    gap: clamp(10px, 3vw, 20px);
+    gap: 20px;
     justify-content: center;
-    flex-wrap: wrap; /* evita desbordamiento en mobile */
 }
 
 .buttons--center { justify-content: center; }
@@ -312,14 +313,13 @@ html {
 
 .btn {
     display: inline-block;
-    padding: clamp(8px, 2vw, 12px) clamp(18px, 4vw, 30px);
+    padding: 12px 30px;
     font-size: var(--text-small);
     font-family: var(--font-sans);
     font-weight: 500;
     text-decoration: none;
     transition: all 0.3s ease;
     cursor: pointer;
-    white-space: nowrap; /* evita que el texto del botón se parta */
 }
 
 .btn-primary {
@@ -385,7 +385,7 @@ html {
     position: absolute;
     bottom: 0;
     width: 100%;
-    padding: clamp(12px, 3vw, 20px);
+    padding: 20px;
     background: rgba(50,50,50,0.6);
     backdrop-filter: blur(4px);
     color: var(--color-light);
@@ -401,4 +401,33 @@ html {
 }
 
 .card:hover img { transform: scale(1.1); }
+
 .card:hover .card-overlay { background: rgba(20,20,20,0.8); }
+
+/* =========================
+   MEDIA QUERIES GLOBALES
+========================= */
+
+/* ======= DESKTOP ========== */
+
+@media (min-width: 769px) {
+
+    .section {
+        padding-left: 40px;
+        padding-right: 40px;
+        padding-bottom: 30px;
+    }
+
+    .section--first {
+        padding-top: calc(var(--header-height) + 40px);
+    }
+
+    .section--inner {
+        padding-top: calc(var(--header-height) + 30px);
+    }
+
+    .section--inner--sticky {
+        padding-top: calc(var(--sticky-height) + 10px);
+    }
+
+}

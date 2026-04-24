@@ -501,6 +501,7 @@ header.dark .hamburger {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    scroll-snap-align: end;
 }
 
 .footer-inner {
