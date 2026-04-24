@@ -1,0 +1,83 @@
+.galeria-page {
+    min-height: 100vh;
+    background: black;
+}
+
+/* HERO */
+#momenticos-hero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+
+    background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
+}
+
+/* Contenido del hero */
+.hero-content {
+    position: relative;
+    max-width: 800px;
+}
+
+/* Texto descriptivo */
+/* Solo sobreescribes donde necesitas más margen que el defecto */
+.hero-content .text-body { margin-bottom: 30px; }
+
+/* ============================
+   TESTIMONIOS — ESTILO LISTA D
+   ============================ */
+
+.testimonios {
+    margin-top: 40px;
+}
+
+.testimonio {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.12);
+}
+
+.testimonio:last-child {
+    border-bottom: none;
+}
+
+.testimonio  .text-body {
+    margin: 0 0 4px 0;
+    line-height: 1.45;
+}
+
+.testimonio  .text-small  {
+    margin: 0;
+    text-align: right;
+}
+
+.testimonios__controls {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.testimonios__controls .sep {
+    opacity: 0.5;
+}
+
+
+/* =========================
+   TABLET
+========================= */
+
+@media (min-width: 769px) {
+
+    #momenticos-hero {
+        background-image: url("../img/empresa/hospitality-fake.jpg");
+    }
+
+}
+
+/* =========================
+   DESKTOP
+========================= */
+
+@media (min-width: 1024px) {
+
+}

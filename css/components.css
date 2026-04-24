@@ -650,6 +650,23 @@ header.dark .hamburger {
    MINI GALLERY COMPONENT
 ========================= */
 
+/* Modo compacto: sin fondo, sin padding de sección, sin título */
+.miniGallery--compact {
+    background: none;
+}
+
+.miniGallery--compact.section--inner {
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.miniGallery--compact .miniGallery__title {
+    display: none;
+}
+
+/* Modo normal */
 .miniGallery {
     background-color: rgba(250, 248, 244, 0.95);
 }
@@ -657,19 +674,19 @@ header.dark .hamburger {
 .miniGallery .carousel {
     position: relative;
     overflow: hidden;
-    /* CLAVE: recorta las imágenes que salen */
 }
 
+/*    TRACK ORIGINAL (sin justify-content) */
 .miniGallery .carousel-track {
     display: flex;
     width: 100%;
     overflow: visible;
-    /* el track se desborda, el carousel lo recorta */
     gap: 0;
     padding: 0;
     will-change: transform;
 }
 
+/*  SLIDES */
 .miniGallery .carousel-track picture {
     flex: 0 0 100%;
     max-width: 100%;
@@ -679,6 +696,7 @@ header.dark .hamburger {
     transition: transform 0.4s ease, opacity 0.4s ease, box-shadow 0.4s ease;
     cursor: default;
     overflow: hidden;
+    position: relative;
 }
 
 .miniGallery .carousel-track picture.active {
@@ -709,6 +727,7 @@ header.dark .hamburger {
     display: none;
 }
 
+/* BOTONES */
 .miniGallery .carousel-btn {
     position: absolute;
     top: 50%;
@@ -746,20 +765,108 @@ header.dark .hamburger {
     right: 10px;
 }
 
-/* =========MEDIA QUERIES========= */
+/* TESTIMONIO EDITORIAL */
 
+.miniGallery__testimonial {
+    width: 95%;
+    margin: 8px auto 0 auto; /* muy compacto */
+    padding: 6px 8px 12px; /* espacio reducido + hueco para autor */
+    background: rgba(255, 255, 255, 0.5); /* más suave */
+    backdrop-filter: blur(3px);
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.25s ease;
+}
+
+/* Viñeteado suave */
+.miniGallery__testimonial::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+        circle,
+        rgba(0,0,0,0) 45%,
+        rgba(0,0,0,0.18) 100%
+    );
+    pointer-events: none;
+}
+
+    /* TEXTO DEL TESTIMONIO — 2 LÍNEAS */
+
+.miniGallery__testimonial-text {
+    margin: 0 0 6px 0;
+    font-size: var(--text-quote-small);
+    line-height: 1.5;
+
+    /* Máximo 2 líneas */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    transition: all 0.25s ease;
+}
+
+    /* EXPANSIÓN EN HOVER */
+
+@media (hover: hover) {
+    .miniGallery__testimonial:hover .miniGallery__testimonial-text {
+        -webkit-line-clamp: unset; /* se expande */
+        max-height: none;
+        overflow: visible;
+    }
+
+    .miniGallery__testimonial:hover {
+        padding-bottom: 28px; /* un poco más para que respire */
+    }
+}
+
+    /* AUTOR — SIEMPRE ABAJO A LA DERECHA */
+
+.miniGallery__testimonial-author {
+    margin: 0;
+    font-size: var(--text-small);
+    color: var(--color-dark-60);
+    text-align: right;
+
+    position: absolute;
+    bottom: 3px;
+    right: 10px;
+}
+
+    /* OVERLAY OPCIONAL */
+
+.miniGallery[data-overlay="true"] .miniGallery__testimonial {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%; /* un poco más estrecho en overlay */
+    z-index: 3;
+    margin: 0;
+}
+
+
+    /* MEDIA QUERIES  */
 @media (min-width: 769px) {
+    /*centrado del slide activo*/
+    .miniGallery .carousel-track {
+        padding-left: 10%;
+        padding-right: 10%;
+    }
+    /*tamaño del slide activo*/
     .miniGallery .carousel-track picture {
-        flex: 0 0 70%;
-        max-width: 70%;
+        flex: 0 0 80%;
+        max-width: 80%;
     }
 }
 
 @media (min-width: 1024px) {
-    .miniGallery .carousel-track picture {
-        flex: 0 0 50%;
-        max-width: 50%;
-    }
+
 }
 
 /* =========================

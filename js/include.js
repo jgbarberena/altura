@@ -22,7 +22,7 @@ window.resolveAsset = function(path) {
 // Páginas internas del proyecto
 window.resolvePage = function(path) {
     // path es relativo al proyecto, por ejemplo:
-    // "galeria/index.html"
+    // "momenticos/index.html"
     return `${window.BASE_URL}/${path}`;
 };
 

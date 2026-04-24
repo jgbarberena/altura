@@ -3,11 +3,12 @@
 ========================= */
 
 #hero {
-    background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
+
+    background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
 }
 
 .hero-content {
@@ -17,12 +18,6 @@
 
 /* Solo sobreescribes donde necesitas más margen que el defecto */
 .hero-content .text-body { margin-bottom: 30px; }
-
-/* Microcopy (clave UX + conversión) */
-.hero-microcopy {
-    opacity: 0.8;
-    margin-top: 12px;
-}
 
 /* =========================
    EXPERIENCIAS HOME
