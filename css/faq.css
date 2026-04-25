@@ -3,7 +3,7 @@
 ========================= */
 
 .faq-section {
-    max-width: 1100px;
+    max-width: var(--width-main);
 }
 
 /* =========================
@@ -25,8 +25,11 @@
     background: none;
     border: none;
 
-    font-size: 15px;
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    color: var(--color-heading);
     font-weight: 500;
+
     cursor: pointer;
 }
 
@@ -40,22 +43,12 @@
 
 .faq-answer p {
     padding: 0 0 15px 0;
-    font-size: 14px;
-    color: #444;
+    font-size: var(--text-small);
+    color: var(--color-body);
 }
-
 
 /* estado abierto */
 
 .faq-item.active .faq-answer {
     max-height: 500px;
-}
-
-
-/* =========================
-   DESKTOP
-========================= */
-
-@media (min-width: 769px) {
-
 }

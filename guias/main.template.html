@@ -1,8 +1,8 @@
 ﻿<main class="guias-page">
 
   <section class="guias-hero section section--first">
-    <h1>Guías para vivir San Fermín</h1>
-    <p>Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turístico.</p>
+      <h1 class="text-display">Cómo vivir San Fermín</h1>
+      <p class="text-sub">Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turístico.</p>
   </section>
 
   <section class="section section--inner no-snap-children guias-destacados" id="guias-destacados">
@@ -10,20 +10,22 @@
     <div id="guias-destacados-cards">
       {{CARDS}}
     </div>
-  
+
   </section>
 
   <section class="section section--inner guias-listado" id="guias-listado">
-    <h2>Más guías</h2>
+    <h2 class="text-title">Más guías</h2>
 
     <div class="grid-guias" id="guias-listado-cards">
       {{LISTADO}}
     </div>
   </section>
 
-  <section class="guias-cta">
-    <a href="../#contacto" class="btn btn-primary">Quiero vivirlo</a>
-    <p>Cuéntanos qué te gustaría vivir y te ayudamos a diseñar una experiencia a tu medida.</p>
+  <section class="section section--inner guias-cta">
+    <div class="buttons">
+      <a class="btn btn-primary" href="#contacto">Quiero vivirlo</a>
+    </div>
+    <p class="text-small">Cuéntanos qué te gustaría vivir y te ayudamos a diseñar una experiencia a tu medida.</p>
   </section>
 
   <template id="tpl-destacado">
@@ -50,9 +52,9 @@
       </picture>
 
       <div class="guia-content">
-        <h3>{{TITLE}}</h3>
-        <p>{{RESUMEN}}</p>
-        <a href="{{PAGE_URL}}">Leer más</a>
+        <h3 class="text-title2">{{TITLE}}</h3>
+        <p class="text-small">{{RESUMEN}}</p>
+        <a class="text-link" href="{{PAGE_URL}}">Leer más</a>
       </div>
     </article>
   </template>

@@ -105,9 +105,9 @@ document.addEventListener("DOMContentLoaded", () => {
             </picture>
 
             <div class="guia-content">
-                <h3>${g.Title}</h3>
-                <p>${g.Resumen}</p>
-                <a href="${resolvePage(g.Url)}">Leer más</a>
+                <h3 class="text-title2">${g.Title}</h3>
+                <p class="text-small">${g.Resumen}</p>
+                <a class="text-link" href="${resolvePage(g.Url)}">Leer más</a>
             </div>
         </article>
     `).join("");

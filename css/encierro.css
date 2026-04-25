@@ -6,82 +6,18 @@
    HERO Encierro
 ========================= */
 
-#experiencia-hero {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-
-    /* IMPORTANTE: la imagen correcta */
+#hero {
     background: url("../img/experiencias/encierro/balcon-encierro-aerea_mobile.jpg") center/cover no-repeat;
 }
-
-/* Contenido */
-#experiencia-hero .hero-content {
-    max-width: 800px;
-}
-
-#experiencia-hero p {
-    margin-bottom: 30px;
-}
-
-/* =========================
-   LISTAS 
-========================= */
-
-.list-container ul {
-    margin: 12px 0;
-    padding-left: 18px;
-}
-
-.list-container li {
-    margin-bottom: 4px;
-}
-
-
-/* =========================
-   GRID EXPERIENCIAS (FIX REAL)
-========================= */
-
-.experiencias-grid {
-    display: grid;
-    grid-template-columns: 1fr; /* MOBILE: 1 columna */
-    gap: 20px; /* separación real (antes no había) */
-}
-
-/* ALTURA consistente */
-.experiencia-item img {
-    height: 420px;
-}
-
-/* =========================
-   TABLET
-========================= */
-
-@media (min-width: 769px) {
-
-    #experiencia-hero {
-        background-image: url("../img/experiencias/encierro/balcon-encierro-aerea_mobile.jpg");
-    }
-
-    .experiencias-grid {
-        grid-template-columns: repeat(2, 1fr); /* 2 columnas */
-        gap: 25px;
-    }
-
-}
-
 
 /* =========================
    DESKTOP
 ========================= */
 
-@media (min-width: 1024px) {
+@media (min-width: 769px) {
 
-    .experiencias-grid {
-        grid-template-columns: repeat(3, 1fr); /* 3 columnas */
-        gap: 30px;
+    #hero {
+        background-image: url("../img/experiencias/encierro/balcon-encierro-aerea_mobile.jpg");
     }
 
 }

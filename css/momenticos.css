@@ -1,27 +1,7 @@
-.galeria-page {
-    min-height: 100vh;
-    background: black;
-}
-
 /* HERO */
-#momenticos-hero {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-
+#hero {
     background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
 }
-
-/* Contenido del hero */
-.hero-content {
-    position: relative;
-    max-width: 800px;
-}
-
-/* Texto descriptivo */
-/* Solo sobreescribes donde necesitas más margen que el defecto */
-.hero-content .text-body { margin-bottom: 30px; }
 
 /* ============================
    TESTIMONIOS — ESTILO LISTA D
@@ -63,21 +43,13 @@
 
 
 /* =========================
-   TABLET
+   DESKTOP
 ========================= */
 
 @media (min-width: 769px) {
 
-    #momenticos-hero {
+    #hero {
         background-image: url("../img/empresa/hospitality-fake.jpg");
     }
-
-}
-
-/* =========================
-   DESKTOP
-========================= */
-
-@media (min-width: 1024px) {
 
 }

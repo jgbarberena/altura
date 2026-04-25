@@ -3,7 +3,7 @@
 ============================ */
 
 .articulo-page {
-    max-width: 720px; /* reducido: texto largo se lee mejor en columna estrecha */
+    max-width: var(--width-text); /* reducido: texto largo se lee mejor en columna estrecha */
     margin: 0 auto;
     padding: calc(var(--header-height) + 40px) 20px 80px;
 }

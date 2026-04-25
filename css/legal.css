@@ -3,26 +3,5 @@
 ========================= */
 
 .legal-section {
-    max-width: 1100px;
-}
-
-/* =========================
-   LISTAS 
-========================= */
-
-.list-container ul {
-    margin: 12px 0;
-    padding-left: 24px;
-}
-
-.list-container li {
-    margin-bottom: 4px;
-}
-
-/* =========================
-   TABLET + DESKTOP
-========================= */
-
-@media (min-width: 769px) {
-
+    max-width: var(--width-main);
 }

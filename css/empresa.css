@@ -2,50 +2,8 @@
    HERO EMPRESA
 ========================= */
 
-#empresa-hero {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-
+#hero {
     background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
-}
-
-/* Contenido del hero */
-.hero-content {
-    max-width: 800px;
-}
-
-/* Texto descriptivo */
-.hero-content p {
-    margin-bottom: 30px;
-}
-
-/* =========================
-   LISTAS 
-========================= */
-
-.list-container ul {
-    margin: 12px 0;
-    padding-left: 18px;
-}
-
-.list-container li {
-    margin-bottom: 4px;
-}
-
-/* =========================
-   GRID CARDS
-========================= */
-
-.experiencias-grid {
-    display: grid;
-    gap: 20px;
-}
-
-.experiencia-item img {
-    height: 420px;
 }
 
 /* =========================
@@ -54,27 +12,8 @@
 
 @media (min-width: 769px) {
 
-    #empresa-hero {
+    #hero {
         background-image: url("../img/empresa/hospitality-fake.jpg");
-    }
-
-    .experiencias-grid {
-        grid-template-columns: repeat(2, 1fr); /* 2 columnas */
-        gap: 25px;
-    }
-
-}
-
-
-/* =========================
-   DESKTOP
-========================= */
-
-@media (min-width: 1024px) {
-
-    .experiencias-grid {
-        grid-template-columns: repeat(3, 1fr); /* 3 columnas */
-        gap: 30px;
     }
 
 }

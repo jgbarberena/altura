@@ -8,77 +8,14 @@
    ============================ */
 
 #hero {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-
-    background: url("../img/experiencias/balcon-chupinazo-ayuntamiento_desktop.jpg") center/cover no-repeat;
-}
-
-/* Contenido del hero */
-.hero-content {
-    max-width: 800px;
-}
-
-/* Texto descriptivo */
-.hero-content p {
-    margin-bottom: 30px;
-}
-
-/* ============================
-   GRID EXPERIENCIAS
-   ============================ */
-
-#experiencias {
-    background-color: rgba(245, 243, 239, 0.95);
-}
-
-/* Título sección */
-#experiencias h2 {
-    margin-bottom: 20px;
-}
-
-/* Grid responsive */
-.experiencias-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-}
-
-/* Altura consistente para tarjetas */
-.experiencia-item img {
-    height: 420px;
-}
-
-/* ============================
-   AJUSTES TIPOGRÁFICOS GENERALES
-   ============================ */
-
-/* Mejora lectura en desktop */
-@media (min-width: 769px) {
-
-    #hero {
-        background-image: url("../img/balcon-chupinazo-ayuntamiento_desktop.jpg");
-    }
-
-    .experiencias-grid {
-        grid-template-columns: repeat(auto-fit, minmax(300px, 330px));
-        justify-content: center;
-        gap: 30px;
-    }
-
+    background: url("../img/experiencias/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
 }
 
 /* ============================
    DESKTOP GRANDE
    ============================ */
-
-@media (min-width: 1200px) {
-
-    .hero-content {
-        max-width: 900px;
+@media (min-width: 769px) {
+    #hero {
+        background-image: url("../img/balcon-chupinazo-ayuntamiento_desktop.jpg");
     }
-
 }

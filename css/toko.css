@@ -6,37 +6,8 @@
    HERO TO-KO
 ========================= */
 
-#toko-hero {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-
+#hero {
     background: url("../img/toko/logo-toko-chupinazo.jpg") center/cover no-repeat;
-}
-
-#toko-hero .hero-content {
-    max-width: 800px;
-}
-
-#toko-hero p {
-    margin-bottom: 30px;
-}
-
-/* =========================
-   GRID EJEMPLOS
-========================= */
-
-.toko-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 20px;
-    padding: 0 20px;
-}
-
-/* ALTURA consistente */
-.experiencia-item img {
-    height: 420px;
 }
 
 /* =========================
@@ -49,14 +20,6 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 4px 20px rgba(0,0,0,0.10); /* mejora: sombra suave */
-}
-
-/* =========================
-   CTA CENTRADO
-========================= */
-
-.section--inner-flush .buttons {
-    padding: 20px 0;
 }
 
 /* =========================

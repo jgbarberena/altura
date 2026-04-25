@@ -3,42 +3,7 @@
 ========================= */
 
 #hero {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-
     background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
-}
-
-.hero-content {
-    position: relative;
-    max-width: 800px;
-}
-
-/* Solo sobreescribes donde necesitas más margen que el defecto */
-.hero-content .text-body { margin-bottom: 30px; }
-
-/* =========================
-   EXPERIENCIAS HOME
-========================= */
-
-#experiencias {
-    background-color: rgba(245, 243, 239, 0.9);
-}
-
-#experiencias .text-title {
-    margin-bottom: 20px;
-}
-
-.experiencias-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-}
-
-.experiencia-item img {
-    height: 500px;
 }
 
 /* =========================
@@ -57,7 +22,7 @@
 }
 
 .sanfermin-container {
-    max-width: 800px;
+    max-width: var(--width-mid);
     margin: auto;
 }
 
@@ -79,13 +44,5 @@
             rgba(245,243,239,0.85)
         ),
         url("../img/balcon-charla-corredor_desktop.jpg") center/cover;
-    }
-}
-
-@media (min-width: 1024px) {
-    .experiencias-grid {
-        justify-content: center;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
-        gap: 30px;
     }
 }

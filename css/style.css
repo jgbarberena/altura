@@ -33,6 +33,10 @@
     --color-accent-dark: #800000;
     --color-light:       #ffffff;
     --color-light-dim:   #ffffff;
+
+    --width-text: 720px;
+    --width-mid:  860px;
+    --width-main: 1100px;
 }
 
 /* =========================
@@ -74,6 +78,7 @@
     font-weight: 500;
     line-height: 1.7;
     color: var(--color-body);
+    margin-top: 10px;
     margin-bottom: 10px;
     border-bottom: 1px solid rgba(0,0,0,0.1);
 }
@@ -196,7 +201,7 @@
 }
 
 .section--inner {
-    padding-top: calc(var(--header-height) + clamp(8px, 3vw, 30px));
+    padding-top: calc(var(--header-height) + clamp(6px, 3vw, 12px));
     scroll-margin-top: 0;
 }
 
@@ -298,14 +303,13 @@ html {
 ========================= */
 
 .buttons {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: clamp(10px, 3vw, 20px);
     justify-content: center;
     flex-wrap: wrap; /* evita desbordamiento en mobile */
 }
 
-.buttons--center { justify-content: center; }
 .buttons--left   { justify-content: flex-start; }
 .buttons--right  { justify-content: flex-end; }
 .buttons--space  { justify-content: space-between; }
@@ -365,6 +369,58 @@ html {
 }
 
 /* =========================
+   HERO GENÉRICO
+   (aplica a cualquier sección hero)
+========================= */
+
+.hero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.hero-content {
+    position: relative;
+    max-width: min(var(--width-mid), 90vw); /* evita desbordamiento en mobile */
+    width: 100%;
+}
+
+/* Margen inferior estándar del último texto antes de los botones */
+.hero-content .text-body  { margin-bottom: 30px; }
+.hero-content .text-sub   { margin-bottom: 24px; }
+
+/* =========================
+   EXPERIENCIAS GRID GENÉRICO
+========================= */
+
+.experiencias-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+.experiencia-item img {
+    height: 420px;
+    object-fit: cover;
+}
+
+@media (min-width: 769px) {
+    .experiencias-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 25px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .experiencias-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
+        justify-content: center;
+        gap: 30px;
+    }
+}
+
+/* =========================
    CARD BASE
 ========================= */
 
@@ -402,3 +458,16 @@ html {
 
 .card:hover img { transform: scale(1.1); }
 .card:hover .card-overlay { background: rgba(20,20,20,0.8); }
+
+/* =========================
+   LISTAS
+========================= */
+
+.list-container ul {
+    margin: 15px 0;
+    padding-left: 18px;
+}
+
+.list-container li {
+    margin-bottom: 8px;
+}
