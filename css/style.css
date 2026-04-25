@@ -352,6 +352,7 @@ html {
 .btn-full { width: 100%; }
 
 .btn-link {
+    display: inline;
     font-size: var(--text-tag);
     color: var(--color-accent);
     text-decoration: none;
@@ -359,13 +360,14 @@ html {
     padding: 0;
     background: none;
     border: none;
+    border-bottom: 1px solid transparent; 
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .btn-link:hover {
     color: var(--color-accent-dark);
-    transform: translateX(3px) scale(1.03);
+    border-bottom-color: var(--color-accent-dark);
 }
 
 /* =========================

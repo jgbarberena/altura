@@ -552,21 +552,14 @@ async function initMiniFAQ(root, resolveAsset) {
 
 function initTokoSection(root, resolveAsset, resolvePage) {
 
-    // --- Imágenes de fondo ---
+    // Imágenes de fondo
     root.querySelectorAll('.toko-slide').forEach(slide => {
-        const file = slide.dataset.file;
-        slide.style.backgroundImage = `url('${resolveAsset(file)}')`;
+        slide.style.backgroundImage = `url('${resolveAsset(slide.dataset.file)}')`;
     });
 
-    // --- Botón contacto con interés preseleccionado ---
-    root.querySelectorAll('[data-toko-btn="contacto"]').forEach(btn => {
-        btn.href = resolvePage('index.html') + '?interes=toko#contacto';
-    });
-
-    // --- Botón colección ---
-    root.querySelectorAll('[data-toko-btn="coleccion"]').forEach(btn => {
-        const page = btn.dataset.page;
-        btn.href = resolvePage(page);
+    // Enlaces con data-page → resuelve ruta
+    root.querySelectorAll('[data-page]').forEach(a => {
+        a.href = resolvePage(a.dataset.page);
     });
 }
 
