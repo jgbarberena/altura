@@ -186,6 +186,8 @@
     scroll-snap-align: start;
 }
 
+.align-center {text-align: center;}
+
 .section--first {
     padding-top: calc(var(--header-height) + clamp(16px, 4vw, 40px));
     scroll-margin-top: 0;
@@ -245,11 +247,6 @@
     z-index: 2;
 }
 
-/* ==== NO SNAP ==== */
-
-.no-snap { scroll-snap-align: none !important; }
-.no-snap-children * { scroll-snap-align: none !important; }
-
 /* =========================
    BASE
 ========================= */
@@ -297,6 +294,10 @@ html {
     scroll-behavior: smooth;
     scroll-snap-type: y proximity;
 }
+
+/* ==== NO SNAP ==== */
+.no-snap { scroll-snap-align: none !important; }
+.no-snap-children * { scroll-snap-align: none !important; }
 
 /* =========================
    BOTONES
@@ -396,30 +397,38 @@ html {
    EXPERIENCIAS GRID GENÉRICO
 ========================= */
 
-.experiencias-grid {
+.cards-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
 }
 
-.experiencia-item img {
+.cards-grid .card img {
     height: 420px;
     object-fit: cover;
 }
 
 @media (min-width: 769px) {
-    .experiencias-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 25px;
-    }
+    /* 2: una fila de 2 */
+    .cards-grid--2 { grid-template-columns: repeat(2, 1fr); }
+
+    /* 3: salta directo a 3, evita 2+1 */
+    .cards-grid--3 { grid-template-columns: repeat(3, 1fr); }
+
+    /* 4: 2x2 */
+    .cards-grid--4 { grid-template-columns: repeat(2, 1fr); }
+
+    /* 6: empieza en 2x3 */
+    .cards-grid--6 { grid-template-columns: repeat(2, 1fr); }
+
+    .cards-grid { gap: 25px; }
 }
 
 @media (min-width: 1024px) {
-    .experiencias-grid {
-        grid-template-columns: repeat(auto-fit, minmax(280px, 330px));
-        justify-content: center;
-        gap: 30px;
-    }
+    /* 6: pasa a 3x2 */
+    .cards-grid--6 { grid-template-columns: repeat(3, 1fr); }
+
+    .cards-grid { gap: 30px; }
 }
 
 /* =========================

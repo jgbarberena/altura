@@ -5,7 +5,6 @@
 .articulo-page {
     max-width: var(--width-text); /* reducido: texto largo se lee mejor en columna estrecha */
     margin: 0 auto;
-    padding: calc(var(--header-height) + 40px) 20px 80px;
 }
 
 /* RESUMEN */
@@ -34,55 +33,11 @@
     margin-top: 48px;
 }
 
-/* ============================
-   RELACIONADOS
-============================ */
-
-.articulo-relacionados {
-    border-top: 1px solid rgba(0,0,0,0.08);
-}
-
-.articulo-relacionados ul {
-    list-style: none;
-    padding-left: 0;
-    margin: 0;
-}
-
-.articulo-relacionados li {
-    margin-bottom: 12px;
-    position: relative;
-    padding-left: 22px;
-}
-
-.articulo-relacionados li::before {
-    content: "›";
-    position: absolute;
-    left: 0;
-    top: 0;
-    color: var(--color-accent);
-    font-size: var(--text-base);
-    font-weight: 600;
-    line-height: 1;
-}
-
-/* ============================
-   CTA FINAL
-============================ */
-
-.articulo-cta {
-    margin-top: 70px;
-    text-align: center;
-    padding: 40px 20px;
-    background: rgba(179, 0, 0, 0.04); /* mejora: fondo muy sutil para destacar el CTA */
-    border-radius: 12px;
-}
-
-.articulo-cta p {
-    margin-top: 18px;
-    max-width: 500px;
-    margin-left: auto;
-    margin-right: auto;
-    line-height: 1.6;
+.relacionados-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 18px;
 }
 
 /* ============================

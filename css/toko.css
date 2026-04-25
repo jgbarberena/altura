@@ -10,45 +10,10 @@
     background: url("../img/toko/logo-toko-chupinazo.jpg") center/cover no-repeat;
 }
 
-/* =========================
-   TOKO WINE
-========================= */
-.toko-wine-image picture {
-    display: block;
-    height: 420px;
-    margin: 0 auto 40px;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.10); /* mejora: sombra suave */
-}
-
-/* =========================
-   TABLET
-========================= */
-
 @media (min-width: 769px) {
 
     #toko-hero {
         background: url("../img/toko/logo-toko-chupinazo.jpg") center/cover no-repeat;
-    }
-
-    .toko-grid {
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        max-width: 1100px;
-        margin: auto;
-    }
-
-}
-
-/* =========================
-   DESKTOP
-========================= */
-
-@media (min-width: 1024px) {
-
-    .toko-grid {
-        grid-template-columns: repeat(3, 1fr); /* 3 columnas */
-        gap: 30px;
     }
 
 }
