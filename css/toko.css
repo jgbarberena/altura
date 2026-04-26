@@ -7,13 +7,13 @@
 ========================= */
 
 #hero {
-    background: url("../img/toko/logo-toko-chupinazo.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_mobile.jpg") center/cover no-repeat;
 }
 
 @media (min-width: 769px) {
 
     #toko-hero {
-        background: url("../img/toko/logo-toko-chupinazo.jpg") center/cover no-repeat;
+        background: url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_desktop.jpg") center/cover no-repeat;
     }
 
 }

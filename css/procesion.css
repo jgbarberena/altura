@@ -6,7 +6,7 @@
    HERO PROCESION
 ========================= */
 #hero {
-    background: url("../img/experiencias/procesion/ver-encierro_desktop.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-procesion-san-fermin-mercaderes-pamplona_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -16,7 +16,7 @@
 @media (min-width: 769px) {
 
     #hero {
-        background-image: url("../img/experiencias/procesion/ver-encierro_desktop.jpg");
+        background-image: url("../img/heroes/hero-procesion-san-fermin-mercaderes-pamplona_desktop.jpg");
     }
 
 }

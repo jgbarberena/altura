@@ -6,7 +6,7 @@
    HERO PERSONALIZADAS
 ========================= */
 #hero {
-    background: url("../img/experiencias/personalizadas/ver-encierro_mobile.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-personalizada-barrera-encierro-estafeta-san-fermin_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -16,7 +16,7 @@
 @media (min-width: 769px) {
 
     #hero {
-        background-image: url("../img/experiencias/personalizadas/ver-encierro_desktop.jpg");
+        background-image: url("../img/heroes/hero-personalizada-barrera-encierro-estafeta-san-fermin_desktop.jpg");
     }
 
 }

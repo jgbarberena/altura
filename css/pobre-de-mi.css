@@ -7,7 +7,7 @@
 ========================= */
 #hero {
 
-    background: url("../img/experiencias/pobre-de-mi/ver-encierro_desktop.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-pobredemi-balcon-ayuntamiento-san-fermin_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -17,7 +17,7 @@
 @media (min-width: 769px) {
 
     #hero {
-        background-image: url("../img/experiencias/pobre-de-mi/balcon-chupinazo-aerea_desktop.jpg");
+        background-image: url("../img/heroes/hero-pobredemi-balcon-ayuntamiento-san-fermin_desktop.jpg");
     }
 
 }

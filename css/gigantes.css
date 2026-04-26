@@ -6,7 +6,7 @@
    HERO GIGANTES
 ========================= */
 #hero {
-    background: url("../img/experiencias/gigantes/ver-encierro_mobile.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -16,7 +16,7 @@
 @media (min-width: 769px) {
 
     #experiencia-hero {
-        background-image: url("../img/experiencias/gigantes/ver-encierro_desktop.jpg");
+        background-image: url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_desktop.jpg");
     }
 
 }

@@ -58,16 +58,21 @@ foreach ($file in $htmlFiles) {
     $topics = Get-Attr $tag 'data-topics'; if (-not $topics) { $topics = '' }
 
     # Construir rutas desktop/mobile
-    $imgParts   = Split-ImagePath $img
-    $base       = $imgParts.Base
-    $ext        = $imgParts.Ext
-    $imgMobile  = "$base`_mobile$ext"
-    $imgDesktop = "$base`_desktop$ext"
+    $imgParts       = Split-ImagePath $img
+    $base           = $imgParts.Base
+    $ext            = $imgParts.Ext
+    $extWebp        = '.webp'
+    $imgMobileWebp  = "$base`_mobile$extWebp"
+    $imgMobile      = "$base`_mobile$ext"
+    $imgDesktopWebp = "$base`_desktop$extWebp"
+    $imgDesktop     = "$base`_desktop$ext"
 
     # Versiones JSON (relativas al proyecto)
-    $imgAbs        = Normalize-ImagePath $img
-    $imgMobileAbs  = Normalize-ImagePath $imgMobile
-    $imgDesktopAbs = Normalize-ImagePath $imgDesktop
+    $imgAbs             = Normalize-ImagePath $img
+    $imgMobileWebpAbs   = Normalize-ImagePath $imgMobileWebp
+    $imgMobileAbs       = Normalize-ImagePath $imgMobile
+    $imgDesktopWebpAbs  = Normalize-ImagePath $imgDesktopWebp
+    $imgDesktopAbs      = Normalize-ImagePath $imgDesktop
 
     # URL relativa al proyecto
     $url = "guias/$($file.Name)"
@@ -79,9 +84,11 @@ foreach ($file in $htmlFiles) {
         Resumen    = $resumen
 
         # SOLO rutas relativas al proyecto
-        Img        = $imgAbs
-        ImgMobile  = $imgMobileAbs
-        ImgDesktop = $imgDesktopAbs
+        Img             = $imgAbs
+        ImgMobileWebp   = $imgMobileWebpAbs
+        ImgMobile       = $imgMobileAbs
+        ImgDesktopWebp  = $imgDesktopWebpAbs
+        ImgDesktop      = $imgDesktopAbs
 
         Alt        = $alt
         Category   = $cat.ToLower()
@@ -139,7 +146,9 @@ $mainInner = [regex]::Replace($mainInner, '(?s)<template id="tpl-listado">.*?</t
 $cards = ""
 foreach ($m in $dest) {
     $c = $tplDest
+    $c = $c -replace '\{\{IMAGE_MOBILEWEBP\}\}',  "../$($m.ImgMobileWebp)"
     $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  "../$($m.ImgMobile)"
+    $c = $c -replace '\{\{IMAGE_DESKTOPWEBP\}\}', "../$($m.ImgDesktopWebp)"
     $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', "../$($m.ImgDesktop)"
     $c = $c -replace '\{\{IMAGE_ALT\}\}',     $m.Alt
     $c = $c -replace '\{\{TITLE\}\}',         $m.Title
@@ -152,7 +161,9 @@ foreach ($m in $dest) {
 $listHtml = ""
 foreach ($m in $listado) {
     $c = $tplList
+    $c = $c -replace '\{\{IMAGE_MOBILEWEBP\}\}',  "../$($m.ImgMobileWebp)"
     $c = $c -replace '\{\{IMAGE_MOBILE\}\}',  "../$($m.ImgMobile)"
+    $c = $c -replace '\{\{IMAGE_DESKTOPWEBP\}\}', "../$($m.ImgDesktopWebp)"
     $c = $c -replace '\{\{IMAGE_DESKTOP\}\}', "../$($m.ImgDesktop)"
     $c = $c -replace '\{\{IMAGE_ALT\}\}',     $m.Alt
     $c = $c -replace '\{\{TITLE\}\}',         $m.Title

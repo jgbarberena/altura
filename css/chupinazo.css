@@ -6,7 +6,7 @@
    HERO Chupinazo
 ========================= */
 #hero {
-    background: url("../img/experiencias/chupinazo/Chupinazo_2.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -16,7 +16,7 @@
 @media (min-width: 769px) {
 
     #hero {
-        background-image: url("../img/experiencias/chupinazo/Chupinazo_2.jpg");
+        background-image: url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_desktop.jpg");
     }
 
 }

@@ -3,7 +3,7 @@
 ========================= */
 
 #hero {
-    background: url("../img/balcon-chupinazo-ayuntamiento_mobile.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -36,7 +36,7 @@
 
 @media (min-width: 769px) {
     #hero {
-        background-image: url("../img/balcon-chupinazo-ayuntamiento_desktop.jpg");
+        background-image: url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_desktop.jpg");
     }
     #sanfermin {
         background: linear-gradient(

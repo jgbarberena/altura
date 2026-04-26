@@ -32,7 +32,9 @@
   <template id="tpl-destacado">
     <article class="card guia-destacada">
       <picture>
+        <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILEWEBP}}">
         <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
+        <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOPWEBP}}">
         <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
         <img src="{{IMAGE_MOBILE}}" alt="{{IMAGE_ALT}}" loading="lazy">
       </picture>
@@ -47,7 +49,9 @@
   <template id="tpl-listado">
     <article class="guia-card">
       <picture>
+        <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILEWEBP}}">
         <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
+        <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOPWEBP}}">
         <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
         <img src="{{IMAGE_MOBILE}}" alt="{{IMAGE_ALT}}" loading="lazy">
       </picture>

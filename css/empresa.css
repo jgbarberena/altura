@@ -3,7 +3,7 @@
 ========================= */
 
 #hero {
-    background: url("../img/empresa/hospitality-fake.jpg") center/cover no-repeat;
+    background: url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -13,7 +13,7 @@
 @media (min-width: 769px) {
 
     #hero {
-        background-image: url("../img/empresa/hospitality-fake.jpg");
+        background-image: url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_desktop.jpg");
     }
 
 }
