@@ -7,7 +7,7 @@
 ========================= */
 
 #hero {
-    background: url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_mobile.JPG") center/cover no-repeat;
+    background: url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_mobile.jpg") center/cover no-repeat;
 }
 
 /* =========================
@@ -17,7 +17,7 @@
 @media (min-width: 769px) {
 
     #hero {
-        background-image: url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_desktop.JPG");
+        background-image: url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_desktop.jpg");
     }
 
 }
