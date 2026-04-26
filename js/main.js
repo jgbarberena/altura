@@ -1189,3 +1189,59 @@ function showOnlyActiveTestimonial(root, currentIndex, clonesBefore, realCount) 
     const activeBox = activeSlide.querySelector('.miniGallery__testimonial');
     if (activeBox) activeBox.style.display = "block";
 }
+
+// =========================
+// SLIDESHOW GENÉRICO
+// =========================
+function initSlideshows() {
+    document.querySelectorAll('.slideshow').forEach(container => {
+        // Seleccionamos solo los picture que son hijos directos
+        const slides = Array.from(container.querySelectorAll(':scope > picture'));
+
+        if (slides.length === 0) return;
+
+        // Evitar duplicados: Si ya hay un spacer, no creamos otro
+        if (container.querySelector('.slideshow-spacer')) return;
+
+        // Crear spacer
+        const spacer = document.createElement('div');
+        spacer.classList.add('slideshow-spacer');
+        const firstImg = slides[0].querySelector('img');
+        if (firstImg) {
+            const spacerImg = firstImg.cloneNode(true);
+            spacer.appendChild(spacerImg);
+        }
+        // Insertamos al principio del contenedor
+        container.prepend(spacer);
+
+        if (slides.length === 1) {
+            slides[0].style.opacity = '1';
+            return;
+        }
+
+        const perSlide = 5;
+        const total = perSlide * slides.length;
+
+        slides.forEach((slide, i) => {
+            slide.style.animationName = 'slideshowFade';
+            slide.style.animationDuration = `${total}s`;
+            slide.style.animationTimingFunction = 'linear';
+            slide.style.animationIterationCount = 'infinite';
+            
+            // Mantenemos tu delay positivo
+            slide.style.animationDelay = `${perSlide * i}s`;
+            
+            // Forzamos que la primera imagen sea la que se vea al cargar
+            if (i === 0) {
+                slide.style.opacity = '1';
+            }
+        });
+    });
+}
+
+// Ejecución segura
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSlideshows);
+} else {
+    initSlideshows();
+}

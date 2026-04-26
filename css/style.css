@@ -457,6 +457,7 @@ html {
     backdrop-filter: blur(4px);
     color: var(--color-light);
     transition: background 0.3s ease;
+    z-index: 10
 }
 
 .card-overlay h3,
@@ -481,4 +482,44 @@ html {
 
 .list-container li {
     margin-bottom: 8px;
+}
+
+/* =========================
+   SLIDESHOW (Versión Final)
+========================= */
+.slideshow {
+    position: relative;
+    overflow: hidden;
+    display: block;
+}
+
+.slideshow-spacer {
+    display: block;
+    width: 100%;
+    visibility: hidden;
+}
+
+.slideshow-spacer img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Solo los picture que son hijos directos y NO son el spacer */
+/* IMPORTANTE: El spacer es un div, no un picture, así que este selector es seguro */
+.slideshow > picture {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    z-index: 1;
+}
+
+@keyframes slideshowFade {
+    0%   { opacity: 0; }
+    5%   { opacity: 1; } 
+    35%  { opacity: 1; } 
+    45%  { opacity: 0; }
+    100% { opacity: 0; }
 }
