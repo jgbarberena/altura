@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="/altura/guias/index.html">
+
+  <title>Cómo vivir San Fermín</title>
+
+  <link rel="icon" href="../img/logos/sanfermin-logo-white.png" type="image/png">
+
+  <meta property="og:title" content="Cómo vivir San Fermín">
+  <meta property="og:description"
+    content="Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turístico.">
+  <meta property="og:image" content="https://jgbarberena.github.io/altura/img/guias/que-hacer_mobile.jpg">
+  <meta property="og:url" content="https://jgbarberena.github.io/altura/guias/index.html">
+  <meta property="og:type" content="website">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/guias.css">
+
+</head>
+
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="guias-page">
+
+    <!-- HERO -->
+    <section class="guias-hero section section--first">
+      <h1 class="text-display">Cómo vivir San Fermín</h1>
+      <p class="text-sub">
+        Todo lo que necesitas saber para disfrutar la experiencia con criterio, emoción y sin caer en lo turístico.
+      </p>
+    </section>
+
+    <!-- DESTACADOS -->
+    <section class="section section--inner no-snap-children guias-destacados" id="guias-destacados">
+      <h2 class="text-title">Destacados</h2>
+      <div id="guias-destacados-cards">
+        {{DESTACADOS}}
+      </div>
+    </section>
+
+    <!-- LISTADO -->
+    <section class="section section--inner guias-listado" id="guias-listado">
+      <h2 class="text-title">Más consejos</h2>
+
+      <div class="grid-guias" id="guias-listado-cards">
+        {{LISTADO}}
+      </div>
+    </section>
+    <!-- ================== TEMPLATES (NO SE RENDERIZAN) ================== -->
+    <template id="tpl-destacado">
+      <article class="card guia-destacada">
+        <picture>
+          <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
+          <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
+          <img src="{{IMAGE_MOBILE}}" alt="{{IMAGE_ALT}}" loading="lazy">
+        </picture>
+        <div class="card-overlay">
+          <h2>{{TITLE}}</h2>
+          <p>{{RESUMEN}}</p>
+          <a href="{{PAGE_URL}}" class="btn btn-primary btn-mini">Leer guía</a>
+        </div>
+      </article>
+    </template>
+
+    <template id="tpl-listado">
+      <article class="guia-card">
+        <picture>
+          <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
+          <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
+          <img src="{{IMAGE_MOBILE}}" alt="{{IMAGE_ALT}}" loading="lazy">
+        </picture>
+
+        <div class="guia-content">
+          <h3 class="text-title2">{{TITLE}}</h3>
+          <p class="text-small">{{RESUMEN}}</p>
+          <a class="btn-link" href="{{PAGE_URL}}">Leer más</a>
+        </div>
+      </article>
+    </template>
+    <!-- ================== FIN TEMPLATES ================== -->
+    <!-- CTA -->
+    <section class="section section--inner align-center guias-cta">
+      <div class="buttons">
+        <a class="btn btn-primary" href="#contacto">Quiero vivirlo</a>
+      </div>
+      <p class="text-microcopy">
+        Cuéntanos qué te gustaría vivir y te ayudamos a diseñar una experiencia a tu medida.
+      </p>
+    </section>
+
+  </main>
+
+  <div id="contact-placeholder"></div>
+  <div id="whatsapp-placeholder"></div>
+  <div id="footer-placeholder"></div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/include.js"></script>
+
+  <!--GUIAS_JSON-->
+  <script src="../js/guias-rotar-destacados.js" defer></script>
+
+
+</body>
+
+</html>
