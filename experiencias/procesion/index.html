@@ -275,7 +275,21 @@
         </section>
 
         <!-- ========================= MINI GALERÍA ========================= -->
-        <div id="miniGallery-placeholder" data-mini-galeria-id="procesion"></div>
+        <div id="miniGallery-placeholder" data-img-cat="procesion" data-test-cat="" data-compact="false"
+            data-overlay="false">
+            <picture class="miniGallery__staticImage">
+                <!--<source media="(max-width: 768px)" srcset="../../img/galeria/balcon-procesion-mercaderes_mobile.webp">-->
+                <source media="(max-width: 768px)" srcset="../../img/galeria/balcon-procesion-mercaderes_mobile.jpg">
+                <!--<source media="(min-width: 769px)" srcset="../../img/galeria/balcon-procesion-mercaderes_desktop.webp">-->
+                <source media="(min-width: 769px)" srcset="../../img/galeria/balcon-procesion-mercaderes_desktop.jpg">
+                <img src="../../img/galeria/balcon-procesion-mercaderes_mobile.jpg"
+                    alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+            </picture>
+            <div class="miniGallery__testimonial miniGallery__testimonial--static">
+                <p class="miniGallery__testimonial-text">No tiene nada que ver con estar abajo. Mucho mejor.</p>
+                <p class="miniGallery__testimonial-author">Jon, Donostia</p>
+            </div>
+        </div>
 
         <!-- ========================= MINI FAQ ========================= -->
         <div id="miniFAQ-placeholder" data-mini-faq-id="experiencias"></div>
