@@ -1,0 +1,76 @@
+[
+  {
+    "id": "exp-1",
+    "category": "Experiencias",
+    "question": "¿Qué incluyen las experiencias?",
+    "answer": "Cada experiencia está diseñada de forma personalizada e incluye acceso exclusivo, atención dedicada y servicios adaptados a cada cliente."
+  },
+  {
+    "id": "exp-2",
+    "category": "Experiencias",
+    "question": "¿Puedo personalizar la experiencia?",
+    "answer": "Sí, todas nuestras propuestas se adaptan a tus preferencias: ubicación, horarios, acompañamiento y detalles adicionales."
+  },
+  {
+    "id": "exp-3",
+    "category": "Experiencias",
+    "question": "¿Cómo se realiza la reserva?",
+    "answer": "A través del formulario de contacto o vía WhatsApp. Nuestro equipo te responderá con una propuesta personalizada."
+  },
+  {
+    "id": "exp-4",
+    "category": "Experiencias",
+    "question": "¿Dónde se realizan las experiencias?",
+    "answer": "Principalmente en Pamplona durante las fiestas de San Fermín."
+  },
+  {
+    "id": "exp-5",
+    "category": "Experiencias",
+    "question": "¿Es seguro asistir al encierro?",
+    "answer": "Ofrecemos ubicaciones cuidadosamente seleccionadas para garantizar seguridad, visibilidad y comodidad."
+  },
+  {
+    "id": "exp-6",
+    "category": "Experiencias",
+    "question": "¿Con cuánta antelación debo reservar?",
+    "answer": "Recomendamos hacerlo lo antes posible, ya que las plazas son limitadas."
+  },
+
+  {
+    "id": "emp-1",
+    "category": "Empresa",
+    "question": "¿Ofrecéis servicios para empresas?",
+    "answer": "Sí, organizamos experiencias corporativas exclusivas para clientes, equipos o eventos especiales."
+  },
+  {
+    "id": "emp-2",
+    "category": "Empresa",
+    "question": "¿Se puede facturar?",
+    "answer": "Por supuesto, emitimos factura conforme a la normativa vigente."
+  },
+  {
+    "id": "emp-3",
+    "category": "Empresa",
+    "question": "¿Qué tipo de eventos organizáis?",
+    "answer": "Desde experiencias privadas hasta eventos corporativos completos durante San Fermín."
+  },
+
+  {
+    "id": "toko-1",
+    "category": "To-Ko Collection",
+    "question": "¿Cuánto tarda el envío?",
+    "answer": "Los plazos varían según el producto, pero normalmente se sitúan entre 3 y 7 días laborables."
+  },
+  {
+    "id": "toko-2",
+    "category": "To-Ko Collection",
+    "question": "¿Se pueden hacer devoluciones?",
+    "answer": "Sí, siempre que el producto no haya sido utilizado y se encuentre en perfecto estado."
+  },
+  {
+    "id": "toko-3",
+    "category": "To-Ko Collection",
+    "question": "¿Los productos son edición limitada?",
+    "answer": "Algunas piezas forman parte de colecciones limitadas, pensadas como recuerdo exclusivo de la experiencia."
+  }
+]

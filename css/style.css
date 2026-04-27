@@ -34,7 +34,7 @@
     --color-light:       #ffffff;
     --color-light-dim:   #ffffff;
 
-    --width-text: 720px;
+    --width-text: 740px;
     --width-mid:  860px;
     --width-main: 1100px;
 }
@@ -256,6 +256,9 @@ body {
     background-color: #f5f3ef;
     color: var(--color-heading);
     line-height: 1.6;
+    hyphens: none;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 body::before {
