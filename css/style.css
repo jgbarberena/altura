@@ -162,6 +162,15 @@
     border-bottom-color: var(--color-accent-dark);
 }
 
+.text-logo {
+    /* Define la altura igual al tamaño de la fuente */
+    height: 1.3em;
+    /* Mantiene la proporción al reducir */
+    width: auto;
+    /* Alinea el centro de la imagen con la línea de base del texto */
+    vertical-align: -0.2em;
+}
+
 /* =========================
    VARIANTES ON-DARK
 ========================= */
