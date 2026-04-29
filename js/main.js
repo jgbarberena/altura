@@ -54,6 +54,19 @@ function initHeader(root, resolveAsset, resolvePage) {
     hamburger.addEventListener("click", function () {
         menu.classList.toggle("active");
     });
+    // cerrar al hacer click fuera
+    document.addEventListener("click", function (e) {
+        if (menu.classList.contains("active") &&
+            !menu.contains(e.target) &&
+            !hamburger.contains(e.target)) {
+            menu.classList.remove("active");
+        }
+    });
+
+    // cerrar al hacer scroll
+    window.addEventListener("scroll", function () {
+        menu.classList.remove("active");
+    }, { passive: true });
 
     menuLinks.forEach(link => {
         link.addEventListener("click", () => {

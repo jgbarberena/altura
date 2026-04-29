@@ -1,0 +1,25 @@
+/* =========================
+   SECCIONES
+========================= */
+
+/* IMAGEN PRINCIPAL */
+.equipo-image picture {
+    display: block;
+    margin: 0 auto 40px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.10); /* mejora: sombra suave */
+}
+
+.equipo-image picture img {
+    width: 100%;
+    max-height: 50vh;
+    display: block;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
+
+.equipo-page {
+    max-width: var(--width-mid);
+}

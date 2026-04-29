@@ -508,7 +508,7 @@ header.dark .hamburger {
     max-width: 1200px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: 1fr min-content;
     align-items: center;
     gap: 5px;
     align-content: center;
@@ -521,6 +521,7 @@ header.dark .hamburger {
     flex-direction: column;
     justify-content: center;
     gap: 2px; /* Espacio mínimo entre copyright y disclaimer */
+    min-width: 0;
 }
 
 /* Estilos para el nombre de empresa */
@@ -528,7 +529,6 @@ header.dark .hamburger {
     margin: 0;
     color: var(--color-heading);
     font-weight: 400;
-    justify-self: start;
     white-space: nowrap;
     padding-right: 3px;
 }
@@ -540,7 +540,6 @@ header.dark .hamburger {
     line-height: 1.3;
     color: var(--color-heading);
     opacity: 0.6;
-    max-width: 450px; /* Evita que se estire demasiado en pantallas anchas */
     font-weight: 400;
 }
 
@@ -552,9 +551,9 @@ header.dark .hamburger {
     gap: 6px;
     flex-wrap: wrap;
     align-items: center;
-    width: auto;
+    justify-self: end;
+    width: max-content;
     max-width: 100%;
-    padding: 6px 8px;
 }
 
 .footer-link {

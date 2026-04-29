@@ -33,7 +33,8 @@
     --color-accent-dark: #800000;
     --color-light:       #ffffff;
     --color-light-dim:   #ffffff;
-
+    --color-subtle-light:#999;
+    
     --width-text: 740px;
     --width-mid:  860px;
     --width-main: 1100px;
@@ -175,14 +176,24 @@
    VARIANTES ON-DARK
 ========================= */
 
-.on-dark .text-display   { color: var(--color-light); }
-.on-dark .text-title     { color: var(--color-light); }
-.on-dark .text-sub       { color: var(--color-light-dim); }
-.on-dark .text-title2    { color: var(--color-light-dim); }
-.on-dark .text-body      { color: var(--color-light-dim); }
-.on-dark .text-small     { color: var(--color-light-dim); }
-.on-dark .text-microcopy { color: var(--color-light-dim); }
-.on-dark .text-quote     { color: var(--color-light); }
+.on-dark .text-display      { color: var(--color-light); }
+.on-dark .text-title        { color: var(--color-light); }
+.on-dark .text-sub          { color: var(--color-light-dim); }
+.on-dark .text-title2       { color: var(--color-light-dim); }
+.on-dark .text-body         { color: var(--color-light-dim); }
+.on-dark .text-small        { color: var(--color-light-dim); }
+.on-dark .text-microcopy    { color: var(--color-light-dim); }
+.on-dark .text-quote        { color: var(--color-light); }
+.on-dark .text-link         { 
+    color: inherit; 
+    background: rgba(255, 255, 255, 0.2); /* Blanco muy suave */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); /* Soporte para Safari */ 
+    white-space: nowrap;
+}
+.on-dark .text-link:hover   {
+     border-bottom-color: inherit
+}
 
 /* =========================
    BASE SECTION
