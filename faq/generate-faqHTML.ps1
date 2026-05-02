@@ -22,12 +22,10 @@ $categories = @()
 $groupedFaqs = @{}
 
 foreach ($faq in $faqs) {
-
     if (-not $groupedFaqs.ContainsKey($faq.category)) {
         $groupedFaqs[$faq.category] = @()
-        $categories += $faq.category   # mantiene orden de aparición
+        $categories += $faq.category
     }
-
     $groupedFaqs[$faq.category] += $faq
 }
 
@@ -43,7 +41,6 @@ foreach ($cat in $categories) {
     $questionsHtml = ""
 
     foreach ($faq in $groupedFaqs[$cat]) {
-
         $questionsHtml += @"
 <div class="faq-item" id="$($faq.id)">
     <button class="faq-question">$($faq.question)</button>
@@ -54,43 +51,18 @@ foreach ($cat in $categories) {
 "@
     }
 
-    $sectionHtml = @"
+    $allSections += @"
 <section class="section section--inner--sticky faq-section" id="$catId" data-sticky-section="$cat">
     <h2 class="text-sub">$cat</h2>
     $questionsHtml
 </section>
 "@
-
-    $allSections += $sectionHtml
 }
-
-# =========================
-# GENERATE JSON-LD
-# =========================
-$mainEntity = @()
-
-foreach ($faq in $faqs) {
-    $mainEntity += @{
-        "@type" = "Question"
-        "name" = $faq.question
-        "acceptedAnswer" = @{
-            "@type" = "Answer"
-            "text" = $faq.answer
-        }
-    }
-}
-
-$jsonLd = @{
-    "@context" = "https://schema.org"
-    "@type" = "FAQPage"
-    "mainEntity" = $mainEntity
-} | ConvertTo-Json -Depth 5 -Compress
 
 # =========================
 # INJECT INTO TEMPLATE
 # =========================
-$output = $template.Replace("{{JSON}}", $jsonLd)
-$output = $output.Replace("{{SECTIONS}}", $allSections)
+$output = $template.Replace("{{SECTIONS}}", $allSections)
 
 # =========================
 # SAVE FILE
