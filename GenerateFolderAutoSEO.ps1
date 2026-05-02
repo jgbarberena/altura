@@ -269,20 +269,21 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     if ([string]::IsNullOrWhiteSpace($serviceName)) { $serviceName = "Experiencias San Fermin" }
 
     $schemas += (@{
-        "@context"   = "https://schema.org"
-        "@type"      = "Service"
-        "@id"        = "$url#service"
-        "name"       = $serviceName
-        "provider"   = @{
+        "@context"    = "https://schema.org"
+        "@type"       = "Service"
+        "@id"         = "$url#service"
+        "name"        = $serviceName
+        "description" = $description
+        "provider"    = @{
             "@type" = "LocalBusiness"
             "@id"   = "$baseUrl/#localbusiness"
             "name"  = "Vive San Fermin a medida"
         }
-        "areaServed" = @{
+        "areaServed"  = @{
             "@type" = "Place"
             "name"  = "Pamplona"
         }
-        "mentions"   = @(
+        "mentions"    = @(
             @{ "@type" = "Place"; "name" = "Pamplona" },
             @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
         )
