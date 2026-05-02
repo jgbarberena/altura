@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://jgbarberena.github.io/altura/sitemap.xml
+Disallow: /components/
+
+Sitemap: https://www.vivesanfermin.com/sitemap.xml

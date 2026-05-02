@@ -43,9 +43,27 @@ function Normalize-ImagePath($path) {
     return $p
 }
 
+# Convierte rutas con index.html en URLs canónicas limpias:
+# /index.html         -> /
+# /guias/index.html   -> /guias/
+# /guias/articulo.html -> /guias/articulo.html  (sin cambio)
+function Clean-Url($url) {
+    if ($url -match '/index\.html$') {
+        return $url -replace '/index\.html$', '/'
+    }
+    return $url
+}
+
 function Capitalize($text) {
-    $t = ($text -replace "-", " ")
-    return ($t -replace "\b(\w)", { $args[0].Value.ToUpper() })
+    $t = ($text -replace "-", " ").ToLower()
+    $words = $t -split " "
+    $result = @()
+    foreach ($w in $words) {
+        if ($w.Length -gt 0) {
+            $result += $w.Substring(0,1).ToUpper() + $w.Substring(1)
+        }
+    }
+    return $result -join " "
 }
 
 function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTitle) {
@@ -187,7 +205,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     [string]$modified  = Get-Attribute $html "data-modified"
 
     [string]$relative = $file.Substring($rootPath.Length).Replace("\", "/")
-    [string]$url = $baseUrl + $relative
+    [string]$url = Clean-Url ($baseUrl + $relative)
 
     if ([string]::IsNullOrWhiteSpace($title))       { Write-Host "FALTA TITLE en $file";                  return }
     if ([string]::IsNullOrWhiteSpace($description)) { Write-Host "FALTA DESCRIPTION en $file";            return }
@@ -219,6 +237,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $schemas += (@{
         "@context" = "https://schema.org"
         "@type"    = "Organization"
+        "@id"      = "$baseUrl/#organization"
         "name"     = "Vive San Fermin a medida"
         "url"      = $baseUrl
         "logo"     = "$baseUrl/img/logos/sanfermin-logo-black.png"
@@ -231,6 +250,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $schemas += (@{
         "@context" = "https://schema.org"
         "@type"    = "LocalBusiness"
+        "@id"      = "$baseUrl/#localbusiness"
         "name"     = "Vive San Fermin a medida"
         "image"    = "$baseUrl/img/logos/sanfermin-logo-black.png"
         "address"  = @{
@@ -244,12 +264,18 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         )
     } | ConvertTo-Json -Compress)
 
+    # Service: nombre específico si existe data-service-name en la página, si no genérico
+    [string]$serviceName = Get-Attribute $html "data-service-name"
+    if ([string]::IsNullOrWhiteSpace($serviceName)) { $serviceName = "Experiencias San Fermin" }
+
     $schemas += (@{
         "@context"   = "https://schema.org"
         "@type"      = "Service"
-        "name"       = "Experiencias San Fermin"
+        "@id"        = "$url#service"
+        "name"       = $serviceName
         "provider"   = @{
             "@type" = "LocalBusiness"
+            "@id"   = "$baseUrl/#localbusiness"
             "name"  = "Vive San Fermin a medida"
         }
         "areaServed" = @{
@@ -277,6 +303,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         $schemas += (@{
             "@context"        = "https://schema.org"
             "@type"           = $webPageType
+            "@id"             = "$url#webpage"
             "name"            = $title
             "description"     = $description
             "url"             = $url
@@ -294,6 +321,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         $schemas += (@{
             "@context"    = "https://schema.org"
             "@type"       = $webPageType
+            "@id"         = "$url#webpage"
             "name"        = $title
             "description" = $description
             "url"         = $url
@@ -327,7 +355,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
             "dateModified"     = $modified
             "mainEntityOfPage" = @{
                 "@type" = "WebPage"
-                "@id"   = $url
+                "@id"   = "$url#webpage"
             }
             "publisher"        = @{
                 "@type" = "Organization"
