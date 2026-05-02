@@ -44,15 +44,8 @@ function Normalize-ImagePath($path) {
 }
 
 function Capitalize($text) {
-    $t = ($text -replace "-", " ").ToLower()
-    $words = $t -split " "
-    $result = @()
-    foreach ($w in $words) {
-        if ($w.Length -gt 0) {
-            $result += $w.Substring(0,1).ToUpper() + $w.Substring(1)
-        }
-    }
-    return $result -join " "
+    $t = ($text -replace "-", " ")
+    return ($t -replace "\b(\w)", { $args[0].Value.ToUpper() })
 }
 
 function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTitle) {
@@ -228,6 +221,10 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         "name"     = "Vive San Fermin a medida"
         "url"      = $baseUrl
         "logo"     = "$baseUrl/img/logos/sanfermin-logo-black.png"
+        "sameAs"   = @(
+            "https://www.linkedin.com/in/pauladiazechalecu",
+            "https://www.instagram.com/pauladiazechalecu"
+        )
     } | ConvertTo-Json -Compress)
 
     $schemas += (@{
@@ -240,6 +237,10 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
             "addressLocality" = "Pamplona"
             "addressCountry"  = "ES"
         }
+        "sameAs"   = @(
+            "https://www.linkedin.com/in/pauladiazechalecu",
+            "https://www.instagram.com/pauladiazechalecu"
+        )
     } | ConvertTo-Json -Compress)
 
     $schemas += (@{
@@ -250,8 +251,15 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
             "@type" = "LocalBusiness"
             "name"  = "Vive San Fermin a medida"
         }
-        "areaServed" = "Pamplona"
-    } | ConvertTo-Json -Compress)
+        "areaServed" = @{
+            "@type" = "Place"
+            "name"  = "Pamplona"
+        }
+        "mentions"   = @(
+            @{ "@type" = "Place"; "name" = "Pamplona" },
+            @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
+        )
+    } | ConvertTo-Json -Depth 4 -Compress)
 
     $schemas += (@{
         "@context"    = "https://schema.org"
@@ -259,7 +267,11 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         "name"        = $title
         "description" = $description
         "url"         = $url
-    } | ConvertTo-Json -Compress)
+        "about"       = @(
+            @{ "@type" = "Place"; "name" = "Pamplona" },
+            @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
+        )
+    } | ConvertTo-Json -Depth 4 -Compress)
 
     $schemas += $breadcrumbSchema
 
