@@ -198,6 +198,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $faqSchema        = Build-FAQ-Schema $html
 
     # --- HEAD ---
+    # og:type: solo "article" para artículos, "website" para todo lo demás
     [string]$ogType = if ($pageType -eq "article") { "article" } else { "website" }
 
     $headSeo = @"
@@ -261,23 +262,53 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         )
     } | ConvertTo-Json -Depth 4 -Compress)
 
-    $schemas += (@{
-        "@context"    = "https://schema.org"
-        "@type"       = "WebPage"
-        "name"        = $title
-        "description" = $description
-        "url"         = $url
-        "about"       = @(
-            @{ "@type" = "Place"; "name" = "Pamplona" },
-            @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
-        )
-    } | ConvertTo-Json -Depth 4 -Compress)
+    # @type de WebPage varía según el tipo de página
+    $webPageType = switch ($pageType) {
+        "website" { "WebSite"     }
+        "about"   { "AboutPage"   }
+        "contact" { "ContactPage" }
+        default   { "WebPage"     }
+    }
+
+    # potentialAction para páginas con CTA principal (home y landing)
+    $hasCta = ($pageType -eq "website" -or $pageType -eq "landing")
+
+    if ($hasCta) {
+        $schemas += (@{
+            "@context"        = "https://schema.org"
+            "@type"           = $webPageType
+            "name"            = $title
+            "description"     = $description
+            "url"             = $url
+            "about"           = @(
+                @{ "@type" = "Place"; "name" = "Pamplona" },
+                @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
+            )
+            "potentialAction" = @{
+                "@type"  = "ReserveAction"
+                "target" = "$baseUrl/#contacto"
+                "name"   = "Solicitar experiencia personalizada"
+            }
+        } | ConvertTo-Json -Depth 5 -Compress)
+    } else {
+        $schemas += (@{
+            "@context"    = "https://schema.org"
+            "@type"       = $webPageType
+            "name"        = $title
+            "description" = $description
+            "url"         = $url
+            "about"       = @(
+                @{ "@type" = "Place"; "name" = "Pamplona" },
+                @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
+            )
+        } | ConvertTo-Json -Depth 4 -Compress)
+    }
 
     $schemas += $breadcrumbSchema
 
     if ($faqSchema) { $schemas += $faqSchema }
 
-    if ($pageType -eq "article") {
+    if ($pageType -eq "article") {   # Article schema solo para páginas de tipo article
         if ([string]::IsNullOrEmpty($author))    { $author    = "Paula Diaz Echalecu" }
         if ([string]::IsNullOrEmpty($published)) { $published = "2025-06-01" }
         if ([string]::IsNullOrEmpty($modified))  { $modified  = $published }
