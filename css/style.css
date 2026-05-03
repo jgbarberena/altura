@@ -252,6 +252,20 @@
     z-index: 0;
 }
 
+@media (min-width: 1024px) {
+    html {
+        scroll-snap-type: none;
+    }
+
+    .section--inner {
+        padding-top: clamp(40px, 5vw, 80px);
+    }
+
+    .section--first {
+        padding-top: clamp(60px, 8vw, 120px);
+    }
+}
+
 /* ==== OVERLAY UNIVERSAL ==== */
 
 .has-overlay { position: relative; }
