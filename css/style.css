@@ -172,6 +172,11 @@
     vertical-align: -0.2em;
 }
 
+.text-detail {
+    color: var(--color-subtle);
+    transition: color 0.3s ease;
+}
+
 /* =========================
    VARIANTES ON-DARK
 ========================= */
@@ -184,6 +189,7 @@
 .on-dark .text-small        { color: var(--color-light-dim); }
 .on-dark .text-microcopy    { color: var(--color-light-dim); }
 .on-dark .text-quote        { color: var(--color-light); }
+.on-dark .text-detail       { color: rgba(255, 255, 255, 0.6);}
 .on-dark .text-link         { 
     color: inherit; 
     background: rgba(255, 255, 255, 0.2); /* Blanco muy suave */
@@ -494,17 +500,29 @@ html {
 .card:hover img { transform: scale(1.1); }
 .card:hover .card-overlay { background: rgba(20,20,20,0.8); }
 
+.card-overlay .text-detail {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.card:hover .card-overlay .text-detail {
+    color: var(--color-subtle-light);
+}
+
 /* =========================
    LISTAS
 ========================= */
 
 .list-container ul {
     margin: 15px 0;
-    padding-left: 18px;
+    padding-left: 24px;
 }
 
+.list-container ol {
+    margin: 15px 0;
+    padding-left: 24px;
+}
 .list-container li {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 /* =========================

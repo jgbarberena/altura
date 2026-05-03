@@ -13,14 +13,11 @@ $breadcrumbMap = @{
 $baseUrl = "https://www.vivesanfermin.com"
 
 function Clean-Text($text) {
-    $t = $text -replace "<.*?>", ""
+    $t = $text -replace "<.*?>", " "
     $t = $t -replace "\s+", " "
     return $t.Trim()
 }
 
-# Usa backreference \1 para cerrar en el mismo tag que abre,
-# evitando que corte en tags internos como <a>, <span>, etc.
-# Grupo 1 = nombre del tag, Grupo 2 = contenido interior.
 function Get-InnerText($html, $className) {
     $pattern = '(?i)<([a-z][a-z0-9]*)[^>]*class="[^"]*\b' + $className + '\b[^"]*"[^>]*>(.*?)</\1>'
     $match = [regex]::Match($html, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
@@ -31,8 +28,7 @@ function Get-InnerText($html, $className) {
 }
 
 function Get-Attribute($html, $attr) {
-    $pattern = $attr + '="([^"]*)"'
-    $m = [regex]::Match($html, $pattern)
+    $m = [regex]::Match($html, $attr + '="([^"]*)"')
     if ($m.Success) { return $m.Groups[1].Value }
     return ""
 }
@@ -43,10 +39,6 @@ function Normalize-ImagePath($path) {
     return $p
 }
 
-# Convierte rutas con index.html en URLs canónicas limpias:
-# /index.html         -> /
-# /guias/index.html   -> /guias/
-# /guias/articulo.html -> /guias/articulo.html  (sin cambio)
 function Clean-Url($url) {
     if ($url -match '/index\.html$') {
         return $url -replace '/index\.html$', '/'
@@ -70,7 +62,6 @@ function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTit
     $relative = $filePath.Substring($rootPath.Length).TrimStart("\", "/")
     $parts = $relative -split "[/\\]"
 
-    # ArrayList evita el unwrapping de PS5 al devolver colecciones
     $breadcrumbs = New-Object System.Collections.ArrayList
     [void]$breadcrumbs.Add(@{ name = "Home"; url = "/" })
 
@@ -100,7 +91,6 @@ function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTit
         }
     }
 
-    # La coma antes de $breadcrumbs.ToArray() evita que PS5 desenvuelva el array
     return , $breadcrumbs.ToArray()
 }
 
@@ -135,11 +125,17 @@ function Build-FAQ-Schema($html) {
         $q = ""
         $a = ""
 
-        $qMatch = [regex]::Match($block, '(?i)<[^>]*\bfaq-question\b[^>]*>(.*?)</[^>]+>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        # QUESTION: primer elemento con clase faq-question
+        $qMatch = [regex]::Match($block, '(?i)<[^>]*\bfaq-question\b[^>]*>(.*?)</[a-z][a-z0-9]*>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
         if ($qMatch.Success) { $q = Clean-Text $qMatch.Groups[1].Value }
 
-        $aMatch = [regex]::Match($block, '(?i)<[^>]*\bfaq-answer\b[^>]*>(.*?)</[^>]+>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
-        if ($aMatch.Success) { $a = Clean-Text $aMatch.Groups[1].Value }
+        # ANSWER: todo el texto desde el inicio del primer faq-answer hasta el final
+        # del bloque. Captura automaticamente multiples parrafos, listas, etc.
+        $aStartMatch = [regex]::Match($block, '(?i)<[^>]*\bfaq-answer\b[^>]*>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        if ($aStartMatch.Success) {
+            $answerSection = $block.Substring($aStartMatch.Index)
+            $a = Clean-Text $answerSection
+        }
 
         if ($q -and $a) {
             $faqItems += @{
@@ -176,12 +172,11 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     [string]$title       = Get-InnerText $html "page-title-source"
     [string]$description = Get-InnerText $html "page-description-source"
 
-    # DEBUG: descomenta estas líneas si necesitas diagnosticar un archivo concreto
+    # DEBUG: descomenta para diagnosticar un archivo concreto
     # Write-Host "DEBUG $file"
     # Write-Host "  title=[$title]"
     # Write-Host "  desc=[$description]"
 
-    # Imagen: primero <picture class="page-image-source">, luego data-image-fallback
     [string]$image = ""
     $imgMatch = [regex]::Match(
         $html,
@@ -215,8 +210,6 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $breadcrumbSchema = Build-Breadcrumb-Schema $breadcrumbs
     $faqSchema        = Build-FAQ-Schema $html
 
-    # --- HEAD ---
-    # og:type: solo "article" para artículos, "website" para todo lo demás
     [string]$ogType = if ($pageType -eq "article") { "article" } else { "website" }
 
     $headSeo = @"
@@ -231,7 +224,6 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
 <meta property="og:type" content="$ogType">
 "@
 
-    # --- SCHEMAS ---
     $schemas = @()
 
     $schemas += (@{
@@ -264,7 +256,6 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         )
     } | ConvertTo-Json -Compress)
 
-    # Service: nombre específico si existe data-service-name en la página, si no genérico
     [string]$serviceName = Get-Attribute $html "data-service-name"
     if ([string]::IsNullOrWhiteSpace($serviceName)) { $serviceName = "Experiencias San Fermin" }
 
@@ -289,7 +280,6 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         )
     } | ConvertTo-Json -Depth 4 -Compress)
 
-    # @type de WebPage varía según el tipo de página
     $webPageType = switch ($pageType) {
         "website" { "WebSite"     }
         "about"   { "AboutPage"   }
@@ -297,7 +287,6 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         default   { "WebPage"     }
     }
 
-    # potentialAction para páginas con CTA principal (home y landing)
     $hasCta = ($pageType -eq "website" -or $pageType -eq "landing")
 
     if ($hasCta) {
@@ -337,7 +326,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
 
     if ($faqSchema) { $schemas += $faqSchema }
 
-    if ($pageType -eq "article") {   # Article schema solo para páginas de tipo article
+    if ($pageType -eq "article") {
         if ([string]::IsNullOrEmpty($author))    { $author    = "Paula Diaz Echalecu" }
         if ([string]::IsNullOrEmpty($published)) { $published = "2025-06-01" }
         if ([string]::IsNullOrEmpty($modified))  { $modified  = $published }
