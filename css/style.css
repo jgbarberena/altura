@@ -252,7 +252,7 @@
     z-index: 0;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 769px) {
     html {
         scroll-snap-type: none;
     }
