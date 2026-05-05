@@ -1,5 +1,5 @@
 $rootPath = (Get-Location).Path
-$baseUrl  = "https://www.vivesanfermin.com"
+$baseUrl  = "https://www.experienciasanfermin.com"
 
 $excludeFolders = @("img", "css", "js", "components")
 $excludeFiles   = @("index-template.html")

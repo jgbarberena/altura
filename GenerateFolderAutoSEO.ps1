@@ -10,7 +10,7 @@ $breadcrumbMap = @{
     "empresa"      = "Servicios para empresas"
 }
 
-$baseUrl = "https://www.vivesanfermin.com"
+$baseUrl = "https://www.experienciasanfermin.com"
 
 function Clean-Text($text) {
     $t = $text -replace "<.*?>", " "
@@ -169,7 +169,18 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $file = $_.FullName
     $html = [System.IO.File]::ReadAllText($file, [System.Text.Encoding]::UTF8)
 
-    [string]$title       = Get-InnerText $html "page-title-source"
+    # Título: primero busca data-page-title en el elemento page-data; si no, usa page-title-source
+    [string]$pageDataBlock = ""
+    $pageDataMatch = [regex]::Match($html, '(?i)<([a-z][a-z0-9]*)[^>]*class="[^"]*\bpage-data\b[^"]*"[^>]*>(.*?)</\1>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if ($pageDataMatch.Success) { $pageDataBlock = $pageDataMatch.Groups[0].Value }
+
+    [string]$title = ""
+    if (-not [string]::IsNullOrWhiteSpace($pageDataBlock)) {
+        $title = Get-Attribute $pageDataBlock "data-page-title"
+    }
+    if ([string]::IsNullOrWhiteSpace($title)) {
+        $title = Get-InnerText $html "page-title-source"
+    }
     [string]$description = Get-InnerText $html "page-description-source"
 
     # DEBUG: descomenta para diagnosticar un archivo concreto

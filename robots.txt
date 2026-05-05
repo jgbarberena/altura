@@ -3,4 +3,4 @@ Allow: /
 
 Disallow: /components/
 
-Sitemap: https://www.vivesanfermin.com/sitemap.xml
+Sitemap: https://www.experienciasanfermin.com/sitemap.xml
