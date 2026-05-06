@@ -584,6 +584,16 @@ header.dark .hamburger {
     outline: none;
 }
 
+/* Estilo enlace admin */
+.footer-link--admin {
+    opacity: 0.3;
+    font-size: 14px;
+}
+
+.footer-link--admin:hover {
+    opacity: 1;
+}
+
 /* FOOTER – tablet/desktop */
 @media (min-width: 769px) {
 

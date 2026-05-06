@@ -1,0 +1,346 @@
+/* =========================
+   RESET
+========================= */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* =========================
+   VARIABLES
+========================= */
+:root {
+    --accent:      #b30000;
+    --accent-dark: #800000;
+    --accent-warn: #e07000;
+    --accent-ok:   #2a7a2a;
+    --bg:          #f5f3ef;
+    --white:       #ffffff;
+    --text:        #222;
+    --subtle:      #777;
+    --border:      #e0ddd8;
+    --sidebar-w:   200px;
+    --radius:      8px;
+}
+
+/* =========================
+   BASE
+========================= */
+body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 13px;
+}
+
+/* =========================
+   TOPBAR MÓVIL
+========================= */
+.topbar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.topbar-title { font-size: 15px; font-weight: 500; }
+.hamburger {
+    background: none; border: none; cursor: pointer;
+    display: flex; flex-direction: column; gap: 5px; padding: 4px;
+}
+.hamburger span {
+    display: block; width: 22px; height: 2px;
+    background: var(--text); border-radius: 2px;
+}
+
+/* =========================
+   LAYOUT
+========================= */
+.layout { display: flex; min-height: 100vh; }
+
+/* =========================
+   SIDEBAR
+========================= */
+.sidebar {
+    width: var(--sidebar-w);
+    background: var(--white);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    z-index: 50;
+}
+.sidebar-header {
+    padding: 20px 16px 16px;
+    border-bottom: 1px solid var(--border);
+}
+.sidebar-header h1 {
+    font-size: 13px; font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1px;
+}
+.sidebar-header p { font-size: 11px; color: var(--subtle); margin-top: 2px; }
+
+nav { flex: 1; padding: 12px 0; }
+nav a {
+    display: block; padding: 10px 16px;
+    font-size: 13px; color: var(--subtle);
+    text-decoration: none; cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+nav a:hover { color: var(--text); background: var(--bg); }
+nav a.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: #fff5f5;
+    font-weight: 500;
+}
+
+.sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+.btn-logout {
+    width: 100%; padding: 8px;
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px; color: var(--subtle);
+    cursor: pointer; transition: all 0.2s;
+}
+.btn-logout:hover { background: var(--accent); color: white; border-color: var(--accent); }
+
+.overlay-menu {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 40;
+}
+.overlay-menu.open { display: block; }
+
+/* =========================
+   CONTENIDO
+========================= */
+.content { margin-left: var(--sidebar-w); padding: 28px; flex: 1; min-width: 0; }
+
+/* =========================
+   BLOQUES (formulario)
+========================= */
+.bloque {
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.bloque h2 {
+    font-size: 14px; font-weight: 600;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
+/* =========================
+   SECCIONES (dashboard)
+========================= */
+.section { display: none; }
+.section.active { display: block; }
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.section-header h2 { font-size: 18px; font-weight: 500; }
+
+/* =========================
+   FORMULARIO
+========================= */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+.form-field { display: flex; flex-direction: column; gap: 4px; }
+.form-field label {
+    font-size: 11px; color: var(--subtle);
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+input, select, textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--white);
+    transition: border-color 0.2s;
+    width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+input.warn  { border-color: var(--accent-warn); background: #fff8f0; }
+input.error { border-color: var(--accent);      background: #fff5f5; }
+input.ok    { border-color: var(--accent-ok); }
+
+/* =========================
+   BOTONES
+========================= */
+.btn {
+    padding: 9px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+.btn-primary   { background: var(--accent); color: white; }
+.btn-primary:hover   { background: var(--accent-dark); }
+.btn-secondary { background: none; border: 1px solid var(--border); color: var(--subtle); }
+.btn-secondary:hover { border-color: var(--text); color: var(--text); }
+.btn-danger    { background: none; border: 1px solid var(--accent); color: var(--accent); }
+.btn-danger:hover    { background: var(--accent); color: white; }
+.btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+/* =========================
+   TABLAS
+========================= */
+.table-wrapper { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #222; color: white;
+    padding: 9px 12px; text-align: left;
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.8px; white-space: nowrap;
+}
+td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    color: #444; white-space: nowrap;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #faf9f7; }
+
+td.ok    { color: var(--accent-ok);   font-weight: 500; }
+td.warn  { color: var(--accent-warn); font-weight: 500; }
+td.error { color: var(--accent);      font-weight: 500; }
+
+.loading { color: var(--subtle); font-size: 13px; padding: 20px 0; }
+
+/* =========================
+   AUTOCOMPLETE
+========================= */
+.autocomplete-wrap { position: relative; }
+.autocomplete-list {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 180px; overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.autocomplete-list div {
+    padding: 8px 10px; cursor: pointer; font-size: 13px;
+}
+.autocomplete-list div:hover { background: var(--bg); }
+
+/* =========================
+   DISPONIBILIDAD — colores
+========================= */
+.disponibilidad-ok    { color: var(--accent-ok);   font-weight: 600; }
+.disponibilidad-warn  { color: var(--accent-warn); font-weight: 600; }
+.disponibilidad-error { color: var(--accent);      font-weight: 600; }
+
+/* =========================
+   FILA RESERVA + DISPONIBILIDAD
+========================= */
+#fila-reserva {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+#bloque-reserva {
+    flex: 1 1 0;
+    min-width: 320px;
+    max-width: 50%;
+}
+#bloque-disponibilidad {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 50%;
+}
+
+/* =========================
+   MAPA DE PROVEEDORES
+========================= */
+.proveedor-col {
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+.proveedor-col-header {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+}
+.proveedor-col-header .nombre {
+    font-weight: 600; font-size: 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.proveedor-col-header .plazas {
+    font-size: 11px; color: var(--subtle); margin-top: 2px;
+}
+.proveedor-col-body { padding: 6px 10px; min-height: 40px; }
+
+.proveedor-fila-reserva {
+    font-size: 11px; padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; gap: 8px;
+}
+.proveedor-fila-reserva .cliente { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.proveedor-fila-reserva .plazas  { color: var(--subtle); white-space: nowrap; }
+.proveedor-fila-mas     { font-size: 11px; color: var(--subtle); padding: 3px 0; font-style: italic; }
+.proveedor-sin-reservas { font-size: 11px; color: var(--subtle); padding: 4px 0; font-style: italic; }
+
+.disp-ok    { border-color: var(--accent-ok);   }
+.disp-warn  { border-color: var(--accent-warn); }
+.disp-error { border-color: var(--accent);      }
+
+.disp-ok    .proveedor-col-header { background: #f0fff0; }
+.disp-warn  .proveedor-col-header { background: #fff8f0; }
+.disp-error .proveedor-col-header { background: #fff5f5; }
+
+.disp-ok    .proveedor-col-header .nombre { color: var(--accent-ok);   }
+.disp-warn  .proveedor-col-header .nombre { color: var(--accent-warn); }
+.disp-error .proveedor-col-header .nombre { color: var(--accent);      }
+
+.proveedor-col.atenuado  { opacity: 0.35; }
+.proveedor-col.destacado { width: 220px; }
+.proveedor-col.normal    { width: 160px; }
+
+/* =========================
+   RESUMEN SERVICIO
+========================= */
+.resumen-label { color: var(--subtle); padding: 3px 8px 3px 0; }
+.resumen-valor { font-weight: 500; padding: 3px 0; }
+.resumen-aviso { padding-top: 8px; font-weight: 500; }
+
+/* =========================
+   RESPONSIVE
+========================= */
+@media (max-width: 768px) {
+    .topbar  { display: flex; }
+    .sidebar { left: -100%; transition: left 0.3s ease; width: 240px; }
+    .sidebar.open { left: 0; }
+    .content { margin-left: 0; padding: 16px; }
+    #fila-reserva          { flex-direction: column; }
+    #bloque-reserva        { max-width: 100%; }
+    #bloque-disponibilidad { max-width: 100%; }
+}
