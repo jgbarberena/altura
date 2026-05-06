@@ -4,70 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin — Vive San Fermín</title>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #f5f3ef;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .login-box {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 380px;
-        }
-        h1 {
-            font-size: 20px;
-            margin-bottom: 8px;
-            color: #222;
-        }
-        p {
-            font-size: 13px;
-            color: #777;
-            margin-bottom: 28px;
-        }
-        input {
-            width: 100%;
-            padding: 10px 14px;
-            margin-bottom: 14px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: #b30000;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        button:hover { background: #800000; }
-        .error {
-            color: #b30000;
-            font-size: 13px;
-            margin-top: 12px;
-            display: none;
-        }
-    </style>
+    <link rel="stylesheet" href="css/admin.css">
 </head>
-<body>
+<body class="login-page">
     <div class="login-box">
         <h1>Área de gestión</h1>
         <p>Acceso privado — Vive San Fermín</p>
         <input type="email" id="email" placeholder="Email">
         <input type="password" id="password" placeholder="Contraseña">
         <button id="btnLogin">Entrar</button>
-        <p class="error" id="error">Email o contraseña incorrectos</p>
+        <p class="login-error" id="error">Email o contraseña incorrectos</p>
     </div>
 
     <script type="module">
@@ -75,7 +21,7 @@
 
         // Si ya hay sesión activa, redirige directamente
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) window.location.href = 'dashboard.html'
+        if (session) window.location.href = 'formulario.html'
 
         document.getElementById('btnLogin').addEventListener('click', async () => {
             const email = document.getElementById('email').value
@@ -86,7 +32,7 @@
             if (error) {
                 document.getElementById('error').style.display = 'block'
             } else {
-                window.location.href = 'dashboard.html'
+                window.location.href = 'formulario.html'
             }
         })
     </script>
