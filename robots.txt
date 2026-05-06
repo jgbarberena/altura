@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 
 Disallow: /components/
+Disallow: /admin/
 
 Sitemap: https://www.experienciasanfermin.com/sitemap.xml

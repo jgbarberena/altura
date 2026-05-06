@@ -144,6 +144,7 @@ User-agent: *
 Allow: /
 
 Disallow: /components/
+Disallow: /admin/
 
 Sitemap: $baseUrl/sitemap.xml
 "@
