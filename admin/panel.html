@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control — Vive San Fermín</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/panel.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+
+    <div class="topbar">
+        <span class="topbar-title">Panel de Control</span>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="panel.html" class="active">📈 Panel de control</a>
+                <a href="formulario.html">📝 Gestión de Geservas</a>
+                <a href="proveedores.html">🏠 Gestión de Proveedores</a>
+                <a href="tablas.html">📊 Tablas</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+
+            <!-- BLOQUE 0: ALERTAS CRÍTICAS -->
+            <div id="bloque-alertas" style="display:none">
+                <div class="alerta-critica" id="alerta-sobrereserva">
+                    <div class="alerta-critica__icono">⚠️</div>
+                    <div class="alerta-critica__contenido">
+                        <h2>SOBRERESERVA DETECTADA</h2>
+                        <p>Los siguientes proveedores tienen más plazas reservadas que disponibles:</p>
+                        <ul id="lista-sobrereservas"></ul>
+                    </div>
+                </div>
+                <div class="alerta-warn" id="alerta-pagos-vencidos" style="display:none">
+                    <span>💸</span>
+                    <span id="txt-pagos-vencidos"></span>
+                </div>
+                <div class="alerta-warn" id="alerta-cobros-vencidos" style="display:none">
+                    <span>💰</span>
+                    <span id="txt-cobros-vencidos"></span>
+                </div>
+            </div>
+
+            <!-- BLOQUE 1: CALENDARIO + ESTADO FINANCIERO -->
+            <div class="panel-fila" id="bloque-financiero">
+                <div class="bloque panel-calendario">
+                    <h2>📅 Próximos pagos y cobros</h2>
+                    <div class="calendario-tabs">
+                        <button class="tab-btn active" data-tab="7">7 días</button>
+                        <button class="tab-btn" data-tab="30">30 días</button>
+                        <button class="tab-btn" data-tab="todos">Todos</button>
+                    </div>
+                    <div class="calendario-seccion">
+                        <h3>💸 Pagos a proveedores</h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr>
+                                    <th>Proveedor</th><th>Concepto</th>
+                                    <th>Fecha</th><th>Importe</th><th>Estado</th>
+                                </tr></thead>
+                                <tbody id="tbody-pagos-proximos"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="calendario-seccion" style="margin-top:16px">
+                        <h3>💰 Cobros a clientes</h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr>
+                                    <th>Reserva</th><th>Concepto</th>
+                                    <th>Fecha</th><th>Importe</th><th>Estado</th>
+                                </tr></thead>
+                                <tbody id="tbody-cobros-proximos"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bloque panel-estado-financiero">
+                    <h2>💶 Estado financiero</h2>
+                    <div class="kpi-grid">
+                        <div class="kpi">
+                            <span class="kpi-label">Cobros confirmados</span>
+                            <span class="kpi-valor ok" id="kpi-cobros-confirmados">—</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Cobrado hasta hoy</span>
+                            <span class="kpi-valor ok" id="kpi-cobrado">—</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Pendiente de cobro</span>
+                            <span class="kpi-valor warn" id="kpi-pendiente-cobro">—</span>
+                        </div>
+                        <div class="kpi kpi--separador">
+                            <span class="kpi-label">Pagos a proveedores</span>
+                            <span class="kpi-valor error" id="kpi-pagos-total">—</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Pagado hasta hoy</span>
+                            <span class="kpi-valor error" id="kpi-pagado">—</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Pendiente de pago</span>
+                            <span class="kpi-valor warn" id="kpi-pendiente-pago">—</span>
+                        </div>
+                        <div class="kpi kpi--separador kpi--destacado">
+                            <span class="kpi-label">Saldo neto pendiente</span>
+                            <span class="kpi-valor" id="kpi-saldo-neto">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLOQUE 2: CASHFLOW -->
+            <div class="bloque" id="bloque-cashflow">
+                <h2>📊 Flujo de caja acumulado &nbsp;
+                    <span style="font-size:12px; font-weight:400">
+                        <span style="color:#e07000">&#9632;</span> Previsto &nbsp;
+                        <span style="color:#2a7a2a">&#9632;</span> Real
+                    </span>
+                </h2>
+                <canvas id="grafico-cashflow"></canvas>
+            </div>
+
+            <!-- BLOQUE 3: DISPONIBILIDAD POR EVENTO -->
+            <div class="bloque" id="bloque-eventos">
+                <h2>🎉 Disponibilidad por evento</h2>
+                <div class="selector-mobile">
+                    <select id="selector-evento">
+                        <option value="">— Todos los eventos —</option>
+                    </select>
+                </div>
+                <div class="table-wrapper">
+                    <table id="tabla-eventos">
+                        <thead><tr>
+                            <th>Evento</th><th>Día</th>
+                            <th>Total</th><th>Confirmadas</th>
+                            <th>Pendientes</th><th>Libres</th><th>Ocupación</th>
+                        </tr></thead>
+                        <tbody id="tbody-eventos"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- BLOQUE 4: DISPONIBILIDAD POR PROVEEDOR -->
+            <div class="bloque" id="bloque-proveedores">
+                <h2>🏠 Disponibilidad por proveedor</h2>
+                <div class="selector-mobile">
+                    <select id="selector-proveedor">
+                        <option value="">— Todos los proveedores —</option>
+                    </select>
+                </div>
+                <div class="table-wrapper">
+                    <table id="tabla-proveedores">
+                        <thead><tr>
+                            <th>Proveedor</th>
+                            <th>Capacidad</th>
+                            <th>Confirmadas</th>
+                            <th>Pendientes</th>
+                            <th>Libres</th>
+                            <th>Ocupación</th>
+                        </tr></thead>
+                        <tbody id="tbody-proveedores"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- BLOQUE 5: RESUMEN DE NEGOCIO -->
+            <div class="bloque" id="bloque-resumen">
+                <h2>📋 Resumen de negocio</h2>
+                <div class="kpi-grid kpi-grid--wide">
+                    <div class="kpi">
+                        <span class="kpi-label">Reservas confirmadas</span>
+                        <span class="kpi-valor ok" id="kpi-res-confirmadas">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Reservas pendientes</span>
+                        <span class="kpi-valor warn" id="kpi-res-pendientes">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Reservas canceladas</span>
+                        <span class="kpi-valor error" id="kpi-res-canceladas">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Plazas confirmadas</span>
+                        <span class="kpi-valor ok" id="kpi-plazas-confirmadas">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Ingresos brutos</span>
+                        <span class="kpi-valor ok" id="kpi-ingresos-brutos">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Coste proveedores</span>
+                        <span class="kpi-valor error" id="kpi-costes">—</span>
+                    </div>
+                    <div class="kpi kpi--destacado">
+                        <span class="kpi-label">Margen estimado</span>
+                        <span class="kpi-valor" id="kpi-margen">—</span>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module" src="js/panel.js"></script>
+</body>
+</html>

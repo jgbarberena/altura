@@ -424,12 +424,20 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
     const ids = [...document.querySelectorAll('.chk-reserva:checked')]
         .map(chk => chk.closest('tr').dataset.id)
     if (ids.length === 0) return
+
+    const afectadas = todasReservas.filter(r => ids.includes(r.id))
+        .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id }))
+
     const { error } = await supabase
         .from('reservations').update({ status: nuevoEstado }).in('id', ids)
     if (!error && clienteActual) {
         todasReservas = todasReservas.map(r =>
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
+        // Checkear consumption para cada reserva afectada
+        for (const { proveedorId, servicioId } of afectadas) {
+            await checkearConsumption(proveedorId, servicioId)
+        }
         cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
     }
@@ -442,6 +450,10 @@ async function eliminarSeleccionadas() {
     if (ids.length === 0) return
     if (!confirm(`¿Eliminar ${ids.length} reserva(s) definitivamente?`)) return
 
+    // Guardar proveedor+servicio antes de borrar para el checkeo
+    const afectadas = todasReservas.filter(r => ids.includes(r.id))
+        .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id }))
+
     const { error: errCharges } = await supabase
         .from('charges').delete().in('reservation_id', ids)
     if (errCharges) { alert('Error al borrar cobros: ' + errCharges.message); return }
@@ -451,6 +463,27 @@ async function eliminarSeleccionadas() {
     if (errReservas) { alert('Error al borrar reservas: ' + errReservas.message); return }
 
     todasReservas = todasReservas.filter(r => !ids.includes(r.id))
+
+    // Si no quedan reservas del cliente, ofrecer eliminar el cliente
+    if (clienteActual) {
+        const reservasRestantes = todasReservas.filter(r => r.client_id === clienteActual.id)
+        if (reservasRestantes.length === 0) {
+            const borrar = confirm(`${clienteActual.id} no tiene más reservas. ¿Deseas eliminar también el cliente?`)
+            if (borrar) {
+                await supabase.from('clients').delete().eq('id', clienteActual.id)
+                todosClientes.splice(todosClientes.findIndex(c => c.id === clienteActual.id), 1)
+                limpiarCamposCliente()
+                inputId.value = ''
+                return
+            }
+        }
+    }
+
+    // Checkear consumption para cada proveedor+servicio afectado
+    for (const { proveedorId, servicioId } of afectadas) {
+        await checkearConsumption(proveedorId, servicioId)
+    }
+
     await cargarReservasCliente(clienteActual.id)
     actualizarProveedores()
 }
@@ -536,6 +569,7 @@ btnAnadir.addEventListener('click', async () => {
         alert(`✅ Reserva ${reservaEditandoId} actualizada`)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
+        await checkearConsumption(proveedorId, servicioId)
         limpiarFormularioReserva()
 
     } else {
@@ -595,6 +629,7 @@ btnAnadir.addEventListener('click', async () => {
         alert(`✅ Reserva ${nuevaId} creada`)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
+        await checkearConsumption(proveedorId, servicioId)
         limpiarFormularioReserva()
     }
 })
@@ -641,7 +676,14 @@ function renderHitos() {
             <td>${parseFloat(h.amount).toLocaleString('es-ES', { style:'currency', currency:'EUR' })}
                 ${h.esFinal ? '<span style="font-size:11px;color:var(--subtle)"> (calculado)</span>' : ''}
             </td>
-            <td>${h.due_date ?? '—'}</td>
+            <td>
+                ${h.esFinal 
+                    ? `<input type="date" value="${h.due_date ?? ''}" 
+                        style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px"
+                        onchange="cambiarFechaFinal('${i}', this.value)">`
+                    : (h.due_date ?? '—')
+                }
+            </td>
             <td>${h.collected ? `✅ ${h.collected_date ?? ''}` : '⏳ No'}</td>
             <td style="white-space:nowrap">
                 <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
@@ -653,6 +695,10 @@ function renderHitos() {
             </td>
         </tr>
     `).join('')
+}
+
+window.cambiarFechaFinal = function(idx, valor) {
+    hitosTemp[idx].due_date = valor || null
 }
 
 // Alterna el estado cobrado/pendiente de un hito en el array temporal
@@ -933,4 +979,64 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
             <div class="proveedor-col-body">${filasReservas}</div>
         </div>`
     }).join('')
+}
+
+// Recalcula y corrige en Supabase el pago final de proveedores consumption
+// afectados por un cambio en una reserva
+async function checkearConsumption(proveedorId, servicioId) {
+    // Verificar si este proveedor+servicio es consumption
+    const disp = disponibilidad.find(d =>
+        d.provider_id === proveedorId &&
+        d.service_id  === servicioId  &&
+        d.billing_model === 'consumption'
+    )
+    if (!disp) return // no es consumption, nada que hacer
+
+    // Calcular plazas totales reservadas (confirmadas + pendientes)
+    const plazasReservadas = todasReservas
+        .filter(r =>
+            r.provider_id === proveedorId &&
+            r.service_id  === servicioId  &&
+            r.status      !== 'Cancelada'
+        )
+        .reduce((s, r) => s + r.slots, 0)
+
+    const importeCorrecto = plazasReservadas * parseFloat(disp.price_per_slot)
+
+    // Buscar el pago final de este proveedor en Supabase
+    const { data: pagosProveedor } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('provider_id', proveedorId)
+        .eq('comments', 'Pago final')
+
+    if (!pagosProveedor || pagosProveedor.length === 0) {
+        // No existe pago final — crearlo
+        await supabase.from('payments').insert({
+            provider_id: proveedorId,
+            amount:      importeCorrecto,
+            due_date:    '2026-07-15',
+            paid:        false,
+            comments:    'Pago final'
+        })
+        console.warn(`⚠️ Consumption: creado pago final para ${proveedorId}/${servicioId} — ${importeCorrecto}€`)
+        return
+    }
+
+    // Sumar todos los pagos finales (puede haber más de uno por servicio)
+    const importeActual = pagosProveedor.reduce((s, p) => s + parseFloat(p.amount), 0)
+
+    if (Math.abs(importeActual - importeCorrecto) < 0.01) return // ya está correcto
+
+    // Actualizar el primero y borrar duplicados si los hubiera
+    const [primero, ...resto] = pagosProveedor
+    await supabase.from('payments')
+        .update({ amount: importeCorrecto })
+        .eq('id', primero.id)
+
+    if (resto.length > 0) {
+        await supabase.from('payments').delete().in('id', resto.map(p => p.id))
+    }
+
+    console.warn(`⚠️ Consumption corregido: ${proveedorId}/${servicioId} — ${importeActual}€ → ${importeCorrecto}€`)
 }

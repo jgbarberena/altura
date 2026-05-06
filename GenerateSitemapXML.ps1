@@ -1,7 +1,7 @@
 $rootPath = (Get-Location).Path
 $baseUrl  = "https://www.experienciasanfermin.com"
 
-$excludeFolders = @("img", "css", "js", "components")
+$excludeFolders = @("img", "css", "js", "components", "admin")
 $excludeFiles   = @("index-template.html")
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)

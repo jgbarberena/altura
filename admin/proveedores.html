@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Proveedores — Vive San Fermín</title>
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <span class="topbar-title">Gestión de Proveedores</span>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="formulario.html">📝 Gestión de reservas</a>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="proveedores.html" class="active">🏠 Gestión de Proveedores</a>
+                <a href="tablas.html">📊 Tablas</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+
+            <!-- BLOQUE 1: PROVEEDOR -->
+            <div class="bloque" id="bloque-proveedor">
+                <h2>🏠 Proveedor</h2>
+                <div class="form-grid">
+                    <div class="form-field autocomplete-wrap">
+                        <label>ID Proveedor</label>
+                        <input type="text" id="inputProveedorId" placeholder="ID_PROVEEDOR" autocomplete="off">
+                        <div class="autocomplete-list" id="autocompleteProveedorList" style="display:none"></div>
+                    </div>
+                    <div class="form-field">
+                        <label>Dirección</label>
+                        <input type="text" id="inputDireccion" placeholder="Dirección">
+                    </div>
+                    <div class="form-field">
+                        <label>Comentarios</label>
+                        <input type="text" id="inputProveedorComments" placeholder="Comentarios">
+                    </div>
+                </div>
+                <div id="proveedor-status" style="margin-top:12px; font-size:12px; color:var(--subtle)"></div>
+            </div>
+
+            <!-- BLOQUE 2: AÑADIR/EDITAR SERVICIO -->
+            <div class="bloque" id="bloque-servicio" style="display:none">
+                <h2>➕ Añadir / Editar servicio</h2>
+                <div class="form-grid">
+                    <div class="form-field autocomplete-wrap">
+                        <label>Servicio</label>
+                        <input type="text" id="inputServicioId" placeholder="Ej: ENCIERRO_7" autocomplete="off">
+                        <div class="autocomplete-list" id="autocompleteServicioList" style="display:none"></div>
+                    </div>
+                    <div class="form-field">
+                        <label>Plazas</label>
+                        <input type="number" id="inputPlazas" min="0" step="1" placeholder="Nº plazas">
+                    </div>
+                    <div class="form-field">
+                        <label>Precio por plaza (€)</label>
+                        <input type="number" id="inputPrecio" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-field">
+                        <label>Modelo de pago</label>
+                        <select id="selectModelo">
+                            <option value="capacity">Capacity (pago total)</option>
+                            <option value="consumption">Consumption (pago por uso)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Panel de pagos al proveedor -->
+                <div id="panel-pagos-proveedor" style="display:none; margin-top:16px; border-top:1px solid var(--border); padding-top:14px">
+                    <button id="togglePagosProveedor" class="btn btn-secondary" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center">
+                        <span>💸 Calendario de pagos al proveedor</span>
+                        <span id="togglePagosProveedorIcon">▶</span>
+                    </button>
+                    <div id="contenido-pagos-proveedor" style="display:none; margin-top:12px">
+                        <div class="table-wrapper" style="margin-bottom:12px">
+                            <table>
+                                <thead><tr>
+                                    <th>Concepto</th><th>Importe</th>
+                                    <th>Fecha</th><th>Pagado</th><th></th>
+                                </tr></thead>
+                                <tbody id="tbody-pagos-proveedor"></tbody>
+                            </table>
+                        </div>
+                        <div class="btn-row">
+                            <button class="btn btn-secondary" id="btnNuevoPagoProveedor">+ Añadir hito de pago</button>
+                        </div>
+                        <div id="form-nuevo-pago-proveedor" style="display:none; margin-top:14px">
+                            <div class="form-grid">
+                                <div class="form-field">
+                                    <label>Concepto</label>
+                                    <input type="text" id="pagoProvConcepto" placeholder="Ej: Prepago 1">
+                                </div>
+                                <div class="form-field">
+                                    <label>Importe (€)</label>
+                                    <input type="number" id="pagoProvImporte" min="0" step="0.01" placeholder="0.00">
+                                </div>
+                                <div class="form-field">
+                                    <label>Fecha</label>
+                                    <input type="date" id="pagoProvFecha">
+                                </div>
+                                <div class="form-field">
+                                    <label>Pagado</label>
+                                    <select id="pagoProvPagado">
+                                        <option value="false">No</option>
+                                        <option value="true">Sí</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-primary" id="btnGuardarPagoProveedor">Guardar hito</button>
+                                <button class="btn btn-secondary" id="btnCancelarPagoProveedor">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="servicio-status" style="margin-top:8px; font-size:12px;"></div>
+
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btnGuardarServicio" disabled>Añadir servicio</button>
+                    <button class="btn btn-secondary" id="btnCancelarServicio" style="display:none">✕ Cancelar edición</button>
+                </div>
+            </div>
+
+            <!-- BLOQUE 3: SERVICIOS DEL PROVEEDOR -->
+            <div class="bloque" id="bloque-servicios-proveedor" style="display:none">
+                <h2>📋 Servicios del proveedor</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr>
+                            <th></th>
+                            <th>Servicio</th>
+                            <th>Plazas</th>
+                            <th>Precio/plaza</th>
+                            <th>Modelo</th>
+                            <th>Pagado</th>
+                            <th>Pendiente</th>
+                        </tr></thead>
+                        <tbody id="tbody-servicios-proveedor"></tbody>
+                    </table>
+                    <div class="btn-row">
+                        <button class="btn btn-danger" id="btnEliminarServicio">🗑 Eliminar servicio</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module" src="js/proveedores.js"></script>
+</body>
+</html>

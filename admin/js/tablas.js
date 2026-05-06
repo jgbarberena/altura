@@ -1,0 +1,319 @@
+import { supabase } from './supabase.js'
+import { requireAuth, logout } from './auth.js'
+
+await requireAuth()
+document.getElementById('btnLogout').addEventListener('click', logout)
+
+// Hamburger
+const sidebar     = document.getElementById('sidebar')
+const overlayMenu = document.getElementById('overlayMenu')
+document.getElementById('hamburger').addEventListener('click', () => {
+    sidebar.classList.toggle('open')
+    overlayMenu.classList.toggle('open')
+})
+overlayMenu.addEventListener('click', () => {
+    sidebar.classList.remove('open')
+    overlayMenu.classList.remove('open')
+})
+
+const hoy = new Date().toISOString().split('T')[0]
+const fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
+
+// ===== DEFINICIÓN DE TABLAS =====
+// Cada tabla define: query supabase, columnas con label, campo, clase opcional y formato
+const TABLAS = {
+    reservations: {
+        titulo: 'Reservas',
+        query:  () => supabase.from('reservations').select('*').order('id'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Cliente',     campo: 'client_id' },
+            { label: 'Proveedor',   campo: 'provider_id' },
+            { label: 'Servicio',    campo: 'service_id' },
+            { label: 'Plazas',      campo: 'slots' },
+            { label: '€/plaza',     campo: 'price_per_slot',  fmt: v => fmt(v) },
+            { label: 'Total',       campo: 'total_amount',    fmt: v => fmt(v) },
+            { label: 'Estado',      campo: 'status',
+                clase: v => v === 'Confirmada' ? 'estado-confirmada' : v === 'Pendiente' ? 'estado-pendiente' : 'estado-cancelada' },
+            { label: 'Comentarios', campo: 'comments' },
+        ]
+    },
+    charges: {
+        titulo: 'Cobros',
+        query:  () => supabase.from('charges').select('*, reservations(client_id, status)').order('due_date'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Reserva',     campo: 'reservation_id' },
+            { label: 'Cliente',     campo: '_client_id',      fmt: (_, row) => row.reservations?.client_id ?? '—' },
+            { label: 'Importe',     campo: 'amount',          fmt: v => fmt(v) },
+            { label: 'Fecha prev.', campo: 'due_date' },
+            { label: 'Cobrado',     campo: 'collected',
+                fmt: (v, row) => v ? `✅ ${row.collected_date ?? ''}` : (row.due_date && row.due_date < hoy ? '❌ Vencido' : '⏳ No'),
+                clase: (v, row) => v ? 'cobrado-si' : (row.due_date && row.due_date < hoy ? 'cobrado-vencido' : 'cobrado-no') },
+            { label: 'Fecha cobro', campo: 'collected_date' },
+            { label: 'Concepto',    campo: 'comments' },
+        ]
+    },
+    payments: {
+        titulo: 'Pagos a proveedores',
+        query:  () => supabase.from('payments').select('*').order('due_date'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Proveedor',   campo: 'provider_id' },
+            { label: 'Importe',     campo: 'amount',     fmt: v => fmt(v) },
+            { label: 'Fecha prev.', campo: 'due_date' },
+            { label: 'Pagado',      campo: 'paid',
+                fmt: (v, row) => v ? `✅ ${row.paid_date ?? ''}` : (row.due_date && row.due_date < hoy ? '❌ Vencido' : '⏳ No'),
+                clase: (v, row) => v ? 'cobrado-si' : (row.due_date && row.due_date < hoy ? 'cobrado-vencido' : 'cobrado-no') },
+            { label: 'Fecha pago',  campo: 'paid_date' },
+            { label: 'Concepto',    campo: 'comments' },
+        ]
+    },
+    availability: {
+        titulo: 'Disponibilidad',
+        query:  () => supabase.from('availability').select('*').order('provider_id'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Proveedor',   campo: 'provider_id' },
+            { label: 'Servicio',    campo: 'service_id' },
+            { label: 'Plazas',      campo: 'total_slots' },
+            { label: '€/plaza',     campo: 'price_per_slot', fmt: v => fmt(v) },
+            { label: 'Modelo',      campo: 'billing_model',
+                fmt: v => v === 'consumption' ? 'Consumo' : 'Capacidad',
+                clase: v => v === 'consumption' ? 'modelo-consumption' : 'modelo-capacity' },
+            { label: 'Comentarios', campo: 'comments' },
+        ]
+    },
+    clients: {
+        titulo: 'Clientes',
+        query:  () => supabase.from('clients').select('*').order('id'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Nombre',      campo: 'name' },
+            { label: 'Empresa',     campo: 'company' },
+            { label: 'Teléfono',    campo: 'phone' },
+            { label: 'Email',       campo: 'email' },
+            { label: 'Comentarios', campo: 'comments' },
+        ]
+    },
+    providers: {
+        titulo: 'Proveedores',
+        query:  () => supabase.from('providers').select('*').order('id'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Dirección',   campo: 'address' },
+            { label: 'Comentarios', campo: 'comments' },
+        ]
+    },
+    services: {
+        titulo: 'Servicios',
+        query:  () => supabase.from('services').select('*').order('day'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Día',         campo: 'day' },
+            { label: 'Tipo',        campo: 'event_type' },
+            { label: 'Descripción', campo: 'description' },
+        ]
+    }
+}
+
+// ===== ESTADO =====
+let tablaActual  = 'reservations'
+let datosRaw     = []      // datos originales de Supabase
+let datosFiltrados = []    // después de aplicar filtros
+let sortCol      = null
+let sortDir      = 'asc'
+let filtrosActivos = {}    // { campo: Set de valores seleccionados }
+let panelFiltroAbierto = null
+
+// ===== INICIALIZAR =====
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        tablaActual   = btn.dataset.tabla
+        sortCol       = null
+        sortDir       = 'asc'
+        filtrosActivos = {}
+        cargarTabla()
+    })
+})
+
+// Cerrar panel de filtro al hacer click fuera
+document.addEventListener('click', e => {
+    if (panelFiltroAbierto && !panelFiltroAbierto.contains(e.target) &&
+        !e.target.classList.contains('filter-icon')) {
+        panelFiltroAbierto.remove()
+        panelFiltroAbierto = null
+    }
+})
+
+cargarTabla()
+
+// ===== CARGAR DATOS =====
+async function cargarTabla() {
+    const wrapper = document.getElementById('tabla-wrapper')
+    wrapper.innerHTML = '<p style="color:var(--subtle);font-size:13px">Cargando...</p>'
+
+    const def = TABLAS[tablaActual]
+    document.getElementById('tabla-titulo').textContent = def.titulo
+
+    const { data, error } = await def.query()
+    if (error) {
+        wrapper.innerHTML = `<p style="color:var(--accent)">Error: ${error.message}</p>`
+        return
+    }
+
+    datosRaw       = data
+    datosFiltrados = [...datosRaw]
+    renderTabla()
+}
+
+// ===== RENDERIZAR =====
+function renderTabla() {
+    const def  = TABLAS[tablaActual]
+    const cols = def.cols
+
+    // Aplicar sort
+    if (sortCol !== null) {
+        datosFiltrados.sort((a, b) => {
+            const va = valorCelda(a, cols[sortCol])
+            const vb = valorCelda(b, cols[sortCol])
+            if (va === null || va === undefined) return 1
+            if (vb === null || vb === undefined) return -1
+            const cmp = String(va).localeCompare(String(vb), 'es', { numeric: true })
+            return sortDir === 'asc' ? cmp : -cmp
+        })
+    }
+
+    document.getElementById('tabla-count').textContent =
+        `${datosFiltrados.length} / ${datosRaw.length} filas`
+
+    // Construir tabla
+    const wrapper = document.getElementById('tabla-wrapper')
+    wrapper.innerHTML = `
+        <table>
+            <thead>
+                <tr>${cols.map((c, i) => `
+                    <th>
+                        <div class="th-inner">
+                            <span onclick="sortPor(${i})">${c.label}</span>
+                            <span class="sort-icon ${sortCol === i ? sortDir : ''}" onclick="sortPor(${i})">
+                                ${sortCol === i ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                            </span>
+                            <span class="filter-icon ${filtrosActivos[c.campo]?.size > 0 ? 'activo' : ''}"
+                                onclick="abrirFiltro(event, ${i})">▼</span>
+                        </div>
+                    </th>
+                `).join('')}</tr>
+            </thead>
+            <tbody>
+                ${datosFiltrados.map(row => `
+                    <tr>${cols.map(c => {
+                        const val   = row[c.campo]
+                        const texto = c.fmt ? c.fmt(val, row) : (val ?? '—')
+                        const clase = c.clase ? c.clase(val, row) : ''
+                        return `<td class="${clase}">${texto}</td>`
+                    }).join('')}</tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `
+}
+
+function valorCelda(row, col) {
+    if (col.fmt) return col.fmt(row[col.campo], row)
+    return row[col.campo]
+}
+
+// ===== SORT =====
+window.sortPor = function(colIdx) {
+    if (sortCol === colIdx) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc'
+    } else {
+        sortCol = colIdx
+        sortDir = 'asc'
+    }
+    renderTabla()
+}
+
+// ===== FILTRO =====
+window.abrirFiltro = function(e, colIdx) {
+    e.stopPropagation()
+
+    // Cerrar panel anterior
+    if (panelFiltroAbierto) { panelFiltroAbierto.remove(); panelFiltroAbierto = null }
+
+    const def   = TABLAS[tablaActual]
+    const col   = def.cols[colIdx]
+    const campo = col.campo
+
+    // Valores únicos de esta columna en los datos originales
+    const valores = [...new Set(datosRaw.map(row => {
+        const v = col.fmt ? col.fmt(row[campo], row) : (row[campo] ?? '—')
+        return String(v)
+    }))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))
+
+    const seleccionados = filtrosActivos[campo] ?? new Set(valores)
+
+    const panel = document.createElement('div')
+    panel.className = 'filter-panel'
+    panel.innerHTML = `
+        ${valores.map(v => `
+            <label>
+                <input type="checkbox" value="${v}" ${seleccionados.has(v) ? 'checked' : ''}>
+                ${v}
+            </label>
+        `).join('')}
+        <div class="filter-actions">
+            <button onclick="seleccionarTodosFiltro('${campo}', true)">Todos</button>
+            <button onclick="seleccionarTodosFiltro('${campo}', false)">Ninguno</button>
+            <button onclick="aplicarFiltro('${campo}')">Aplicar</button>
+        </div>
+    `
+
+    // Posicionar bajo el th
+    const th = e.target.closest('th')
+    const rect = th.getBoundingClientRect()
+    panel.style.position = 'fixed'
+    panel.style.top  = (rect.bottom + 2) + 'px'
+    panel.style.left = rect.left + 'px'
+
+    document.body.appendChild(panel)
+    panelFiltroAbierto = panel
+}
+
+window.seleccionarTodosFiltro = function(campo, todos) {
+    if (!panelFiltroAbierto) return
+    panelFiltroAbierto.querySelectorAll('input[type=checkbox]').forEach(chk => {
+        chk.checked = todos
+    })
+}
+
+window.aplicarFiltro = function(campo) {
+    if (!panelFiltroAbierto) return
+    const checks   = [...panelFiltroAbierto.querySelectorAll('input[type=checkbox]')]
+    const marcados = new Set(checks.filter(c => c.checked).map(c => c.value))
+    const todos    = checks.every(c => c.checked)
+
+    if (todos) {
+        delete filtrosActivos[campo]
+    } else {
+        filtrosActivos[campo] = marcados
+    }
+
+    // Aplicar todos los filtros activos
+    const def  = TABLAS[tablaActual]
+    datosFiltrados = datosRaw.filter(row => {
+        return def.cols.every(col => {
+            const filtro = filtrosActivos[col.campo]
+            if (!filtro) return true
+            const v = col.fmt ? col.fmt(row[col.campo], row) : String(row[col.campo] ?? '—')
+            return filtro.has(String(v))
+        })
+    })
+
+    panelFiltroAbierto.remove()
+    panelFiltroAbierto = null
+    renderTabla()
+}

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablas — Vive San Fermín</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/tablas.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <span class="topbar-title">Tablas</span>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="formulario.html">📝 Gestión de reservas</a>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="proveedores.html">🏠 Proveedores</a>
+                <a href="tablas.html" class="active">📊 Tablas</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+
+            <!-- SELECTOR DE TABLA -->
+            <div class="bloque">
+                <div class="tabla-tabs">
+                    <button class="tab-btn active" data-tabla="reservations">Reservas</button>
+                    <button class="tab-btn" data-tabla="charges">Cobros</button>
+                    <button class="tab-btn" data-tabla="payments">Pagos</button>
+                    <button class="tab-btn" data-tabla="availability">Disponibilidad</button>
+                    <button class="tab-btn" data-tabla="clients">Clientes</button>
+                    <button class="tab-btn" data-tabla="providers">Proveedores</button>
+                    <button class="tab-btn" data-tabla="services">Servicios</button>
+                </div>
+            </div>
+
+            <!-- TABLA -->
+            <div class="bloque" id="bloque-tabla">
+                <div class="tabla-header">
+                    <span id="tabla-titulo" style="font-size:14px;font-weight:600"></span>
+                    <span id="tabla-count" style="font-size:12px;color:var(--subtle)"></span>
+                </div>
+                <div class="table-wrapper" id="tabla-wrapper">
+                    <p style="color:var(--subtle);font-size:13px" id="tabla-loading">Cargando...</p>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module" src="js/tablas.js"></script>
+</body>
+</html>

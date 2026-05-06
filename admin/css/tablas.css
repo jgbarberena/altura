@@ -1,0 +1,107 @@
+.tabla-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Cabecera de tabla con sort y filtro */
+.th-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.th-inner:hover { opacity: 0.8; }
+
+.sort-icon {
+    font-size: 10px;
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.sort-icon.asc  { opacity: 1; content: '↑'; }
+.sort-icon.desc { opacity: 1; }
+
+.filter-icon {
+    font-size: 11px;
+    opacity: 0.5;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.filter-icon.activo { opacity: 1; color: #ffcc00; }
+
+/* Panel de filtro */
+.filter-panel {
+    position: absolute;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px;
+    z-index: 300;
+    min-width: 180px;
+    max-height: 260px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-size: 12px;
+    color: var(--text);
+}
+
+.filter-panel label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    cursor: pointer;
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text);
+}
+
+.filter-panel label:hover { color: var(--accent); }
+
+.filter-panel .filter-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.filter-panel .filter-actions button {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    background: none;
+    font-family: inherit;
+}
+
+.filter-panel .filter-actions button:hover {
+    background: var(--bg);
+}
+
+th { position: relative; }
+
+.tabla-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+/* Colores en celdas */
+td.estado-confirmada { color: var(--accent-ok);   font-weight: 500; }
+td.estado-pendiente  { color: var(--accent-warn);  font-weight: 500; }
+td.estado-cancelada  { color: var(--accent);       font-weight: 500; }
+td.cobrado-si        { color: var(--accent-ok); }
+td.cobrado-no        { color: var(--subtle); }
+td.cobrado-vencido   { color: var(--accent); font-weight: 500; }
+td.modelo-consumption { color: var(--accent-warn); }
+td.modelo-capacity    { color: var(--subtle); }
