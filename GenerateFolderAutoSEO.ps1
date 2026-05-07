@@ -596,7 +596,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     }
 
     # ---- Ensamblar bloque BODY ----
-    $bodySeo = ""
+    $bodySeo = "<div id=`"cookie-banner-placeholder`"></div>`n"
     foreach ($s in $schemas) {
         $bodySeo += "<script type=`"application/ld+json`">$s</script>`n"
     }
