@@ -41,6 +41,32 @@
 }
 
 /* ============================
+   AUTORA
+============================ */
+
+.guia-autora {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(0, 0, 0, 0.10);
+}
+
+.guia-autora__foto {
+    width: 112px;
+    height: 112px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center top;
+    flex-shrink: 0;
+}
+
+.guia-autora__nombre {
+    margin-bottom: 4px;
+}
+
+/* ============================
    DESKTOP
 ============================ */
 
