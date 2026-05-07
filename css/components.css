@@ -594,6 +594,28 @@ header.dark .hamburger {
     opacity: 1;
 }
 
+.footer-cookies {
+    text-align: center;
+    padding-top: 4px;
+}
+
+.footer-cookies__btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--color-heading);
+    opacity: 0.35;
+    text-decoration: underline;
+    padding: 2px 4px;
+    transition: opacity 0.2s ease;
+}
+
+.footer-cookies__btn:hover {
+    opacity: 0.7;
+}
+
 /* FOOTER – tablet/desktop */
 @media (min-width: 769px) {
 
@@ -1029,4 +1051,56 @@ header.dark .hamburger {
 .miniGuias .guia-content a:hover {
     color: var(--color-accent-dark);
     transform: translateX(3px) scale(1.03);
+}
+
+/* =========================
+   COOKIE BANNER
+========================= */
+
+.cookie-banner {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1500;
+    background: rgba(20, 20, 20, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--color-light);
+    padding: 14px clamp(16px, 5vw, 40px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.cookie-banner__text {
+    margin: 0;
+    flex: 1;
+    min-width: 200px;
+    color: var(--color-light);
+}
+
+.cookie-banner__link {
+    color: var(--color-light);
+    opacity: 0.75;
+    text-decoration: underline;
+    white-space: nowrap;
+    transition: opacity 0.2s ease;
+}
+
+.cookie-banner__link:hover {
+    opacity: 1;
+}
+
+.cookie-banner__actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.btn--pill {
+    border-radius: 999px;
+    padding: 6px 18px;
 }

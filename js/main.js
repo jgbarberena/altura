@@ -625,6 +625,8 @@ function initFormulario(root, resolveAsset, resolvePage) {
         const data = getFormData();
         const texto = buildMensaje(data);
 
+		if (window.trackFormSubmit) window.trackFormSubmit('whatsapp', data.interes);
+
         const url = `https://wa.me/34625638977?text=${encodeURIComponent(texto)}`;
         window.open(url, "_blank");
     });
@@ -641,6 +643,8 @@ function initFormulario(root, resolveAsset, resolvePage) {
 
             const data = getFormData();
             const cuerpo = buildMensaje(data);
+
+			if (window.trackFormSubmit) window.trackFormSubmit('email', data.interes);
 
             const asunto = "Solicitud experiencia San Fermín";
 
@@ -826,7 +830,91 @@ async function initMiniGuias(root, resolveAsset, resolvePage) {
     });
 }
 
+// ======================================================
+// 11. COOKIE BANNER
+// ======================================================
 
+function initCookieBanner(root, resolveAsset, resolvePage) {
+
+    // --- Reescritura de enlaces ---
+    root.querySelectorAll('[data-page]').forEach(a => {
+        a.href = resolvePage(a.dataset.page);
+    });
+
+    const banner  = root.querySelector('#cookie-banner');
+    const btnAcept = root.querySelector('#cookie-accept');
+    const btnReject = root.querySelector('#cookie-reject');
+
+    if (!banner || !btnAcept || !btnReject) return;
+
+    // --- Leer preferencia guardada ---
+    const STORAGE_KEY = 'cookie_consent';
+    const EXPIRY_DAYS = 90;
+
+    function getConsent() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return null;
+            const { decision, timestamp } = JSON.parse(raw);
+            const age = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
+            if (age > EXPIRY_DAYS) {
+                localStorage.removeItem(STORAGE_KEY);
+                return null;
+            }
+            return decision; // 'accepted' | 'rejected'
+        } catch {
+            return null;
+        }
+    }
+
+    function saveConsent(decision) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            decision,
+            timestamp: Date.now()
+        }));
+    }
+
+    function hideBanner() {
+        banner.style.display = 'none';
+    }
+
+    // --- Decisión al cargar ---
+    const consent = getConsent();
+	if (consent === 'accepted') {
+		if (typeof window.activateAnalytics === 'function') {
+			window.activateAnalytics();
+		}
+		hideBanner();
+		return;
+	}
+    if (consent === 'rejected') {
+        hideBanner();
+        return;
+    }
+    // Sin decisión: mostrar banner (no hace falta hacer nada, está visible por defecto)
+
+    // --- Botones ---
+	btnAcept.addEventListener('click', function () {
+		saveConsent('accepted');
+		if (typeof window.activateAnalytics === 'function') {
+			window.activateAnalytics();
+		}
+		hideBanner();
+	});
+
+    btnReject.addEventListener('click', function () {
+        saveConsent('rejected');
+        hideBanner();
+    });
+}
+
+// --- Función global para resetear desde el footer ---
+function resetCookieConsent() {
+    localStorage.removeItem('cookie_consent');
+    // Volver a mostrar el banner sin recargar la página
+    const banner = document.querySelector('#cookie-banner');
+    if (banner) banner.style.display = '';
+}
 
 // ================================ LOGICA =====================================//
 

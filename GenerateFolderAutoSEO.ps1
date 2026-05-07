@@ -223,7 +223,15 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
 
     [string]$ogType = if ($pageType -eq "article") { "article" } else { "website" }
 
+    # Ruta relativa a js/analytics.js según profundidad del archivo.
+    # Ejemplos: raíz → "js/analytics.js" | empresa/ → "../js/analytics.js"
+    $relativeParts = $relative.TrimStart("/") -split "/"
+    $depth         = $relativeParts.Length - 1
+    $analyticsPath = if ($depth -eq 0) { "js/analytics.js" } else { ("../" * $depth) + "js/analytics.js" }
+
     $headSeo = @"
+<script src="$analyticsPath"></script>
+
 <title>$title</title>
 <meta name="description" content="$description">
 <link rel="canonical" href="$url">
@@ -381,10 +389,12 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         [System.Text.RegularExpressions.RegexOptions]::Singleline
     )
 
+    # El placeholder del banner de cookies se inyecta al inicio del bloque BODY
+    # para que include.js lo encuentre en el DOM cuando arranque.
     $html = [regex]::Replace(
         $html,
         "<!-- AUTO-SEO BODY INIT -->.*?<!-- AUTO-SEO BODY END -->",
-        "<!-- AUTO-SEO BODY INIT -->`n$bodySeo`n<!-- AUTO-SEO BODY END -->",
+        "<!-- AUTO-SEO BODY INIT -->`n<div id=`"cookie-banner-placeholder`"></div>`n$bodySeo`n<!-- AUTO-SEO BODY END -->",
         [System.Text.RegularExpressions.RegexOptions]::Singleline
     )
 
