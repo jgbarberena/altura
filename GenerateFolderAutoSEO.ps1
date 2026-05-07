@@ -1,7 +1,42 @@
-$rootPath = (Get-Location).Path
+# ============================================================
+# GenerateFolderAutoSEO.ps1
+# Genera y sobreescribe los bloques AUTO-SEO HEAD e AUTO-SEO BODY
+# en todos los archivos .html del proyecto (excepto carpetas excluidas).
+# ============================================================
 
-$excludeFolders = @("img", "css", "js", "components")
 
+# ============================================================
+# CONFIGURACION — todo lo que puede necesitar mantenimiento
+# esta aqui arriba. No hay que tocar nada mas abajo salvo
+# que se cambie la logica del script.
+# ============================================================
+
+# ---- Sitio web ----
+$baseUrl = "https://www.experienciasanfermin.com"
+
+# ---- Organizacion ----
+$orgName          = "Vive San Fermin a medida"
+$orgLogo          = "$baseUrl/img/logos/sanfermin-logo-black.png"
+$orgCity          = "Pamplona"
+$orgCountry       = "ES"
+$orgSameAs        = @(
+    "https://www.linkedin.com/in/pauladiazechalecu",
+    "https://www.instagram.com/pauladiazechalecu"
+)
+
+# ---- Articulos: valores por defecto si la pagina no los declara ----
+$articleAuthorDefault    = "Paula Diaz Echalecu"
+$articlePublishedDefault = "2025-06-01"
+
+# ---- Ofertas: rango de precios fallback para paginas sin precios en el HTML ----
+$offerPriceMin = 50
+$offerPriceMax = 1200
+
+# ---- CTA del WebPage (potentialAction) ----
+$ctaName   = "Solicitar experiencia personalizada"
+$ctaTarget = "$baseUrl/#contacto"
+
+# ---- Breadcrumb: nombre legible por carpeta ----
 $breadcrumbMap = @{
     "experiencias" = "Experiencias"
     "toko"         = "Tienda San Fermin"
@@ -10,7 +45,47 @@ $breadcrumbMap = @{
     "empresa"      = "Servicios para empresas"
 }
 
-$baseUrl = "https://www.experienciasanfermin.com"
+# ---- Carpetas excluidas del procesado SEO ----
+$excludeFolders = @("img", "css", "js", "components", "admin")
+
+# ---- Eventos: fechas y ubicaciones fijas (el anyo lo calcula el script) ----
+# Para asignar un evento especifico a una pagina, añade data-event-key="clave"
+# al elemento page-data de esa pagina. Si no hay data-event-key, se usa el default.
+# placeName:     nombre del lugar para el schema Event
+# streetAddress: calle concreta si el evento es en un lugar fijo; vacio si es un recorrido
+$eventSchedules = @{
+    "encierro"    = @{ startMonth = 7; startDay = 7;  startTime = "08:00"; endMonth = 7; endDay = 14; endTime = "08:30"; placeName = "Casco Antiguo de Pamplona";      streetAddress = ""                  }
+    "chupinazo"   = @{ startMonth = 7; startDay = 6;  startTime = "10:00"; endMonth = 7; endDay = 6;  endTime = "12:30"; placeName = "Plaza Consistorial, Pamplona";   streetAddress = "Plaza Consistorial" }
+    "procesion"   = @{ startMonth = 7; startDay = 7;  startTime = "10:00"; endMonth = 7; endDay = 7;  endTime = "14:30"; placeName = "Casco Antiguo de Pamplona";      streetAddress = ""                  }
+    "gigantes"    = @{ startMonth = 7; startDay = 14; startTime = "12:00"; endMonth = 7; endDay = 14; endTime = "13:00"; placeName = "Plaza Consistorial, Pamplona";   streetAddress = "Plaza Consistorial" }
+    "pobre-de-mi" = @{ startMonth = 7; startDay = 14; startTime = "23:00"; endMonth = 7; endDay = 15; endTime = "00:30"; placeName = "Plaza Consistorial, Pamplona";   streetAddress = "Plaza Consistorial" }
+}
+# Evento por defecto: marco general San Fermin (7-14 julio)
+$eventScheduleDefault = @{
+    startMonth = 7; startDay = 7;  startTime = "00:00"
+    endMonth   = 7; endDay   = 14; endTime   = "23:59"
+    placeName     = "Casco Antiguo de Pamplona"
+    streetAddress = ""
+}
+
+
+# ============================================================
+# INTERNOS — calculados automaticamente, no editar
+# ============================================================
+
+$rootPath = (Get-Location).Path
+
+# Simbolo euro como char para mantener el script en ASCII puro
+$euro = [char]0x20AC
+
+# Anyo San Fermin: a partir del 1 de agosto usa anyo+1
+$today    = Get-Date
+$sfYear   = if ($today -ge (Get-Date "$($today.Year)-08-01")) { $today.Year + 1 } else { $today.Year }
+$todayStr = $today.ToString("yyyy-MM-dd")
+
+# ============================================================
+# FUNCIONES DE UTILIDAD
+# ============================================================
 
 function Clean-Text($text) {
     $t = $text -replace "<.*?>", " "
@@ -58,6 +133,174 @@ function Capitalize($text) {
     return $result -join " "
 }
 
+# Anade el anyo de San Fermin a cualquier texto que contenga "San Fermin"
+# (con o sin tilde en la i). Solo actua sobre variables SEO, nunca sobre el HTML fuente.
+# La i con tilde se construye como char para mantener el script ASCII puro.
+function Add-SfYear($text, $year) {
+    if ([string]::IsNullOrWhiteSpace($text)) { return $text }
+    $iTilde  = [char]0xED   # i con tilde (i)
+    $pattern = "San\s+Ferm(?:i|$iTilde)n"
+    # Evita duplicar si ya contiene un anyo de 4 cifras tras "San Fermin"
+    if ($text -match "$pattern\s+\d{4}") { return $text }
+    return [regex]::Replace($text, "($pattern)", "`$1 $year")
+}
+
+# ============================================================
+# EXTRACCION DE PRECIOS
+# Busca patrones NNN<euro> o <euro>NNN en el HTML fuente (sin bloque AUTO-SEO).
+# Prioridad: faq-answer > main completo.
+# Devuelve @{ min = N; max = N } o $null si no hay rango valido.
+# ============================================================
+
+function Extract-Prices($html, $euroChar) {
+
+    # Eliminar bloque AUTO-SEO para no releer precios escritos por el propio script
+    $cleanHtml = [regex]::Replace(
+        $html,
+        "<!-- AUTO-SEO BODY INIT -->.*?<!-- AUTO-SEO BODY END -->",
+        "",
+        [System.Text.RegularExpressions.RegexOptions]::Singleline
+    )
+
+    # Patron: 100<euro>  <euro>100  1.200<euro>  1,200<euro>
+    # El char del euro se inyecta como parametro para mantener el script ASCII puro
+    $e = [regex]::Escape($euroChar)
+    $pricePattern = "(?:(\d{1,4}(?:[.,]\d{3})*)\s*$e|$e\s*(\d{1,4}(?:[.,]\d{3})*))"
+
+    function Parse-Prices($sourceHtml) {
+        $ms = [regex]::Matches($sourceHtml, $pricePattern)
+        $values = @()
+        foreach ($m in $ms) {
+            $raw = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
+            $raw = $raw -replace '[.,]', ''
+            $n = 0
+            if ([int]::TryParse($raw, [ref]$n) -and $n -gt 0) { $values += $n }
+        }
+        return $values
+    }
+
+    # 1. Buscar dentro de faq-answer (dentro de faq-item)
+    $faqAnswers = [regex]::Matches(
+        $cleanHtml,
+        '(?i)<[^>]*\bfaq-item\b[^>]*>.*?<[^>]*\bfaq-answer\b[^>]*>(.*?)</[a-z][a-z0-9]*>',
+        [System.Text.RegularExpressions.RegexOptions]::Singleline
+    )
+    if ($faqAnswers.Count -gt 0) {
+        $faqText = ($faqAnswers | ForEach-Object { $_.Groups[1].Value }) -join " "
+        $vals = Parse-Prices $faqText
+        if ($vals.Count -ge 2) {
+            $minVal = ($vals | Measure-Object -Minimum).Minimum
+            $maxVal = ($vals | Measure-Object -Maximum).Maximum
+            if ($minVal -ne $maxVal) { return @{ min = $minVal; max = $maxVal } }
+        }
+    }
+
+    # 2. Buscar en el main completo
+    $mainMatch = [regex]::Match(
+        $cleanHtml,
+        '(?i)<main[^>]*>(.*?)</main>',
+        [System.Text.RegularExpressions.RegexOptions]::Singleline
+    )
+    if ($mainMatch.Success) {
+        $vals = Parse-Prices $mainMatch.Groups[1].Value
+        if ($vals.Count -ge 2) {
+            $minVal = ($vals | Measure-Object -Minimum).Minimum
+            $maxVal = ($vals | Measure-Object -Maximum).Maximum
+            if ($minVal -ne $maxVal) { return @{ min = $minVal; max = $maxVal } }
+        }
+    }
+
+    return $null
+}
+
+# ============================================================
+# SCHEMA EVENT
+# ============================================================
+
+function Build-Event-Schema($html, $pageType, $eventKey, $serviceName, $image, $url, $euroChar) {
+
+    $sched = if (-not [string]::IsNullOrWhiteSpace($eventKey) -and $eventSchedules.ContainsKey($eventKey)) {
+        $eventSchedules[$eventKey]
+    } else {
+        $eventScheduleDefault
+    }
+
+    $startDate = "$sfYear-$('{0:D2}' -f $sched.startMonth)-$('{0:D2}' -f $sched.startDay)T$($sched.startTime):00+02:00"
+    $endDate   = "$sfYear-$('{0:D2}' -f $sched.endMonth)-$('{0:D2}' -f $sched.endDay)T$($sched.endTime):00+02:00"
+
+    $eventName = if (-not [string]::IsNullOrWhiteSpace($serviceName)) {
+        Add-SfYear $serviceName $sfYear
+    } else {
+        "Fiestas de San Fermin $sfYear"
+    }
+
+    # Construir address: con streetAddress solo si el evento tiene lugar fijo
+    $address = [ordered]@{
+        "@type"           = "PostalAddress"
+        "addressLocality" = "$orgCity"
+        "postalCode"      = "31001"
+        "addressCountry"  = "$orgCountry"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($sched.streetAddress)) {
+        $address["streetAddress"] = $sched.streetAddress
+    }
+
+    $eventSchema = [ordered]@{
+        "@context"            = "https://schema.org"
+        "@type"               = "Event"
+        "name"                = $eventName
+        "startDate"           = $startDate
+        "endDate"             = $endDate
+        "eventStatus"         = "https://schema.org/EventScheduled"
+        "eventAttendanceMode" = "https://schema.org/OfflineEventAttendanceMode"
+        "image"               = "$baseUrl$image"
+        "url"                 = $url
+        "location"            = [ordered]@{
+            "@type"   = "Place"
+            "name"    = $sched.placeName
+            "address" = $address
+        }
+        "organizer"           = [ordered]@{
+            "@type" = "Organization"
+            "name"  = "$orgName"
+            "url"   = $baseUrl
+        }
+    }
+
+    # Offers: extraer del HTML; fallback para website/landing; omitir para toko
+    if ($pageType -ne "toko") {
+        $prices   = Extract-Prices $html $euroChar
+        $offerMin = $null
+        $offerMax = $null
+
+        if ($null -ne $prices) {
+            $offerMin = $prices.min
+            $offerMax = $prices.max
+            Write-Host "  Precios extraidos del HTML: $offerMin - $offerMax EUR"
+        } elseif ($pageType -eq "website" -or $pageType -eq "landing") {
+            $offerMin = $offerPriceMin
+            $offerMax = $offerPriceMax
+            Write-Host "  Precios: fallback por defecto (50-1200 EUR)"
+        }
+
+        if ($null -ne $offerMin) {
+            $eventSchema["offers"] = [ordered]@{
+                "@type"         = "AggregateOffer"
+                "lowPrice"      = "$offerMin"
+                "highPrice"     = "$offerMax"
+                "priceCurrency" = "EUR"
+                "url"           = $url
+            }
+        }
+    }
+
+    return $eventSchema | ConvertTo-Json -Depth 6 -Compress
+}
+
+# ============================================================
+# BREADCRUMB
+# ============================================================
+
 function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTitle) {
     $relative = $filePath.Substring($rootPath.Length).TrimStart("\", "/")
     $parts = $relative -split "[/\\]"
@@ -69,7 +312,6 @@ function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTit
 
     for ($i = 0; $i -lt $parts.Length; $i++) {
         $part = $parts[$i]
-
         if ($part -ne "index.html") {
             if ($i -eq $parts.Length - 1) {
                 if (-not [string]::IsNullOrWhiteSpace($pageTitle)) {
@@ -78,8 +320,7 @@ function Build-Breadcrumb([string]$filePath, [string]$rootPath, [string]$pageTit
                         url  = "/" + ($relative -replace "\\", "/")
                     })
                 }
-            }
-            else {
+            } else {
                 $pathAccum += "/" + $part
                 [string]$label = $breadcrumbMap[$part]
                 if ([string]::IsNullOrEmpty($label)) { $label = Capitalize $part }
@@ -113,6 +354,10 @@ function Build-Breadcrumb-Schema($breadcrumbs) {
     } | ConvertTo-Json -Depth 5 -Compress
 }
 
+# ============================================================
+# FAQ SCHEMA
+# ============================================================
+
 function Build-FAQ-Schema($html) {
     $faqItems = @()
 
@@ -121,30 +366,22 @@ function Build-FAQ-Schema($html) {
 
     foreach ($b in $blocks) {
         $block = $b.Groups[2].Value
-
         $q = ""
         $a = ""
 
-        # QUESTION: primer elemento con clase faq-question
         $qMatch = [regex]::Match($block, '(?i)<[^>]*\bfaq-question\b[^>]*>(.*?)</[a-z][a-z0-9]*>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
         if ($qMatch.Success) { $q = Clean-Text $qMatch.Groups[1].Value }
 
-        # ANSWER: todo el texto desde el inicio del primer faq-answer hasta el final
-        # del bloque. Captura automaticamente multiples parrafos, listas, etc.
         $aStartMatch = [regex]::Match($block, '(?i)<[^>]*\bfaq-answer\b[^>]*>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
         if ($aStartMatch.Success) {
-            $answerSection = $block.Substring($aStartMatch.Index)
-            $a = Clean-Text $answerSection
+            $a = Clean-Text $block.Substring($aStartMatch.Index)
         }
 
         if ($q -and $a) {
             $faqItems += @{
                 "@type"          = "Question"
                 "name"           = $q
-                "acceptedAnswer" = @{
-                    "@type" = "Answer"
-                    "text"  = $a
-                }
+                "acceptedAnswer" = @{ "@type" = "Answer"; "text" = $a }
             }
         }
     }
@@ -158,6 +395,10 @@ function Build-FAQ-Schema($html) {
     } | ConvertTo-Json -Depth 6 -Compress
 }
 
+# ============================================================
+# BUCLE PRINCIPAL
+# ============================================================
+
 Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $path = $_.FullName
     foreach ($f in $excludeFolders) {
@@ -169,7 +410,8 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $file = $_.FullName
     $html = [System.IO.File]::ReadAllText($file, [System.Text.Encoding]::UTF8)
 
-    # Título: primero busca data-page-title en el elemento page-data; si no, usa page-title-source
+    # ---- Extraer metadatos ----
+
     [string]$pageDataBlock = ""
     $pageDataMatch = [regex]::Match($html, '(?i)<([a-z][a-z0-9]*)[^>]*class="[^"]*\bpage-data\b[^"]*"[^>]*>(.*?)</\1>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
     if ($pageDataMatch.Success) { $pageDataBlock = $pageDataMatch.Groups[0].Value }
@@ -181,12 +423,13 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     if ([string]::IsNullOrWhiteSpace($title)) {
         $title = Get-InnerText $html "page-title-source"
     }
-    [string]$description = Get-InnerText $html "page-description-source"
 
-    # DEBUG: descomenta para diagnosticar un archivo concreto
-    # Write-Host "DEBUG $file"
-    # Write-Host "  title=[$title]"
-    # Write-Host "  desc=[$description]"
+    [string]$description = Get-InnerText $html "page-description-source"
+    [string]$pageType    = Get-Attribute $html "data-page-type"
+    [string]$author      = Get-Attribute $html "data-author"
+    [string]$published   = Get-Attribute $html "data-published"
+    [string]$serviceName = Get-Attribute $html "data-service-name"
+    [string]$eventKey    = Get-Attribute $html "data-event-key"
 
     [string]$image = ""
     $imgMatch = [regex]::Match(
@@ -205,11 +448,6 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         }
     }
 
-    [string]$pageType  = Get-Attribute $html "data-page-type"
-    [string]$author    = Get-Attribute $html "data-author"
-    [string]$published = Get-Attribute $html "data-published"
-    [string]$modified  = Get-Attribute $html "data-modified"
-
     [string]$relative = $file.Substring($rootPath.Length).Replace("\", "/")
     [string]$url = Clean-Url ($baseUrl + $relative)
 
@@ -217,88 +455,80 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     if ([string]::IsNullOrWhiteSpace($description)) { Write-Host "FALTA DESCRIPTION en $file";            return }
     if ([string]::IsNullOrWhiteSpace($image))       { Write-Host "FALTA IMAGE (y sin fallback) en $file"; return }
 
-    $breadcrumbs      = Build-Breadcrumb $file $rootPath $title
-    $breadcrumbSchema = Build-Breadcrumb-Schema $breadcrumbs
-    $faqSchema        = Build-FAQ-Schema $html
+    # ---- Aplicar anyo San Fermin a variables SEO (nunca al HTML fuente) ----
+    [string]$titleSeo       = Add-SfYear $title $sfYear
+    [string]$descriptionSeo = Add-SfYear $description $sfYear
+    [string]$serviceNameSeo = Add-SfYear $serviceName $sfYear
 
+    # ---- Actualizar data-modified en el HTML fuente a la fecha de hoy ----
+    $html = [regex]::Replace($html, 'data-modified="[^"]*"', "data-modified=`"$todayStr`"")
+
+    # ---- Construir HEAD SEO ----
     [string]$ogType = if ($pageType -eq "article") { "article" } else { "website" }
 
-    # Ruta relativa a js/analytics.js según profundidad del archivo.
-    # Ejemplos: raíz → "js/analytics.js" | empresa/ → "../js/analytics.js"
-    $relativeParts = $relative.TrimStart("/") -split "/"
-    $depth         = $relativeParts.Length - 1
-    $analyticsPath = if ($depth -eq 0) { "js/analytics.js" } else { ("../" * $depth) + "js/analytics.js" }
-
     $headSeo = @"
-<script src="$analyticsPath"></script>
-
-<title>$title</title>
-<meta name="description" content="$description">
+<title>$titleSeo</title>
+<meta name="description" content="$descriptionSeo">
 <link rel="canonical" href="$url">
 
-<meta property="og:title" content="$title">
-<meta property="og:description" content="$description">
+<meta property="og:title" content="$titleSeo">
+<meta property="og:description" content="$descriptionSeo">
 <meta property="og:image" content="$baseUrl$image">
 <meta property="og:url" content="$url">
 <meta property="og:type" content="$ogType">
 "@
 
+    # ---- Construir schemas ----
     $schemas = @()
 
+    # Organization
     $schemas += (@{
         "@context" = "https://schema.org"
         "@type"    = "Organization"
         "@id"      = "$baseUrl/#organization"
-        "name"     = "Vive San Fermin a medida"
+        "name"     = "$orgName"
         "url"      = $baseUrl
-        "logo"     = "$baseUrl/img/logos/sanfermin-logo-black.png"
-        "sameAs"   = @(
-            "https://www.linkedin.com/in/pauladiazechalecu",
-            "https://www.instagram.com/pauladiazechalecu"
-        )
+        "logo"     = "$orgLogo"
+        "sameAs"   = $orgSameAs
     } | ConvertTo-Json -Compress)
 
+    # LocalBusiness
     $schemas += (@{
         "@context" = "https://schema.org"
         "@type"    = "LocalBusiness"
         "@id"      = "$baseUrl/#localbusiness"
-        "name"     = "Vive San Fermin a medida"
-        "image"    = "$baseUrl/img/logos/sanfermin-logo-black.png"
+        "name"     = "$orgName"
+        "image"    = "$orgLogo"
         "address"  = @{
             "@type"           = "PostalAddress"
-            "addressLocality" = "Pamplona"
-            "addressCountry"  = "ES"
+            "addressLocality" = "$orgCity"
+            "addressCountry"  = "$orgCountry"
         }
-        "sameAs"   = @(
-            "https://www.linkedin.com/in/pauladiazechalecu",
-            "https://www.instagram.com/pauladiazechalecu"
-        )
+        "sameAs"   = $orgSameAs
     } | ConvertTo-Json -Compress)
 
-    [string]$serviceName = Get-Attribute $html "data-service-name"
-    if ([string]::IsNullOrWhiteSpace($serviceName)) { $serviceName = "Experiencias San Fermin" }
+    # Service — mentions usa Thing en lugar de Event (evita errores de validacion)
+    if (-not [string]::IsNullOrWhiteSpace($serviceNameSeo)) {
+        $schemas += (@{
+            "@context"    = "https://schema.org"
+            "@type"       = "Service"
+            "@id"         = "$url#service"
+            "name"        = $serviceNameSeo
+            "description" = $descriptionSeo
+            "provider"    = @{
+                "@type" = "LocalBusiness"
+                "@id"   = "$baseUrl/#localbusiness"
+                "name"  = "$orgName"
+            }
+            "areaServed"  = @{ "@type" = "Place"; "name" = "$orgCity" }
+            "mentions"    = @(
+                @{ "@type" = "Place"; "name" = "$orgCity" },
+                @{ "@type" = "Thing"; "name" = "Fiestas de San Fermin $sfYear" }
+            )
+        } | ConvertTo-Json -Depth 4 -Compress)
+    }
 
-    $schemas += (@{
-        "@context"    = "https://schema.org"
-        "@type"       = "Service"
-        "@id"         = "$url#service"
-        "name"        = $serviceName
-        "description" = $description
-        "provider"    = @{
-            "@type" = "LocalBusiness"
-            "@id"   = "$baseUrl/#localbusiness"
-            "name"  = "Vive San Fermin a medida"
-        }
-        "areaServed"  = @{
-            "@type" = "Place"
-            "name"  = "Pamplona"
-        }
-        "mentions"    = @(
-            @{ "@type" = "Place"; "name" = "Pamplona" },
-            @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
-        )
-    } | ConvertTo-Json -Depth 4 -Compress)
-
+    # WebPage — about usa Thing en lugar de Event
     $webPageType = switch ($pageType) {
         "website" { "WebSite"     }
         "about"   { "AboutPage"   }
@@ -306,82 +536,72 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         default   { "WebPage"     }
     }
 
-    $hasCta = ($pageType -eq "website" -or $pageType -eq "landing")
+    $webPageSchema = [ordered]@{
+        "@context"    = "https://schema.org"
+        "@type"       = $webPageType
+        "@id"         = "$url#webpage"
+        "name"        = $titleSeo
+        "description" = $descriptionSeo
+        "url"         = $url
+        "about"       = @(
+            @{ "@type" = "Place"; "name" = "$orgCity" },
+            @{ "@type" = "Thing"; "name" = "Fiestas de San Fermin $sfYear" }
+        )
+    }
+    if ($pageType -eq "website" -or $pageType -eq "landing") {
+        $webPageSchema["potentialAction"] = @{
+            "@type"  = "ReserveAction"
+            "target" = "$ctaTarget"
+            "name"   = "$ctaName"
+        }
+    }
+    $schemas += ($webPageSchema | ConvertTo-Json -Depth 5 -Compress)
 
-    if ($hasCta) {
-        $schemas += (@{
-            "@context"        = "https://schema.org"
-            "@type"           = $webPageType
-            "@id"             = "$url#webpage"
-            "name"            = $title
-            "description"     = $description
-            "url"             = $url
-            "about"           = @(
-                @{ "@type" = "Place"; "name" = "Pamplona" },
-                @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
-            )
-            "potentialAction" = @{
-                "@type"  = "ReserveAction"
-                "target" = "$baseUrl/#contacto"
-                "name"   = "Solicitar experiencia personalizada"
-            }
-        } | ConvertTo-Json -Depth 5 -Compress)
-    } else {
-        $schemas += (@{
-            "@context"    = "https://schema.org"
-            "@type"       = $webPageType
-            "@id"         = "$url#webpage"
-            "name"        = $title
-            "description" = $description
-            "url"         = $url
-            "about"       = @(
-                @{ "@type" = "Place"; "name" = "Pamplona" },
-                @{ "@type" = "Event"; "name" = "Fiestas de San Fermin" }
-            )
-        } | ConvertTo-Json -Depth 4 -Compress)
+    # Event — solo para website, landing y toko
+    if (@("website", "landing", "toko") -contains $pageType) {
+        Write-Host "  Generando schema Event ($pageType) [$eventKey] en $($_.Name)"
+        $schemas += (Build-Event-Schema $html $pageType $eventKey $serviceName $image $url $euro)
     }
 
+    # Breadcrumb
+    $breadcrumbs      = Build-Breadcrumb $file $rootPath $titleSeo
+    $breadcrumbSchema = Build-Breadcrumb-Schema $breadcrumbs
     $schemas += $breadcrumbSchema
 
+    # FAQ
+    $faqSchema = Build-FAQ-Schema $html
     if ($faqSchema) { $schemas += $faqSchema }
 
+    # Article
     if ($pageType -eq "article") {
-        if ([string]::IsNullOrEmpty($author))    { $author    = "Paula Diaz Echalecu" }
-        if ([string]::IsNullOrEmpty($published)) { $published = "2025-06-01" }
-        if ([string]::IsNullOrEmpty($modified))  { $modified  = $published }
+        if ([string]::IsNullOrEmpty($author))    { $author    = $articleAuthorDefault }
+        if ([string]::IsNullOrEmpty($published)) { $published = $articlePublishedDefault }
 
         $schemas += (@{
             "@context"         = "https://schema.org"
             "@type"            = "Article"
-            "headline"         = $title
-            "description"      = $description
+            "headline"         = $titleSeo
+            "description"      = $descriptionSeo
             "image"            = "$baseUrl$image"
-            "author"           = @{
-                "@type" = "Person"
-                "name"  = $author
-            }
+            "author"           = @{ "@type" = "Person"; "name" = $author }
             "datePublished"    = $published
-            "dateModified"     = $modified
-            "mainEntityOfPage" = @{
-                "@type" = "WebPage"
-                "@id"   = "$url#webpage"
-            }
+            "dateModified"     = $todayStr
+            "mainEntityOfPage" = @{ "@type" = "WebPage"; "@id" = "$url#webpage" }
             "publisher"        = @{
                 "@type" = "Organization"
-                "name"  = "Vive San Fermin a medida"
-                "logo"  = @{
-                    "@type" = "ImageObject"
-                    "url"   = "$baseUrl/img/logos/sanfermin-logo-black.png"
-                }
+                "name"  = "$orgName"
+                "logo"  = @{ "@type" = "ImageObject"; "url" = "$orgLogo" }
             }
         } | ConvertTo-Json -Depth 5 -Compress)
     }
 
+    # ---- Ensamblar bloque BODY ----
     $bodySeo = ""
     foreach ($s in $schemas) {
         $bodySeo += "<script type=`"application/ld+json`">$s</script>`n"
     }
 
+    # ---- Escribir bloques AUTO-SEO ----
     $html = [regex]::Replace(
         $html,
         "<!-- AUTO-SEO HEAD INIT -->.*?<!-- AUTO-SEO HEAD END -->",
@@ -389,12 +609,10 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         [System.Text.RegularExpressions.RegexOptions]::Singleline
     )
 
-    # El placeholder del banner de cookies se inyecta al inicio del bloque BODY
-    # para que include.js lo encuentre en el DOM cuando arranque.
     $html = [regex]::Replace(
         $html,
         "<!-- AUTO-SEO BODY INIT -->.*?<!-- AUTO-SEO BODY END -->",
-        "<!-- AUTO-SEO BODY INIT -->`n<div id=`"cookie-banner-placeholder`"></div>`n$bodySeo`n<!-- AUTO-SEO BODY END -->",
+        "<!-- AUTO-SEO BODY INIT -->`n$bodySeo`n<!-- AUTO-SEO BODY END -->",
         [System.Text.RegularExpressions.RegexOptions]::Singleline
     )
 
