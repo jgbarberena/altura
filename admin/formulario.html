@@ -8,9 +8,8 @@
 </head>
 <body>
 
-    <!-- Topbar móvil -->
     <div class="topbar">
-        <span class="topbar-title">Nueva Reserva</span>
+        <span class="topbar-title">Gestión de Reservas</span>
         <button class="hamburger" id="hamburger">
             <span></span><span></span><span></span>
         </button>
@@ -19,8 +18,6 @@
     <div class="overlay-menu" id="overlayMenu"></div>
 
     <div class="layout">
-
-        <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <a href="../index.html" style="text-decoration:none">
@@ -39,87 +36,72 @@
             </div>
         </aside>
 
-        <!-- Contenido -->
         <main class="content">
 
             <!-- BLOQUE 1: CLIENTE -->
             <div class="bloque" id="bloque-cliente">
                 <h2>👥 Cliente</h2>
                 <div class="form-grid">
-
                     <div class="form-field autocomplete-wrap">
                         <label>ID Cliente</label>
                         <input type="text" id="inputClientId" placeholder="ID_CLIENTE" autocomplete="off">
                         <div class="autocomplete-list" id="autocompleteList" style="display:none"></div>
                     </div>
-
                     <div class="form-field">
                         <label>Nombre contacto</label>
                         <input type="text" id="inputName" placeholder="Nombre">
                     </div>
-
                     <div class="form-field">
                         <label>Empresa</label>
                         <input type="text" id="inputCompany" placeholder="Empresa">
                     </div>
-
                     <div class="form-field">
                         <label>Teléfono</label>
                         <input type="text" id="inputPhone" placeholder="Teléfono">
                     </div>
-
                     <div class="form-field">
                         <label>Email</label>
                         <input type="text" id="inputEmail" placeholder="Email">
                     </div>
-
                     <div class="form-field">
                         <label>Comentarios</label>
                         <input type="text" id="inputComments" placeholder="Comentarios">
                     </div>
-
                 </div>
-                <div id="cliente-status" style="margin-top:12px; font-size:12px; color: var(--subtle)"></div>
+                <div id="cliente-status" style="margin-top:12px; font-size:12px; color:var(--subtle)"></div>
             </div>
 
             <!-- FILA: BLOQUE 2 + BLOQUE 3 -->
-
             <div id="fila-reserva">
 
                 <!-- BLOQUE 2: RESERVA -->
                 <div class="bloque" id="bloque-reserva">
-                    <h2>📋 Nueva Reserva</h2>
+                    <h2 id="titulo-bloque-reserva">📋 Nueva Reserva</h2>
                     <div class="form-grid">
-
                         <div class="form-field">
                             <label>Servicio</label>
                             <select id="selectServicio">
                                 <option value="">— Selecciona servicio —</option>
                             </select>
                         </div>
-
                         <div class="form-field">
                             <label>Plazas</label>
                             <input type="number" id="inputPlazas" min="1" step="1" placeholder="Nº plazas">
                         </div>
-
                         <div class="form-field">
                             <label>Proveedor</label>
                             <select id="selectProveedor" disabled>
                                 <option value="">— Selecciona servicio primero —</option>
                             </select>
                         </div>
-
                         <div class="form-field">
                             <label>Precio por plaza (€)</label>
                             <input type="number" id="inputPrecio" min="0" step="0.01" placeholder="0.00">
                         </div>
-
                         <div class="form-field">
                             <label>Total reserva</label>
                             <input type="text" id="inputTotal" disabled placeholder="—">
                         </div>
-
                         <div class="form-field">
                             <label>Estado</label>
                             <select id="selectEstado">
@@ -127,34 +109,27 @@
                                 <option value="Pendiente">Pendiente</option>
                             </select>
                         </div>
-
                         <div class="form-field" style="grid-column: 1 / -1">
                             <label>Comentarios</label>
                             <input type="text" id="inputReservaComments" placeholder="Comentarios">
                         </div>
-
                     </div>
 
                     <div id="precio-status" style="margin-top:8px; font-size:12px;"></div>
 
-                    <!-- PANEL DE PAGOS (colapsable) -->
-                    <div id="panel-pagos" style="display:none; margin-top:16px; border-top: 1px solid var(--border); padding-top:14px">
+                    <!-- PANEL DE COBROS (colapsable) -->
+                    <div id="panel-pagos" style="display:none; margin-top:16px; border-top:1px solid var(--border); padding-top:14px">
                         <button id="togglePagos" class="btn btn-secondary" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center">
                             <span>💰 Planificación de cobros</span>
                             <span id="togglePagosIcon">▶</span>
                         </button>
                         <div id="contenido-pagos" style="display:none; margin-top:12px">
                             <div class="table-wrapper" style="margin-bottom:12px">
-                                <table id="tabla-pagos-reserva">
-                                    <thead>
-                                        <tr>
-                                            <th>Concepto</th>
-                                            <th>Importe</th>
-                                            <th>Fecha</th>
-                                            <th>Cobrado</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
+                                <table>
+                                    <thead><tr>
+                                        <th>Concepto</th><th>Importe</th>
+                                        <th>Fecha</th><th>Cobrado</th><th></th>
+                                    </tr></thead>
                                     <tbody id="tbody-pagos-reserva"></tbody>
                                 </table>
                             </div>
@@ -200,18 +175,13 @@
                 <!-- BLOQUE 3: DISPONIBILIDAD -->
                 <div class="bloque" id="bloque-disponibilidad" style="display:none">
                     <h2>📊 Disponibilidad</h2>
-
-                    <!-- 3.1 Resumen -->
                     <div id="resumen-servicio" style="margin-bottom:16px; display:none">
                         <table style="width:auto; min-width:200px">
                             <tbody id="tbody-resumen"></tbody>
                         </table>
                     </div>
-
-                    <!-- 3.2 Mapa de proveedores -->
                     <div id="mapa-proveedores" style="overflow-x:auto">
-                        <div id="columnas-proveedores" style="display:flex; gap:12px; align-items:flex-start; min-width:max-content">
-                        </div>
+                        <div id="columnas-proveedores" style="display:flex; gap:12px; align-items:flex-start; min-width:max-content"></div>
                     </div>
                 </div>
 
@@ -222,38 +192,30 @@
                 <h2>📄 Reservas del cliente</h2>
                 <div class="table-wrapper">
                     <table>
-                        <thead>
-                            <tr>
-                                <th></th>
-                                <th>ID</th>
-                                <th>Servicio</th>
-                                <th>Proveedor</th>
-                                <th>Plazas</th>
-                                <th>Precio/plaza</th>
-                                <th>Total</th>
-                                <th>Estado</th>
-                                <th>Cobrado</th>
-                                <th>Pendiente</th>
-                            </tr>
-                        </thead>
+                        <thead><tr>
+                            <th></th>
+                            <th>ID</th>
+                            <th>Servicio</th>
+                            <th>Proveedor</th>
+                            <th>Plazas</th>
+                            <th>Precio/plaza</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                            <th>Cobrado</th>
+                            <th>Pendiente</th>
+                        </tr></thead>
                         <tbody id="tbody-reservas-cliente"></tbody>
                     </table>
                 </div>
                 <div class="btn-row">
-                    <button class="btn btn-secondary" id="btnEditar">✏️ Editar</button>
-                    <button class="btn btn-primary" id="btnConfirmar">✅ Confirmar</button>
-                    <button class="btn btn-secondary" id="btnPendiente">⏳ Pendiente</button>
                     <button class="btn btn-secondary" id="btnCancelar">🚫 Cancelar</button>
                     <button class="btn btn-danger" id="btnEliminar">🗑 Eliminar</button>
                 </div>
-
             </div>
 
         </main>
     </div>
 
-    <!-- CARGAR SCRIPT JS DE LA PAGINA -->
     <script type="module" src="js/formulario.js"></script>
-
 </body>
 </html>
