@@ -194,15 +194,16 @@
     .kpi-grid--wide        { grid-template-columns: repeat(2, 1fr); }
     .selector-mobile       { display: block; }
 
+    .panel-estado-financiero .kpi-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .panel-estado-financiero .kpi--separador:last-child {
+        grid-column: 1 / -1;
+    }
+
 }
 
 #grafico-cashflow {
     width: 100% !important;
     height: 220px !important;
-}
-
-@media (max-width: 768px) {
-    #grafico-cashflow {
-        height: 180px !important;
-    }
 }
