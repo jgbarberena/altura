@@ -38,13 +38,12 @@ const TABLAS = {
             { label: 'Comentarios', campo: 'comments' },
         ]
     },
-    charges: {
+    charges:  {
         titulo: 'Cobros',
-        query:  () => supabase.from('charges').select('*, reservations(client_id, status)').order('due_date'),
+        query:  () => supabase.from('charges').select('*').order('due_date'),
         cols: [
             { label: 'ID',          campo: 'id' },
-            { label: 'Reserva',     campo: 'reservation_id' },
-            { label: 'Cliente',     campo: '_client_id',      fmt: (_, row) => row.reservations?.client_id ?? '—' },
+            { label: 'Cliente',     campo: 'client_id' },
             { label: 'Importe',     campo: 'amount',          fmt: v => fmt(v) },
             { label: 'Fecha prev.', campo: 'due_date' },
             { label: 'Cobrado',     campo: 'collected',
@@ -100,9 +99,12 @@ const TABLAS = {
         titulo: 'Proveedores',
         query:  () => supabase.from('providers').select('*').order('id'),
         cols: [
-            { label: 'ID',          campo: 'id' },
-            { label: 'Dirección',   campo: 'address' },
-            { label: 'Comentarios', campo: 'comments' },
+            { label: 'ID',           campo: 'id' },
+            { label: 'Nombre',       campo: 'name' },
+            { label: 'Dirección',    campo: 'address' },
+            { label: 'Forma pago',   campo: 'payment_method' },
+            { label: 'Factura',      campo: 'invoice', fmt: v => v ? 'Sí' : 'No' },
+            { label: 'Comentarios',  campo: 'comments' },
         ]
     },
     services: {

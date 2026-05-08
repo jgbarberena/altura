@@ -86,7 +86,7 @@
                         </div>
                         <div class="form-field">
                             <label>Plazas</label>
-                            <input type="number" id="inputPlazas" min="1" step="1" placeholder="Nº plazas">
+                            <input type="number" id="inputPlazas" step="1" placeholder="Nº plazas">
                         </div>
                         <div class="form-field">
                             <label>Proveedor</label>
@@ -96,7 +96,7 @@
                         </div>
                         <div class="form-field">
                             <label>Precio por plaza (€)</label>
-                            <input type="number" id="inputPrecio" min="0" step="0.01" placeholder="0.00">
+                            <input type="number" id="inputPrecio" step="0.01" placeholder="0.00">
                         </div>
                         <div class="form-field">
                             <label>Total reserva</label>
@@ -117,55 +117,6 @@
 
                     <div id="precio-status" style="margin-top:8px; font-size:12px;"></div>
 
-                    <!-- PANEL DE COBROS (colapsable) -->
-                    <div id="panel-pagos" style="display:none; margin-top:16px; border-top:1px solid var(--border); padding-top:14px">
-                        <button id="togglePagos" class="btn btn-secondary" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center">
-                            <span>💰 Planificación de cobros</span>
-                            <span id="togglePagosIcon">▶</span>
-                        </button>
-                        <div id="contenido-pagos" style="display:none; margin-top:12px">
-                            <div class="table-wrapper" style="margin-bottom:12px">
-                                <table>
-                                    <thead><tr>
-                                        <th>Concepto</th><th>Importe</th>
-                                        <th>Fecha</th><th>Cobrado</th><th></th>
-                                    </tr></thead>
-                                    <tbody id="tbody-pagos-reserva"></tbody>
-                                </table>
-                            </div>
-                            <div class="btn-row">
-                                <button class="btn btn-secondary" id="btnNuevoPago">+ Añadir hito de cobro</button>
-                            </div>
-                            <div id="form-nuevo-pago" style="display:none; margin-top:14px">
-                                <div class="form-grid">
-                                    <div class="form-field">
-                                        <label>Concepto</label>
-                                        <input type="text" id="pagoConcepto" placeholder="Ej: Prepago 1">
-                                    </div>
-                                    <div class="form-field">
-                                        <label>Importe (€)</label>
-                                        <input type="number" id="pagoImporte" min="0" step="0.01" placeholder="0.00">
-                                    </div>
-                                    <div class="form-field">
-                                        <label>Fecha</label>
-                                        <input type="date" id="pagoFecha">
-                                    </div>
-                                    <div class="form-field">
-                                        <label>Cobrado</label>
-                                        <select id="pagoCobrado">
-                                            <option value="false">No</option>
-                                            <option value="true">Sí</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="btn-row">
-                                    <button class="btn btn-primary" id="btnGuardarPago">Guardar hito</button>
-                                    <button class="btn btn-secondary" id="btnCancelarPago">Cancelar</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="btn-row" style="margin-top:16px">
                         <button class="btn btn-primary" id="btnAnadirReserva" disabled>Añadir reserva</button>
                         <button class="btn btn-secondary" id="btnCancelarEdicion" style="display:none">✕ Cancelar edición</button>
@@ -175,14 +126,7 @@
                 <!-- BLOQUE 3: DISPONIBILIDAD -->
                 <div class="bloque" id="bloque-disponibilidad" style="display:none">
                     <h2>📊 Disponibilidad</h2>
-                    <div id="resumen-servicio" style="margin-bottom:16px; display:none">
-                        <table style="width:auto; min-width:200px">
-                            <tbody id="tbody-resumen"></tbody>
-                        </table>
-                    </div>
-                    <div id="mapa-proveedores" style="overflow-x:auto">
-                        <div id="columnas-proveedores" style="display:flex; gap:12px; align-items:flex-start; min-width:max-content"></div>
-                    </div>
+                    <div id="columnas-proveedores" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:12px;"></div>
                 </div>
 
             </div>
@@ -192,24 +136,62 @@
                 <h2>📄 Reservas del cliente</h2>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr>
-                            <th></th>
-                            <th>ID</th>
-                            <th>Servicio</th>
-                            <th>Proveedor</th>
-                            <th>Plazas</th>
-                            <th>Precio/plaza</th>
-                            <th>Total</th>
-                            <th>Estado</th>
-                            <th>Cobrado</th>
-                            <th>Pendiente</th>
-                        </tr></thead>
+                        <thead><tr></tr></thead>
                         <tbody id="tbody-reservas-cliente"></tbody>
                     </table>
                 </div>
                 <div class="btn-row">
                     <button class="btn btn-secondary" id="btnCancelar">🚫 Cancelar</button>
                     <button class="btn btn-danger" id="btnEliminar">🗑 Eliminar</button>
+                </div>
+            </div>
+
+            <!-- BLOQUE 5: COBROS AL CLIENTE -->
+            <div class="bloque" id="bloque-cobros-cliente" style="display:none">
+                <h2>💰 Cobros al cliente</h2>
+                <div id="resumen-cobros-cliente" style="margin-bottom:16px; font-size:13px; color:var(--subtle)"></div>
+                <div class="table-wrapper" style="margin-bottom:12px">
+                    <table>
+                        <thead><tr>
+                            <th>Concepto</th>
+                            <th>Importe</th>
+                            <th>Fecha</th>
+                            <th>Cobrado</th>
+                            <th></th>
+                        </tr></thead>
+                        <tbody id="tbody-cobros-cliente"></tbody>
+                    </table>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-secondary" id="btnNuevoCobroCliente">+ Añadir hito de cobro</button>
+                    <button class="btn btn-primary" id="btnGuardarCobros">💾 Guardar cobros</button>
+                </div>
+                <div id="form-nuevo-cobro-cliente" style="display:none; margin-top:14px">
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label>Concepto</label>
+                            <input type="text" id="cobroConcepto" placeholder="Ej: Señal">
+                        </div>
+                        <div class="form-field">
+                            <label>Importe (€)</label>
+                            <input type="number" id="cobroImporte" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label>Fecha</label>
+                            <input type="date" id="cobroFecha">
+                        </div>
+                        <div class="form-field">
+                            <label>Cobrado</label>
+                            <select id="cobroCobrado">
+                                <option value="false">No</option>
+                                <option value="true">Sí</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="btn-row">
+                        <button class="btn btn-primary" id="btnGuardarNuevoCobro">Guardar hito</button>
+                        <button class="btn btn-secondary" id="btnCancelarNuevoCobro">Cancelar</button>
+                    </div>
                 </div>
             </div>
 

@@ -153,9 +153,14 @@
                 <div class="table-wrapper">
                     <table id="tabla-eventos">
                         <thead><tr>
-                            <th>Evento</th><th>Día</th>
-                            <th>Total</th><th>Confirmadas</th>
-                            <th>Pendientes</th><th>Libres</th><th>Ocupación</th>
+                            <th>Evento</th>
+                            <th>Día</th>
+                            <th>Total</th>
+                            <th>Confirmadas</th>
+                            <th>Pendientes</th>
+                            <th>Libres</th>
+                            <th>Ocupación</th>
+                            <th>Clientes</th>
                         </tr></thead>
                         <tbody id="tbody-eventos"></tbody>
                     </table>
@@ -179,6 +184,7 @@
                             <th>Pendientes</th>
                             <th>Libres</th>
                             <th>Ocupación</th>
+                            <th>Clientes</th>
                         </tr></thead>
                         <tbody id="tbody-proveedores"></tbody>
                     </table>
@@ -188,6 +194,7 @@
             <!-- BLOQUE 5: RESUMEN DE NEGOCIO -->
             <div class="bloque" id="bloque-resumen">
                 <h2>📋 Resumen de negocio</h2>
+
                 <div class="kpi-grid kpi-grid--wide">
                     <div class="kpi">
                         <span class="kpi-label">Reservas confirmadas</span>
@@ -196,10 +203,6 @@
                     <div class="kpi">
                         <span class="kpi-label">Reservas pendientes</span>
                         <span class="kpi-valor warn" id="kpi-res-pendientes">—</span>
-                    </div>
-                    <div class="kpi">
-                        <span class="kpi-label">Reservas canceladas</span>
-                        <span class="kpi-valor error" id="kpi-res-canceladas">—</span>
                     </div>
                     <div class="kpi">
                         <span class="kpi-label">Plazas confirmadas</span>
@@ -216,6 +219,37 @@
                     <div class="kpi kpi--destacado">
                         <span class="kpi-label">Margen estimado</span>
                         <span class="kpi-valor" id="kpi-margen">—</span>
+                        <div id="kpi-margen-pendientes" style="font-size:12px; margin-top:4px;"></div>
+                    </div>
+                </div>
+
+                <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border)">
+                    <p style="font-size:12px; color:var(--subtle); margin-bottom:12px">
+                        Potencial no capturado — estimado sobre plazas aún libres
+                    </p>
+                    <div class="kpi-grid kpi-grid--wide">
+                        <div class="kpi">
+                            <span class="kpi-label">Plazas libres</span>
+                            <span class="kpi-valor" id="kpi-plazas-libres">—</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Margen medio/plaza</span>
+                            <span class="kpi-valor" id="kpi-margen-plaza">—</span>
+                            <span style="font-size:10px; color:var(--subtle); margin-top:2px; display:block">estimado sobre confirmadas</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Ingreso potencial</span>
+                            <span class="kpi-valor" id="kpi-ingreso-potencial">—</span>
+                        </div>
+                        <div class="kpi">
+                            <span class="kpi-label">Coste adicional</span>
+                            <span class="kpi-valor error" id="kpi-coste-adicional">—</span>
+                            <span style="font-size:10px; color:var(--subtle); margin-top:2px; display:block">solo proveedores consumo</span>
+                        </div>
+                        <div class="kpi kpi--destacado">
+                            <span class="kpi-label">Margen no capturado</span>
+                            <span class="kpi-valor" id="kpi-margen-no-capturado">—</span>
+                        </div>
                     </div>
                 </div>
             </div>

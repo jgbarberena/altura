@@ -255,6 +255,11 @@ input.ok    { border-color: var(--accent-ok); }
 .btn-danger    { background: none; border: 1px solid var(--accent); color: var(--accent); }
 .btn-danger:hover    { background: var(--accent); color: white; }
 .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
 
 /* =========================
    TABLAS
@@ -371,9 +376,14 @@ td.error { color: var(--accent);      font-weight: 500; }
 .disp-warn  .proveedor-col-header .nombre { color: var(--accent-warn); }
 .disp-error .proveedor-col-header .nombre { color: var(--accent);      }
 
-.proveedor-col.atenuado  { opacity: 0.35; }
-.proveedor-col.destacado { width: 220px; }
+.proveedor-col.atenuado  { opacity: 0.55; }
 .proveedor-col.normal    { width: 160px; }
+.proveedor-col.destacado {
+    transform: scale(1.05);
+    transform-origin: center center;
+    z-index: 10;
+    position: relative;
+}
 
 /* =========================
    RESUMEN SERVICIO

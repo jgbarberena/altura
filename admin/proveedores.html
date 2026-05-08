@@ -48,8 +48,26 @@
                         <div class="autocomplete-list" id="autocompleteProveedorList" style="display:none"></div>
                     </div>
                     <div class="form-field">
+                        <label>Nombre</label>
+                        <input type="text" id="inputNombre" placeholder="Nombre del propietario">
+                    </div>
+                    <div class="form-field">
                         <label>Dirección</label>
                         <input type="text" id="inputDireccion" placeholder="Dirección">
+                    </div>
+                    <div class="form-field">
+                        <label>Forma de pago</label>
+                        <select id="selectFormaPago">
+                            <option value="">— Sin especificar —</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="bizum">Bizum</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-field" style="display:flex; align-items:center; gap:8px; padding-top:20px">
+                        <input type="checkbox" id="checkFactura" style="width:auto; margin:0">
+                        <label for="checkFactura" style="text-transform:none; letter-spacing:0; font-size:13px; color:var(--text)">Con factura</label>
                     </div>
                     <div class="form-field">
                         <label>Comentarios</label>
@@ -58,9 +76,10 @@
                 </div>
                 <div id="proveedor-status" style="margin-top:12px; font-size:12px; color:var(--subtle)"></div>
             </div>
+
             <!-- BLOQUE 2: AÑADIR/EDITAR SERVICIO -->
             <div class="bloque" id="bloque-servicio" style="display:none">
-                <h2>➕ Añadir / Editar servicio</h2>
+                <h2 id="titulo-bloque-servicio">➕ Añadir / Editar servicio</h2>
                 <div class="form-grid">
                     <div class="form-field autocomplete-wrap">
                         <label>Servicio</label>
@@ -69,28 +88,32 @@
                     </div>
                     <div class="form-field">
                         <label>Plazas</label>
-                        <input type="number" id="inputPlazas" min="0" step="1" placeholder="Nº plazas">
+                        <input type="number" id="inputPlazas" step="1" placeholder="Nº plazas">
                     </div>
                     <div class="form-field">
                         <label>Precio por plaza (€)</label>
-                        <input type="number" id="inputPrecio" min="0" step="0.01" placeholder="0.00">
+                        <input type="number" id="inputPrecio" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-field">
+                        <label>Coste total servicio (€)</label>
+                        <input type="number" id="inputCosteTotal" step="0.01" placeholder="0.00">
                     </div>
                     <div class="form-field">
                         <label>Modelo de pago</label>
                         <select id="selectModelo">
-                            <option value="capacity">Capacity (pago total)</option>
-                            <option value="consumption">Consumption (pago por uso)</option>
+                            <option value="capacity">Capacidad (pago total)</option>
+                            <option value="consumption">Consumo (pago por uso)</option>
                         </select>
                     </div>
                     <div class="form-field">
-                        <label>Coste total servicio</label>
+                        <label>Coste calculado</label>
                         <input type="text" id="inputCosteServicio" disabled placeholder="—">
                     </div>
                 </div>
                 <div id="servicio-status" style="margin-top:8px; font-size:12px;"></div>
                 <div class="btn-row">
                     <button class="btn btn-primary" id="btnGuardarServicio" disabled>Añadir servicio</button>
-                    <button class="btn btn-secondary" id="btnCancelarServicio" style="display:none">✕ Cancelar edición</button>
+                    <button class="btn btn-secondary" id="btnCancelarServicio" style="display:none">✕ Cancelar</button>
                 </div>
             </div>
 
@@ -99,19 +122,13 @@
                 <h2>📋 Servicios del proveedor</h2>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr>
-                            <th></th>
-                            <th>Servicio</th>
-                            <th>Plazas</th>
-                            <th>Precio/plaza</th>
-                            <th>Modelo</th>
-                            <th>Coste servicio</th>
-                        </tr></thead>
+                        <thead><tr></tr></thead>
                         <tbody id="tbody-servicios-proveedor"></tbody>
                     </table>
                 </div>
                 <div class="btn-row">
-                    <button class="btn btn-danger" id="btnEliminarServicio">🗑 Eliminar servicio</button>
+                    <button class="btn btn-secondary" id="btnEditarServicios">✏️ Editar seleccionados</button>
+                    <button class="btn btn-danger" id="btnEliminarServicio">🗑 Eliminar seleccionados</button>
                 </div>
             </div>
 
@@ -140,7 +157,7 @@
                         </div>
                         <div class="form-field">
                             <label>Importe (€)</label>
-                            <input type="number" id="pagoProvImporte" min="0" step="0.01" placeholder="0.00">
+                            <input type="number" id="pagoProvImporte" step="0.01" placeholder="0.00">
                         </div>
                         <div class="form-field">
                             <label>Fecha</label>
@@ -160,6 +177,7 @@
                     </div>
                 </div>
             </div>
+
         </main>
     </div>
 

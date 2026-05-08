@@ -1,21 +1,10 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
+import { initSidebar, normalizarId, buscarConPrioridad } from './utils.js'
 
 await requireAuth()
-
 document.getElementById('btnLogout').addEventListener('click', logout)
-
-// Hamburger móvil
-const sidebar     = document.getElementById('sidebar')
-const overlayMenu = document.getElementById('overlayMenu')
-document.getElementById('hamburger').addEventListener('click', () => {
-    sidebar.classList.toggle('open')
-    overlayMenu.classList.toggle('open')
-})
-overlayMenu.addEventListener('click', () => {
-    sidebar.classList.remove('open')
-    overlayMenu.classList.remove('open')
-})
+initSidebar()
 
 // ===== DATOS GLOBALES =====
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
@@ -25,8 +14,9 @@ let todasReservas              = (await supabase.from('reservations').select('*'
 
 let clienteActual     = null
 let reservaEditandoId = null
-let hitosTemp         = []
+let hitosClienteTemp  = []   // hitos de cobro del cliente completo (bloque 5)
 const hoy             = new Date().toISOString().split('T')[0]
+const fmt             = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
 // ===== REFERENCIAS DOM =====
 const inputId       = document.getElementById('inputClientId')
@@ -48,7 +38,6 @@ const btnAnadir       = document.getElementById('btnAnadirReserva')
 
 // ===== BLOQUE 1: CLIENTE =====
 
-// Poblar desplegable de servicios al inicio
 servicios.forEach(s => {
     const opt = document.createElement('option')
     opt.value = s.id
@@ -56,35 +45,57 @@ servicios.forEach(s => {
     selectServicio.appendChild(opt)
 })
 
-// Autocomplete del ID de cliente mientras se escribe
-inputId.addEventListener('input', () => {
-    const val = inputId.value.trim().toUpperCase()
-    if (!val) {
-        autoList.style.display = 'none'
-        limpiarCamposCliente()
-        return
+// Normalizar ID: mayúsculas y espacio → guión bajo
+inputId.addEventListener('keydown', e => {
+    if (e.key === ' ') {
+        e.preventDefault()
+        const pos = inputId.selectionStart
+        inputId.value = inputId.value.slice(0, pos) + '_' + inputId.value.slice(pos)
+        inputId.setSelectionRange(pos + 1, pos + 1)
+        mostrarSugerenciasCliente(normalizarId(inputId.value))
     }
-    const coincidencias = todosClientes.filter(c => c.id.toUpperCase().startsWith(val))
-    autoList.innerHTML  = coincidencias.map(c => `<div data-id="${c.id}">${c.id}</div>`).join('')
+})
+
+inputId.addEventListener('input', () => {
+    const val = normalizarId(inputId.value)
+    inputId.value = val
+    mostrarSugerenciasCliente(val)
+})
+
+inputId.addEventListener('focus', () => {
+    mostrarSugerenciasCliente(normalizarId(inputId.value))
+})
+
+// Autocomplete mejorado: busca en id, name y company con prioridad
+function mostrarSugerenciasCliente(val) {
+    const coincidencias = val
+        ? buscarConPrioridad(todosClientes, val, ['id', 'name', 'company'])
+        : todosClientes
+
+    autoList.innerHTML = coincidencias.map(c =>
+        `<div data-id="${c.id}">${c.id}</div>`
+    ).join('')
     autoList.style.display = coincidencias.length > 0 ? 'block' : 'none'
 
-    const exacto = todosClientes.find(c => c.id.toUpperCase() === val)
+    const exacto = todosClientes.find(c => c.id === val)
     if (exacto) {
         cargarCliente(exacto)
-    } else {
+    } else if (val) {
         if (clienteActual) {
             inputName.value = inputCompany.value = inputPhone.value =
             inputEmail.value = inputComments.value = ''
             document.getElementById('bloque-reservas-cliente').style.display = 'none'
+            document.getElementById('bloque-cobros-cliente').style.display   = 'none'
             limpiarFormularioReserva()
         }
         clienteActual = null
         statusDiv.textContent = '✨ Cliente nuevo'
         statusDiv.style.color = 'var(--accent-warn)'
+    } else {
+        limpiarCamposCliente()
     }
-})
+}
 
-// Selección desde el desplegable de autocomplete
 autoList.addEventListener('click', e => {
     const div = e.target.closest('[data-id]')
     if (!div) return
@@ -92,12 +103,10 @@ autoList.addEventListener('click', e => {
     if (cliente) { inputId.value = cliente.id; cargarCliente(cliente); autoList.style.display = 'none' }
 })
 
-// Cerrar autocomplete al hacer click fuera
 document.addEventListener('click', e => {
     if (!e.target.closest('.autocomplete-wrap')) autoList.style.display = 'none'
 })
 
-// Carga los datos de un cliente existente en el formulario
 function cargarCliente(cliente) {
     clienteActual       = cliente
     inputName.value     = cliente.name     ?? ''
@@ -111,17 +120,16 @@ function cargarCliente(cliente) {
     cargarReservasCliente(cliente.id)
 }
 
-// Limpia todos los campos de cliente y oculta la tabla de reservas
 function limpiarCamposCliente() {
     clienteActual = null
     inputName.value = inputCompany.value = inputPhone.value =
     inputEmail.value = inputComments.value = ''
     statusDiv.textContent = ''
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
+    document.getElementById('bloque-cobros-cliente').style.display   = 'none'
     limpiarFormularioReserva()
 }
 
-// Limpia el formulario de reserva y el panel de hitos
 function limpiarFormularioReserva() {
     reservaEditandoId = null
     selectServicio.value      = ''
@@ -140,18 +148,13 @@ function limpiarFormularioReserva() {
     btnAnadir.textContent     = 'Añadir reserva'
     document.getElementById('btnCancelarEdicion').style.display = 'none'
     document.querySelectorAll('.chk-reserva:checked').forEach(chk => chk.checked = false)
-    hitosTemp = []
-    document.getElementById('panel-pagos').style.display      = 'none'
-    document.getElementById('contenido-pagos').style.display  = 'none'
-    document.getElementById('togglePagosIcon').textContent    = '▶'
-    document.getElementById('form-nuevo-pago').style.display  = 'none'
-    document.getElementById('btnNuevoPago').style.display     = 'inline-block'
     document.getElementById('bloque-disponibilidad').style.display = 'none'
-    document.getElementById('resumen-servicio').style.display      = 'none'
     document.getElementById('columnas-proveedores').innerHTML       = ''
+    sortReservasCol = null
+    sortReservasDir = 'asc'
 }
 
-// Guarda automáticamente en Supabase cuando cambia un campo de cliente existente
+// Guarda automáticamente campos del cliente existente
 const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputComments]
 const camposDB      = ['name', 'company', 'phone', 'email', 'comments']
 camposCliente.forEach((input, i) => {
@@ -187,7 +190,6 @@ inputPlazas.addEventListener('input', () => {
     actualizarProveedores()
     actualizarTotal()
     actualizarBtnAnadir()
-    if (selectProveedor.value || reservaEditandoId) inicializarHitoFinal()
     actualizarBloque3()
 })
 
@@ -195,24 +197,14 @@ inputPrecio.addEventListener('input', () => {
     validarPrecio()
     actualizarTotal()
     actualizarBtnAnadir()
-    if (selectProveedor.value || reservaEditandoId) inicializarHitoFinal()
 })
 
 selectProveedor.addEventListener('change', () => {
     validarPrecio()
     actualizarBtnAnadir()
-    if (selectProveedor.value && !reservaEditandoId) {
-        hitosTemp = []
-        inicializarHitoFinal()
-        mostrarPanelPagos()
-    } else if (!selectProveedor.value && !reservaEditandoId) {
-        document.getElementById('panel-pagos').style.display = 'none'
-        hitosTemp = []
-    }
     actualizarBloque3()
 })
 
-// Actualiza el campo de total informativo (plazas × precio)
 function actualizarTotal() {
     const plazas = parseInt(inputPlazas.value) || 0
     const precio = parseFloat(inputPrecio.value) || 0
@@ -221,7 +213,6 @@ function actualizarTotal() {
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
 }
 
-// Calcula plazas confirmadas, pendientes y libres para un proveedor+servicio
 function getPlazasInfo(proveedorId, servicioId) {
     const reservasPS  = todasReservas.filter(r =>
         r.provider_id === proveedorId &&
@@ -236,7 +227,6 @@ function getPlazasInfo(proveedorId, servicioId) {
     return { total, confirmadas, pendientes, libres }
 }
 
-// Actualiza el desplegable de proveedores según servicio y plazas, manteniendo selección actual
 function actualizarProveedores() {
     const servicioId      = selectServicio.value
     const plazas          = parseInt(inputPlazas.value) || 0
@@ -294,13 +284,12 @@ function actualizarProveedores() {
     }
 }
 
-// Valida el precio respecto al coste del proveedor y muestra aviso de margen
 function validarPrecio() {
     const servicioId  = selectServicio.value
     const proveedorId = selectProveedor.value
-    const precio      = parseFloat(inputPrecio.value) || 0
+    const precio      = parseFloat(inputPrecio.value)
 
-    if (!servicioId || !proveedorId || precio === 0) {
+    if (!servicioId || !proveedorId || isNaN(precio)) {
         precioStatus.textContent = ''
         inputPrecio.className    = ''
         return
@@ -309,13 +298,22 @@ function validarPrecio() {
     const disp = disponibilidad.find(d => d.service_id === servicioId && d.provider_id === proveedorId)
     if (!disp) return
 
-    const coste  = parseFloat(disp.price_per_slot) || 0
-    const margen = coste > 0 ? (precio - coste) / coste : 1
+    const coste = parseFloat(disp.price_per_slot) || 0
+    if (coste === 0) {
+        inputPrecio.className    = precio > 0 ? 'ok' : ''
+        precioStatus.textContent = precio > 0 ? '✅ Precio libre (coste 0)' : ''
+        return
+    }
 
-    if (precio <= coste) {
+    const margen = (precio - coste) / coste
+    if (precio < coste) {
         inputPrecio.className    = 'error'
         precioStatus.style.color = 'var(--accent)'
         precioStatus.textContent = `❌ Por debajo del coste (${coste}€/plaza)`
+    } else if (precio === coste) {
+        inputPrecio.className    = 'warn'
+        precioStatus.style.color = 'var(--accent-warn)'
+        precioStatus.textContent = `⚠️ Al coste exacto, sin margen`
     } else if (margen < 0.10) {
         inputPrecio.className    = 'warn'
         precioStatus.style.color = 'var(--accent-warn)'
@@ -327,19 +325,24 @@ function validarPrecio() {
     }
 }
 
-// Habilita o deshabilita el botón de añadir/guardar según campos obligatorios
 function actualizarBtnAnadir() {
     const tieneCliente   = inputId.value.trim().length > 0
     const tieneServicio  = selectServicio.value !== ''
     const tieneProveedor = selectProveedor.value !== ''
-    const tienePlazas    = parseInt(inputPlazas.value) > 0
-    const tienePrecio    = parseFloat(inputPrecio.value) > 0
+    const plazasVal      = inputPlazas.value.trim()
+    const tienePlazas    = plazasVal !== '' && !isNaN(parseInt(plazasVal)) && parseInt(plazasVal) >= 0
+    const precioVal      = inputPrecio.value.trim()
+    const tienePrecio    = precioVal !== '' && !isNaN(parseFloat(precioVal))
     btnAnadir.disabled   = !(tieneCliente && tieneServicio && tieneProveedor && tienePlazas && tienePrecio)
 }
 
 // ===== BLOQUE 4: RESERVAS DEL CLIENTE =====
 
-// Carga desde Supabase las reservas del cliente con sus cobros y renderiza la tabla
+// Estado de sort de la tabla de reservas del cliente
+let sortReservasCol = null
+let sortReservasDir = 'asc'
+let reservasCliente = []  // cache de reservas del cliente actual para re-renderizar al sortear
+
 async function cargarReservasCliente(clienteId) {
     const { data: reservas } = await supabase
         .from('reservations').select('*').eq('client_id', clienteId).order('id')
@@ -347,62 +350,99 @@ async function cargarReservasCliente(clienteId) {
     const tbody  = document.getElementById('tbody-reservas-cliente')
     const bloque = document.getElementById('bloque-reservas-cliente')
 
-    if (!reservas || reservas.length === 0) { bloque.style.display = 'none'; return }
+    if (!reservas || reservas.length === 0) {
+        bloque.style.display = 'none'
+        document.getElementById('bloque-cobros-cliente').style.display = 'none'
+        return
+    }
 
-    const reservaIds = reservas.map(r => r.id)
-    const { data: charges } = await supabase
-        .from('charges').select('*').in('reservation_id', reservaIds)
-
+    reservasCliente = reservas
     bloque.style.display = 'block'
-    tbody.innerHTML = reservas.map(r => {
-        const chs        = charges?.filter(c => c.reservation_id === r.id) ?? []
-        const cobrado    = chs.filter(c =>  c.collected).reduce((s, c) => s + parseFloat(c.amount), 0)
-        const pendiente  = chs.filter(c => !c.collected).reduce((s, c) => s + parseFloat(c.amount), 0)
-        const vencido    = chs.some(c => !c.collected && c.due_date && c.due_date < hoy)
-        const tieneHitos = chs.length > 1
-        const clasePendiente = pendiente === 0 ? 'ok' : vencido ? 'error' : 'warn'
+    renderTablaReservas()
+    await cargarCobrosCliente(clienteId, reservas)
+}
 
-        return `<tr data-id="${r.id}" style="cursor:pointer">
+function renderTablaReservas() {
+    const cols = [
+        { label: 'ID',          campo: 'id' },
+        { label: 'Servicio',    campo: 'service_id' },
+        { label: 'Proveedor',   campo: 'provider_id' },
+        { label: 'Plazas',      campo: 'slots' },
+        { label: '€/plaza',     campo: 'price_per_slot' },
+        { label: 'Total',       campo: 'total_amount' },
+        { label: 'Estado',      campo: 'status' },
+    ]
+
+    // Ordenar
+    let datos = [...reservasCliente]
+    if (sortReservasCol !== null) {
+        datos.sort((a, b) => {
+            const va = String(a[cols[sortReservasCol].campo] ?? '')
+            const vb = String(b[cols[sortReservasCol].campo] ?? '')
+            const cmp = va.localeCompare(vb, 'es', { numeric: true })
+            return sortReservasDir === 'asc' ? cmp : -cmp
+        })
+    }
+
+    // Cabeceras con sort
+    const thead = document.querySelector('#bloque-reservas-cliente table thead tr')
+    thead.innerHTML = '<th></th>' + cols.map((c, i) => `
+        <th style="cursor:pointer; user-select:none" onclick="sortReservasCliente(${i})">
+            ${c.label}
+            <span style="font-size:10px; opacity:${sortReservasCol === i ? 1 : 0.4}">
+                ${sortReservasCol === i ? (sortReservasDir === 'asc' ? '↑' : '↓') : '↕'}
+            </span>
+        </th>
+    `).join('')
+
+    // Filas
+    const tbody = document.getElementById('tbody-reservas-cliente')
+    tbody.innerHTML = datos.map(r => `
+        <tr data-id="${r.id}" style="cursor:pointer">
             <td><input type="checkbox" class="chk-reserva"></td>
             <td>${r.id}</td>
             <td>${r.service_id}</td>
             <td>${r.provider_id}</td>
             <td>${r.slots}</td>
             <td>${r.price_per_slot}€</td>
-            <td>${r.total_amount}€ ${tieneHitos ? '📅' : ''}</td>
+            <td>${r.total_amount}€</td>
             <td class="${r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'}">${r.status}</td>
-            <td class="td-cobrado">${cobrado.toLocaleString('es-ES', { style:'currency', currency:'EUR' })}</td>
-            <td class="td-pendiente ${clasePendiente}">${pendiente.toLocaleString('es-ES', { style:'currency', currency:'EUR' })}</td>
         </tr>`
-    }).join('')
+    ).join('')
 
-    // Click en fila para editar — igual que en proveedores
     tbody.querySelectorAll('tr').forEach(tr => {
         tr.addEventListener('click', e => {
             if (e.target.type === 'checkbox') return
             const id      = tr.dataset.id
             const reserva = todasReservas.find(r => r.id === id)
             if (!reserva) return
-
-            // Marcar el tick de esta fila y desmarcar el resto
             document.querySelectorAll('.chk-reserva').forEach(chk => chk.checked = false)
             tr.querySelector('.chk-reserva').checked = true
-
             cargarReservaEnFormulario(reserva)
         })
     })
 }
 
-// Carga una reserva existente en el formulario de edición
+window.sortReservasCliente = function(colIdx) {
+    if (sortReservasCol === colIdx) {
+        sortReservasDir = sortReservasDir === 'asc' ? 'desc' : 'asc'
+    } else {
+        sortReservasCol = colIdx
+        sortReservasDir = 'asc'
+    }
+    renderTablaReservas()
+}
+
 function cargarReservaEnFormulario(reserva) {
     reservaEditandoId       = reserva.id
     selectServicio.value    = reserva.service_id
-    selectServicio.disabled = true
+    selectServicio.disabled = false
     actualizarProveedores()
 
     setTimeout(() => {
         selectProveedor.value = reserva.provider_id
         validarPrecio()
+        actualizarBloque3()
     }, 50)
 
     inputPlazas.value  = reserva.slots
@@ -415,12 +455,9 @@ function cargarReservaEnFormulario(reserva) {
 
     btnAnadir.textContent = '💾 Guardar cambios'
     document.getElementById('btnCancelarEdicion').style.display = 'inline-block'
-
     document.getElementById('bloque-reserva').scrollIntoView({ behavior: 'smooth' })
-    cargarHitosEdicion(reserva.id)
 }
 
-// Cambia el estado de las reservas seleccionadas
 async function cambiarEstadoSeleccionadas(nuevoEstado) {
     const ids = [...document.querySelectorAll('.chk-reserva:checked')]
         .map(chk => chk.closest('tr').dataset.id)
@@ -442,7 +479,6 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
     }
 }
 
-// Elimina reservas seleccionadas borrando primero sus charges
 async function eliminarSeleccionadas() {
     const ids = [...document.querySelectorAll('.chk-reserva:checked')]
         .map(chk => chk.closest('tr').dataset.id)
@@ -460,7 +496,6 @@ async function eliminarSeleccionadas() {
 
     todasReservas = todasReservas.filter(r => !ids.includes(r.id))
 
-    // Ofrecer eliminar cliente si no tiene más reservas
     if (clienteActual) {
         const reservasRestantes = todasReservas.filter(r => r.client_id === clienteActual.id)
         if (reservasRestantes.length === 0) {
@@ -499,15 +534,16 @@ btnAnadir.addEventListener('click', async () => {
     const estado      = selectEstado.value
     const comments    = document.getElementById('inputReservaComments').value.trim() || null
 
+    if (plazas < 0) { alert('El número de plazas no puede ser negativo.'); return }
+    if (plazas === 0) { if (!confirm('¿Crear una reserva con 0 plazas?')) return }
+
     if (reservaEditandoId) {
-        // MODO EDITAR
         const { error } = await supabase.from('reservations').update({
-            provider_id: proveedorId, slots: plazas,
-            price_per_slot: precio, status: estado, comments
+            service_id: servicioId, provider_id: proveedorId,
+            slots: plazas, price_per_slot: precio, status: estado, comments
         }).eq('id', reservaEditandoId)
         if (error) { alert('Error al guardar: ' + error.message); return }
 
-        await persistirHitos(reservaEditandoId)
         const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
         todasReservas = reservasActualizadas
 
@@ -517,7 +553,6 @@ btnAnadir.addEventListener('click', async () => {
         limpiarFormularioReserva()
 
     } else {
-        // MODO CREAR
         const { libres } = getPlazasInfo(proveedorId, servicioId)
         if (libres < plazas) {
             alert(`No hay suficientes plazas libres. Disponibles: ${libres}, necesitas: ${plazas}`)
@@ -553,7 +588,6 @@ btnAnadir.addEventListener('click', async () => {
         })
         if (errReserva) { alert('Error al crear reserva: ' + errReserva.message); return }
 
-        await persistirHitos(nuevaId)
         const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
         todasReservas = reservasActualizadas
 
@@ -564,164 +598,6 @@ btnAnadir.addEventListener('click', async () => {
     }
 })
 
-// ===== HITOS DE COBRO =====
-
-// Calcula o recalcula el hito de pago final como total - suma de prepagos
-function inicializarHitoFinal() {
-    const plazas       = parseInt(inputPlazas.value) || 0
-    const precio       = parseFloat(inputPrecio.value) || 0
-    const total        = plazas * precio
-    const sumaPrepagos = hitosTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
-    const pagoFinal    = total - sumaPrepagos
-    const idx          = hitosTemp.findIndex(h => h.esFinal)
-
-    if (idx >= 0) {
-        hitosTemp[idx].amount = pagoFinal
-    } else {
-        hitosTemp.push({ esFinal: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-05', collected: false })
-    }
-    renderHitos()
-    validarHitos()
-}
-
-// Renderiza la tabla de hitos desde hitosTemp
-function renderHitos() {
-    const tbody = document.getElementById('tbody-pagos-reserva')
-    if (hitosTemp.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--subtle)">Sin hitos</td></tr>'
-        return
-    }
-    tbody.innerHTML = hitosTemp.map((h, i) => `
-        <tr>
-            <td>${h.comments}</td>
-            <td>${parseFloat(h.amount).toLocaleString('es-ES', { style:'currency', currency:'EUR' })}
-                ${h.esFinal ? '<span style="font-size:11px;color:var(--subtle)"> (calculado)</span>' : ''}
-            </td>
-            <td>${h.esFinal
-                ? `<input type="date" value="${h.due_date ?? ''}"
-                    style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px"
-                    onchange="cambiarFechaFinal(${i}, this.value)">`
-                : (h.due_date ?? '—')}</td>
-            <td>${h.collected ? `✅ ${h.collected_date ?? ''}` : '⏳ No'}</td>
-            <td style="white-space:nowrap">
-                <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
-                    onclick="toggleHitoCobrado(${i})">${h.collected ? 'Marcar pendiente' : 'Marcar cobrado'}</button>
-                ${!h.esFinal ? `<button class="btn btn-danger" style="padding:4px 8px;font-size:11px"
-                    onclick="eliminarHito(${i})">🗑</button>` : ''}
-            </td>
-        </tr>
-    `).join('')
-}
-
-window.cambiarFechaFinal = function(idx, valor) { hitosTemp[idx].due_date = valor || null }
-
-// Alterna cobrado/pendiente de un hito pidiendo fecha si se marca cobrado
-window.toggleHitoCobrado = function(idx) {
-    const hito = hitosTemp[idx]
-    if (!hito.collected) {
-        const fechaInput = prompt('Fecha de cobro (dejar vacío para hoy):', hoy)
-        if (fechaInput === null) return
-        hito.collected      = true
-        hito.collected_date = fechaInput.trim() || hoy
-    } else {
-        hito.collected      = false
-        hito.collected_date = null
-    }
-    renderHitos()
-    actualizarBtnAnadir()
-}
-
-// Elimina un prepago del array temporal y recalcula el pago final
-window.eliminarHito = function(idx) {
-    hitosTemp.splice(idx, 1)
-    inicializarHitoFinal()
-}
-
-// Valida que el pago final no sea negativo
-function validarHitos() {
-    const plazas = parseInt(inputPlazas.value) || 0
-    const precio = parseFloat(inputPrecio.value) || 0
-    if (!plazas || !precio) { btnAnadir.disabled = true; return }
-    const pagoFinal = hitosTemp.find(h => h.esFinal)
-    if (!pagoFinal || parseFloat(pagoFinal.amount) < 0) {
-        btnAnadir.disabled       = true
-        precioStatus.textContent = '❌ Los prepagos superan el total de la reserva'
-        precioStatus.style.color = 'var(--accent)'
-        return
-    }
-    actualizarBtnAnadir()
-}
-
-// Carga los hitos existentes de una reserva en edición
-async function cargarHitosEdicion(reservaId) {
-    const { data } = await supabase.from('charges').select('*').eq('reservation_id', reservaId).order('due_date')
-    hitosTemp = (data ?? []).map(h => ({ ...h, esFinal: h.comments === 'Pago final' }))
-    if (!hitosTemp.find(h => h.esFinal)) inicializarHitoFinal()
-    else renderHitos()
-    document.getElementById('panel-pagos').style.display = 'block'
-}
-
-// Muestra el panel de hitos sin cambiar su estado abierto/cerrado
-function mostrarPanelPagos() {
-    document.getElementById('panel-pagos').style.display = 'block'
-}
-
-// Toggle del acordeón del panel de hitos
-document.getElementById('togglePagos').addEventListener('click', () => {
-    const contenido = document.getElementById('contenido-pagos')
-    const icon      = document.getElementById('togglePagosIcon')
-    const abierto   = contenido.style.display !== 'none'
-    contenido.style.display = abierto ? 'none' : 'block'
-    icon.textContent        = abierto ? '▶' : '▼'
-})
-
-document.getElementById('btnNuevoPago').addEventListener('click', () => {
-    document.getElementById('form-nuevo-pago').style.display = 'block'
-    document.getElementById('btnNuevoPago').style.display    = 'none'
-})
-
-document.getElementById('btnCancelarPago').addEventListener('click', () => {
-    document.getElementById('form-nuevo-pago').style.display = 'none'
-    document.getElementById('btnNuevoPago').style.display    = 'inline-block'
-})
-
-// Añade un nuevo prepago al array temporal y recalcula el pago final
-document.getElementById('btnGuardarPago').addEventListener('click', () => {
-    const concepto = document.getElementById('pagoConcepto').value.trim() || 'Prepago'
-    const importe  = parseFloat(document.getElementById('pagoImporte').value)
-    const fecha    = document.getElementById('pagoFecha').value || null
-    const cobrado  = document.getElementById('pagoCobrado').value === 'true'
-    if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
-
-    const idxFinal = hitosTemp.findIndex(h => h.esFinal)
-    hitosTemp.splice(idxFinal >= 0 ? idxFinal : hitosTemp.length, 0, {
-        esFinal: false, comments: concepto, amount: importe, due_date: fecha, collected: cobrado
-    })
-    inicializarHitoFinal()
-
-    document.getElementById('pagoConcepto').value       = ''
-    document.getElementById('pagoImporte').value        = ''
-    document.getElementById('pagoFecha').value          = ''
-    document.getElementById('pagoCobrado').value        = 'false'
-    document.getElementById('form-nuevo-pago').style.display = 'none'
-    document.getElementById('btnNuevoPago').style.display    = 'inline-block'
-})
-
-// Borra los hitos existentes en Supabase e inserta los del array temporal
-async function persistirHitos(reservaId) {
-    await supabase.from('charges').delete().eq('reservation_id', reservaId)
-    for (const h of hitosTemp) {
-        await supabase.from('charges').insert({
-            reservation_id: reservaId,
-            amount:         parseFloat(h.amount),
-            due_date:       h.due_date,
-            collected:      h.collected,
-            collected_date: h.collected_date ?? null,
-            comments:       h.comments
-        })
-    }
-}
-
 // ===== BLOQUE 3: DISPONIBILIDAD =====
 
 function actualizarBloque3() {
@@ -731,37 +607,10 @@ function actualizarBloque3() {
     const bloque      = document.getElementById('bloque-disponibilidad')
     if (!servicioId) { bloque.style.display = 'none'; return }
     bloque.style.display = 'block'
-    actualizarResumen(servicioId, plazas)
     actualizarMapaProveedores(servicioId, plazas, proveedorId)
 }
 
-// Resumen de plazas para el servicio seleccionado
-function actualizarResumen(servicioId, plazas) {
-    const dispServicio     = disponibilidad.filter(d => d.service_id === servicioId)
-    const reservasServicio = todasReservas.filter(r => r.service_id === servicioId && r.status !== 'Cancelada')
-    const totalPlazas      = dispServicio.reduce((s, d) => s + (d.total_slots ?? 0), 0)
-    const confirmadas      = reservasServicio.filter(r => r.status === 'Confirmada').reduce((s, r) => s + r.slots, 0)
-    const pendientes       = reservasServicio.filter(r => r.status === 'Pendiente').reduce((s, r) => s + r.slots, 0)
-    const libresReales     = totalPlazas - confirmadas - pendientes
-
-    let aviso = '', claseAviso = ''
-    if (plazas > 0) {
-        if      (libresReales >= plazas)                  { aviso = '✅ Disponible';                 claseAviso = 'disponibilidad-ok' }
-        else if (libresReales + pendientes >= plazas)     { aviso = '⚠️ Disponible con pendientes'; claseAviso = 'disponibilidad-warn' }
-        else                                               { aviso = '❌ No disponible';              claseAviso = 'disponibilidad-error' }
-    }
-
-    document.getElementById('tbody-resumen').innerHTML = `
-        <tr><td class="resumen-label">Plazas totales</td><td class="resumen-valor">${totalPlazas}</td></tr>
-        <tr><td class="resumen-label">Confirmadas</td><td class="resumen-valor" style="color:var(--accent)">${confirmadas}</td></tr>
-        <tr><td class="resumen-label">Pendientes</td><td class="resumen-valor" style="color:var(--accent-warn)">${pendientes}</td></tr>
-        <tr><td class="resumen-label">Libres reales</td><td class="resumen-valor" style="color:var(--accent-ok)">${libresReales}</td></tr>
-        ${aviso ? `<tr><td colspan="2" class="resumen-aviso ${claseAviso}">${aviso}</td></tr>` : ''}
-    `
-    document.getElementById('resumen-servicio').style.display = 'block'
-}
-
-// Mapa de proveedores: una columna por proveedor con disponibilidad y reservas
+// Cajitas de proveedores ordenadas por plazas libres, clicables
 function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
     const dispServicio = disponibilidad.filter(d => d.service_id === servicioId)
     const contenedor   = document.getElementById('columnas-proveedores')
@@ -771,10 +620,13 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
         return
     }
 
-    contenedor.innerHTML = dispServicio.map(d => {
-        const { total, pendientes, libres } = getPlazasInfo(d.provider_id, servicioId)
-        if (plazas > 0 && total < plazas) return ''
+    // Calcular info y ordenar por libres desc
+    const proveedoresConInfo = dispServicio.map(d => ({
+        d, ...getPlazasInfo(d.provider_id, servicioId)
+    })).filter(({ total }) => plazas === 0 || total >= plazas)
+    .sort((a, b) => b.libres - a.libres)
 
+    contenedor.innerHTML = proveedoresConInfo.map(({ d, total, pendientes, libres }) => {
         let claseDisp = '', simbolo = ''
         if (plazas > 0) {
             if      (libres >= plazas)                            { claseDisp = 'disp-ok';    simbolo = '✅' }
@@ -782,6 +634,10 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
             else if (libres === 0 && pendientes >= plazas)        { claseDisp = 'disp-warn';  simbolo = '⚠️⚠️' }
             else if (libres > 0)                                   { claseDisp = 'disp-error'; simbolo = '❌' }
             else                                                   { claseDisp = 'disp-error'; simbolo = '❌❌' }
+        } else {
+            if      (libres > 0)  claseDisp = 'disp-ok'
+            else if (libres === 0) claseDisp = 'disp-warn'
+            else                   claseDisp = 'disp-error'
         }
 
         const esSeleccionado = proveedorSeleccionado && d.provider_id === proveedorSeleccionado
@@ -805,7 +661,9 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
             filasReservas += `<div class="proveedor-fila-mas">+${resto.length} más (${resto.reduce((s,r)=>s+r.slots,0)} plazas)</div>`
         }
 
-        return `<div class="proveedor-col ${claseDisp} ${esSeleccionado ? 'destacado' : 'normal'} ${esAtenuado ? 'atenuado' : ''}" style="border:2px solid">
+        return `<div class="proveedor-col ${claseDisp} ${esSeleccionado ? 'destacado' : 'normal'} ${esAtenuado ? 'atenuado' : ''}"
+                    style="border:2px solid; cursor:pointer"
+                    onclick="seleccionarProveedorDesdeCajita('${d.provider_id}')">
             <div class="proveedor-col-header">
                 <div class="nombre">${simbolo} ${d.provider_id}</div>
                 <div class="plazas">${libres}/${total} libres</div>
@@ -815,9 +673,192 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
     }).join('')
 }
 
+// Selecciona proveedor al hacer click en su cajita
+window.seleccionarProveedorDesdeCajita = function(proveedorId) {
+    const opcionExiste = [...selectProveedor.options].some(o => o.value === proveedorId)
+    if (!opcionExiste) {
+        const { total, libres } = getPlazasInfo(proveedorId, selectServicio.value)
+        const opt = document.createElement('option')
+        opt.value       = proveedorId
+        opt.textContent = `${proveedorId} (${libres}/${total})`
+        selectProveedor.appendChild(opt)
+    }
+    selectProveedor.value = proveedorId
+    selectProveedor.dispatchEvent(new Event('change'))
+}
+
+// ===== BLOQUE 5: COBROS AL CLIENTE =====
+
+function calcularTotalCobrarCliente(clienteId) {
+    return todasReservas
+        .filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
+        .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+}
+
+async function cargarCobrosCliente(clienteId, reservas) {
+    const bloque = document.getElementById('bloque-cobros-cliente')
+
+    if (!reservas || reservas.length === 0) {
+        bloque.style.display = 'none'
+        hitosClienteTemp = []
+        return
+    }
+
+    const { data: charges } = await supabase
+        .from('charges').select('*').eq('client_id', clienteId).order('due_date')
+
+    hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.comments === 'Cobro final' }))
+
+    const total    = calcularTotalCobrarCliente(clienteId)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const cobroFinal = total - prepagos
+
+    if (!hitosClienteTemp.find(h => h.esFinal)) {
+        hitosClienteTemp.push({
+            esFinal:   true,
+            comments:  'Cobro final',
+            client_id: clienteId,
+            amount:    cobroFinal,
+            due_date:  '2026-07-06',
+            collected: false
+        })
+    } else {
+        const idx = hitosClienteTemp.findIndex(h => h.esFinal)
+        hitosClienteTemp[idx].amount = cobroFinal
+    }
+
+    actualizarResumenCobros(clienteId, total, prepagos, cobroFinal)
+    renderCobrosCliente()
+    bloque.style.display = 'block'
+}
+
+function actualizarResumenCobros(clienteId, total, prepagos, cobroFinal) {
+    const cobrado   = hitosClienteTemp.filter(h => h.collected).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const pendiente = hitosClienteTemp.filter(h => !h.collected).reduce((s, h) => s + parseFloat(h.amount), 0)
+    document.getElementById('resumen-cobros-cliente').innerHTML =
+        `Total a cobrar: <strong>${fmt(total)}</strong> &nbsp;|&nbsp; ` +
+        `Cobrado: <strong style="color:var(--accent-ok)">${fmt(cobrado)}</strong> &nbsp;|&nbsp; ` +
+        `Pendiente: <strong style="color:${pendiente > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)'}">` +
+        `${fmt(pendiente)}</strong>`
+}
+
+function renderCobrosCliente() {
+    const tbody = document.getElementById('tbody-cobros-cliente')
+    tbody.innerHTML = hitosClienteTemp.map((h, i) => `
+        <tr>
+            <td>${h.comments}</td>
+            <td>${fmt(h.amount)}${h.esFinal ? ' <span style="font-size:11px;color:var(--subtle)">(calculado)</span>' : ''}</td>
+            <td>${h.esFinal
+                ? `<input type="date" value="${h.due_date ?? ''}"
+                    style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px"
+                    onchange="cambiarFechaCobroFinal(${i}, this.value)">`
+                : (h.due_date ?? '—')}</td>
+            <td>${h.collected ? `✅ ${h.collected_date ?? ''}` : '⏳ No'}</td>
+            <td style="white-space:nowrap">
+                <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
+                    onclick="toggleCobroCliente(${i})">${h.collected ? 'Marcar pendiente' : 'Marcar cobrado'}</button>
+                ${!h.esFinal ? `<button class="btn btn-danger" style="padding:4px 8px;font-size:11px"
+                    onclick="eliminarCobroCliente(${i})">🗑</button>` : ''}
+            </td>
+        </tr>
+    `).join('')
+}
+
+window.cambiarFechaCobroFinal = function(idx, valor) {
+    hitosClienteTemp[idx].due_date = valor || null
+}
+
+window.toggleCobroCliente = function(idx) {
+    const h = hitosClienteTemp[idx]
+    if (!h.collected) {
+        const fecha = prompt('Fecha de cobro (dejar vacío para hoy):', hoy)
+        if (fecha === null) return
+        h.collected      = true
+        h.collected_date = fecha.trim() || hoy
+    } else {
+        h.collected      = false
+        h.collected_date = null
+    }
+    const total    = calcularTotalCobrarCliente(clienteActual.id)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
+    renderCobrosCliente()
+}
+
+window.eliminarCobroCliente = function(idx) {
+    hitosClienteTemp.splice(idx, 1)
+    const total    = calcularTotalCobrarCliente(clienteActual.id)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const idxFinal = hitosClienteTemp.findIndex(h => h.esFinal)
+    if (idxFinal >= 0) hitosClienteTemp[idxFinal].amount = total - prepagos
+    actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
+    renderCobrosCliente()
+}
+
+document.getElementById('btnNuevoCobroCliente').addEventListener('click', () => {
+    document.getElementById('form-nuevo-cobro-cliente').style.display = 'block'
+    document.getElementById('btnNuevoCobroCliente').style.display     = 'none'
+})
+
+document.getElementById('btnCancelarNuevoCobro').addEventListener('click', () => {
+    document.getElementById('form-nuevo-cobro-cliente').style.display = 'none'
+    document.getElementById('btnNuevoCobroCliente').style.display     = 'inline-block'
+})
+
+document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => {
+    const concepto = document.getElementById('cobroConcepto').value.trim() || 'Prepago'
+    const importe  = parseFloat(document.getElementById('cobroImporte').value)
+    const fecha    = document.getElementById('cobroFecha').value || null
+    const cobrado  = document.getElementById('cobroCobrado').value === 'true'
+    if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
+
+    const idxFinal = hitosClienteTemp.findIndex(h => h.esFinal)
+    hitosClienteTemp.splice(idxFinal >= 0 ? idxFinal : hitosClienteTemp.length, 0, {
+        esFinal:   false,
+        comments:  concepto,
+        client_id: clienteActual.id,
+        amount:    importe,
+        due_date:  fecha,
+        collected: cobrado
+    })
+
+    const total    = calcularTotalCobrarCliente(clienteActual.id)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const idxF     = hitosClienteTemp.findIndex(h => h.esFinal)
+    if (idxF >= 0) hitosClienteTemp[idxF].amount = total - prepagos
+
+    document.getElementById('cobroConcepto').value = ''
+    document.getElementById('cobroImporte').value  = ''
+    document.getElementById('cobroFecha').value    = ''
+    document.getElementById('cobroCobrado').value  = 'false'
+    document.getElementById('form-nuevo-cobro-cliente').style.display = 'none'
+    document.getElementById('btnNuevoCobroCliente').style.display     = 'inline-block'
+
+    actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
+    renderCobrosCliente()
+})
+
+document.getElementById('btnGuardarCobros').addEventListener('click', async () => {
+    if (!clienteActual) return
+
+    await supabase.from('charges').delete().eq('client_id', clienteActual.id)
+
+    for (const h of hitosClienteTemp) {
+        await supabase.from('charges').insert({
+            client_id:      clienteActual.id,
+            amount:         parseFloat(h.amount),
+            due_date:       h.due_date,
+            collected:      h.collected,
+            collected_date: h.collected_date ?? null,
+            comments:       h.comments
+        })
+    }
+
+    alert('✅ Cobros guardados correctamente')
+})
+
 // ===== CONSUMPTION CHECK =====
 
-// Recalcula y corrige en Supabase el pago final de proveedores consumption
 async function checkearConsumption(proveedorId, servicioId) {
     const disp = disponibilidad.find(d =>
         d.provider_id === proveedorId && d.service_id === servicioId && d.billing_model === 'consumption'
