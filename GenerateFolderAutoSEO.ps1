@@ -284,11 +284,14 @@ function Build-Event-Schema($html, $pageType, $eventKey, $serviceName, $image, $
         }
 
         if ($null -ne $offerMin) {
+            $validFrom = "$sfYear-01-01"
             $eventSchema["offers"] = [ordered]@{
                 "@type"         = "AggregateOffer"
                 "lowPrice"      = "$offerMin"
                 "highPrice"     = "$offerMax"
                 "priceCurrency" = "EUR"
+                "availability"  = "https://schema.org/InStock"
+                "validFrom"     = $validFrom
                 "url"           = $url
             }
         }
@@ -523,7 +526,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
             "areaServed"  = @{ "@type" = "Place"; "name" = "$orgCity" }
             "mentions"    = @(
                 @{ "@type" = "Place"; "name" = "$orgCity" },
-                @{ "@type" = "Thing"; "name" = "Fiestas de San Fermin $sfYear" }
+                @{ "name" = "Fiestas de San Fermin $sfYear" }
             )
         } | ConvertTo-Json -Depth 4 -Compress)
     }
@@ -545,7 +548,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         "url"         = $url
         "about"       = @(
             @{ "@type" = "Place"; "name" = "$orgCity" },
-            @{ "@type" = "Thing"; "name" = "Fiestas de San Fermin $sfYear" }
+            @{ "name" = "Fiestas de San Fermin $sfYear" }
         )
     }
     if ($pageType -eq "website" -or $pageType -eq "landing") {
