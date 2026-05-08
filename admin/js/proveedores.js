@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -14,10 +14,10 @@ let todosPayments      = (await supabase.from('payments').select('*')).data
 let todasReservas      = (await supabase.from('reservations').select('*')).data
 
 let proveedorActual      = null
-let servicioEditandoId   = null  // un solo id (click en fila) o null
-let serviciosEditandoIds = []    // array de ids (edición múltiple)
+let servicioEditandoId   = null
+let serviciosEditandoIds = []
 let hitosProvTemp        = []
-let ultimoCampoActivo    = 'precio' // 'precio' o 'total' — cuál fue el último editado
+let ultimoCampoActivo    = 'precio'
 
 const hoy = new Date().toISOString().split('T')[0]
 
@@ -40,6 +40,7 @@ const btnGuardarServicio     = document.getElementById('btnGuardarServicio')
 const btnCancelarServicio    = document.getElementById('btnCancelarServicio')
 
 // ===== BLOQUE 1: PROVEEDOR =====
+
 inputProveedorId.addEventListener('keydown', e => {
     if (e.key === ' ') {
         e.preventDefault()
@@ -67,7 +68,7 @@ function mostrarSugerenciasProveedor(val) {
         : todosProveedores
 
     autoProvList.innerHTML = coincidencias.map(p =>
-        `<div data-id="${p.id}">${p.id}${p.name ? ' — ' + p.name : ''}</div>`
+        `<div data-id="${p.id}">${p.id}</div>`
     ).join('')
     autoProvList.style.display = coincidencias.length > 0 ? 'block' : 'none'
 
@@ -79,9 +80,9 @@ function mostrarSugerenciasProveedor(val) {
         proveedorActual = null
         proveedorStatus.textContent = '✨ Proveedor nuevo'
         proveedorStatus.style.color = 'var(--accent-warn)'
-        document.getElementById('bloque-servicio').style.display = 'block'
+        document.getElementById('bloque-servicio').style.display            = 'block'
         document.getElementById('bloque-servicios-proveedor').style.display = 'none'
-        document.getElementById('bloque-pagos-proveedor').style.display = 'none'
+        document.getElementById('bloque-pagos-proveedor').style.display     = 'none'
         limpiarFormularioServicio()
     } else {
         limpiarProveedor()
@@ -135,7 +136,6 @@ function limpiarCamposProveedor() {
     inputProveedorComments.value = ''
 }
 
-// Guardar automáticamente campos del proveedor existente
 const camposProveedor = [inputNombre, inputDireccion, inputProveedorComments]
 const camposProvDB    = ['name', 'address', 'comments']
 camposProveedor.forEach((input, i) => {
@@ -149,7 +149,6 @@ camposProveedor.forEach((input, i) => {
     })
 })
 
-// Guardar select y checkbox automáticamente
 selectFormaPago.addEventListener('change', async () => {
     if (!proveedorActual) return
     await supabase.from('providers')
@@ -178,7 +177,6 @@ function mostrarGuardado() {
 
 // ===== BLOQUE 2: SERVICIO =====
 
-// Autocomplete servicio
 inputServicioId.addEventListener('input', () => {
     const val      = inputServicioId.value.trim().toUpperCase()
     const autoList = document.getElementById('autocompleteServicioList')
@@ -209,14 +207,11 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
     actualizarCosteServicio()
 })
 
-// Lógica bidireccional precio/total
 inputPrecio.addEventListener('input', () => {
     ultimoCampoActivo = 'precio'
     const plazas = parseInt(inputPlazas.value) || 0
     const precio  = parseFloat(inputPrecio.value) || 0
-    if (plazas > 0 && precio >= 0) {
-        inputCosteTotal.value = (plazas * precio).toFixed(2)
-    }
+    if (plazas > 0 && precio >= 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
@@ -225,9 +220,7 @@ inputCosteTotal.addEventListener('input', () => {
     ultimoCampoActivo = 'total'
     const plazas = parseInt(inputPlazas.value) || 0
     const total  = parseFloat(inputCosteTotal.value) || 0
-    if (plazas > 0) {
-        inputPrecio.value = (total / plazas).toFixed(2)
-    }
+    if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
@@ -248,13 +241,12 @@ inputPlazas.addEventListener('input', () => {
 
 selectModelo.addEventListener('change', actualizarCosteServicio)
 
-// Muestra el coste calculado informativo (para consumption)
 function actualizarCosteServicio() {
-    const plazas  = parseInt(inputPlazas.value) || 0
-    const precio  = parseFloat(inputPrecio.value) || 0
-    const modelo  = selectModelo.value
-    const servId  = inputServicioId.value.trim().toUpperCase()
-    let coste     = 0
+    const plazas = parseInt(inputPlazas.value) || 0
+    const precio = parseFloat(inputPrecio.value) || 0
+    const modelo = selectModelo.value
+    const servId = inputServicioId.value.trim().toUpperCase()
+    let coste    = 0
 
     if (modelo === 'capacity') {
         coste = plazas * precio
@@ -276,7 +268,6 @@ function actualizarCosteServicio() {
 function actualizarBtnServicio() {
     const tieneProveedor = inputProveedorId.value.trim().length > 0
     const tieneServicio  = serviciosEditandoIds.length > 1 || inputServicioId.value.trim().length > 0
-    // En edición múltiple, plazas vacío es válido (significa "no cambiar")
     const tienePlazas    = serviciosEditandoIds.length > 1 || inputPlazas.value !== ''
     btnGuardarServicio.disabled = !(tieneProveedor && tieneServicio && tienePlazas)
 }
@@ -285,15 +276,15 @@ function limpiarFormularioServicio() {
     servicioEditandoId   = null
     serviciosEditandoIds = []
     ultimoCampoActivo    = 'precio'
-    inputServicioId.value = ''
+    inputServicioId.value    = ''
     inputServicioId.disabled = false
-    inputPlazas.value     = ''
-    inputPrecio.value     = ''
-    inputCosteTotal.value = ''
-    selectModelo.value    = 'capacity'
+    inputPlazas.value        = ''
+    inputPrecio.value        = ''
+    inputCosteTotal.value    = ''
+    selectModelo.value       = 'capacity'
     document.getElementById('inputCosteServicio').value = '—'
     document.getElementById('titulo-bloque-servicio').textContent = '➕ Añadir / Editar servicio'
-    servicioStatus.textContent = ''
+    servicioStatus.textContent    = ''
     btnGuardarServicio.textContent    = 'Añadir servicio'
     btnGuardarServicio.disabled       = true
     btnCancelarServicio.style.display = 'none'
@@ -309,16 +300,9 @@ btnGuardarServicio.addEventListener('click', async () => {
     const precio      = parseFloat(inputPrecio.value)
     const modelo      = selectModelo.value
 
-    // Validar plazas
-    if (plazas < 0) {
-        alert('El número de plazas no puede ser negativo.')
-        return
-    }
-    if (plazas === 0) {
-        if (!confirm('¿Quieres añadir un servicio con 0 plazas disponibles?')) return
-    }
+    if (plazas < 0) { alert('El número de plazas no puede ser negativo.'); return }
+    if (plazas === 0) { if (!confirm('¿Quieres añadir un servicio con 0 plazas disponibles?')) return }
 
-    // Crear proveedor si es nuevo
     if (!proveedorActual) {
         if (!confirm(`¿Crear proveedor nuevo "${proveedorId}"?`)) return
         const { error } = await supabase.from('providers').insert({
@@ -341,10 +325,8 @@ btnGuardarServicio.addEventListener('click', async () => {
             const dispActual = todaDisponibilidad.find(d => d.id === dispId)
             if (!dispActual) continue
             const updateData = {}
-            // Solo actualizar campos que el usuario ha tocado (no vacíos)
-            if (inputPlazas.value !== '' && !isNaN(plazas))   updateData.total_slots    = plazas
-            if (inputPrecio.value !== '' && !isNaN(precio))   updateData.price_per_slot = precio
-            // Modelo siempre se aplica si hay selección múltiple (tiene valor por defecto)
+            if (inputPlazas.value !== '' && !isNaN(plazas)) updateData.total_slots    = plazas
+            if (inputPrecio.value !== '' && !isNaN(precio)) updateData.price_per_slot = precio
             updateData.billing_model = modelo
 
             const { error } = await supabase.from('availability')
@@ -354,7 +336,7 @@ btnGuardarServicio.addEventListener('click', async () => {
                 d.id === dispId ? { ...d, ...updateData } : d
             )
         }
-        await recalcularPagoFinalProveedor(proveedorActual.id)
+        await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorActual.id)
         cargarPagosProveedor(proveedorActual.id)
@@ -364,7 +346,6 @@ btnGuardarServicio.addEventListener('click', async () => {
     // MODO EDICIÓN SIMPLE o CREACIÓN
     const servicioId = inputServicioId.value.trim().toUpperCase()
 
-    // Crear servicio si es nuevo
     const servicioExiste = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!servicioExiste) {
         if (!confirm(`¿Crear servicio nuevo "${servicioId}"?`)) return
@@ -402,7 +383,7 @@ btnGuardarServicio.addEventListener('click', async () => {
         todaDisponibilidad.push(data[0])
     }
 
-    await recalcularPagoFinalProveedor(proveedorActual.id)
+    await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
     limpiarFormularioServicio()
     cargarServiciosProveedor(proveedorActual.id)
     cargarPagosProveedor(proveedorActual.id)
@@ -411,16 +392,15 @@ btnGuardarServicio.addEventListener('click', async () => {
 btnCancelarServicio.addEventListener('click', limpiarFormularioServicio)
 
 // ===== BLOQUE 3: SERVICIOS DEL PROVEEDOR =====
-let sortServiciosCol = null
-let sortServiciosDir = 'asc'
+
+let sortServiciosCol   = null
+let sortServiciosDir   = 'asc'
 let serviciosProveedor = []
 
 async function cargarServiciosProveedor(proveedorId) {
     const dispProv = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
     const bloque   = document.getElementById('bloque-servicios-proveedor')
-
     if (dispProv.length === 0) { bloque.style.display = 'none'; return }
-
     serviciosProveedor = dispProv
     bloque.style.display = 'block'
     renderTablaServicios(proveedorId)
@@ -428,16 +408,15 @@ async function cargarServiciosProveedor(proveedorId) {
 
 function renderTablaServicios(proveedorId) {
     const cols = [
-        { label: 'Servicio',    campo: 'service_id' },
-        { label: 'Plazas',      campo: 'total_slots' },
+        { label: 'Servicio',     campo: 'service_id' },
+        { label: 'Plazas',       campo: 'total_slots' },
         { label: 'Precio/plaza', campo: 'price_per_slot' },
-        { label: 'Modelo',      campo: 'billing_model' },
-        { label: 'Coste',       campo: '_coste' },
-        { label: 'Reservadas',  campo: '_reservadas' },
-        { label: 'Clientes',    campo: '_clientes' },
+        { label: 'Modelo',       campo: 'billing_model' },
+        { label: 'Coste',        campo: '_coste' },
+        { label: 'Reservadas',   campo: '_reservadas' },
+        { label: 'Clientes',     campo: '_clientes' },
     ]
 
-    // Enriquecer datos
     let datos = serviciosProveedor.map(d => {
         let coste = 0
         if (d.billing_model === 'capacity') {
@@ -460,7 +439,6 @@ function renderTablaServicios(proveedorId) {
         return { ...d, _coste: coste, _reservadas: plazasReservadas, _clientes: clientes }
     })
 
-    // Ordenar
     if (sortServiciosCol !== null) {
         const campo = cols[sortServiciosCol].campo
         datos.sort((a, b) => {
@@ -471,7 +449,6 @@ function renderTablaServicios(proveedorId) {
         })
     }
 
-    // Cabeceras con sort
     const thead = document.querySelector('#bloque-servicios-proveedor table thead tr')
     thead.innerHTML = '<th></th>' + cols.map((c, i) => `
         <th style="cursor:pointer; user-select:none" onclick="sortServicios(${i})">
@@ -482,7 +459,6 @@ function renderTablaServicios(proveedorId) {
         </th>
     `).join('')
 
-    // Filas
     const tbody = document.getElementById('tbody-servicios-proveedor')
     tbody.innerHTML = datos.map(d => `
         <tr data-disp-id="${d.id}" style="cursor:pointer">
@@ -499,7 +475,6 @@ function renderTablaServicios(proveedorId) {
         </tr>`
     ).join('')
 
-    // Click en fila para editar
     tbody.querySelectorAll('tr').forEach(tr => {
         tr.addEventListener('click', e => {
             if (e.target.type === 'checkbox') return
@@ -519,7 +494,6 @@ window.sortServicios = function(colIdx) {
     if (proveedorActual) renderTablaServicios(proveedorActual.id)
 }
 
-// Carga uno o varios servicios en el formulario de edición
 function cargarServicioEnFormulario(dispIds) {
     serviciosEditandoIds = dispIds
     const disps = dispIds.map(id => todaDisponibilidad.find(d => d.id === id)).filter(Boolean)
@@ -528,7 +502,6 @@ function cargarServicioEnFormulario(dispIds) {
     ultimoCampoActivo = 'precio'
 
     if (disps.length === 1) {
-        // Edición simple
         servicioEditandoId       = disps[0].id
         inputServicioId.value    = disps[0].service_id
         inputServicioId.disabled = false
@@ -538,15 +511,13 @@ function cargarServicioEnFormulario(dispIds) {
         selectModelo.value       = disps[0].billing_model
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
     } else {
-        // Edición múltiple
         servicioEditandoId       = null
         inputServicioId.value    = 'Varios servicios'
         inputServicioId.disabled = true
 
-        // Mostrar valor si coincide en todos, vacío si difiere
-        const plazasIguales  = disps.every(d => d.total_slots    === disps[0].total_slots)
-        const precioIgual    = disps.every(d => d.price_per_slot === disps[0].price_per_slot)
-        const modeloIgual    = disps.every(d => d.billing_model  === disps[0].billing_model)
+        const plazasIguales = disps.every(d => d.total_slots    === disps[0].total_slots)
+        const precioIgual   = disps.every(d => d.price_per_slot === disps[0].price_per_slot)
+        const modeloIgual   = disps.every(d => d.billing_model  === disps[0].billing_model)
 
         inputPlazas.value     = plazasIguales ? disps[0].total_slots    : ''
         inputPrecio.value     = precioIgual   ? disps[0].price_per_slot : ''
@@ -565,36 +536,29 @@ function cargarServicioEnFormulario(dispIds) {
     document.getElementById('bloque-servicio').scrollIntoView({ behavior: 'smooth' })
 }
 
-// Botón editar seleccionados
 document.getElementById('btnEditarServicios').addEventListener('click', () => {
     const checks = [...document.querySelectorAll('.chk-servicio:checked')]
-    if (checks.length === 0) {
-        alert('Selecciona al menos un servicio para editar')
-        return
-    }
+    if (checks.length === 0) { alert('Selecciona al menos un servicio para editar'); return }
     const ids = checks.map(chk => parseInt(chk.closest('tr').dataset.dispId))
     cargarServicioEnFormulario(ids)
 })
 
-// Eliminar servicios seleccionados
 document.getElementById('btnEliminarServicio').addEventListener('click', async () => {
     const checks = [...document.querySelectorAll('.chk-servicio:checked')]
     if (checks.length === 0) return
-
     if (!confirm(`¿Eliminar ${checks.length} servicio(s) seleccionado(s)?`)) return
 
     const noEliminados = []
     const eliminados   = []
 
     for (const chk of checks) {
-        const tr      = chk.closest('tr')
-        const dispId  = parseInt(tr.dataset.dispId)
-        const disp    = todaDisponibilidad.find(d => d.id === dispId)
+        const tr     = chk.closest('tr')
+        const dispId = parseInt(tr.dataset.dispId)
+        const disp   = todaDisponibilidad.find(d => d.id === dispId)
         if (!disp) continue
 
         const { service_id: servicioId, provider_id: proveedorId } = disp
 
-        // Verificar reservas activas
         const reservasActivas = todasReservas.filter(r =>
             r.provider_id === proveedorId &&
             r.service_id  === servicioId  &&
@@ -606,12 +570,10 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
             continue
         }
 
-        // Eliminar disponibilidad
         await supabase.from('availability').delete().eq('id', dispId)
         todaDisponibilidad = todaDisponibilidad.filter(d => d.id !== dispId)
         eliminados.push({ servicioId, proveedorId, dispId })
 
-        // Si el servicio no lo ofrece nadie más, preguntar si borrar servicio
         const otrosProveedores = todaDisponibilidad.filter(d => d.service_id === servicioId)
         if (otrosProveedores.length === 0) {
             const borrarServicio = confirm(
@@ -625,7 +587,6 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
         }
     }
 
-    // Comprobar si el proveedor se quedó sin servicios
     const proveedorId = proveedorActual?.id
     if (proveedorId) {
         const serviciosRestantes = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
@@ -640,14 +601,12 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
                 todosProveedores = todosProveedores.filter(p => p.id !== proveedorId)
                 limpiarProveedor()
                 inputProveedorId.value = ''
-                if (noEliminados.length > 0) {
-                    alert('No se pudieron eliminar:\n' + noEliminados.join('\n'))
-                }
+                if (noEliminados.length > 0) alert('No se pudieron eliminar:\n' + noEliminados.join('\n'))
                 return
             }
         }
 
-        await recalcularPagoFinalProveedor(proveedorId)
+        await persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorId)
         cargarPagosProveedor(proveedorId)

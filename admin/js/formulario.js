@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, normalizarId, buscarConPrioridad } from './utils.js'
+import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -14,7 +14,7 @@ let todasReservas              = (await supabase.from('reservations').select('*'
 
 let clienteActual     = null
 let reservaEditandoId = null
-let hitosClienteTemp  = []   // hitos de cobro del cliente completo (bloque 5)
+let hitosClienteTemp  = []
 const hoy             = new Date().toISOString().split('T')[0]
 const fmt             = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
@@ -45,7 +45,6 @@ servicios.forEach(s => {
     selectServicio.appendChild(opt)
 })
 
-// Normalizar ID: mayúsculas y espacio → guión bajo
 inputId.addEventListener('keydown', e => {
     if (e.key === ' ') {
         e.preventDefault()
@@ -66,7 +65,6 @@ inputId.addEventListener('focus', () => {
     mostrarSugerenciasCliente(normalizarId(inputId.value))
 })
 
-// Autocomplete mejorado: busca en id, name y company con prioridad
 function mostrarSugerenciasCliente(val) {
     const coincidencias = val
         ? buscarConPrioridad(todosClientes, val, ['id', 'name', 'company'])
@@ -154,7 +152,6 @@ function limpiarFormularioReserva() {
     sortReservasDir = 'asc'
 }
 
-// Guarda automáticamente campos del cliente existente
 const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputComments]
 const camposDB      = ['name', 'company', 'phone', 'email', 'comments']
 camposCliente.forEach((input, i) => {
@@ -338,16 +335,14 @@ function actualizarBtnAnadir() {
 
 // ===== BLOQUE 4: RESERVAS DEL CLIENTE =====
 
-// Estado de sort de la tabla de reservas del cliente
 let sortReservasCol = null
 let sortReservasDir = 'asc'
-let reservasCliente = []  // cache de reservas del cliente actual para re-renderizar al sortear
+let reservasCliente = []
 
 async function cargarReservasCliente(clienteId) {
     const { data: reservas } = await supabase
         .from('reservations').select('*').eq('client_id', clienteId).order('id')
 
-    const tbody  = document.getElementById('tbody-reservas-cliente')
     const bloque = document.getElementById('bloque-reservas-cliente')
 
     if (!reservas || reservas.length === 0) {
@@ -373,7 +368,6 @@ function renderTablaReservas() {
         { label: 'Estado',      campo: 'status' },
     ]
 
-    // Ordenar
     let datos = [...reservasCliente]
     if (sortReservasCol !== null) {
         datos.sort((a, b) => {
@@ -384,7 +378,6 @@ function renderTablaReservas() {
         })
     }
 
-    // Cabeceras con sort
     const thead = document.querySelector('#bloque-reservas-cliente table thead tr')
     thead.innerHTML = '<th></th>' + cols.map((c, i) => `
         <th style="cursor:pointer; user-select:none" onclick="sortReservasCliente(${i})">
@@ -395,7 +388,6 @@ function renderTablaReservas() {
         </th>
     `).join('')
 
-    // Filas
     const tbody = document.getElementById('tbody-reservas-cliente')
     tbody.innerHTML = datos.map(r => `
         <tr data-id="${r.id}" style="cursor:pointer">
@@ -471,8 +463,10 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         todasReservas = todasReservas.map(r =>
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
-        for (const { proveedorId, servicioId } of afectadas) {
-            await checkearConsumption(proveedorId, servicioId)
+        // Persistir cobros del cliente y pagos de proveedores afectados
+        await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
+        for (const { proveedorId } of afectadas) {
+            await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
         }
         cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
@@ -487,9 +481,6 @@ async function eliminarSeleccionadas() {
 
     const afectadas = todasReservas.filter(r => ids.includes(r.id))
         .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id }))
-
-    const { error: errCharges } = await supabase.from('charges').delete().in('reservation_id', ids)
-    if (errCharges) { alert('Error al borrar cobros: ' + errCharges.message); return }
 
     const { error: errReservas } = await supabase.from('reservations').delete().in('id', ids)
     if (errReservas) { alert('Error al borrar reservas: ' + errReservas.message); return }
@@ -508,10 +499,13 @@ async function eliminarSeleccionadas() {
                 return
             }
         }
+        // Persistir cobros actualizados si quedan reservas
+        await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
     }
 
-    for (const { proveedorId, servicioId } of afectadas) {
-        await checkearConsumption(proveedorId, servicioId)
+    // Persistir pagos de proveedores afectados
+    for (const { proveedorId } of afectadas) {
+        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
     }
 
     limpiarFormularioReserva()
@@ -538,6 +532,7 @@ btnAnadir.addEventListener('click', async () => {
     if (plazas === 0) { if (!confirm('¿Crear una reserva con 0 plazas?')) return }
 
     if (reservaEditandoId) {
+        // MODO EDITAR
         const { error } = await supabase.from('reservations').update({
             service_id: servicioId, provider_id: proveedorId,
             slots: plazas, price_per_slot: precio, status: estado, comments
@@ -547,12 +542,14 @@ btnAnadir.addEventListener('click', async () => {
         const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
         todasReservas = reservasActualizadas
 
-        await checkearConsumption(proveedorId, servicioId)
+        await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
+        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
 
     } else {
+        // MODO CREAR
         const { libres } = getPlazasInfo(proveedorId, servicioId)
         if (libres < plazas) {
             alert(`No hay suficientes plazas libres. Disponibles: ${libres}, necesitas: ${plazas}`)
@@ -591,7 +588,8 @@ btnAnadir.addEventListener('click', async () => {
         const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
         todasReservas = reservasActualizadas
 
-        await checkearConsumption(proveedorId, servicioId)
+        await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
+        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -610,7 +608,6 @@ function actualizarBloque3() {
     actualizarMapaProveedores(servicioId, plazas, proveedorId)
 }
 
-// Cajitas de proveedores ordenadas por plazas libres, clicables
 function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
     const dispServicio = disponibilidad.filter(d => d.service_id === servicioId)
     const contenedor   = document.getElementById('columnas-proveedores')
@@ -620,7 +617,6 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
         return
     }
 
-    // Calcular info y ordenar por libres desc
     const proveedoresConInfo = dispServicio.map(d => ({
         d, ...getPlazasInfo(d.provider_id, servicioId)
     })).filter(({ total }) => plazas === 0 || total >= plazas)
@@ -635,7 +631,7 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
             else if (libres > 0)                                   { claseDisp = 'disp-error'; simbolo = '❌' }
             else                                                   { claseDisp = 'disp-error'; simbolo = '❌❌' }
         } else {
-            if      (libres > 0)  claseDisp = 'disp-ok'
+            if      (libres > 0)   claseDisp = 'disp-ok'
             else if (libres === 0) claseDisp = 'disp-warn'
             else                   claseDisp = 'disp-error'
         }
@@ -680,13 +676,11 @@ window.seleccionarProveedorDesdeCajita = function(proveedorId) {
     if (plazas > 0) {
         const { libres } = getPlazasInfo(proveedorId, servicioId)
         if (libres < plazas) {
-            // No hay sitio — abrir panel de reorganización
             abrirPanelReorganizar(proveedorId, servicioId, plazas)
             return
         }
     }
 
-    // Hay sitio — seleccionar normalmente
     const opcionExiste = [...selectProveedor.options].some(o => o.value === proveedorId)
     if (!opcionExiste) {
         const { total, libres } = getPlazasInfo(proveedorId, servicioId)
@@ -721,8 +715,8 @@ async function cargarCobrosCliente(clienteId, reservas) {
 
     hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.comments === 'Cobro final' }))
 
-    const total    = calcularTotalCobrarCliente(clienteId)
-    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const total      = calcularTotalCobrarCliente(clienteId)
+    const prepagos   = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
     const cobroFinal = total - prepagos
 
     if (!hitosClienteTemp.find(h => h.esFinal)) {
@@ -869,61 +863,23 @@ document.getElementById('btnGuardarCobros').addEventListener('click', async () =
     alert('✅ Cobros guardados correctamente')
 })
 
-// ===== CONSUMPTION CHECK =====
-
-async function checkearConsumption(proveedorId, servicioId) {
-    const disp = disponibilidad.find(d =>
-        d.provider_id === proveedorId && d.service_id === servicioId && d.billing_model === 'consumption'
-    )
-    if (!disp) return
-
-    const plazasReservadas = todasReservas
-        .filter(r => r.provider_id === proveedorId && r.service_id === servicioId && r.status !== 'Cancelada')
-        .reduce((s, r) => s + r.slots, 0)
-
-    const importeCorrecto = plazasReservadas * parseFloat(disp.price_per_slot)
-
-    const { data: pagosProveedor } = await supabase
-        .from('payments').select('*').eq('provider_id', proveedorId).eq('comments', 'Pago final')
-
-    if (!pagosProveedor || pagosProveedor.length === 0) {
-        await supabase.from('payments').insert({
-            provider_id: proveedorId, amount: importeCorrecto,
-            due_date: '2026-07-15', paid: false, comments: 'Pago final'
-        })
-        console.warn(`⚠️ Consumption: creado pago final para ${proveedorId}/${servicioId} — ${importeCorrecto}€`)
-        return
-    }
-
-    const importeActual = pagosProveedor.reduce((s, p) => s + parseFloat(p.amount), 0)
-    if (Math.abs(importeActual - importeCorrecto) < 0.01) return
-
-    const [primero, ...resto] = pagosProveedor
-    await supabase.from('payments').update({ amount: importeCorrecto }).eq('id', primero.id)
-    if (resto.length > 0) await supabase.from('payments').delete().in('id', resto.map(p => p.id))
-
-    console.warn(`⚠️ Consumption corregido: ${proveedorId}/${servicioId} — ${importeActual}€ → ${importeCorrecto}€`)
-}
-
 // ===== PANEL DE REORGANIZACIÓN DE DISPONIBILIDAD =====
 
-// Estado del panel
-let reorgContexto = null  // { proveedorId, servicioId, plazasNecesarias }
-let reorgCambios  = {}    // { reservaId: { service_id, provider_id, slots, price_per_slot } }
-let reorgFilas    = []    // reservas que se muestran en el panel
+let reorgContexto = null
+let reorgCambios  = {}
+let reorgFilas    = []
 
 function abrirPanelReorganizar(proveedorId, servicioId, plazasNecesarias) {
     reorgContexto = { proveedorId, servicioId, plazasNecesarias }
     reorgCambios  = {}
 
-    // Cargar reservas del proveedor+servicio que bloquean
     const reservasBloquean = todasReservas.filter(r =>
         r.provider_id === proveedorId &&
         r.service_id  === servicioId  &&
         r.status      !== 'Cancelada'
     )
 
-    reorgFilas = reservasBloquean.map(r => ({ ...r }))  // copia para no mutar el original
+    reorgFilas = reservasBloquean.map(r => ({ ...r }))
 
     renderPanelReorganizar()
 
@@ -942,48 +898,40 @@ window.cerrarPanelReorganizar = function() {
 function renderPanelReorganizar() {
     const { proveedorId, servicioId, plazasNecesarias } = reorgContexto
 
-    // Calcular cuántas plazas libres hay actualmente en el proveedor objetivo
-    // teniendo en cuenta los cambios pendientes en el panel
     const plazasOcupadas = reorgFilas
         .filter(r => r.provider_id === proveedorId && r.service_id === servicioId)
         .reduce((s, r) => s + r.slots, 0)
 
-    const dispObj  = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const dispObj    = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
     const totalSlots = dispObj?.total_slots ?? 0
     const libresAhora = totalSlots - plazasOcupadas
 
-    // Cabecera
     document.getElementById('panel-reorg-cabecera').textContent =
         `Quieres meter ${plazasNecesarias} plaza(s) en ${proveedorId} / ${servicioId}`
 
-    // Estado de disponibilidad
     const estadoDiv = document.getElementById('panel-reorg-estado')
     if (libresAhora >= plazasNecesarias) {
-        estadoDiv.textContent         = `✅ Ya hay ${libresAhora} plazas libres — puedes confirmar`
-        estadoDiv.style.background    = 'var(--accent-ok-bg, #f0fff0)'
-        estadoDiv.style.color         = 'var(--accent-ok)'
+        estadoDiv.textContent      = `✅ Ya hay ${libresAhora} plazas libres — puedes confirmar`
+        estadoDiv.style.background = '#f0fff0'
+        estadoDiv.style.color      = 'var(--accent-ok)'
         document.getElementById('btnConfirmarReorg').disabled = Object.keys(reorgCambios).length === 0
     } else {
-        estadoDiv.textContent         = `❌ Faltan ${plazasNecesarias - libresAhora} plazas — mueve reservas abajo`
-        estadoDiv.style.background    = '#fff5f5'
-        estadoDiv.style.color         = 'var(--accent)'
+        estadoDiv.textContent      = `❌ Faltan ${plazasNecesarias - libresAhora} plazas — mueve reservas abajo`
+        estadoDiv.style.background = '#fff5f5'
+        estadoDiv.style.color      = 'var(--accent)'
         document.getElementById('btnConfirmarReorg').disabled = true
     }
 
-    // Tabla de reservas
     const tbody = document.getElementById('tbody-reorg')
     tbody.innerHTML = reorgFilas.map((r, idx) => {
         const tieneCambio = !!reorgCambios[r.id]
 
-        // Construir selector de servicio
         const optsServicio = servicios.map(s =>
             `<option value="${s.id}" ${r.service_id === s.id ? 'selected' : ''}>${s.id}</option>`
         ).join('')
 
-        // Construir selector de proveedor para el servicio actual de esta fila
         const dispDeServicio = disponibilidad.filter(d => d.service_id === r.service_id)
         const optsProveedor = dispDeServicio.map(d => {
-            // Calcular libres teniendo en cuenta el estado actual del panel
             const ocupadasEnPanel = reorgFilas
                 .filter(f => f.provider_id === d.provider_id && f.service_id === d.service_id && f.id !== r.id)
                 .reduce((s, f) => s + f.slots, 0)
@@ -995,9 +943,9 @@ function renderPanelReorganizar() {
             const libres        = (d.total_slots ?? 0) - totalOcupadas
 
             let simbolo = ''
-            if      (libres >= r.slots)  simbolo = '✅'
-            else if (libres > 0)         simbolo = '⚠️'
-            else                          simbolo = '❌'
+            if      (libres >= r.slots) simbolo = '✅'
+            else if (libres > 0)        simbolo = '⚠️'
+            else                         simbolo = '❌'
 
             return `<option value="${d.provider_id}" ${r.provider_id === d.provider_id ? 'selected' : ''}>
                 ${d.provider_id} (${libres} libres) ${simbolo}
@@ -1026,31 +974,27 @@ function renderPanelReorganizar() {
 }
 
 window.reorgCambiarServicio = function(idx, nuevoServicio) {
-    const r = reorgFilas[idx]
+    const r        = reorgFilas[idx]
     const original = todasReservas.find(res => res.id === r.id)
 
-    // Cambiar el servicio de la fila
     reorgFilas[idx].service_id = nuevoServicio
 
-    // Si el proveedor actual no ofrece el nuevo servicio, resetear al primero disponible
-    const dispNuevoServicio = disponibilidad.filter(d => d.service_id === nuevoServicio)
+    const dispNuevoServicio        = disponibilidad.filter(d => d.service_id === nuevoServicio)
     const proveedorSigueDisponible = dispNuevoServicio.some(d => d.provider_id === r.provider_id)
     if (!proveedorSigueDisponible && dispNuevoServicio.length > 0) {
         reorgFilas[idx].provider_id = dispNuevoServicio[0].provider_id
     }
 
-    // Marcar como cambio si difiere del original
     registrarCambioReorg(idx, original)
     renderPanelReorganizar()
 }
 
 window.reorgCambiarProveedor = function(idx, nuevoProveedor) {
-    const r = reorgFilas[idx]
+    const r        = reorgFilas[idx]
     const original = todasReservas.find(res => res.id === r.id)
 
     reorgFilas[idx].provider_id = nuevoProveedor
 
-    // Si el nuevo proveedor no está en reorgFilas pero podría tener conflictos, añadir sus reservas
     const yaEnPanel = reorgFilas.some(f =>
         f.provider_id === nuevoProveedor && f.service_id === r.service_id && f.id !== r.id
     )
@@ -1061,12 +1005,11 @@ window.reorgCambiarProveedor = function(idx, nuevoProveedor) {
             res.status      !== 'Cancelada'    &&
             !reorgFilas.find(f => f.id === res.id)
         )
-        const dispNuevoProv = disponibilidad.find(d =>
+        const dispNuevoProv     = disponibilidad.find(d =>
             d.provider_id === nuevoProveedor && d.service_id === r.service_id
         )
         const totalNuevoProv    = dispNuevoProv?.total_slots ?? 0
         const ocupadasNuevoProv = reservasNuevoProv.reduce((s, res) => s + res.slots, 0) + r.slots
-        // Solo añadir sus reservas al panel si no cabe
         if (ocupadasNuevoProv > totalNuevoProv) {
             reorgFilas.push(...reservasNuevoProv.map(res => ({ ...res })))
         }
@@ -1079,10 +1022,7 @@ window.reorgCambiarProveedor = function(idx, nuevoProveedor) {
 function registrarCambioReorg(idx, original) {
     const r = reorgFilas[idx]
     if (r.service_id !== original.service_id || r.provider_id !== original.provider_id) {
-        reorgCambios[r.id] = {
-            service_id:  r.service_id,
-            provider_id: r.provider_id
-        }
+        reorgCambios[r.id] = { service_id: r.service_id, provider_id: r.provider_id }
     } else {
         delete reorgCambios[r.id]
     }
@@ -1091,7 +1031,6 @@ function registrarCambioReorg(idx, original) {
 window.confirmarReorganizacion = async function() {
     if (Object.keys(reorgCambios).length === 0) return
 
-    // Construir resumen de cambios para confirmación
     const lineas = Object.entries(reorgCambios).map(([id, cambio]) => {
         const original = todasReservas.find(r => r.id === id)
         const partes   = []
@@ -1100,12 +1039,9 @@ window.confirmarReorganizacion = async function() {
         return `${id}  ${original.client_id}  ${partes.join('  |  ')}`
     })
 
-    const confirmado = confirm(
-        `¿Confirmar los siguientes cambios?\n\n${lineas.join('\n')}`
-    )
+    const confirmado = confirm(`¿Confirmar los siguientes cambios?\n\n${lineas.join('\n')}`)
     if (!confirmado) return
 
-    // Guardar en Supabase
     for (const [id, cambio] of Object.entries(reorgCambios)) {
         const { error } = await supabase.from('reservations')
             .update({ service_id: cambio.service_id, provider_id: cambio.provider_id })
@@ -1113,25 +1049,31 @@ window.confirmarReorganizacion = async function() {
         if (error) { alert(`Error al actualizar ${id}: ` + error.message); return }
     }
 
-    // Refrescar cache global
     const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
     todasReservas = reservasActualizadas
 
-    // Checkear consumption para todos los afectados
-    const afectados = new Set()
+    // Persistir cobros de todos los clientes afectados
+    const clientesAfectados = new Set(
+        Object.keys(reorgCambios)
+            .map(id => todasReservas.find(r => r.id === id)?.client_id)
+            .filter(Boolean)
+    )
+    for (const clienteId of clientesAfectados) {
+        await persistirCobrosCliente(supabase, clienteId, todasReservas)
+    }
+
+    // Persistir pagos de todos los proveedores afectados
+    const proveedoresAfectados = new Set()
     Object.entries(reorgCambios).forEach(([id, cambio]) => {
-        const original = todasReservas.find(r => r.id === id)  // ya actualizado
-        afectados.add(`${cambio.provider_id}|${cambio.service_id}`)
-        if (original) afectados.add(`${original.provider_id}|${original.service_id}`)
+        const original = todasReservas.find(r => r.id === id)
+        proveedoresAfectados.add(cambio.provider_id)
+        if (original) proveedoresAfectados.add(original.provider_id)
     })
-    for (const clave of afectados) {
-        const [pId, sId] = clave.split('|')
-        await checkearConsumption(pId, sId)
+    for (const proveedorId of proveedoresAfectados) {
+        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
     }
 
     cerrarPanelReorganizar()
-
-    // Refrescar el bloque de disponibilidad para que el formulario muestre las plazas actualizadas
     actualizarBloque3()
     actualizarProveedores()
     if (clienteActual) await cargarReservasCliente(clienteActual.id)
