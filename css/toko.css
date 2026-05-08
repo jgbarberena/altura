@@ -16,4 +16,8 @@
         background: url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_desktop.jpg") center/cover no-repeat;
     }
 
+    .toko-wine .card.slideshow img {
+        max-height: 90vh;
+    }
+
 }
