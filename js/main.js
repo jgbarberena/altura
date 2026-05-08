@@ -1306,13 +1306,11 @@ function initSlideshows() {
         if (container.querySelector('.slideshow-spacer')) return;
 
         // Crear spacer
+        // Crear spacer clonando el picture completo (con sources) para respetar proporción en cada breakpoint
         const spacer = document.createElement('div');
         spacer.classList.add('slideshow-spacer');
-        const firstImg = slides[0].querySelector('img');
-        if (firstImg) {
-            const spacerImg = firstImg.cloneNode(true);
-            spacer.appendChild(spacerImg);
-        }
+        const firstPicture = slides[0].cloneNode(true);
+        spacer.appendChild(firstPicture);
         // Insertamos al principio del contenedor
         container.prepend(spacer);
 
