@@ -673,11 +673,23 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
     }).join('')
 }
 
-// Selecciona proveedor al hacer click en su cajita
 window.seleccionarProveedorDesdeCajita = function(proveedorId) {
+    const servicioId = selectServicio.value
+    const plazas     = parseInt(inputPlazas.value) || 0
+
+    if (plazas > 0) {
+        const { libres } = getPlazasInfo(proveedorId, servicioId)
+        if (libres < plazas) {
+            // No hay sitio — abrir panel de reorganización
+            abrirPanelReorganizar(proveedorId, servicioId, plazas)
+            return
+        }
+    }
+
+    // Hay sitio — seleccionar normalmente
     const opcionExiste = [...selectProveedor.options].some(o => o.value === proveedorId)
     if (!opcionExiste) {
-        const { total, libres } = getPlazasInfo(proveedorId, selectServicio.value)
+        const { total, libres } = getPlazasInfo(proveedorId, servicioId)
         const opt = document.createElement('option')
         opt.value       = proveedorId
         opt.textContent = `${proveedorId} (${libres}/${total})`
@@ -891,4 +903,238 @@ async function checkearConsumption(proveedorId, servicioId) {
     if (resto.length > 0) await supabase.from('payments').delete().in('id', resto.map(p => p.id))
 
     console.warn(`⚠️ Consumption corregido: ${proveedorId}/${servicioId} — ${importeActual}€ → ${importeCorrecto}€`)
+}
+
+// ===== PANEL DE REORGANIZACIÓN DE DISPONIBILIDAD =====
+
+// Estado del panel
+let reorgContexto = null  // { proveedorId, servicioId, plazasNecesarias }
+let reorgCambios  = {}    // { reservaId: { service_id, provider_id, slots, price_per_slot } }
+let reorgFilas    = []    // reservas que se muestran en el panel
+
+function abrirPanelReorganizar(proveedorId, servicioId, plazasNecesarias) {
+    reorgContexto = { proveedorId, servicioId, plazasNecesarias }
+    reorgCambios  = {}
+
+    // Cargar reservas del proveedor+servicio que bloquean
+    const reservasBloquean = todasReservas.filter(r =>
+        r.provider_id === proveedorId &&
+        r.service_id  === servicioId  &&
+        r.status      !== 'Cancelada'
+    )
+
+    reorgFilas = reservasBloquean.map(r => ({ ...r }))  // copia para no mutar el original
+
+    renderPanelReorganizar()
+
+    document.getElementById('panel-reorganizar').style.display = 'block'
+    document.getElementById('overlay-reorg').style.display     = 'block'
+}
+
+window.cerrarPanelReorganizar = function() {
+    document.getElementById('panel-reorganizar').style.display = 'none'
+    document.getElementById('overlay-reorg').style.display     = 'none'
+    reorgContexto = null
+    reorgCambios  = {}
+    reorgFilas    = []
+}
+
+function renderPanelReorganizar() {
+    const { proveedorId, servicioId, plazasNecesarias } = reorgContexto
+
+    // Calcular cuántas plazas libres hay actualmente en el proveedor objetivo
+    // teniendo en cuenta los cambios pendientes en el panel
+    const plazasOcupadas = reorgFilas
+        .filter(r => r.provider_id === proveedorId && r.service_id === servicioId)
+        .reduce((s, r) => s + r.slots, 0)
+
+    const dispObj  = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const totalSlots = dispObj?.total_slots ?? 0
+    const libresAhora = totalSlots - plazasOcupadas
+
+    // Cabecera
+    document.getElementById('panel-reorg-cabecera').textContent =
+        `Quieres meter ${plazasNecesarias} plaza(s) en ${proveedorId} / ${servicioId}`
+
+    // Estado de disponibilidad
+    const estadoDiv = document.getElementById('panel-reorg-estado')
+    if (libresAhora >= plazasNecesarias) {
+        estadoDiv.textContent         = `✅ Ya hay ${libresAhora} plazas libres — puedes confirmar`
+        estadoDiv.style.background    = 'var(--accent-ok-bg, #f0fff0)'
+        estadoDiv.style.color         = 'var(--accent-ok)'
+        document.getElementById('btnConfirmarReorg').disabled = Object.keys(reorgCambios).length === 0
+    } else {
+        estadoDiv.textContent         = `❌ Faltan ${plazasNecesarias - libresAhora} plazas — mueve reservas abajo`
+        estadoDiv.style.background    = '#fff5f5'
+        estadoDiv.style.color         = 'var(--accent)'
+        document.getElementById('btnConfirmarReorg').disabled = true
+    }
+
+    // Tabla de reservas
+    const tbody = document.getElementById('tbody-reorg')
+    tbody.innerHTML = reorgFilas.map((r, idx) => {
+        const tieneCambio = !!reorgCambios[r.id]
+
+        // Construir selector de servicio
+        const optsServicio = servicios.map(s =>
+            `<option value="${s.id}" ${r.service_id === s.id ? 'selected' : ''}>${s.id}</option>`
+        ).join('')
+
+        // Construir selector de proveedor para el servicio actual de esta fila
+        const dispDeServicio = disponibilidad.filter(d => d.service_id === r.service_id)
+        const optsProveedor = dispDeServicio.map(d => {
+            // Calcular libres teniendo en cuenta el estado actual del panel
+            const ocupadasEnPanel = reorgFilas
+                .filter(f => f.provider_id === d.provider_id && f.service_id === d.service_id && f.id !== r.id)
+                .reduce((s, f) => s + f.slots, 0)
+            const reservasReales = todasReservas
+                .filter(res => res.provider_id === d.provider_id && res.service_id === d.service_id &&
+                               res.status !== 'Cancelada' && !reorgFilas.find(f => f.id === res.id))
+                .reduce((s, res) => s + res.slots, 0)
+            const totalOcupadas = ocupadasEnPanel + reservasReales
+            const libres        = (d.total_slots ?? 0) - totalOcupadas
+
+            let simbolo = ''
+            if      (libres >= r.slots)  simbolo = '✅'
+            else if (libres > 0)         simbolo = '⚠️'
+            else                          simbolo = '❌'
+
+            return `<option value="${d.provider_id}" ${r.provider_id === d.provider_id ? 'selected' : ''}>
+                ${d.provider_id} (${libres} libres) ${simbolo}
+            </option>`
+        }).join('')
+
+        return `<tr style="${tieneCambio ? 'background:#fffbec' : ''}">
+            <td style="font-size:12px; white-space:nowrap">${r.id}</td>
+            <td style="font-size:12px">${r.client_id}</td>
+            <td>
+                <select style="font-size:11px; padding:3px 4px; width:100%"
+                    onchange="reorgCambiarServicio(${idx}, this.value)">
+                    ${optsServicio}
+                </select>
+            </td>
+            <td>
+                <select style="font-size:11px; padding:3px 4px; width:100%"
+                    onchange="reorgCambiarProveedor(${idx}, this.value)">
+                    ${optsProveedor}
+                </select>
+            </td>
+            <td style="font-size:12px; text-align:center">${r.slots}</td>
+            <td style="font-size:12px; text-align:center">${r.price_per_slot}€</td>
+        </tr>`
+    }).join('')
+}
+
+window.reorgCambiarServicio = function(idx, nuevoServicio) {
+    const r = reorgFilas[idx]
+    const original = todasReservas.find(res => res.id === r.id)
+
+    // Cambiar el servicio de la fila
+    reorgFilas[idx].service_id = nuevoServicio
+
+    // Si el proveedor actual no ofrece el nuevo servicio, resetear al primero disponible
+    const dispNuevoServicio = disponibilidad.filter(d => d.service_id === nuevoServicio)
+    const proveedorSigueDisponible = dispNuevoServicio.some(d => d.provider_id === r.provider_id)
+    if (!proveedorSigueDisponible && dispNuevoServicio.length > 0) {
+        reorgFilas[idx].provider_id = dispNuevoServicio[0].provider_id
+    }
+
+    // Marcar como cambio si difiere del original
+    registrarCambioReorg(idx, original)
+    renderPanelReorganizar()
+}
+
+window.reorgCambiarProveedor = function(idx, nuevoProveedor) {
+    const r = reorgFilas[idx]
+    const original = todasReservas.find(res => res.id === r.id)
+
+    reorgFilas[idx].provider_id = nuevoProveedor
+
+    // Si el nuevo proveedor no está en reorgFilas pero podría tener conflictos, añadir sus reservas
+    const yaEnPanel = reorgFilas.some(f =>
+        f.provider_id === nuevoProveedor && f.service_id === r.service_id && f.id !== r.id
+    )
+    if (!yaEnPanel) {
+        const reservasNuevoProv = todasReservas.filter(res =>
+            res.provider_id === nuevoProveedor &&
+            res.service_id  === r.service_id   &&
+            res.status      !== 'Cancelada'    &&
+            !reorgFilas.find(f => f.id === res.id)
+        )
+        const dispNuevoProv = disponibilidad.find(d =>
+            d.provider_id === nuevoProveedor && d.service_id === r.service_id
+        )
+        const totalNuevoProv    = dispNuevoProv?.total_slots ?? 0
+        const ocupadasNuevoProv = reservasNuevoProv.reduce((s, res) => s + res.slots, 0) + r.slots
+        // Solo añadir sus reservas al panel si no cabe
+        if (ocupadasNuevoProv > totalNuevoProv) {
+            reorgFilas.push(...reservasNuevoProv.map(res => ({ ...res })))
+        }
+    }
+
+    registrarCambioReorg(idx, original)
+    renderPanelReorganizar()
+}
+
+function registrarCambioReorg(idx, original) {
+    const r = reorgFilas[idx]
+    if (r.service_id !== original.service_id || r.provider_id !== original.provider_id) {
+        reorgCambios[r.id] = {
+            service_id:  r.service_id,
+            provider_id: r.provider_id
+        }
+    } else {
+        delete reorgCambios[r.id]
+    }
+}
+
+window.confirmarReorganizacion = async function() {
+    if (Object.keys(reorgCambios).length === 0) return
+
+    // Construir resumen de cambios para confirmación
+    const lineas = Object.entries(reorgCambios).map(([id, cambio]) => {
+        const original = todasReservas.find(r => r.id === id)
+        const partes   = []
+        if (cambio.service_id  !== original.service_id)  partes.push(`${original.service_id} → ${cambio.service_id}`)
+        if (cambio.provider_id !== original.provider_id) partes.push(`${original.provider_id} → ${cambio.provider_id}`)
+        return `${id}  ${original.client_id}  ${partes.join('  |  ')}`
+    })
+
+    const confirmado = confirm(
+        `¿Confirmar los siguientes cambios?\n\n${lineas.join('\n')}`
+    )
+    if (!confirmado) return
+
+    // Guardar en Supabase
+    for (const [id, cambio] of Object.entries(reorgCambios)) {
+        const { error } = await supabase.from('reservations')
+            .update({ service_id: cambio.service_id, provider_id: cambio.provider_id })
+            .eq('id', id)
+        if (error) { alert(`Error al actualizar ${id}: ` + error.message); return }
+    }
+
+    // Refrescar cache global
+    const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
+    todasReservas = reservasActualizadas
+
+    // Checkear consumption para todos los afectados
+    const afectados = new Set()
+    Object.entries(reorgCambios).forEach(([id, cambio]) => {
+        const original = todasReservas.find(r => r.id === id)  // ya actualizado
+        afectados.add(`${cambio.provider_id}|${cambio.service_id}`)
+        if (original) afectados.add(`${original.provider_id}|${original.service_id}`)
+    })
+    for (const clave of afectados) {
+        const [pId, sId] = clave.split('|')
+        await checkearConsumption(pId, sId)
+    }
+
+    cerrarPanelReorganizar()
+
+    // Refrescar el bloque de disponibilidad para que el formulario muestre las plazas actualizadas
+    actualizarBloque3()
+    actualizarProveedores()
+    if (clienteActual) await cargarReservasCliente(clienteActual.id)
+
+    alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }

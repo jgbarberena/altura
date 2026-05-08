@@ -20,7 +20,7 @@
     <div class="layout">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <a href="../index.html" style="text-decoration:none">
+                <a href="../index.html" class="sidebar-logo">
                     <h1>Vive San Fermín</h1>
                 </a>
                 <p>Panel de gestión</p>
@@ -68,7 +68,7 @@
                         <input type="text" id="inputComments" placeholder="Comentarios">
                     </div>
                 </div>
-                <div id="cliente-status" style="margin-top:12px; font-size:12px; color:var(--subtle)"></div>
+                <div id="cliente-status"></div>
             </div>
 
             <!-- FILA: BLOQUE 2 + BLOQUE 3 -->
@@ -109,15 +109,15 @@
                                 <option value="Pendiente">Pendiente</option>
                             </select>
                         </div>
-                        <div class="form-field" style="grid-column: 1 / -1">
+                        <div class="form-field form-field--full">
                             <label>Comentarios</label>
                             <input type="text" id="inputReservaComments" placeholder="Comentarios">
                         </div>
                     </div>
 
-                    <div id="precio-status" style="margin-top:8px; font-size:12px;"></div>
+                    <div id="precio-status"></div>
 
-                    <div class="btn-row" style="margin-top:16px">
+                    <div class="btn-row btn-row--top">
                         <button class="btn btn-primary" id="btnAnadirReserva" disabled>Añadir reserva</button>
                         <button class="btn btn-secondary" id="btnCancelarEdicion" style="display:none">✕ Cancelar edición</button>
                     </div>
@@ -126,7 +126,7 @@
                 <!-- BLOQUE 3: DISPONIBILIDAD -->
                 <div class="bloque" id="bloque-disponibilidad" style="display:none">
                     <h2>📊 Disponibilidad</h2>
-                    <div id="columnas-proveedores" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:12px;"></div>
+                    <div id="columnas-proveedores" class="columnas-proveedores-grid"></div>
                 </div>
 
             </div>
@@ -149,8 +149,8 @@
             <!-- BLOQUE 5: COBROS AL CLIENTE -->
             <div class="bloque" id="bloque-cobros-cliente" style="display:none">
                 <h2>💰 Cobros al cliente</h2>
-                <div id="resumen-cobros-cliente" style="margin-bottom:16px; font-size:13px; color:var(--subtle)"></div>
-                <div class="table-wrapper" style="margin-bottom:12px">
+                <div id="resumen-cobros-cliente"></div>
+                <div class="table-wrapper table-wrapper--spaced">
                     <table>
                         <thead><tr>
                             <th>Concepto</th>
@@ -166,7 +166,7 @@
                     <button class="btn btn-secondary" id="btnNuevoCobroCliente">+ Añadir hito de cobro</button>
                     <button class="btn btn-primary" id="btnGuardarCobros">💾 Guardar cobros</button>
                 </div>
-                <div id="form-nuevo-cobro-cliente" style="display:none; margin-top:14px">
+                <div id="form-nuevo-cobro-cliente" class="form-subseccion" style="display:none">
                     <div class="form-grid">
                         <div class="form-field">
                             <label>Concepto</label>
@@ -197,6 +197,41 @@
 
         </main>
     </div>
+
+    <!-- PANEL DE REORGANIZACIÓN DE DISPONIBILIDAD -->
+    <div id="panel-reorganizar">
+        <div class="panel-reorg-header">
+            <div>
+                <h2 class="panel-reorg-titulo">🔄 Reorganizar disponibilidad</h2>
+                <div id="panel-reorg-cabecera"></div>
+            </div>
+            <button class="btn btn-secondary panel-reorg-cerrar" onclick="cerrarPanelReorganizar()">✕ Cerrar</button>
+        </div>
+
+        <div id="panel-reorg-estado"></div>
+
+        <div class="table-wrapper table-wrapper--spaced">
+            <table id="tabla-reorg">
+                <thead><tr>
+                    <th>Reserva</th>
+                    <th>Cliente</th>
+                    <th>Servicio</th>
+                    <th>Proveedor</th>
+                    <th>Plazas</th>
+                    <th>Precio/plaza</th>
+                </tr></thead>
+                <tbody id="tbody-reorg"></tbody>
+            </table>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btnConfirmarReorg" disabled onclick="confirmarReorganizacion()">
+                ✅ Confirmar cambios
+            </button>
+            <button class="btn btn-secondary" onclick="cerrarPanelReorganizar()">Cancelar</button>
+        </div>
+    </div>
+    <div id="overlay-reorg"></div>
 
     <script type="module" src="js/formulario.js"></script>
 </body>
