@@ -21,11 +21,13 @@ const hoy             = new Date().toISOString().split('T')[0]
 const fmt             = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
 // ===== REFERENCIAS DOM =====
-const inputId       = document.getElementById('inputClientId')
-const inputName     = document.getElementById('inputName')
-const inputCompany  = document.getElementById('inputCompany')
-const inputPhone    = document.getElementById('inputPhone')
-const inputEmail    = document.getElementById('inputEmail')
+const inputId      = document.getElementById('inputClientId')
+const inputName    = document.getElementById('inputName')
+const inputCompany = document.getElementById('inputCompany')
+const inputPhone   = document.getElementById('inputPhone')
+const inputEmail   = document.getElementById('inputEmail')
+const inputAddress = document.getElementById('inputAddress')
+const inputNif     = document.getElementById('inputNif')
 const inputComments = document.getElementById('inputComments')
 const autoList      = document.getElementById('autocompleteList')
 const statusDiv     = document.getElementById('cliente-status')
@@ -113,6 +115,8 @@ function cargarCliente(cliente) {
     inputCompany.value  = cliente.company  ?? ''
     inputPhone.value    = cliente.phone    ?? ''
     inputEmail.value    = cliente.email    ?? ''
+    inputAddress.value  = cliente.address  ?? ''
+    inputNif.value      = cliente.nif      ?? ''
     inputComments.value = cliente.comments ?? ''
     statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente'
     statusDiv.style.color = 'var(--accent-ok)'
@@ -123,7 +127,7 @@ function cargarCliente(cliente) {
 function limpiarCamposCliente() {
     clienteActual = null
     inputName.value = inputCompany.value = inputPhone.value =
-    inputEmail.value = inputComments.value = ''
+    inputEmail.value = inputComments.value = inputAddress.value = inputNif.value = ''
     statusDiv.textContent = ''
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
     document.getElementById('bloque-cobros-cliente').style.display   = 'none'
@@ -154,8 +158,8 @@ function limpiarFormularioReserva() {
     sortReservasDir = 'asc'
 }
 
-const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputComments]
-const camposDB      = ['name', 'company', 'phone', 'email', 'comments']
+const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputAddress, inputNif, inputComments]
+const camposDB      = ['name', 'company', 'phone', 'email', 'address', 'nif', 'comments']
 camposCliente.forEach((input, i) => {
     input.addEventListener('change', async () => {
         if (!clienteActual) return
@@ -465,7 +469,6 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         todasReservas = todasReservas.map(r =>
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
-        // Persistir cobros del cliente y pagos de proveedores afectados
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         for (const { proveedorId } of afectadas) {
             await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
@@ -501,11 +504,9 @@ async function eliminarSeleccionadas() {
                 return
             }
         }
-        // Persistir cobros actualizados si quedan reservas
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
     }
 
-    // Persistir pagos de proveedores afectados
     for (const { proveedorId } of afectadas) {
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
     }
@@ -534,7 +535,6 @@ btnAnadir.addEventListener('click', async () => {
     if (plazas === 0) { if (!confirm('¿Crear una reserva con 0 plazas?')) return }
 
     if (reservaEditandoId) {
-        // MODO EDITAR
         const { error } = await supabase.from('reservations').update({
             service_id: servicioId, provider_id: proveedorId,
             slots: plazas, price_per_slot: precio, status: estado, comments
@@ -551,7 +551,6 @@ btnAnadir.addEventListener('click', async () => {
         limpiarFormularioReserva()
 
     } else {
-        // MODO CREAR
         const { libres } = getPlazasInfo(proveedorId, servicioId)
         if (libres < plazas) {
             alert(`No hay suficientes plazas libres. Disponibles: ${libres}, necesitas: ${plazas}`)
@@ -871,26 +870,46 @@ document.getElementById('btnGuardarCobros').addEventListener('click', async () =
         })
     }
 
-    alert('✅ Cobros guardados correctamente')
+    await cargarCobrosCliente(clienteActual.id, reservasCliente)  // ← sustituye el alert
 })
 
 window.facturarHito = async function(hitoId) {
     if (!clienteActual) return
-    // Pasar las reservas del cliente con sus charges adjuntos para que factura.js
-    // pueda calcular totales y detectar si es liquidación final
+    hitoId = parseInt(hitoId)
+
+    const hitoTemp    = hitosClienteTemp.find(h => h.id === hitoId)
+    const esHitoFinal = hitoTemp?.esFinal ?? false
+
+    if (esHitoFinal) {
+        const sinFacturar = hitosClienteTemp.filter(h =>
+            h.id && h.id !== hitoId && !h.invoiced
+        )
+        if (sinFacturar.length > 0) {
+            const lista = sinFacturar.map(h =>
+                `- ${h.comments ?? 'Sin concepto'}: ${fmt(h.amount)}`
+            ).join('\n')
+            alert(
+                `No se puede emitir la factura final porque hay hitos pendientes de facturar:\n\n${lista}\n\n` +
+                `Factura primero esos hitos, o eliminalos si ya no van a cobrarse.`
+            )
+            return
+        }
+    }
+
     const reservasConCharges = reservasCliente.map(r => ({
         ...r,
-        _charges: hitosClienteTemp.filter(h => h.id)  // todos los charges del cliente
+        _charges: hitosClienteTemp.filter(h => h.id),
+        _esFinal: esHitoFinal
     }))
     await abrirPanelFactura(hitoId, clienteActual, reservasConCharges)
 }
 
-// Cuando factura.js emite el evento tras guardar, recargar la tabla de cobros
 document.addEventListener('facturaEmitida', () => {
     if (clienteActual) cargarReservasCliente(clienteActual.id)
 })
 
 // ===== PANEL DE REORGANIZACIÓN DE DISPONIBILIDAD =====
+// Se crea dinámicamente en el body para evitar problemas con position:fixed en Safari
 
 let reorgContexto = null
 let reorgCambios  = {}
@@ -905,18 +924,62 @@ function abrirPanelReorganizar(proveedorId, servicioId, plazasNecesarias) {
         r.service_id  === servicioId  &&
         r.status      !== 'Cancelada'
     )
-
     reorgFilas = reservasBloquean.map(r => ({ ...r }))
 
-    renderPanelReorganizar()
+    // Eliminar instancia anterior si existe
+    document.getElementById('panel-reorganizar')?.remove()
+    document.getElementById('overlay-reorg')?.remove()
 
-    document.getElementById('panel-reorganizar').style.display = 'block'
-    document.getElementById('overlay-reorg').style.display     = 'block'
+    // Crear overlay como hijo directo del body
+    const overlay = document.createElement('div')
+    overlay.id = 'overlay-reorg'
+    document.body.appendChild(overlay)
+
+    // Crear panel como hijo directo del body
+    const panel = document.createElement('div')
+    panel.id = 'panel-reorganizar'
+    panel.innerHTML = `
+        <div class="panel-reorg-header">
+            <div>
+                <h2 class="panel-reorg-titulo">🔄 Reorganizar disponibilidad</h2>
+                <div id="panel-reorg-cabecera"></div>
+            </div>
+            <button class="btn btn-secondary panel-reorg-cerrar" onclick="cerrarPanelReorganizar()">✕ Cerrar</button>
+        </div>
+        <div id="panel-reorg-estado"></div>
+        <div class="table-wrapper table-wrapper--spaced">
+            <table id="tabla-reorg">
+                <thead><tr>
+                    <th>Reserva</th>
+                    <th>Cliente</th>
+                    <th>Servicio</th>
+                    <th>Proveedor</th>
+                    <th>Plazas</th>
+                    <th>Precio/plaza</th>
+                </tr></thead>
+                <tbody id="tbody-reorg"></tbody>
+            </table>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btnConfirmarReorg" disabled onclick="confirmarReorganizacion()">
+                ✅ Confirmar cambios
+            </button>
+            <button class="btn btn-secondary" onclick="cerrarPanelReorganizar()">Cancelar</button>
+        </div>
+    `
+    document.body.appendChild(panel)
+
+    // requestAnimationFrame garantiza que Safari pinte el elemento antes de mostrarlo
+    requestAnimationFrame(() => {
+        panel.style.display   = 'block'
+        overlay.style.display = 'block'
+        renderPanelReorganizar()
+    })
 }
 
 window.cerrarPanelReorganizar = function() {
-    document.getElementById('panel-reorganizar').style.display = 'none'
-    document.getElementById('overlay-reorg').style.display     = 'none'
+    document.getElementById('panel-reorganizar')?.remove()
+    document.getElementById('overlay-reorg')?.remove()
     reorgContexto = null
     reorgCambios  = {}
     reorgFilas    = []
@@ -929,8 +992,8 @@ function renderPanelReorganizar() {
         .filter(r => r.provider_id === proveedorId && r.service_id === servicioId)
         .reduce((s, r) => s + r.slots, 0)
 
-    const dispObj    = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
-    const totalSlots = dispObj?.total_slots ?? 0
+    const dispObj     = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const totalSlots  = dispObj?.total_slots ?? 0
     const libresAhora = totalSlots - plazasOcupadas
 
     document.getElementById('panel-reorg-cabecera').textContent =
@@ -1079,7 +1142,6 @@ window.confirmarReorganizacion = async function() {
     const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
     todasReservas = reservasActualizadas
 
-    // Persistir cobros de todos los clientes afectados
     const clientesAfectados = new Set(
         Object.keys(reorgCambios)
             .map(id => todasReservas.find(r => r.id === id)?.client_id)
@@ -1089,7 +1151,6 @@ window.confirmarReorganizacion = async function() {
         await persistirCobrosCliente(supabase, clienteId, todasReservas)
     }
 
-    // Persistir pagos de todos los proveedores afectados
     const proveedoresAfectados = new Set()
     Object.entries(reorgCambios).forEach(([id, cambio]) => {
         const original = todasReservas.find(r => r.id === id)

@@ -64,6 +64,14 @@
                         <input type="text" id="inputEmail" placeholder="Email">
                     </div>
                     <div class="form-field">
+                        <label>Dirección</label>
+                        <input type="text" id="inputAddress" placeholder="Dirección completa">
+                    </div>
+                    <div class="form-field">
+                        <label>NIF / CIF</label>
+                        <input type="text" id="inputNif" placeholder="NIF o CIF">
+                    </div>
+                    <div class="form-field">
                         <label>Comentarios</label>
                         <input type="text" id="inputComments" placeholder="Comentarios">
                     </div>
@@ -198,42 +206,7 @@
         </main>
     </div>
 
-    <!-- PANEL DE REORGANIZACIÓN DE DISPONIBILIDAD -->
-    <div id="panel-reorganizar">
-        <div class="panel-reorg-header">
-            <div>
-                <h2 class="panel-reorg-titulo">🔄 Reorganizar disponibilidad</h2>
-                <div id="panel-reorg-cabecera"></div>
-            </div>
-            <button class="btn btn-secondary panel-reorg-cerrar" onclick="cerrarPanelReorganizar()">✕ Cerrar</button>
-        </div>
-
-        <div id="panel-reorg-estado"></div>
-
-        <div class="table-wrapper table-wrapper--spaced">
-            <table id="tabla-reorg">
-                <thead><tr>
-                    <th>Reserva</th>
-                    <th>Cliente</th>
-                    <th>Servicio</th>
-                    <th>Proveedor</th>
-                    <th>Plazas</th>
-                    <th>Precio/plaza</th>
-                </tr></thead>
-                <tbody id="tbody-reorg"></tbody>
-            </table>
-        </div>
-
-        <div class="btn-row">
-            <button class="btn btn-primary" id="btnConfirmarReorg" disabled onclick="confirmarReorganizacion()">
-                ✅ Confirmar cambios
-            </button>
-            <button class="btn btn-secondary" onclick="cerrarPanelReorganizar()">Cancelar</button>
-        </div>
-    </div>
-    <div id="overlay-reorg"></div>
-
-    <!-- PANEL DE FACTURACIÓN -->
+    <!-- PANEL DE FACTURACIÓN (gestionado por factura.js) -->
     <div id="panel-factura">
         <div class="panel-factura-header">
             <div>
@@ -242,11 +215,8 @@
             </div>
             <button class="btn btn-secondary panel-factura-cerrar" id="btnCerrarFactura">✕ Cerrar</button>
         </div>
-
         <div id="panel-factura-alerta" class="panel-factura-alerta" style="display:none"></div>
-
         <div id="panel-factura-contenido"></div>
-
         <div class="panel-factura-footer">
             <button class="btn btn-secondary" id="btnCancelarFactura">Cancelar</button>
             <button class="btn btn-primary" id="btnEmitirFactura">⬇ Generar PDF y preparar correo</button>

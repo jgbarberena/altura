@@ -398,11 +398,9 @@ td.error { color: var(--accent);      font-weight: 500; }
     overflow-y: auto;
     padding: 24px;
     box-sizing: border-box;
-    display: none;
 }
 
 #overlay-reorg {
-    display: none;
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.3);
@@ -680,7 +678,7 @@ td.error { color: var(--accent);      font-weight: 500; }
 .factura-lineas { width: 100%; border-collapse: collapse; font-size: 12px; }
 .factura-lineas th {
     text-align: left; padding: 5px 8px;
-    background: #fcf5f5; color: var(--accent);
+    background: transparent; color: var(--accent);
     font-weight: 600; font-size: 10px;
     letter-spacing: 0.05em;
     border-bottom: 1px solid #eee;
@@ -691,7 +689,7 @@ td.error { color: var(--accent);      font-weight: 500; }
     padding: 7px 8px;
     border-bottom: 1px solid #f4f4f4;
     color: #333;
-    background: #fff;
+    background: transparent;
     white-space: normal;
 }
 .factura-lineas tr:last-child td { border-bottom: none; }
@@ -702,7 +700,7 @@ td.error { color: var(--accent);      font-weight: 500; }
     color: #999; font-weight: 500;
     border-bottom: 1px solid #eee;
     font-size: 10px; letter-spacing: 0.04em;
-    background: #fff;
+    background: transparent;
     text-transform: none;
 }
 .factura-rsv-table th:last-child,
