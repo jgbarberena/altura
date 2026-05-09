@@ -802,6 +802,11 @@ window.toggleCobroCliente = function(idx) {
 }
 
 window.eliminarCobroCliente = function(idx) {
+    const h = hitosClienteTemp[idx]
+    if (h.invoiced) {
+        alert('Este hito ya ha sido facturado y no puede eliminarse.\nSi necesitas corregirlo, contacta con el administrador de la base de datos.')
+        return
+    }
     hitosClienteTemp.splice(idx, 1)
     const total    = calcularTotalCobrarCliente(clienteActual.id)
     const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
