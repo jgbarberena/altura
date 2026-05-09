@@ -233,6 +233,27 @@
     </div>
     <div id="overlay-reorg"></div>
 
+    <!-- PANEL DE FACTURACIÓN -->
+    <div id="panel-factura">
+        <div class="panel-factura-header">
+            <div>
+                <h2 class="panel-factura-titulo">📄 Revisar y emitir factura</h2>
+                <div id="panel-factura-subtitulo"></div>
+            </div>
+            <button class="btn btn-secondary panel-factura-cerrar" id="btnCerrarFactura">✕ Cerrar</button>
+        </div>
+
+        <div id="panel-factura-alerta" class="panel-factura-alerta" style="display:none"></div>
+
+        <div id="panel-factura-contenido"></div>
+
+        <div class="panel-factura-footer">
+            <button class="btn btn-secondary" id="btnCancelarFactura">Cancelar</button>
+            <button class="btn btn-primary" id="btnEmitirFactura">⬇ Generar PDF y preparar correo</button>
+        </div>
+    </div>
+    <div id="overlay-factura"></div>
+
     <script type="module" src="js/formulario.js"></script>
 </body>
 </html>

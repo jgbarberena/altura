@@ -1,8 +1,10 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
+import { initFacturacion, abrirPanelFactura } from './factura.js'
 
 await requireAuth()
+initFacturacion(supabase)
 document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
 
@@ -750,8 +752,16 @@ function actualizarResumenCobros(clienteId, total, prepagos, cobroFinal) {
 
 function renderCobrosCliente() {
     const tbody = document.getElementById('tbody-cobros-cliente')
-    tbody.innerHTML = hitosClienteTemp.map((h, i) => `
-        <tr>
+    tbody.innerHTML = hitosClienteTemp.map((h, i) => {
+        const yaFacturado = h.invoiced && h.invoice_number
+        const btnFacturar = !yaFacturado && h.id
+            ? `<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
+                   onclick="facturarHito('${h.id}')">📄 Facturar</button>`
+            : yaFacturado
+                ? `<span style="font-size:11px;color:var(--accent-ok);margin-right:6px">📄 ${h.invoice_number}</span>`
+                : ''
+
+        return `<tr>
             <td>${h.comments}</td>
             <td>${fmt(h.amount)}${h.esFinal ? ' <span style="font-size:11px;color:var(--subtle)">(calculado)</span>' : ''}</td>
             <td>${h.esFinal
@@ -761,13 +771,14 @@ function renderCobrosCliente() {
                 : (h.due_date ?? '—')}</td>
             <td>${h.collected ? `✅ ${h.collected_date ?? ''}` : '⏳ No'}</td>
             <td style="white-space:nowrap">
+                ${btnFacturar}
                 <button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
                     onclick="toggleCobroCliente(${i})">${h.collected ? 'Marcar pendiente' : 'Marcar cobrado'}</button>
                 ${!h.esFinal ? `<button class="btn btn-danger" style="padding:4px 8px;font-size:11px"
                     onclick="eliminarCobroCliente(${i})">🗑</button>` : ''}
             </td>
-        </tr>
-    `).join('')
+        </tr>`
+    }).join('')
 }
 
 window.cambiarFechaCobroFinal = function(idx, valor) {
@@ -861,6 +872,22 @@ document.getElementById('btnGuardarCobros').addEventListener('click', async () =
     }
 
     alert('✅ Cobros guardados correctamente')
+})
+
+window.facturarHito = async function(hitoId) {
+    if (!clienteActual) return
+    // Pasar las reservas del cliente con sus charges adjuntos para que factura.js
+    // pueda calcular totales y detectar si es liquidación final
+    const reservasConCharges = reservasCliente.map(r => ({
+        ...r,
+        _charges: hitosClienteTemp.filter(h => h.id)  // todos los charges del cliente
+    }))
+    await abrirPanelFactura(hitoId, clienteActual, reservasConCharges)
+}
+
+// Cuando factura.js emite el evento tras guardar, recargar la tabla de cobros
+document.addEventListener('facturaEmitida', () => {
+    if (clienteActual) cargarReservasCliente(clienteActual.id)
 })
 
 // ===== PANEL DE REORGANIZACIÓN DE DISPONIBILIDAD =====
