@@ -115,7 +115,7 @@ function cargarCliente(cliente) {
     inputCompany.value  = cliente.company  ?? ''
     inputPhone.value    = cliente.phone    ?? ''
     inputEmail.value    = cliente.email    ?? ''
-    inputAddress.value  = cliente.address  ?? ''
+    inputAddress.value = (cliente.address ?? '').replace(/\n/g, ', ')
     inputNif.value      = cliente.nif      ?? ''
     inputComments.value = cliente.comments ?? ''
     statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente'

@@ -51,6 +51,8 @@ const TABLAS = {
                 clase: (v, row) => v ? 'cobrado-si' : (row.due_date && row.due_date < hoy ? 'cobrado-vencido' : 'cobrado-no') },
             { label: 'Fecha cobro', campo: 'collected_date' },
             { label: 'Concepto',    campo: 'comments' },
+            { label: 'Nº factura',  campo: 'invoice_number', fmt: v => v ?? '—' },
+            { label: 'Facturado',   campo: 'invoiced_at',    fmt: v => v ?? '—' },
         ]
     },
     payments: {

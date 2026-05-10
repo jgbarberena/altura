@@ -165,7 +165,7 @@ function buildFacturaHTML() {
                         NIF/CIF: <span class="factura-editable" contenteditable="true"
                             data-field="nif">${_cliente.nif ?? '— introducir NIF —'}</span><br>
                         <span class="factura-editable" contenteditable="true"
-                            data-field="address">${_cliente.address ?? '— introducir dirección —'}</span>
+                            data-field="address">${(_cliente.address ?? '— introducir dirección —').replace(/\n/g, '<br>')}</span>
                     </div>
                 </div>
             </div>
@@ -290,12 +290,28 @@ function buildLiquidacion() {
     </div>`
 }
 
+// Lee un campo contenteditable preservando los saltos de línea del DOM como \n
+// Los navegadores representan saltos como <br> o como <div> nuevos al pulsar Enter
+function leerTextoConSaltos(el) {
+    if (!el) return ''
+    // Clonar para no modificar el DOM visible
+    const clone = el.cloneNode(true)
+    // <br> → marcador temporal
+    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'))
+    // <div> (salto tipo bloque) → prefijo \n
+    clone.querySelectorAll('div').forEach(div => {
+        div.prepend('\n')
+        div.replaceWith(...div.childNodes)
+    })
+    return clone.textContent.trim()
+}
+
 // ===== EMISIÓN =====
 async function emitirFactura() {
     const preview  = document.getElementById('factura-preview')
     const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
     const nifEdit  = preview.querySelector('[data-field="nif"]')?.textContent?.trim()
-    const addrEdit = preview.querySelector('[data-field="address"]')?.textContent?.trim()
+    const addrEdit = leerTextoConSaltos(preview.querySelector('[data-field="address"]'))
     const nameEdit = preview.querySelector('[data-field="name"]')?.textContent?.trim()
 
     const updates = {}
@@ -335,7 +351,7 @@ async function generarPDF() {
     const preview  = document.getElementById('factura-preview')
     const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
     const nifCli   = preview.querySelector('[data-field="nif"]')?.textContent?.trim()     || _cliente.nif     || ''
-    const addrCli  = preview.querySelector('[data-field="address"]')?.textContent?.trim() || _cliente.address || ''
+    const addrCli  = leerTextoConSaltos(preview.querySelector('[data-field="address"]'))  || _cliente.address || ''
     const nameCli  = preview.querySelector('[data-field="name"]')?.textContent?.trim()    || _cliente.name    || _cliente.id
     const fechaTxt = preview.querySelector('.factura-meta .factura-editable')?.textContent?.trim() || new Date().toLocaleDateString('es-ES')
 
