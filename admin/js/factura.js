@@ -48,10 +48,19 @@ export function initFacturacion(supabaseClient) {
     _supabase = supabaseClient
     _cargarLogoBase64()
 
+    const dialog = document.getElementById('dialogFactura')
+
     document.getElementById('btnCerrarFactura').addEventListener('click', cerrarPanel)
     document.getElementById('btnCancelarFactura').addEventListener('click', cerrarPanel)
-    document.getElementById('overlay-factura').addEventListener('click', cerrarPanel)
     document.getElementById('btnEmitirFactura').addEventListener('click', emitirFactura)
+
+    // Cerrar al pulsar en el backdrop (fuera del contenido del dialog)
+    dialog.addEventListener('click', e => {
+        const r = dialog.getBoundingClientRect()
+        if (e.clientX < r.left || e.clientX > r.right ||
+            e.clientY < r.top  || e.clientY > r.bottom)
+            dialog.close()
+    })
 }
 
 // ===== PUNTO DE ENTRADA =====
@@ -309,8 +318,8 @@ async function emitirFactura() {
 
     await generarPDF()
     abrirMailto()
-    cerrarPanel()
     document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId: _hitoActual.id } }))
+    cerrarPanel()
 }
 
 // ===== GENERACIÓN DEL PDF con jsPDF puro =====
@@ -648,24 +657,16 @@ function abrirMailto() {
     const nombre     = _cliente.name  ?? _cliente.id
     const asunto     = encodeURIComponent(FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')))
     const cuerpo     = encodeURIComponent(FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)))
-    window.open(`mailto:${email}?subject=${asunto}&body=${cuerpo}`, '_blank')
+    window.location.href = `mailto:${email}?subject=${asunto}&body=${cuerpo}`
 }
 
 // ===== APERTURA / CIERRE DEL PANEL =====
 function abrirPanel() {
-    if (document.getElementById('panel-factura').parentElement !== document.body) {
-        document.body.appendChild(document.getElementById('panel-factura'))
-        document.body.appendChild(document.getElementById('overlay-factura'))
-    }
-    document.getElementById('panel-factura').style.display   = 'flex'
-    document.getElementById('overlay-factura').style.display = 'block'
-    document.body.style.overflow = 'hidden'
+    document.getElementById('dialogFactura').showModal()
 }
 
 function cerrarPanel() {
-    document.getElementById('panel-factura').style.display   = 'none'
-    document.getElementById('overlay-factura').style.display = 'none'
-    document.body.style.overflow = ''
+    document.getElementById('dialogFactura').close()
 }
 
 // ===== UTILIDADES =====

@@ -931,60 +931,22 @@ function abrirPanelReorganizar(proveedorId, servicioId, plazasNecesarias) {
     )
     reorgFilas = reservasBloquean.map(r => ({ ...r }))
 
-    // Eliminar instancia anterior si existe
-    document.getElementById('panel-reorganizar')?.remove()
-    document.getElementById('overlay-reorg')?.remove()
+    const dialog = document.getElementById('dialogReorganizar')
 
-    // Crear overlay como hijo directo del body
-    const overlay = document.createElement('div')
-    overlay.id = 'overlay-reorg'
-    document.body.appendChild(overlay)
+    // Cerrar al pulsar en el backdrop
+    dialog.addEventListener('click', e => {
+        const r = dialog.getBoundingClientRect()
+        if (e.clientX < r.left || e.clientX > r.right ||
+            e.clientY < r.top  || e.clientY > r.bottom)
+            cerrarPanelReorganizar()
+    }, { once: true })
 
-    // Crear panel como hijo directo del body
-    const panel = document.createElement('div')
-    panel.id = 'panel-reorganizar'
-    panel.innerHTML = `
-        <div class="panel-reorg-header">
-            <div>
-                <h2 class="panel-reorg-titulo">🔄 Reorganizar disponibilidad</h2>
-                <div id="panel-reorg-cabecera"></div>
-            </div>
-            <button class="btn btn-secondary panel-reorg-cerrar" onclick="cerrarPanelReorganizar()">✕ Cerrar</button>
-        </div>
-        <div id="panel-reorg-estado"></div>
-        <div class="table-wrapper table-wrapper--spaced">
-            <table id="tabla-reorg">
-                <thead><tr>
-                    <th>Reserva</th>
-                    <th>Cliente</th>
-                    <th>Servicio</th>
-                    <th>Proveedor</th>
-                    <th>Plazas</th>
-                    <th>Precio/plaza</th>
-                </tr></thead>
-                <tbody id="tbody-reorg"></tbody>
-            </table>
-        </div>
-        <div class="btn-row">
-            <button class="btn btn-primary" id="btnConfirmarReorg" disabled onclick="confirmarReorganizacion()">
-                ✅ Confirmar cambios
-            </button>
-            <button class="btn btn-secondary" onclick="cerrarPanelReorganizar()">Cancelar</button>
-        </div>
-    `
-    document.body.appendChild(panel)
-
-    // requestAnimationFrame garantiza que Safari pinte el elemento antes de mostrarlo
-    requestAnimationFrame(() => {
-        panel.style.display   = 'block'
-        overlay.style.display = 'block'
-        renderPanelReorganizar()
-    })
+    dialog.showModal()
+    renderPanelReorganizar()
 }
 
 window.cerrarPanelReorganizar = function() {
-    document.getElementById('panel-reorganizar')?.remove()
-    document.getElementById('overlay-reorg')?.remove()
+    document.getElementById('dialogReorganizar').close()
     reorgContexto = null
     reorgCambios  = {}
     reorgFilas    = []
@@ -1173,3 +1135,8 @@ window.confirmarReorganizacion = async function() {
 
     alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }
+
+// ===== LISTENERS DEL DIALOG DE REORGANIZACIÓN =====
+document.getElementById('btnCerrarReorg').addEventListener('click', cerrarPanelReorganizar)
+document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPanelReorganizar)
+document.getElementById('btnConfirmarReorg').addEventListener('click', confirmarReorganizacion)

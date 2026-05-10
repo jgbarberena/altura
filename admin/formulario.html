@@ -202,81 +202,50 @@
                     </div>
                 </div>
             </div>
-
-<!-- =============================================
-        PRUEBA dialog — ELIMINAR TRAS VERIFICAR
-============================================== -->
-<div class="bloque">
-    <h2>🧪 Prueba de diálogo nativo</h2>
-    <p style="margin-bottom:12px; font-size:13px; color:var(--subtle)">Bloque temporal de prueba. Pulsa el botón para abrir el diálogo.</p>
-    <button class="btn btn-primary" id="btnAbrirDialogPrueba">Abrir diálogo</button>
-</div>
-
-
         </main>
     </div>
 
-    <!-- PANEL DE FACTURACIÓN (gestionado por factura.js) -->
-    <div id="panel-factura">
-        <div class="panel-factura-header">
+    <!-- DIALOG DE REORGANIZACIÓN DE DISPONIBILIDAD -->
+    <dialog id="dialogReorganizar">
+        <div class="dialog-header">
             <div>
-                <h2 class="panel-factura-titulo">📄 Revisar y emitir factura</h2>
+                <h2 class="dialog-titulo">🔄 Reorganizar disponibilidad</h2>
+                <div id="panel-reorg-cabecera"></div>
+            </div>
+            <button class="btn btn-secondary dialog-cerrar" id="btnCerrarReorg">✕ Cerrar</button>
+        </div>
+        <div id="panel-reorg-estado"></div>
+        <div class="table-wrapper table-wrapper--spaced">
+            <table id="tabla-reorg">
+                <thead><tr>
+                    <th>Reserva</th><th>Cliente</th><th>Servicio</th>
+                    <th>Proveedor</th><th>Plazas</th><th>Precio/plaza</th>
+                </tr></thead>
+                <tbody id="tbody-reorg"></tbody>
+            </table>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btnConfirmarReorg" disabled>✅ Confirmar cambios</button>
+            <button class="btn btn-secondary" id="btnCancelarReorg">Cancelar</button>
+        </div>
+    </dialog>
+
+    <!-- DIALOG DE FACTURACIÓN -->
+    <dialog id="dialogFactura">
+        <div class="dialog-header">
+            <div>
+                <h2 class="dialog-titulo">📄 Revisar y emitir factura</h2>
                 <div id="panel-factura-subtitulo"></div>
             </div>
-            <button class="btn btn-secondary panel-factura-cerrar" id="btnCerrarFactura">✕ Cerrar</button>
+            <button class="btn btn-secondary dialog-cerrar" id="btnCerrarFactura">✕ Cerrar</button>
         </div>
         <div id="panel-factura-alerta" class="panel-factura-alerta" style="display:none"></div>
         <div id="panel-factura-contenido"></div>
-        <div class="panel-factura-footer">
+        <div class="dialog-footer">
             <button class="btn btn-secondary" id="btnCancelarFactura">Cancelar</button>
             <button class="btn btn-primary" id="btnEmitirFactura">⬇ Generar PDF y preparar correo</button>
         </div>
-    </div>
-    <div id="overlay-factura"></div>
-
-<!-- =============================================
-    DIALOG DE PRUEBA — ELIMINAR TRAS VERIFICAR
-============================================== -->
-<dialog id="dialogPrueba">
-<h3 style="margin:0 0 16px; font-size:15px">Diálogo de prueba</h3>
-<p style="margin:0 0 12px; font-size:13px; color:var(--subtle)">
-    Si ves esto y los botones funcionan, el sistema es válido.
-</p>
-<div style="margin-bottom:16px">
-    <label style="display:block; margin-bottom:4px; font-size:11px; color:var(--subtle); text-transform:uppercase; letter-spacing:0.5px">Campo de prueba</label>
-    <input type="text" id="inputPrueba" placeholder="Escribe algo...">
-</div>
-<div class="btn-row" style="justify-content:flex-end; margin-top:0">
-    <button class="btn btn-secondary" id="btnCancelarPrueba">Cancelar</button>
-    <button class="btn btn-primary" id="btnAceptarPrueba">Aceptar</button>
-</div>
-</dialog>
-
-<script>
-// — Prueba dialog — eliminar tras verificar —
-(function () {
-const dialog      = document.getElementById('dialogPrueba')
-const btnAbrir    = document.getElementById('btnAbrirDialogPrueba')
-const btnCancelar = document.getElementById('btnCancelarPrueba')
-const btnAceptar  = document.getElementById('btnAceptarPrueba')
-
-btnAbrir.addEventListener('click', () => dialog.showModal())
-btnCancelar.addEventListener('click', () => dialog.close())
-btnAceptar.addEventListener('click', () => {
-    const valor = document.getElementById('inputPrueba').value
-    dialog.close()
-    alert('Valor recibido: ' + valor)
-})
-
-// Cerrar al pulsar fuera del diálogo (en el backdrop)
-dialog.addEventListener('click', e => {
-    const r = dialog.getBoundingClientRect()
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
-        dialog.close()
-})
-})()
-</script>
-
+    </dialog>
 
     <script type="module" src="js/formulario.js"></script>
 </body>
