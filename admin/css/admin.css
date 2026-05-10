@@ -782,3 +782,20 @@ td.error { color: var(--accent);      font-weight: 500; }
     .factura-parties { grid-template-columns: 1fr; }
     .factura-party + .factura-party { border-left: none; border-top: 1px solid #eee; }
 }
+
+/* =========================
+   DIALOG (modal nativo)
+   PRUEBA — mantener o adaptar
+========================= */
+dialog {
+    border: none;
+    border-radius: var(--radius);
+    padding: 24px;
+    width: min(480px, 90vw);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    background: var(--white);
+}
+
+dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+}
