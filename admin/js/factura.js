@@ -165,7 +165,7 @@ function buildFacturaHTML() {
                         NIF/CIF: <span class="factura-editable" contenteditable="true"
                             data-field="nif">${_cliente.nif ?? '— introducir NIF —'}</span><br>
                         <span class="factura-editable" contenteditable="true"
-                            data-field="address">${(_cliente.address ?? '— introducir dirección —').replace(/\n/g, '<br>')}</span>
+                            data-field="address">${_cliente.address ?? '— introducir dirección —'}</span>
                     </div>
                 </div>
             </div>
@@ -186,8 +186,15 @@ function buildFacturaHTML() {
                     </tr></tbody>
                 </table>
 
-                <div class="factura-section-label" style="margin-top:14px">Detalle de servicios contratados</div>
-                ${buildTablaReservas()}
+                <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+                    <select id="selectNivelDetalle" style="font-size:11px;padding:2px 6px;border:1px solid #ccc;border-radius:4px" onchange="actualizarNivelDetalle()">
+                        <option value="detalle">Mostrar detalle</option>
+                        <option value="resumen">Mostrar resumen</option>
+                        <option value="omitir">Omitir</option>
+                    </select>
+                    <div class="factura-section-label" id="titulo-detalle-servicios" style="margin:0">Detalle de servicios contratados</div>
+                </div>
+                <div id="contenedor-detalle-servicios">${buildTablaReservas()}</div>
                 ${tipo === 'adelanto' ? buildNota() : tipo === 'liquidacion' ? buildLiquidacion() : ''}
             </div>
 
@@ -218,6 +225,29 @@ function buildFacturaHTML() {
     </div>`
 }
 
+// Muestra u oculta la tabla de detalle según el selector
+window.actualizarNivelDetalle = function() {
+    const nivel      = document.getElementById('selectNivelDetalle')?.value ?? 'detalle'
+    const contenedor = document.getElementById('contenedor-detalle-servicios')
+    const titulo     = document.getElementById('titulo-detalle-servicios')
+    if (!contenedor) return
+    if (nivel === 'detalle') {
+        if (titulo) titulo.textContent = 'Detalle de servicios contratados'
+        contenedor.innerHTML    = buildTablaReservas()
+        contenedor.style.display = ''
+    } else if (nivel === 'resumen') {
+        if (titulo) titulo.textContent = 'Resumen de servicios contratados'
+        // Por ahora el resumen no muestra contenido; se implementará cuando se decida el formato
+        contenedor.innerHTML    = ''
+        contenedor.style.display = 'none'
+    } else {
+        // omitir: ocultar título y contenido
+        if (titulo) titulo.textContent = ''
+        contenedor.innerHTML    = ''
+        contenedor.style.display = 'none'
+    }
+}
+
 // Tabla de reservas — usada en HTML y en PDF
 function buildTablaReservas() {
     const reservasValidas = _reservas.filter(r => r.status !== 'Cancelada')
@@ -225,7 +255,7 @@ function buildTablaReservas() {
     const totalGlobal = reservasValidas.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
     const filas = reservasValidas.map(r => `
         <tr>
-            <td>${r.service_id}</td>
+            <td>${r.service_description ?? r.service_id}</td>
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(parseFloat(r.price_per_slot))}</td>
             <td style="text-align:right">${fmt(parseFloat(r.total_amount ?? 0))}</td>
@@ -290,28 +320,12 @@ function buildLiquidacion() {
     </div>`
 }
 
-// Lee un campo contenteditable preservando los saltos de línea del DOM como \n
-// Los navegadores representan saltos como <br> o como <div> nuevos al pulsar Enter
-function leerTextoConSaltos(el) {
-    if (!el) return ''
-    // Clonar para no modificar el DOM visible
-    const clone = el.cloneNode(true)
-    // <br> → marcador temporal
-    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'))
-    // <div> (salto tipo bloque) → prefijo \n
-    clone.querySelectorAll('div').forEach(div => {
-        div.prepend('\n')
-        div.replaceWith(...div.childNodes)
-    })
-    return clone.textContent.trim()
-}
-
 // ===== EMISIÓN =====
 async function emitirFactura() {
     const preview  = document.getElementById('factura-preview')
     const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
     const nifEdit  = preview.querySelector('[data-field="nif"]')?.textContent?.trim()
-    const addrEdit = leerTextoConSaltos(preview.querySelector('[data-field="address"]'))
+    const addrEdit = preview.querySelector('[data-field="address"]')?.textContent?.trim()
     const nameEdit = preview.querySelector('[data-field="name"]')?.textContent?.trim()
 
     const updates = {}
@@ -326,13 +340,32 @@ async function emitirFactura() {
     }
 
     const hoy = new Date().toISOString().split('T')[0]
+
+    // Generar PDF: descarga al navegador y obtiene el blob para subir a Storage
+    const pdfResult = await generarPDF()
+
+    // Subir a Supabase Storage (no bloquea si falla)
+    let invoicePath = null
+    if (pdfResult?.blob) {
+        const { data: uploadData, error: errUpload } = await _supabase.storage
+            .from('invoices')
+            .upload(pdfResult.nombreArchivo, pdfResult.blob, { contentType: 'application/pdf', upsert: true })
+        if (errUpload) {
+            console.error('Error al subir factura a Storage:', errUpload.message)
+        } else {
+            invoicePath = uploadData.path
+        }
+    }
+
+    // Marcar hito como facturado e incluir la ruta del PDF si se subio correctamente
+    const camposFactura = { invoiced: true, invoiced_at: hoy, invoice_number: _numFacturaSig, comments: concepto }
+    if (invoicePath) camposFactura.invoice_path = invoicePath
     const { error: errCharge } = await _supabase
         .from('charges')
-        .update({ invoiced: true, invoiced_at: hoy, invoice_number: _numFacturaSig, comments: concepto })
+        .update(camposFactura)
         .eq('id', _hitoActual.id)
     if (errCharge) { alert('Error al marcar como facturado: ' + errCharge.message); return }
 
-    await generarPDF()
     abrirMailto()
     document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId: _hitoActual.id } }))
     cerrarPanel()
@@ -351,7 +384,7 @@ async function generarPDF() {
     const preview  = document.getElementById('factura-preview')
     const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
     const nifCli   = preview.querySelector('[data-field="nif"]')?.textContent?.trim()     || _cliente.nif     || ''
-    const addrCli  = leerTextoConSaltos(preview.querySelector('[data-field="address"]'))  || _cliente.address || ''
+    const addrCli  = preview.querySelector('[data-field="address"]')?.textContent?.trim() || _cliente.address || ''
     const nameCli  = preview.querySelector('[data-field="name"]')?.textContent?.trim()    || _cliente.name    || _cliente.id
     const fechaTxt = preview.querySelector('.factura-meta .factura-editable')?.textContent?.trim() || new Date().toLocaleDateString('es-ES')
 
@@ -525,8 +558,9 @@ async function generarPDF() {
     y += 5
 
     // ── Detalle de reservas (con paginación fila a fila) ──────────────────────
+    const nivelDetalle    = document.getElementById('selectNivelDetalle')?.value ?? 'detalle'
     const reservasValidas = _reservas.filter(r => r.status !== 'Cancelada')
-    if (reservasValidas.length > 0) {
+    if (nivelDetalle === 'detalle' && reservasValidas.length > 0) {
         checkPage(20)
         doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
         doc.text('DETALLE DE SERVICIOS CONTRATADOS', M, y)
@@ -550,7 +584,7 @@ async function generarPDF() {
             }
 
             doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(NEGRO)
-            const svcLines = doc.splitTextToSize(r.service_id, CW * 0.55)
+            const svcLines = doc.splitTextToSize(r.service_description ?? r.service_id, CW * 0.55)
             doc.text(svcLines,                          M + 2,         y + 4)
             doc.text(String(r.slots),                   M + CW * 0.6,  y + 4, { align: 'center' })
             doc.text(fmt(parseFloat(r.price_per_slot)), M + CW * 0.78, y + 4, { align: 'right' })
@@ -615,6 +649,37 @@ async function generarPDF() {
             y += 8
         }
         // tipo === 'unico': sin bloque adicional, el detalle ya es suficiente
+    } else if (nivelDetalle === 'resumen' && reservasValidas.length > 0) {
+        // ── Resumen de reservas ──────────────────────────────
+        checkPage(20)
+        doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
+        doc.text('RESUMEN DE SERVICIOS CONTRATADOS', M, y)
+        y += 4
+
+        const numEventos  = new Set(reservasValidas.map(r => r.service_id)).size
+        const plazasTotal = reservasValidas.reduce((s, r) => s + (parseInt(r.slots) || 0), 0)
+        const precioTotal = reservasValidas.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
+
+        // Cabecera
+        const colW = CW / 3
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
+        line(M, y, W - M, y, ROJO, 0.4)
+        y += 5
+        doc.text('Nº de eventos',    M + 2,           y)
+        doc.text('Plazas totales',  M + colW + 2,    y)
+        doc.text('Precio total',   M + colW * 2 + 2, y)
+        y += 4
+        line(M, y, W - M, y, [200, 200, 200], 0.35)
+        y += 5
+
+        // Fila de datos
+        doc.setFont('helvetica', 'normal')
+        doc.text(String(numEventos),  M + 2,           y)
+        doc.text(String(plazasTotal), M + colW + 2,    y)
+        doc.text(fmt(precioTotal),    M + colW * 2 + 2, y)
+        y += 6
+        line(M, y, W - M, y, ROJO, 0.4)
+        y += 8
     }
 
     // ── Totales ───────────────────────────────────────────────────────────────
@@ -646,6 +711,7 @@ async function generarPDF() {
     // ── Guardar ───────────────────────────────────────────────────────────────
     const nombreArchivo = `${_numFacturaSig.replace('/', '-')}_${(_cliente.name ?? _cliente.id).replace(/\s+/g, '_')}.pdf`
     doc.save(nombreArchivo)
+    return { blob: doc.output('blob'), nombreArchivo }
 }
 
 // ── Logo base64 ───────────────────────────────────────────────────────────────
@@ -673,7 +739,7 @@ function abrirMailto() {
     const nombre     = _cliente.name  ?? _cliente.id
     const asunto     = encodeURIComponent(FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')))
     const cuerpo     = encodeURIComponent(FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)))
-    window.location.href = `mailto:${email}?subject=${asunto}&body=${cuerpo}`
+    window.open(`mailto:${email}?subject=${asunto}&body=${cuerpo}`, '_blank')
 }
 
 // ===== APERTURA / CIERRE DEL PANEL =====

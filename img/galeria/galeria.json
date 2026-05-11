@@ -1,10 +1,26 @@
 ﻿[
     {
+        "id":  "ayuntamiento-pamplona-chupinazo-panoramica-total",
+        "desktop":  "ayuntamiento-pamplona-chupinazo-panoramica-total_desktop.jpg",
+        "mobile":  "ayuntamiento-pamplona-chupinazo-panoramica-total_mobile.jpg",
+        "alt":  "Vista a├®rea completa del Ayuntamiento de Pamplona y la plaza del Chupinazo de San Ferm├¡n desde balc├│n privado con perspectiva angular que incluye edificios hist├│ricos circundantes. Imagen hero de hospitalidad VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-alquiler-encierro-san-fermin-pamplona-vip",
+        "desktop":  "balcon-alquiler-encierro-san-fermin-pamplona-vip_desktop.jpg",
+        "mobile":  "balcon-alquiler-encierro-san-fermin-pamplona-vip_mobile.jpg",
+        "alt":  "Clientes en balc├│n privado de alquiler con vistas al recorrido del Encierro de San Ferm├¡n, Pamplona, experiencia VIP exclusiva.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
         "id":  "balcon-charla-corredor",
         "desktop":  "balcon-charla-corredor_desktop.jpg",
         "mobile":  "balcon-charla-corredor_mobile.jpg",
         "alt":  "Experiencia exclusiva: charla con Corredores hist├│ricos del Encierro",
-        "clasificacion":  "personalizada; encierros",
+        "clasificacion":  "personalizada",
         "weight":  "4"
     },
     {
@@ -16,6 +32,14 @@
         "weight":  "4"
     },
     {
+        "id":  "balcon-chupinazo-nina-ayuntamiento-pamplona-vip",
+        "desktop":  "balcon-chupinazo-nina-ayuntamiento-pamplona-vip_desktop.jpg",
+        "mobile":  "balcon-chupinazo-nina-ayuntamiento-pamplona-vip_mobile.jpg",
+        "alt":  "Ni├▒a en balc├│n privado VIP contemplando la Plaza Consistorial de Pamplona antes del Chupinazo de San Ferm├¡n, con el Ayuntamiento hist├│rico en perspectiva desde alquiler exclusivo.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
         "id":  "balcon-chupinazo-panuelos",
         "desktop":  "balcon-chupinazo-panuelos_desktop.jpg",
         "mobile":  "balcon-chupinazo-panuelos_mobile.jpg",
@@ -24,67 +48,891 @@
         "weight":  "2"
     },
     {
-        "id":  "balcon-despedida-gigantes",
-        "desktop":  "balcon-despedida-gigantes_desktop.jpg",
-        "mobile":  "balcon-despedida-gigantes_mobile.jpg",
-        "alt":  "Balcon privado para ver la Despedida de los Gigantes en la Plaza del Ayuntamiento",
-        "clasificacion":  "gigantes",
-        "weight":  "4"
-    },
-    {
-        "id":  "balcon-encierro-aerea",
-        "desktop":  "balcon-encierro-aerea_desktop.jpg",
-        "mobile":  "balcon-encierro-aerea_mobile.jpg",
-        "alt":  "Balcon exclusivo para disfurat del encierro en Estafeta.",
-        "clasificacion":  "encierros",
+        "id":  "balcon-chupinazo-vip-ayuntamiento-pamplona-clientes",
+        "desktop":  "balcon-chupinazo-vip-ayuntamiento-pamplona-clientes_desktop.jpg",
+        "mobile":  "balcon-chupinazo-vip-ayuntamiento-pamplona-clientes_mobile.jpg",
+        "alt":  "Clientes VIP en balc├│n privado frente al Ayuntamiento de Pamplona durante el Chupinazo, con la plaza abarrotada de asistentes.",
+        "clasificacion":  "chupinazo",
         "weight":  "5"
     },
     {
-        "id":  "balcon-exclusivo-chupinazo",
-        "desktop":  "balcon-exclusivo-chupinazo_desktop.jpg",
-        "mobile":  "balcon-exclusivo-chupinazo_mobile.jpg",
-        "alt":  "Balcon privado en el chupinazo de San Fermin.",
+        "id":  "balcon-chupinazo-vista-ayuntamiento-san-fermin",
+        "desktop":  "balcon-chupinazo-vista-ayuntamiento-san-fermin_desktop.jpg",
+        "mobile":  "balcon-chupinazo-vista-ayuntamiento-san-fermin_mobile.jpg",
+        "alt":  "Cliente en balc├│n privado VIP contemplando la Plaza Consistorial de Pamplona abarrotada durante el Chupinazo de San Ferm├¡n, con el Ayuntamiento hist├│rico en perspectiva cenital.",
         "clasificacion":  "chupinazo",
-        "weight":  "4"
+        "weight":  "5"
     },
     {
-        "id":  "balcon-exclusivo-fuegos",
-        "desktop":  "balcon-exclusivo-fuegos_desktop.jpg",
-        "mobile":  "balcon-exclusivo-fuegos_mobile.jpg",
-        "alt":  "Terraza exclusiva para ver los Fuegos Artificiales en la noche de San Fermin",
+        "id":  "balcon-empresa-gigantes-pamplona-san-fermin",
+        "desktop":  "balcon-empresa-gigantes-pamplona-san-fermin_desktop.jpg",
+        "mobile":  "balcon-empresa-gigantes-pamplona-san-fermin_mobile.jpg",
+        "alt":  "Clientes corporativos disfrutando del desfile de Gigantes de San Ferm├¡n desde balc├│n privado premium sobre la Plaza Consistorial de Pamplona, experiencia de hospitalidad para empresas.",
+        "clasificacion":  "gigantes;empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-encierro-calle-pamplona-san-fermin-vip",
+        "desktop":  "balcon-encierro-calle-pamplona-san-fermin-vip_desktop.jpg",
+        "mobile":  "balcon-encierro-calle-pamplona-san-fermin-vip_mobile.jpg",
+        "alt":  "Cliente asomada al balc├│n privado frente a la calle del Encierro de Pamplona vac├¡a con balcones ocupados en los edificios de enfrente, en espera del paso de los toros. Posici├│n exclusiva de alquiler de balc├│n para el Encierro de San Ferm├¡n.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-encierro-calle-pamplona-vistas-privilegiadas",
+        "desktop":  "balcon-encierro-calle-pamplona-vistas-privilegiadas_desktop.jpg",
+        "mobile":  "balcon-encierro-calle-pamplona-vistas-privilegiadas_mobile.jpg",
+        "alt":  "Vista en perspectiva desde balc├│n privado VIP sobre la calle del Encierro de San Ferm├¡n, con corredores preparados y balcones ocupados en ambas fachadas del casco hist├│rico.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcones-ayuntamiento-chupinazo-san-fermin-pamplona",
+        "desktop":  "balcones-ayuntamiento-chupinazo-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "balcones-ayuntamiento-chupinazo-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Balcones del Ayuntamiento de Pamplona abarrotados durante el Chupinazo de San Ferm├¡n con serpentinas, imagen ic├│nica de las fiestas.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcones-estafeta-encierro-san-fermin-alquiler-vip",
+        "desktop":  "balcones-estafeta-encierro-san-fermin-alquiler-vip_desktop.jpg",
+        "mobile":  "balcones-estafeta-encierro-san-fermin-alquiler-vip_mobile.jpg",
+        "alt":  "Calle Estafeta de Pamplona con todos los balcones ocupados por espectadores del Encierro de San Ferm├¡n, imagen destacada de alquiler de balc├│n VIP.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-exclusivo-chupinazo-ayuntamiento-cohete",
+        "desktop":  "balcon-exclusivo-chupinazo-ayuntamiento-cohete_desktop.jpg",
+        "mobile":  "balcon-exclusivo-chupinazo-ayuntamiento-cohete_mobile.jpg",
+        "alt":  "Vista desde balc├│n VIP frente al Ayuntamiento de Pamplona: plaza abarrotada en el Chupinazo con balcones laterales de edificios hist├│ricos tambi├®n ocupados. Alquiler de balc├│n premium con vista directa al lanzamiento del cohete de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-gigantes-ayuntamiento-pamplona-familia",
+        "desktop":  "balcon-gigantes-ayuntamiento-pamplona-familia_desktop.jpg",
+        "mobile":  "balcon-gigantes-ayuntamiento-pamplona-familia_mobile.jpg",
+        "alt":  "Ni├▒os en balc├│n privado observando el desfile de Gigantes ante el Ayuntamiento de Pamplona durante San Ferm├¡n, experiencia VIP familiar con vistas privilegiadas al evento.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-premium-chupinazo-noche-plaza-pamplona",
+        "desktop":  "balcon-premium-chupinazo-noche-plaza-pamplona_desktop.jpg",
+        "mobile":  "balcon-premium-chupinazo-noche-plaza-pamplona_mobile.jpg",
+        "alt":  "Vista nocturna desde balc├│n premium sobre la Plaza Consistorial de Pamplona abarrotada durante el Chupinazo de San Ferm├¡n, con pa├▒uelos rojos al viento.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-privado-chupinazo-vistas-ayuntamiento-san-fermin",
+        "desktop":  "balcon-privado-chupinazo-vistas-ayuntamiento-san-fermin_desktop.jpg",
+        "mobile":  "balcon-privado-chupinazo-vistas-ayuntamiento-san-fermin_mobile.jpg",
+        "alt":  "Grupo de clientes en balc├│n privado con vistas directas a la Plaza del Ayuntamiento durante el Chupinazo de San Ferm├¡n en Pamplona.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-privado-encierro-pamplona-grupo-vip",
+        "desktop":  "balcon-privado-encierro-pamplona-grupo-vip_desktop.jpg",
+        "mobile":  "balcon-privado-encierro-pamplona-grupo-vip_mobile.jpg",
+        "alt":  "Grupo de clientes en balc├│n privado de alquiler VIP durante el Encierro de San Ferm├¡n, con vistas privilegiadas a las calles de Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-privado-plaza-consistorial-san-fermin",
+        "desktop":  "balcon-privado-plaza-consistorial-san-fermin_desktop.jpg",
+        "mobile":  "balcon-privado-plaza-consistorial-san-fermin_mobile.jpg",
+        "alt":  "Clientes disfrutando desde balc├│n privado con vistas directas a la Plaza Consistorial de Pamplona durante las fiestas de San Ferm├¡n, experiencia VIP con vistas privilegiadas.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-procesion-san-fermin-calle-vistas-vip",
+        "desktop":  "balcon-procesion-san-fermin-calle-vistas-vip_desktop.jpg",
+        "mobile":  "balcon-procesion-san-fermin-calle-vistas-vip_mobile.jpg",
+        "alt":  "Clientes disfrutando desde balc├│n privado de la Procesi├│n de San Ferm├¡n, con vistas directas a la calle y el recorrido procesional.",
         "clasificacion":  "personalizada",
-        "weight":  "1"
+        "weight":  "5"
     },
     {
-        "id":  "balcon-pobre-de-mi-ayuntamiento",
-        "desktop":  "balcon-pobre-de-mi-ayuntamiento_desktop.jpg",
-        "mobile":  "balcon-pobre-de-mi-ayuntamiento_mobile.jpg",
-        "alt":  "Pobre de mi desde un balcon enla Plaza del Ayuntamiento.",
-        "clasificacion":  "pobre-de-mi",
-        "weight":  "4"
+        "id":  "balcon-vip-ayuntamiento-pamplona-chupinazo-primer-plano",
+        "desktop":  "balcon-vip-ayuntamiento-pamplona-chupinazo-primer-plano_desktop.jpg",
+        "mobile":  "balcon-vip-ayuntamiento-pamplona-chupinazo-primer-plano_mobile.jpg",
+        "alt":  "Vista en primer plano desde balc├│n VIP privado del Ayuntamiento de Pamplona con la plaza abarrotada instantes antes del Chupinazo de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
     },
     {
-        "id":  "balcon-procesion-mercaderes",
-        "desktop":  "balcon-procesion-mercaderes_desktop.jpg",
-        "mobile":  "balcon-procesion-mercaderes_mobile.jpg",
-        "alt":  "Balcon privado para ver la Procesion de San FermÔö£┬ín en la calle Mercaderes",
+        "id":  "balcon-vip-chupinazo-ayuntamiento-banda-musica",
+        "desktop":  "balcon-vip-chupinazo-ayuntamiento-banda-musica_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-ayuntamiento-banda-musica_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado VIP sobre el Chupinazo de San Ferm├¡n, con la banda de m├║sica recorriendo la plaza del Ayuntamiento de Pamplona.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-ayuntamiento-pamplona-banda",
+        "desktop":  "balcon-vip-chupinazo-ayuntamiento-pamplona-banda_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-ayuntamiento-pamplona-banda_mobile.jpg",
+        "alt":  "Vista privilegiada del Chupinazo desde balc├│n VIP frente al Ayuntamiento de Pamplona: clientes en primera fila con vistas a la plaza repleta y a la banda municipal. Alquiler de balc├│n exclusivo para el Chupinazo de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-ayuntamiento-pamplona-copa",
+        "desktop":  "balcon-vip-chupinazo-ayuntamiento-pamplona-copa_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-ayuntamiento-pamplona-copa_mobile.jpg",
+        "alt":  "Vista privilegiada del Chupinazo desde balc├│n VIP frente al Ayuntamiento de Pamplona, con copa en mano y acceso exclusivo sobre la multitud.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-banda-ayuntamiento",
+        "desktop":  "balcon-vip-chupinazo-banda-ayuntamiento_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-banda-ayuntamiento_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado del Chupinazo de San Ferm├¡n: plaza con banda municipal de boinas rojas y el Ayuntamiento barroco al fondo. Posici├│n premium de hospitalidad VIP en primera l├¡nea del evento inaugural de Pamplona.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-ninos-ayuntamiento-pamplona",
+        "desktop":  "balcon-vip-chupinazo-ninos-ayuntamiento-pamplona_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-ninos-ayuntamiento-pamplona_mobile.jpg",
+        "alt":  "Dos ni├▒os en balc├│n VIP frente al Ayuntamiento de Pamplona durante el Chupinazo de San Ferm├¡n, experiencia de hospitalidad premium para familias.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-pamplona-panoramica",
+        "desktop":  "balcon-vip-chupinazo-pamplona-panoramica_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-pamplona-panoramica_mobile.jpg",
+        "alt":  "Panor├ímica completa del Chupinazo de San Ferm├¡n desde posici├│n de balc├│n elevado: plaza del Ayuntamiento repleta y balcones de edificios hist├│ricos con acceso premium. Imagen hero para alquiler de balc├│n corporativo.",
+        "clasificacion":  "chupinazo;empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-pamplona-personalizado",
+        "desktop":  "balcon-vip-chupinazo-pamplona-personalizado_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-pamplona-personalizado_mobile.jpg",
+        "alt":  "Cliente con pa├▒uelo personalizado de Pamplona en balc├│n VIP durante el Chupinazo, con el Ayuntamiento y la plaza abarrotada al fondo.",
+        "clasificacion":  "chupinazo;personalizada",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-panoramica-plaza-ayuntamiento",
+        "desktop":  "balcon-vip-chupinazo-panoramica-plaza-ayuntamiento_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-panoramica-plaza-ayuntamiento_mobile.jpg",
+        "alt":  "Vista panor├ímica del Chupinazo de San Ferm├¡n desde balc├│n VIP sobre la Plaza del Ayuntamiento de Pamplona.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-plaza-ayuntamiento-catedral",
+        "desktop":  "balcon-vip-chupinazo-plaza-ayuntamiento-catedral_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-plaza-ayuntamiento-catedral_mobile.jpg",
+        "alt":  "Vista panor├ímica desde balc├│n privado de la Plaza del Ayuntamiento de Pamplona durante el Chupinazo, con el edificio consistorial y las torres de la catedral al fondo. Alquiler de balc├│n exclusivo con las mejores vistas de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-plaza-ayuntamiento-multitud",
+        "desktop":  "balcon-vip-chupinazo-plaza-ayuntamiento-multitud_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-plaza-ayuntamiento-multitud_mobile.jpg",
+        "alt":  "Vista cenital desde balc├│n VIP sobre la Plaza del Ayuntamiento de Pamplona repleta durante el Chupinazo de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-chupinazo-san-fermin-pamplona-paraguas",
+        "desktop":  "balcon-vip-chupinazo-san-fermin-pamplona-paraguas_desktop.jpg",
+        "mobile":  "balcon-vip-chupinazo-san-fermin-pamplona-paraguas_mobile.jpg",
+        "alt":  "Clientes en balc├│n privado con vistas a la Plaza del Ayuntamiento durante el Chupinazo de San Ferm├¡n en Pamplona, experiencia VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-encierro-calle-estafeta",
+        "desktop":  "balcon-vip-encierro-calle-estafeta_desktop.jpg",
+        "mobile":  "balcon-vip-encierro-calle-estafeta_mobile.jpg",
+        "alt":  "Vista privilegiada desde balc├│n VIP sobre la Calle Estafeta durante el Encierro de San Ferm├¡n, con corredores y espectadores en los balcones de Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-encierro-calle-estafeta-pamplona",
+        "desktop":  "balcon-vip-encierro-calle-estafeta-pamplona_desktop.jpg",
+        "mobile":  "balcon-vip-encierro-calle-estafeta-pamplona_mobile.jpg",
+        "alt":  "Vista privilegiada del recorrido del encierro desde balc├│n VIP en la Calle Estafeta, con invitados disfrutando de vistas exclusivas sobre la calzada despejada.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-encierro-calle-grupo-san-fermin",
+        "desktop":  "balcon-vip-encierro-calle-grupo-san-fermin_desktop.jpg",
+        "mobile":  "balcon-vip-encierro-calle-grupo-san-fermin_mobile.jpg",
+        "alt":  "Grupo de invitados en balc├│n privado con vistas directas sobre la calle del encierro de San Ferm├¡n, corredores de blanco y rojo llenando la calzada.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-encierro-calle-masiva-san-fermin",
+        "desktop":  "balcon-vip-encierro-calle-masiva-san-fermin_desktop.jpg",
+        "mobile":  "balcon-vip-encierro-calle-masiva-san-fermin_mobile.jpg",
+        "alt":  "Pareja de invitadas en balc├│n privado con vistas a una calle completamente abarrotada de corredores del encierro de San Ferm├¡n, Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "balcon-vip-plaza-castillo-san-fermin-panoramica",
+        "desktop":  "balcon-vip-plaza-castillo-san-fermin-panoramica_desktop.jpg",
+        "mobile":  "balcon-vip-plaza-castillo-san-fermin-panoramica_mobile.jpg",
+        "alt":  "Vista panor├ímica desde balc├│n VIP sobre la Plaza del Castillo de Pamplona con escenario de San Ferm├¡n, experiencia premium con vistas privilegiadas al coraz├│n de las fiestas.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "banda-procesion-san-fermin-calles-balcon-premium",
+        "desktop":  "banda-procesion-san-fermin-calles-balcon-premium_desktop.jpg",
+        "mobile":  "banda-procesion-san-fermin-calles-balcon-premium_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado de la banda de m├║sica en formaci├│n durante la Procesi├│n de San Ferm├¡n por las calles del casco viejo de Pamplona, con la multitud flanqueando a los m├║sicos. Alquiler de balc├│n VIP con vistas directas al desfile procesional.",
         "clasificacion":  "procesion",
-        "weight":  "3"
+        "weight":  "5"
     },
     {
-        "id":  "encierro-barrera-estafeta",
-        "desktop":  "encierro-barrera-estafeta_desktop.jpg",
-        "mobile":  "encierro-barrera-estafeta_mobile.jpg",
-        "alt":  "Encierro a pie de calle en entrada a Plaza de Toros.",
-        "clasificacion":  "personalizada; encierros",
-        "weight":  "4"
+        "id":  "brindis-balcon-premium-chupinazo-san-fermin",
+        "desktop":  "brindis-balcon-premium-chupinazo-san-fermin_desktop.jpg",
+        "mobile":  "brindis-balcon-premium-chupinazo-san-fermin_mobile.jpg",
+        "alt":  "Clientes en balc├│n privado premium brindando con copas de rosado durante el Chupinazo de San Ferm├¡n, con vistas directas al Ayuntamiento de Pamplona.",
+        "clasificacion":  "chupinazo;empresa",
+        "weight":  "5"
     },
     {
-        "id":  "experiencia-pasacalles-pamplona",
-        "desktop":  "experiencia-pasacalles-pamplona_desktop.jpg",
-        "mobile":  "experiencia-pasacalles-pamplona_mobile.jpg",
-        "alt":  "Guia privado para disfrutar de la Salida de las Penas en Pamplona",
+        "id":  "caballito-san-fermin-preparacion-pamplona",
+        "desktop":  "caballito-san-fermin-preparacion-pamplona_desktop.jpg",
+        "mobile":  "caballito-san-fermin-preparacion-pamplona_mobile.jpg",
+        "alt":  "Portadora con caballito del desfile de San Ferm├¡n en el casco hist├│rico de Pamplona, imagen fotogr├ífica profesional de la preparaci├│n de las figuras tradicionales festivas.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "cabezudo-san-fermin-retrato-pamplona-profesional",
+        "desktop":  "cabezudo-san-fermin-retrato-pamplona-profesional_desktop.jpg",
+        "mobile":  "cabezudo-san-fermin-retrato-pamplona-profesional_mobile.jpg",
+        "alt":  "Retrato art├¡stico de cabezudo de San Ferm├¡n en el casco hist├│rico de Pamplona, imagen fotogr├ífica profesional de las figuras tradicionales del desfile festivo.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "cabezudo-vestimenta-san-fermin-detalle-foto",
+        "desktop":  "cabezudo-vestimenta-san-fermin-detalle-foto_desktop.jpg",
+        "mobile":  "cabezudo-vestimenta-san-fermin-detalle-foto_mobile.jpg",
+        "alt":  "Cabezudo de San Ferm├¡n siendo ataviado con su traje tradicional por un cuidador del desfile en Pamplona, imagen fotogr├ífica profesional de la preparaci├│n de los gigantes festivos.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "calle-encierro-pamplona-balcones-vip-txistularis",
+        "desktop":  "calle-encierro-pamplona-balcones-vip-txistularis_desktop.jpg",
+        "mobile":  "calle-encierro-pamplona-balcones-vip-txistularis_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado de la calle del Encierro de Pamplona vac├¡a con txistularis en la calzada y balcones de edificios hist├│ricos ocupados por espectadores. Imagen previa al inicio del Encierro desde posici├│n de hospitalidad exclusiva.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "cena-corporativa-ypo-san-fermin-pamplona-exclusiva",
+        "desktop":  "cena-corporativa-ypo-san-fermin-pamplona-exclusiva_desktop.jpg",
+        "mobile":  "cena-corporativa-ypo-san-fermin-pamplona-exclusiva_mobile.jpg",
+        "alt":  "Grupo corporativo YPO en cena de gala exclusiva durante San Ferm├¡n en restaurante premium de Pamplona, servicio de hospitality de alto nivel.",
+        "clasificacion":  "empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "cena-empresa-san-fermin-pamplona-restaurante-vip",
+        "desktop":  "cena-empresa-san-fermin-pamplona-restaurante-vip_desktop.jpg",
+        "mobile":  "cena-empresa-san-fermin-pamplona-restaurante-vip_mobile.jpg",
+        "alt":  "Gran mesa de cena corporativa privada con vistas a las monta├▒as de Pamplona durante San Ferm├¡n, servicio de hospitalidad VIP para equipos de empresa en fiestas exclusivas.",
+        "clasificacion":  "empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "cena-fuegos-artificiales-san-fermin-pamplona-vip",
+        "desktop":  "cena-fuegos-artificiales-san-fermin-pamplona-vip_desktop.jpg",
+        "mobile":  "cena-fuegos-artificiales-san-fermin-pamplona-vip_mobile.jpg",
+        "alt":  "Grupo disfrutando de cena exclusiva con los fuegos artificiales de San Ferm├¡n visibles desde el restaurante en Pamplona, experiencia VIP ├║nica.",
+        "clasificacion":  "personalizada;empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "cena-privada-fuegos-artificiales-san-fermin-vip",
+        "desktop":  "cena-privada-fuegos-artificiales-san-fermin-vip_desktop.jpg",
+        "mobile":  "cena-privada-fuegos-artificiales-san-fermin-vip_mobile.jpg",
+        "alt":  "Clientes en cena privada con servicio de copas de vino con vista a los fuegos artificiales de San Ferm├¡n, experiencia de hospitalidad premium en Pamplona con espect├ículo nocturno.",
         "clasificacion":  "personalizada",
+        "weight":  "5"
+    },
+    {
+        "id":  "champagne-chupinazo-balcon-vip-ayuntamiento",
+        "desktop":  "champagne-chupinazo-balcon-vip-ayuntamiento_desktop.jpg",
+        "mobile":  "champagne-chupinazo-balcon-vip-ayuntamiento_mobile.jpg",
+        "alt":  "Copa de champagne en primer plano con el Chupinazo de San Ferm├¡n y el Ayuntamiento de Pamplona de fondo desde balc├│n VIP, servicio de hospitalidad premium durante el disparo del cohete.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-ayuntamiento-balcones-confeti-san-fermin",
+        "desktop":  "chupinazo-ayuntamiento-balcones-confeti-san-fermin_desktop.jpg",
+        "mobile":  "chupinazo-ayuntamiento-balcones-confeti-san-fermin_mobile.jpg",
+        "alt":  "Vista lateral del Ayuntamiento de Pamplona con el balc├│n oficial durante el Chupinazo, balcones de enfrente repletos de invitados VIP y confeti en el aire.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-ayuntamiento-balcones-vip-san-fermin",
+        "desktop":  "chupinazo-ayuntamiento-balcones-vip-san-fermin_desktop.jpg",
+        "mobile":  "chupinazo-ayuntamiento-balcones-vip-san-fermin_mobile.jpg",
+        "alt":  "Vista del Ayuntamiento de Pamplona con balcones repletos de invitados VIP y serpentinas durante el Chupinazo de San Ferm├¡n, imagen de alquiler de balcones premium.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-ayuntamiento-pamplona-balcon-san-fermin",
+        "desktop":  "chupinazo-ayuntamiento-pamplona-balcon-san-fermin_desktop.jpg",
+        "mobile":  "chupinazo-ayuntamiento-pamplona-balcon-san-fermin_mobile.jpg",
+        "alt":  "Vista amplia desde balc├│n privado del Chupinazo de San Ferm├¡n: Ayuntamiento barroco de Pamplona flanqueado por la masa de asistentes y balcones con clientes exclusivos. Experiencia de hospitalidad VIP para el Chupinazo.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-ayuntamiento-pamplona-plaza-llena",
+        "desktop":  "chupinazo-ayuntamiento-pamplona-plaza-llena_desktop.jpg",
+        "mobile":  "chupinazo-ayuntamiento-pamplona-plaza-llena_mobile.jpg",
+        "alt":  "Vista frontal del Ayuntamiento de Pamplona en el Chupinazo de San Ferm├¡n, plaza repleta de celebrantes con banderas vascas y navarras.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-ayuntamiento-pamplona-hero",
+        "desktop":  "chupinazo-balcon-ayuntamiento-pamplona-hero_desktop.jpg",
+        "mobile":  "chupinazo-balcon-ayuntamiento-pamplona-hero_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado frente al Ayuntamiento de Pamplona con la Plaza del Chupinazo en plena celebraci├│n: banderas, globos y multitud. Imagen hero de hospitalidad premium en primera l├¡nea del Chupinazo.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-exclusivo-toros-pamplona",
+        "desktop":  "chupinazo-balcon-exclusivo-toros-pamplona_desktop.jpg",
+        "mobile":  "chupinazo-balcon-exclusivo-toros-pamplona_mobile.jpg",
+        "alt":  "Vista a├®rea del Encierro de San Ferm├¡n desde balc├│n privado: manada de toros y corredores avanzando por la calle de Pamplona con p├║blico en vallas y balcones. Experiencia premium de alquiler de balc├│n para el Encierro.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-musica-banda-ayuntamiento-vip",
+        "desktop":  "chupinazo-balcon-musica-banda-ayuntamiento-vip_desktop.jpg",
+        "mobile":  "chupinazo-balcon-musica-banda-ayuntamiento-vip_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado VIP del Chupinazo de San Ferm├¡n con banda de m├║sica en la plaza y el Ayuntamiento de Pamplona al fondo, acceso de primera fila al acto de apertura.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-panuelico-ayuntamiento-san-fermin",
+        "desktop":  "chupinazo-balcon-panuelico-ayuntamiento-san-fermin_desktop.jpg",
+        "mobile":  "chupinazo-balcon-panuelico-ayuntamiento-san-fermin_mobile.jpg",
+        "alt":  "Invitados agitando pa├▒uelos rojos desde balc├│n privado con vistas al Ayuntamiento de Pamplona y a la plaza repleta durante el Chupinazo de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-premium-toros-corredores",
+        "desktop":  "chupinazo-balcon-premium-toros-corredores_desktop.jpg",
+        "mobile":  "chupinazo-balcon-premium-toros-corredores_mobile.jpg",
+        "alt":  "Vista desde balc├│n VIP del Encierro de San Ferm├¡n: toros de lidia y corredores en la calzada de Pamplona con espectadores en vallas. Imagen de referencia del alquiler de balc├│n exclusivo para el Encierro.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-vip-ayuntamiento-pamplona-gigante",
+        "desktop":  "chupinazo-balcon-vip-ayuntamiento-pamplona-gigante_desktop.jpg",
+        "mobile":  "chupinazo-balcon-vip-ayuntamiento-pamplona-gigante_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado sobre la Plaza del Ayuntamiento de Pamplona durante el Chupinazo, con gigante desfilando entre la multitud y el Ayuntamiento al fondo.",
+        "clasificacion":  "chupinazo;gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-balcon-vip-ayuntamiento-pamplona-serpentinas",
+        "desktop":  "chupinazo-balcon-vip-ayuntamiento-pamplona-serpentinas_desktop.jpg",
+        "mobile":  "chupinazo-balcon-vip-ayuntamiento-pamplona-serpentinas_mobile.jpg",
+        "alt":  "Vista desde balc├│n VIP privado junto al Ayuntamiento de Pamplona durante el Chupinazo de San Ferm├¡n, plaza repleta de celebrantes con serpentinas y globos en el aire.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-cohete-confeti-balcon-oficial-pamplona",
+        "desktop":  "chupinazo-cohete-confeti-balcon-oficial-pamplona_desktop.jpg",
+        "mobile":  "chupinazo-cohete-confeti-balcon-oficial-pamplona_mobile.jpg",
+        "alt":  "Lluvia de confeti durante el disparo del cohete del Chupinazo de San Ferm├¡n visto desde el balc├│n del Ayuntamiento de Pamplona, apertura oficial de las fiestas con plaza abarrotada.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-confeti-balcon-plaza-pamplona-cohete",
+        "desktop":  "chupinazo-confeti-balcon-plaza-pamplona-cohete_desktop.jpg",
+        "mobile":  "chupinazo-confeti-balcon-plaza-pamplona-cohete_mobile.jpg",
+        "alt":  "Lluvia de confeti sobre la plaza durante el Chupinazo de San Ferm├¡n visto desde el balc├│n del Ayuntamiento de Pamplona, apertura oficial de las fiestas con multitud en rojo.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-confeti-calle-pamplona-balcon-aereo",
+        "desktop":  "chupinazo-confeti-calle-pamplona-balcon-aereo_desktop.jpg",
+        "mobile":  "chupinazo-confeti-calle-pamplona-balcon-aereo_mobile.jpg",
+        "alt":  "Vista a├®rea de la calle de Pamplona cubierta de confeti rojo y blanco durante el Chupinazo de San Ferm├¡n, espectacular imagen del inicio de las fiestas.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-confeti-plaza-san-fermin-multitud",
+        "desktop":  "chupinazo-confeti-plaza-san-fermin-multitud_desktop.jpg",
+        "mobile":  "chupinazo-confeti-plaza-san-fermin-multitud_mobile.jpg",
+        "alt":  "Plaza de Pamplona inundada de confeti durante el Chupinazo de San Ferm├¡n, miles de celebrantes con pa├▒uelos rojos y balcones repletos de espectadores VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-gran-angular-plaza-ayuntamiento-pamplona",
+        "desktop":  "chupinazo-gran-angular-plaza-ayuntamiento-pamplona_desktop.jpg",
+        "mobile":  "chupinazo-gran-angular-plaza-ayuntamiento-pamplona_mobile.jpg",
+        "alt":  "Imagen gran angular del Chupinazo de San Ferm├¡n con el Ayuntamiento de Pamplona y la plaza desbordada de celebrantes, confeti y serpentinas desde balc├│n VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-pamplona-balcon-vip-toros-callejuela",
+        "desktop":  "chupinazo-pamplona-balcon-vip-toros-callejuela_desktop.jpg",
+        "mobile":  "chupinazo-pamplona-balcon-vip-toros-callejuela_mobile.jpg",
+        "alt":  "Encierro de San Ferm├¡n captado en plena carrera desde balc├│n privado: toros y corredores en callejuela hist├│rica de Pamplona con espectadores a ambos lados. Alquiler de posici├│n exclusiva con vistas al coraz├│n del Encierro.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-pamplona-toros-vistas-balcon-empresa",
+        "desktop":  "chupinazo-pamplona-toros-vistas-balcon-empresa_desktop.jpg",
+        "mobile":  "chupinazo-pamplona-toros-vistas-balcon-empresa_mobile.jpg",
+        "alt":  "Encierro de Pamplona visto desde balc├│n exclusivo: toros y corredores en la calle con espectadores en ambos laterales. Vista ideal para hospitalidad corporativa y eventos de empresa durante el Encierro de San Ferm├¡n.",
+        "clasificacion":  "chupinazo, empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-panoramica-plaza-ayuntamiento-multitud-san-fermin",
+        "desktop":  "chupinazo-panoramica-plaza-ayuntamiento-multitud-san-fermin_desktop.jpg",
+        "mobile":  "chupinazo-panoramica-plaza-ayuntamiento-multitud-san-fermin_mobile.jpg",
+        "alt":  "Panor├ímica a├®rea de la Plaza del Ayuntamiento de Pamplona abarrotada durante el Chupinazo de San Ferm├¡n, alquiler de balcones VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-panoramica-plaza-balcon-vip",
+        "desktop":  "chupinazo-panoramica-plaza-balcon-vip_desktop.jpg",
+        "mobile":  "chupinazo-panoramica-plaza-balcon-vip_mobile.jpg",
+        "alt":  "Vista cenital desde balc├│n privado de la Plaza del Ayuntamiento de Pamplona durante el Chupinazo: multitud con banderas y globos, Ayuntamiento al fondo. Posici├│n de balc├│n exclusivo con panor├ímica total del inicio de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-plaza-ayuntamiento-pamplona-hero-masivo",
+        "desktop":  "chupinazo-plaza-ayuntamiento-pamplona-hero-masivo_desktop.jpg",
+        "mobile":  "chupinazo-plaza-ayuntamiento-pamplona-hero-masivo_mobile.jpg",
+        "alt":  "Vista cenital de la plaza del Ayuntamiento de Pamplona completamente llena durante el Chupinazo de San Ferm├¡n, imagen hero de alta calidad.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-plaza-balcones-edificios-historicos",
+        "desktop":  "chupinazo-plaza-balcones-edificios-historicos_desktop.jpg",
+        "mobile":  "chupinazo-plaza-balcones-edificios-historicos_mobile.jpg",
+        "alt":  "Panor├ímica del Chupinazo desde balc├│n elevado: Plaza del Ayuntamiento de Pamplona con edificios hist├│ricos y sus balcones ocupados, Ayuntamiento y torres al fondo. Imagen de referencia de las vistas VIP en San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-plaza-confeti-san-fermin-pamplona-premium",
+        "desktop":  "chupinazo-plaza-confeti-san-fermin-pamplona-premium_desktop.jpg",
+        "mobile":  "chupinazo-plaza-confeti-san-fermin-pamplona-premium_mobile.jpg",
+        "alt":  "Plaza de Pamplona con lluvia de confeti y miles de celebrantes durante el Chupinazo de San Ferm├¡n, vista desde balc├│n privado con perspectiva premium.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-plaza-consistorial-san-fermin-vip-lateral",
+        "desktop":  "chupinazo-plaza-consistorial-san-fermin-vip-lateral_desktop.jpg",
+        "mobile":  "chupinazo-plaza-consistorial-san-fermin-vip-lateral_mobile.jpg",
+        "alt":  "Vista lateral desde balc├│n VIP junto al Ayuntamiento de Pamplona de la multitud en el Chupinazo de San Ferm├¡n, con bolas inflables y el consistorio en primer plano.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-plaza-consistorial-vista-balcon-vip",
+        "desktop":  "chupinazo-plaza-consistorial-vista-balcon-vip_desktop.jpg",
+        "mobile":  "chupinazo-plaza-consistorial-vista-balcon-vip_mobile.jpg",
+        "alt":  "Vista a├®rea privilegiada del Chupinazo de San Ferm├¡n desde balc├│n privado, Plaza Consistorial de Pamplona completamente abarrotada ante el Ayuntamiento con los estandartes festivos.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-ayuntamiento-cohete-multitud",
+        "desktop":  "chupinazo-san-fermin-ayuntamiento-cohete-multitud_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-ayuntamiento-cohete-multitud_mobile.jpg",
+        "alt":  "Lanzamiento del cohete del Chupinazo desde el balc├│n del Ayuntamiento de Pamplona con la plaza completamente llena, inicio oficial de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-balcon-alquiler-plaza-llena",
+        "desktop":  "chupinazo-san-fermin-balcon-alquiler-plaza-llena_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-balcon-alquiler-plaza-llena_mobile.jpg",
+        "alt":  "Vista desde balc├│n de alquiler VIP de la plaza de Pamplona completamente llena con asistentes empapados de vino en el Chupinazo de San Ferm├¡n, posici├│n exclusiva privilegiada.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-balcon-ayuntamiento-inicio",
+        "desktop":  "chupinazo-san-fermin-balcon-ayuntamiento-inicio_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-balcon-ayuntamiento-inicio_mobile.jpg",
+        "alt":  "El alcalde lanza el Chupinazo desde el balc├│n del Ayuntamiento de Pamplona con la plaza repleta de celebrantes, inicio de los Sanfermines.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-balcon-ayuntamiento-plaza",
+        "desktop":  "chupinazo-san-fermin-balcon-ayuntamiento-plaza_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-balcon-ayuntamiento-plaza_mobile.jpg",
+        "alt":  "Vista frontal desde balc├│n junto al Ayuntamiento de Pamplona de la Plaza Consistorial repleta durante el Chupinazo de San Ferm├¡n, con la mejor perspectiva del inicio de fiestas.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-drone-plaza-pamplona-vip",
+        "desktop":  "chupinazo-san-fermin-drone-plaza-pamplona-vip_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-drone-plaza-pamplona-vip_mobile.jpg",
+        "alt":  "Vista a├®rea del Chupinazo de San Ferm├¡n en la Plaza del Ayuntamiento de Pamplona con edificios y balcones engalanados.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-plaza-ayuntamiento-balcon",
+        "desktop":  "chupinazo-san-fermin-plaza-ayuntamiento-balcon_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-plaza-ayuntamiento-balcon_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado sobre la Plaza del Ayuntamiento de Pamplona en el momento del Chupinazo, multitud te├▒ida de rojo y confeti lanzado desde el balc├│n consistorial.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "chupinazo-san-fermin-plaza-ayuntamiento-balcon-vip",
+        "desktop":  "chupinazo-san-fermin-plaza-ayuntamiento-balcon-vip_desktop.jpg",
+        "mobile":  "chupinazo-san-fermin-plaza-ayuntamiento-balcon-vip_mobile.jpg",
+        "alt":  "Vista frontal desde balc├│n VIP del Chupinazo de San Ferm├¡n en la Plaza del Ayuntamiento de Pamplona abarrotada de p├║blico, la mejor perspectiva del inicio de las fiestas.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "clienta-balcon-vip-chupinazo-pamplona-noche",
+        "desktop":  "clienta-balcon-vip-chupinazo-pamplona-noche_desktop.jpg",
+        "mobile":  "clienta-balcon-vip-chupinazo-pamplona-noche_mobile.jpg",
+        "alt":  "Cliente agitando pa├▒uelos rojos desde balc├│n VIP sobre la Plaza Consistorial de Pamplona repleta de p├║blico durante la celebraci├│n nocturna del Chupinazo de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "cliente-balcon-encierro-san-fermin-vistas-calle",
+        "desktop":  "cliente-balcon-encierro-san-fermin-vistas-calle_desktop.jpg",
+        "mobile":  "cliente-balcon-encierro-san-fermin-vistas-calle_mobile.jpg",
+        "alt":  "Cliente asomada al balc├│n privado con vistas al recorrido del encierro de San Ferm├¡n, experiencia VIP en Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "cliente-balcon-procesion-san-fermin-pamplona",
+        "desktop":  "cliente-balcon-procesion-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "cliente-balcon-procesion-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Cliente en balc├│n privado con vistas al paso de la Procesi├│n de San Ferm├¡n por las calles de Pamplona, con la imagen del Santo visible al fondo. Alquiler de balc├│n VIP con posici├│n frontal a la Procesi├│n del Patr├│n de Pamplona.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "cliente-panuelo-personalizado-chupinazo-ayuntamiento-vip",
+        "desktop":  "cliente-panuelo-personalizado-chupinazo-ayuntamiento-vip_desktop.jpg",
+        "mobile":  "cliente-panuelo-personalizado-chupinazo-ayuntamiento-vip_mobile.jpg",
+        "alt":  "Cliente con pa├▒uelo de San Ferm├¡n personalizado en balc├│n VIP frente al Ayuntamiento de Pamplona durante el Chupinazo.",
+        "clasificacion":  "chupinazo;personalizada",
+        "weight":  "5"
+    },
+    {
+        "id":  "clientes-balcon-chupinazo-ayuntamiento-pamplona",
+        "desktop":  "clientes-balcon-chupinazo-ayuntamiento-pamplona_desktop.jpg",
+        "mobile":  "clientes-balcon-chupinazo-ayuntamiento-pamplona_mobile.jpg",
+        "alt":  "Grupo de clientes en balc├│n privado con vistas frontales al Ayuntamiento de Pamplona y a la plaza repleta durante el Chupinazo, con balcones de edificios hist├│ricos al fondo. Alquiler exclusivo de balc├│n para el Chupinazo de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "clientes-vip-balcon-encierro-estafeta-pamplona",
+        "desktop":  "clientes-vip-balcon-encierro-estafeta-pamplona_desktop.jpg",
+        "mobile":  "clientes-vip-balcon-encierro-estafeta-pamplona_mobile.jpg",
+        "alt":  "Clientes disfrutando del ambiente previo al Encierro de San Ferm├¡n desde balc├│n privado VIP con vistas directas a la calle Estafeta de Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "confeti-chupinazo-balcones-san-fermin-pamplona",
+        "desktop":  "confeti-chupinazo-balcones-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "confeti-chupinazo-balcones-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Lluvia de confeti lanzada desde balcones privados durante el Chupinazo de San Ferm├¡n en Pamplona, imagen de alta calidad est├®tica.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "desfile-gigantes-completo-pamplona-san-fermin",
+        "desktop":  "desfile-gigantes-completo-pamplona-san-fermin_desktop.jpg",
+        "mobile":  "desfile-gigantes-completo-pamplona-san-fermin_mobile.jpg",
+        "alt":  "Vista completa del desfile de todos los Gigantes de San Ferm├¡n en la Plaza Consistorial de Pamplona, espect├ículo captado desde balc├│n privado con vistas privilegiadas.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "desfile-gigantes-san-fermin-vista-balcon",
+        "desktop":  "desfile-gigantes-san-fermin-vista-balcon_desktop.jpg",
+        "mobile":  "desfile-gigantes-san-fermin-vista-balcon_mobile.jpg",
+        "alt":  "Vista a├®rea privilegiada del desfile de Gigantes de San Ferm├¡n desde balc├│n sobre la Plaza Consistorial de Pamplona, con el cortejo completo y multitud de espectadores.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-san-fermin-foto-profesional-toros-calle",
+        "desktop":  "encierro-san-fermin-foto-profesional-toros-calle_desktop.jpg",
+        "mobile":  "encierro-san-fermin-foto-profesional-toros-calle_mobile.jpg",
+        "alt":  "Fotograf├¡a profesional del Encierro de San Ferm├¡n: toros bravos y corredores en plena carrera por la calle Estafeta, con balcones repletos de espectadores privilegiados.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-san-fermin-multitud-calle-balcon-vip",
+        "desktop":  "encierro-san-fermin-multitud-calle-balcon-vip_desktop.jpg",
+        "mobile":  "encierro-san-fermin-multitud-calle-balcon-vip_mobile.jpg",
+        "alt":  "Vista a├®rea desde balc├│n VIP de la masa de corredores llenando completamente la calle del encierro de San Ferm├¡n en Pamplona, perspectiva exclusiva.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-san-fermin-perspectiva-balcon-toros",
+        "desktop":  "encierro-san-fermin-perspectiva-balcon-toros_desktop.jpg",
+        "mobile":  "encierro-san-fermin-perspectiva-balcon-toros_mobile.jpg",
+        "alt":  "Perspectiva privilegiada del Encierro de San Ferm├¡n desde balc├│n: toros de lidia y corredores en la calle hist├│rica de Pamplona. Alquiler de posici├│n VIP elevada con vista completa al paso del Encierro.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-toros-ayuntamiento-pamplona-balcon-directo",
+        "desktop":  "encierro-toros-ayuntamiento-pamplona-balcon-directo_desktop.jpg",
+        "mobile":  "encierro-toros-ayuntamiento-pamplona-balcon-directo_mobile.jpg",
+        "alt":  "Vista en directo del Encierro de San Ferm├¡n con toros a plena carrera frente al Ayuntamiento de Pamplona, capturada desde balc├│n privado VIP.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-toros-calle-pamplona-balcon-premium",
+        "desktop":  "encierro-toros-calle-pamplona-balcon-premium_desktop.jpg",
+        "mobile":  "encierro-toros-calle-pamplona-balcon-premium_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado del Encierro de San Ferm├¡n: toros bravos avanzando por la calzada adoquinada entre corredores, perspectiva a├®rea privilegiada sobre el recorrido hist├│rico.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-toros-calles-pamplona-foto-profesional",
+        "desktop":  "encierro-toros-calles-pamplona-foto-profesional_desktop.jpg",
+        "mobile":  "encierro-toros-calles-pamplona-foto-profesional_mobile.jpg",
+        "alt":  "Fotograf├¡a profesional del Encierro de San Ferm├¡n con varios toros en plena carrera por las calles empedradas de Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-toros-corrales-pamplona-vista-privilegiada",
+        "desktop":  "encierro-toros-corrales-pamplona-vista-privilegiada_desktop.jpg",
+        "mobile":  "encierro-toros-corrales-pamplona-vista-privilegiada_mobile.jpg",
+        "alt":  "Toros del Encierro de San Ferm├¡n saliendo de los corrales de Pamplona al amanecer, fotografiados desde posici├│n elevada VIP con espectadores en primer plano.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-toros-salida-corrales-vista-aerea-vip",
+        "desktop":  "encierro-toros-salida-corrales-vista-aerea-vip_desktop.jpg",
+        "mobile":  "encierro-toros-salida-corrales-vista-aerea-vip_mobile.jpg",
+        "alt":  "Vista a├®rea VIP del Encierro de San Ferm├¡n con los toros saliendo de los corrales de Santo Domingo al amanecer, perspectiva ├║nica desde posici├│n elevada privilegiada.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "encierro-toros-vista-cenital-balcon-vip",
+        "desktop":  "encierro-toros-vista-cenital-balcon-vip_desktop.jpg",
+        "mobile":  "encierro-toros-vista-cenital-balcon-vip_mobile.jpg",
+        "alt":  "Vista cenital del Encierro de San Ferm├¡n desde balc├│n privado VIP: toros bravos y corredores en plena carrera por el adoquinado hist├│rico de Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "espacio-hospitalidad-premium-toko-san-fermin-pamplona",
+        "desktop":  "espacio-hospitalidad-premium-toko-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "espacio-hospitalidad-premium-toko-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Interior del espacio de hospitalidad premium Toko para eventos corporativos de San Ferm├¡n en Pamplona, con cocina y zona de reuni├│n.",
+        "clasificacion":  "toko",
+        "weight":  "5"
+    },
+    {
+        "id":  "familia-balcon-ayuntamiento-san-fermin-pamplona",
+        "desktop":  "familia-balcon-ayuntamiento-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "familia-balcon-ayuntamiento-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Madre con hijos en balc├│n privado con vista directa al Ayuntamiento de Pamplona engalanado para San Ferm├¡n, experiencia VIP familiar en el Chupinazo.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "familia-balcon-chupinazo-ayuntamiento-pamplona-vip",
+        "desktop":  "familia-balcon-chupinazo-ayuntamiento-pamplona-vip_desktop.jpg",
+        "mobile":  "familia-balcon-chupinazo-ayuntamiento-pamplona-vip_mobile.jpg",
+        "alt":  "Familia en balc├│n privado con vista directa al Ayuntamiento de Pamplona y a la plaza llena durante el Chupinazo de San Ferm├¡n, experiencia VIP intergeneracional.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "familia-balcon-pobre-de-mi-san-fermin-noche",
+        "desktop":  "familia-balcon-pobre-de-mi-san-fermin-noche_desktop.jpg",
+        "mobile":  "familia-balcon-pobre-de-mi-san-fermin-noche_mobile.jpg",
+        "alt":  "Familia abrazada en balc├│n privado observando el Pobre de M├¡ de San Ferm├¡n, con la plaza abarrotada y luces del evento en el fondo, experiencia VIP emotiva en Pamplona.",
+        "clasificacion":  "pobre-de-mi",
+        "weight":  "5"
+    },
+    {
+        "id":  "familia-balcon-privado-encierro-san-fermin",
+        "desktop":  "familia-balcon-privado-encierro-san-fermin_desktop.jpg",
+        "mobile":  "familia-balcon-privado-encierro-san-fermin_mobile.jpg",
+        "alt":  "Familia con ni├▒os en balc├│n privado premium sobre el recorrido del encierro, con fila de polic├¡as en la calle y espectadores en balcones enfrente.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "familia-balcon-privado-encierro-san-fermin-pamplona",
+        "desktop":  "familia-balcon-privado-encierro-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "familia-balcon-privado-encierro-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Familia disfrutando del encierro de San Ferm├¡n desde balc├│n privado con vistas al recorrido completo, experiencia VIP en Pamplona.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "fuegos-artificiales-ciudadela-pamplona-balcon-premium",
+        "desktop":  "fuegos-artificiales-ciudadela-pamplona-balcon-premium_desktop.jpg",
+        "mobile":  "fuegos-artificiales-ciudadela-pamplona-balcon-premium_mobile.jpg",
+        "alt":  "Pareja contemplando desde posici├│n privada elevada el climax del espect├ículo de fuegos artificiales sobre la Ciudadela de Pamplona. Vista exclusiva del concurso pirot├®cnico de San Ferm├¡n con la multitud a sus pies.",
+        "clasificacion":  "personalizada",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-balcon-plaza-consistorial-san-fermin",
+        "desktop":  "gigantes-balcon-plaza-consistorial-san-fermin_desktop.jpg",
+        "mobile":  "gigantes-balcon-plaza-consistorial-san-fermin_mobile.jpg",
+        "alt":  "Desfile de Gigantes y Cabezudos en la Plaza Consistorial de Pamplona visto desde balc├│n privado VIP, con el Ayuntamiento al fondo y la plaza completamente abarrotada.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-banda-musica-san-fermin-vista-privilegiada",
+        "desktop":  "gigantes-banda-musica-san-fermin-vista-privilegiada_desktop.jpg",
+        "mobile":  "gigantes-banda-musica-san-fermin-vista-privilegiada_mobile.jpg",
+        "alt":  "Gigantes de San Ferm├¡n acompa├▒ados por banda de m├║sica en la Plaza Consistorial de Pamplona, vista a├®rea privilegiada desde balc├│n VIP con acceso exclusivo.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-cabezudos-balcon-vip-san-fermin",
+        "desktop":  "gigantes-cabezudos-balcon-vip-san-fermin_desktop.jpg",
+        "mobile":  "gigantes-cabezudos-balcon-vip-san-fermin_mobile.jpg",
+        "alt":  "Desfile simult├íneo de Gigantes y Cabezudos de San Ferm├¡n en la Plaza Consistorial de Pamplona visto desde balc├│n VIP, con la mejor perspectiva del espect├ículo tradicional.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-calle-san-fermin-pamplona-vista-aerea",
+        "desktop":  "gigantes-calle-san-fermin-pamplona-vista-aerea_desktop.jpg",
+        "mobile":  "gigantes-calle-san-fermin-pamplona-vista-aerea_mobile.jpg",
+        "alt":  "Desfile de Gigantes y Cabezudos por las calles de Pamplona durante San Ferm├¡n visto desde balc├│n privado, con figuras tradicionales en primer plano y multitud acompa├▒ando el evento.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-calle-san-fermin-vista-aerea-vip",
+        "desktop":  "gigantes-calle-san-fermin-vista-aerea-vip_desktop.jpg",
+        "mobile":  "gigantes-calle-san-fermin-vista-aerea-vip_mobile.jpg",
+        "alt":  "Gigantes de San Ferm├¡n desfilando por la calle de Pamplona con banda de m├║sica, fotografiados desde balc├│n privado premium con vistas a├®reas privilegiadas.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-danzando-plaza-san-fermin-balcon",
+        "desktop":  "gigantes-danzando-plaza-san-fermin-balcon_desktop.jpg",
+        "mobile":  "gigantes-danzando-plaza-san-fermin-balcon_mobile.jpg",
+        "alt":  "Figura de Gigante danzando en la Plaza Consistorial de Pamplona durante San Ferm├¡n visto desde balc├│n privado, con multitud de espectadores alrededor y Ayuntamiento al fondo.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-pamplona-san-fermin-balcon-premium",
+        "desktop":  "gigantes-pamplona-san-fermin-balcon-premium_desktop.jpg",
+        "mobile":  "gigantes-pamplona-san-fermin-balcon-premium_mobile.jpg",
+        "alt":  "Desfile de Gigantes y Cabezudos de San Ferm├¡n visto desde posici├│n elevada VIP sobre la Plaza Consistorial de Pamplona, espect├ículo exclusivo desde balc├│n privado.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-plaza-consistorial-san-fermin-balcon-vip",
+        "desktop":  "gigantes-plaza-consistorial-san-fermin-balcon-vip_desktop.jpg",
+        "mobile":  "gigantes-plaza-consistorial-san-fermin-balcon-vip_mobile.jpg",
+        "alt":  "Panor├ímica a├®rea del desfile de Gigantes y Cabezudos en la Plaza Consistorial de Pamplona con multitud congregada y Ayuntamiento al fondo, vista privilegiada desde balc├│n VIP.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-plaza-san-fermin-balcon-vip-pamplona",
+        "desktop":  "gigantes-plaza-san-fermin-balcon-vip-pamplona_desktop.jpg",
+        "mobile":  "gigantes-plaza-san-fermin-balcon-vip-pamplona_mobile.jpg",
+        "alt":  "Desfile de Gigantes en plaza p├║blica de Pamplona visto desde balc├│n privado VIP, con figuras tradicionales en primer plano y multitud de espectadores congregados en San Ferm├¡n.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "gigantes-san-fermin-balcon-vip-ayuntamiento",
+        "desktop":  "gigantes-san-fermin-balcon-vip-ayuntamiento_desktop.jpg",
+        "mobile":  "gigantes-san-fermin-balcon-vip-ayuntamiento_mobile.jpg",
+        "alt":  "Desfile de Gigantes de San Ferm├¡n fotografiado desde balc├│n VIP del Ayuntamiento de Pamplona, con cortejo completo y multitud de asistentes a las fiestas.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "grupo-empresa-balcon-chupinazo-pamplona-vip",
+        "desktop":  "grupo-empresa-balcon-chupinazo-pamplona-vip_desktop.jpg",
+        "mobile":  "grupo-empresa-balcon-chupinazo-pamplona-vip_mobile.jpg",
+        "alt":  "Equipo corporativo en selfie desde balc├│n VIP sobre la multitud del Chupinazo de San Ferm├¡n en Pamplona, experiencia premium de hospitalidad para empresas con acceso exclusivo.",
+        "clasificacion":  "chupinazo;empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "grupo-empresa-balcon-chupinazo-plaza-pamplona",
+        "desktop":  "grupo-empresa-balcon-chupinazo-plaza-pamplona_desktop.jpg",
+        "mobile":  "grupo-empresa-balcon-chupinazo-plaza-pamplona_mobile.jpg",
+        "alt":  "Grupo corporativo en balc├│n privado VIP durante el Chupinazo de San Ferm├¡n, con la plaza del Ayuntamiento de Pamplona abarrotada al fondo.",
+        "clasificacion":  "chupinazo;empresa",
         "weight":  "5"
     },
     {
@@ -92,7 +940,215 @@
         "desktop":  "guia-experiencia-gigantes_desktop.jpg",
         "mobile":  "guia-experiencia-gigantes_mobile.jpg",
         "alt":  "Comparsa de gigantes y cabezudos a pie de calle.",
-        "clasificacion":  "personalizada; gigantes;",
+        "clasificacion":  "gigantes",
         "weight":  "2"
+    },
+    {
+        "id":  "multitud-chupinazo-noche-san-fermin-balcon-vip",
+        "desktop":  "multitud-chupinazo-noche-san-fermin-balcon-vip_desktop.jpg",
+        "mobile":  "multitud-chupinazo-noche-san-fermin-balcon-vip_mobile.jpg",
+        "alt":  "Vista a├®rea nocturna desde balc├│n VIP de la multitud compacta que llena las calles de Pamplona tras el Chupinazo de San Ferm├¡n, con velas y ambiente festivo.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "ninas-balcon-vip-gigantes-ayuntamiento-san-fermin",
+        "desktop":  "ninas-balcon-vip-gigantes-ayuntamiento-san-fermin_desktop.jpg",
+        "mobile":  "ninas-balcon-vip-gigantes-ayuntamiento-san-fermin_mobile.jpg",
+        "alt":  "Ni├▒as disfrutando del desfile de Gigantes de San Ferm├¡n desde balc├│n VIP frente al Ayuntamiento de Pamplona, experiencia familiar premium con vistas privilegiadas.",
+        "clasificacion":  "gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "ninos-balcon-vip-chupinazo-ayuntamiento-san-fermin",
+        "desktop":  "ninos-balcon-vip-chupinazo-ayuntamiento-san-fermin_desktop.jpg",
+        "mobile":  "ninos-balcon-vip-chupinazo-ayuntamiento-san-fermin_mobile.jpg",
+        "alt":  "Ni├▒os asomados al balc├│n privado contemplando el Chupinazo de San Ferm├¡n frente al Ayuntamiento de Pamplona, experiencia familiar VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "padre-hijo-balcon-encierro-san-fermin-pamplona-vip",
+        "desktop":  "padre-hijo-balcon-encierro-san-fermin-pamplona-vip_desktop.jpg",
+        "mobile":  "padre-hijo-balcon-encierro-san-fermin-pamplona-vip_mobile.jpg",
+        "alt":  "Padre e hijo en balc├│n privado con vistas al recorrido del encierro de San Ferm├¡n en Pamplona, experiencia familiar VIP exclusiva.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "palco-presidencial-plaza-toros-san-fermin-vip",
+        "desktop":  "palco-presidencial-plaza-toros-san-fermin-vip_desktop.jpg",
+        "mobile":  "palco-presidencial-plaza-toros-san-fermin-vip_mobile.jpg",
+        "alt":  "Vista desde el palco presidencial de la Plaza de Toros de Pamplona durante San Ferm├¡n con el ruedo en primer plano y el grader├¡o lleno, acceso VIP exclusivo.",
+        "clasificacion":  "personalizada, empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "panuelos-rojos-san-fermin-pamplona-multitud-chupinazo",
+        "desktop":  "panuelos-rojos-san-fermin-pamplona-multitud-chupinazo_desktop.jpg",
+        "mobile":  "panuelos-rojos-san-fermin-pamplona-multitud-chupinazo_mobile.jpg",
+        "alt":  "Mar de pa├▒uelos rojos alzados durante el Chupinazo de San Ferm├¡n en Pamplona, imagen ic├│nica de las fiestas desde balc├│n VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "pareja-balcon-vip-encierro-procesion-pamplona",
+        "desktop":  "pareja-balcon-vip-encierro-procesion-pamplona_desktop.jpg",
+        "mobile":  "pareja-balcon-vip-encierro-procesion-pamplona_mobile.jpg",
+        "alt":  "Pareja en balc├│n privado alquilado con vistas sobre la calle del encierro de San Ferm├¡n, con la comparsa de gigantes desfilando debajo en Pamplona.",
+        "clasificacion":  "encierro;gigantes",
+        "weight":  "5"
+    },
+    {
+        "id":  "pareja-balcon-vip-encierro-san-fermin-pamplona",
+        "desktop":  "pareja-balcon-vip-encierro-san-fermin-pamplona_desktop.jpg",
+        "mobile":  "pareja-balcon-vip-encierro-san-fermin-pamplona_mobile.jpg",
+        "alt":  "Pareja en balc├│n privado alquilado durante el encierro de San Ferm├¡n, con vistas a la calle del recorrido completamente llena de corredores.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "plaza-ayuntamiento-chupinazo-panoramica-san-fermin",
+        "desktop":  "plaza-ayuntamiento-chupinazo-panoramica-san-fermin_desktop.jpg",
+        "mobile":  "plaza-ayuntamiento-chupinazo-panoramica-san-fermin_mobile.jpg",
+        "alt":  "Panor├ímica completa del Chupinazo de San Ferm├¡n en la Plaza del Ayuntamiento de Pamplona abarrotada, vista desde balc├│n VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "plaza-ayuntamiento-chupinazo-san-fermin-vistas",
+        "desktop":  "plaza-ayuntamiento-chupinazo-san-fermin-vistas_desktop.jpg",
+        "mobile":  "plaza-ayuntamiento-chupinazo-san-fermin-vistas_mobile.jpg",
+        "alt":  "Multitud te├▒ida en la Plaza del Ayuntamiento de Pamplona momentos despu├®s del Chupinazo, vista desde balc├│n privado con perspectiva frontal al consistorio. Alquiler de palco VIP para el inicio de San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "pobre-de-mi-ayuntamiento-pamplona-multitud-noche",
+        "desktop":  "pobre-de-mi-ayuntamiento-pamplona-multitud-noche_desktop.jpg",
+        "mobile":  "pobre-de-mi-ayuntamiento-pamplona-multitud-noche_mobile.jpg",
+        "alt":  "Vista nocturna del Ayuntamiento de Pamplona durante el Pobre de M├¡ con multitud reunida en la plaza, captura desde balc├│n privado en el cierre emocional de las fiestas de San Ferm├¡n.",
+        "clasificacion":  "pobre-de-mi",
+        "weight":  "5"
+    },
+    {
+        "id":  "pobre-de-mi-ayuntamiento-pamplona-noche",
+        "desktop":  "pobre-de-mi-ayuntamiento-pamplona-noche_desktop.jpg",
+        "mobile":  "pobre-de-mi-ayuntamiento-pamplona-noche_mobile.jpg",
+        "alt":  "Vista nocturna del Ayuntamiento de Pamplona durante el Pobre de M├¡, con la plaza abarrotada y escenario ante la fachada barroca iluminada, cierre de las fiestas de San Ferm├¡n desde balc├│n privilegiado.",
+        "clasificacion":  "pobre-de-mi",
+        "weight":  "5"
+    },
+    {
+        "id":  "pobre-de-mi-ruedo-lleno-san-fermin-panoramica",
+        "desktop":  "pobre-de-mi-ruedo-lleno-san-fermin-panoramica_desktop.jpg",
+        "mobile":  "pobre-de-mi-ruedo-lleno-san-fermin-panoramica_mobile.jpg",
+        "alt":  "Panor├ímica completa de la Plaza de Toros de Pamplona abarrotada durante el Pobre de M├¡, cierre de San Ferm├¡n, vista privilegiada desde palco de primera fila.",
+        "clasificacion":  "personalizada",
+        "weight":  "5"
+    },
+    {
+        "id":  "pobre-de-mi-san-fermin-noche-plaza-ayuntamiento",
+        "desktop":  "pobre-de-mi-san-fermin-noche-plaza-ayuntamiento_desktop.jpg",
+        "mobile":  "pobre-de-mi-san-fermin-noche-plaza-ayuntamiento_mobile.jpg",
+        "alt":  "Vista nocturna del Pobre de M├¡ desde balc├│n VIP sobre la Plaza del Ayuntamiento de Pamplona, ceremonia de clausura de San Ferm├¡n.",
+        "clasificacion":  "pobre-de-mi",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-imagen-san-fermin-balcon-exclusivo",
+        "desktop":  "procesion-imagen-san-fermin-balcon-exclusivo_desktop.jpg",
+        "mobile":  "procesion-imagen-san-fermin-balcon-exclusivo_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado del paso de la imagen de San Ferm├¡n en andas por las calles de Pamplona, rodeada de caperos y fieles durante la Procesi├│n del Santo. Posici├│n privilegiada de alquiler de balc├│n VIP para la Procesi├│n de San Ferm├¡n.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-san-fermin-ayuntamiento-vistas-balcon",
+        "desktop":  "procesion-san-fermin-ayuntamiento-vistas-balcon_desktop.jpg",
+        "mobile":  "procesion-san-fermin-ayuntamiento-vistas-balcon_mobile.jpg",
+        "alt":  "Vista a├®rea privilegiada de la Procesi├│n de San Ferm├¡n saliendo del Ayuntamiento de Pamplona, imagen de alta calidad para alquiler de balc├│n VIP.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-san-fermin-balcon-privado-pamplona",
+        "desktop":  "procesion-san-fermin-balcon-privado-pamplona_desktop.jpg",
+        "mobile":  "procesion-san-fermin-balcon-privado-pamplona_mobile.jpg",
+        "alt":  "Vista desde balc├│n privado de la Procesi├│n de San Ferm├¡n por las calles del casco viejo de Pamplona: danzantes, timbaleros y fieles en la calzada. Alquiler de balc├│n VIP con vistas directas a la Procesi├│n del Santo.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-san-fermin-image-caperos-pamplona",
+        "desktop":  "procesion-san-fermin-image-caperos-pamplona_desktop.jpg",
+        "mobile":  "procesion-san-fermin-image-caperos-pamplona_mobile.jpg",
+        "alt":  "Vista cenital desde balc├│n privado de la imagen del Santo San Ferm├¡n rodeada de caperos y clero durante la Procesi├│n en las calles de Pamplona. Imagen hero del evento religioso m├ís solemne de San Ferm├¡n desde posici├│n VIP.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-san-fermin-imagen-patron-calle",
+        "desktop":  "procesion-san-fermin-imagen-patron-calle_desktop.jpg",
+        "mobile":  "procesion-san-fermin-imagen-patron-calle_mobile.jpg",
+        "alt":  "Paso de la imagen del Patr├│n San Ferm├¡n en su andas doradas durante la Procesi├│n oficial, con clero y autoridades, vista desde posici├│n privilegiada en Pamplona.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-san-fermin-plaza-ayuntamiento-vistas",
+        "desktop":  "procesion-san-fermin-plaza-ayuntamiento-vistas_desktop.jpg",
+        "mobile":  "procesion-san-fermin-plaza-ayuntamiento-vistas_mobile.jpg",
+        "alt":  "Vista a├®rea privilegiada de la Procesi├│n de San Ferm├¡n entrando en la Plaza del Ayuntamiento de Pamplona, con la imagen del santo entre la multitud vestida de blanco.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "procesion-santo-pamplona-balcon-vip-san-fermin",
+        "desktop":  "procesion-santo-pamplona-balcon-vip-san-fermin_desktop.jpg",
+        "mobile":  "procesion-santo-pamplona-balcon-vip-san-fermin_mobile.jpg",
+        "alt":  "Imagen del Santo San Ferm├¡n en procesi├│n por las calles del casco viejo de Pamplona flanqueada por caperos, vista desde balc├│n privado en primera fila. Experiencia de hospitalidad exclusiva para la Procesi├│n de San Ferm├¡n.",
+        "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "salon-vip-exclusivo-san-fermin-pamplona-lujo",
+        "desktop":  "salon-vip-exclusivo-san-fermin-pamplona-lujo_desktop.jpg",
+        "mobile":  "salon-vip-exclusivo-san-fermin-pamplona-lujo_mobile.jpg",
+        "alt":  "Sal├│n privado de lujo con ara├▒a de cristal, chimenea de m├írmol y mesa preparada para desayuno VIP, espacio de hospitalidad premium para experiencias exclusivas en San Ferm├¡n Pamplona.",
+        "clasificacion":  "empresa",
+        "weight":  "5"
+    },
+    {
+        "id":  "selfie-balcon-vip-chupinazo-ayuntamiento-pamplona",
+        "desktop":  "selfie-balcon-vip-chupinazo-ayuntamiento-pamplona_desktop.jpg",
+        "mobile":  "selfie-balcon-vip-chupinazo-ayuntamiento-pamplona_mobile.jpg",
+        "alt":  "Cliente en primer plano con la Plaza del Ayuntamiento de Pamplona abarrotada durante el Chupinazo de San Ferm├¡n, alquiler de balc├│n VIP.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "servicio-catering-balcon-chupinazo-pamplona",
+        "desktop":  "servicio-catering-balcon-chupinazo-pamplona_desktop.jpg",
+        "mobile":  "servicio-catering-balcon-chupinazo-pamplona_mobile.jpg",
+        "alt":  "Mesa de servicio privado con aperitivos frente a balc├│n con vistas directas al Ayuntamiento de Pamplona engalanado para el Chupinazo, hospitalidad VIP para San Ferm├¡n.",
+        "clasificacion":  "chupinazo",
+        "weight":  "5"
+    },
+    {
+        "id":  "toros-encierro-calle-pamplona-foto-aerea-vip",
+        "desktop":  "toros-encierro-calle-pamplona-foto-aerea-vip_desktop.jpg",
+        "mobile":  "toros-encierro-calle-pamplona-foto-aerea-vip_mobile.jpg",
+        "alt":  "Fotograf├¡a a├®rea profesional del Encierro de San Ferm├¡n con toros corriendo por las calles de Pamplona, vista desde balc├│n privilegiado.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "toros-encierro-calle-san-fermin-balcon-vip-pamplona",
+        "desktop":  "toros-encierro-calle-san-fermin-balcon-vip-pamplona_desktop.jpg",
+        "mobile":  "toros-encierro-calle-san-fermin-balcon-vip-pamplona_mobile.jpg",
+        "alt":  "Toros y corredores en plena carrera por las calles de Pamplona durante el encierro de San Ferm├¡n, vista cenital desde balc├│n privado.",
+        "clasificacion":  "encierro",
+        "weight":  "5"
     }
 ]

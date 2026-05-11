@@ -30,9 +30,15 @@ const checkFactura           = document.getElementById('checkFactura')
 const inputProveedorComments = document.getElementById('inputProveedorComments')
 const autoProvList           = document.getElementById('autocompleteProveedorList')
 const proveedorStatus        = document.getElementById('proveedor-status')
-const inputServicioId        = document.getElementById('inputServicioId')
-const inputPlazas            = document.getElementById('inputPlazas')
-const inputPrecio            = document.getElementById('inputPrecio')
+const servicioDescStatus     = document.getElementById('servicio-desc-status')
+const inputServicioId          = document.getElementById('inputServicioId')
+const inputPlazas              = document.getElementById('inputPlazas')
+const inputPrecio              = document.getElementById('inputPrecio')
+const inputServicioDescription = document.getElementById('inputServicioDescription')
+const inputServicioComments    = document.getElementById('inputServicioComments')
+
+inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
+inputServicioComments.addEventListener('change',    guardarDescripcionServicio)
 const inputCosteTotal        = document.getElementById('inputCosteTotal')
 const selectModelo           = document.getElementById('selectModelo')
 const servicioStatus         = document.getElementById('servicio-status')
@@ -78,7 +84,10 @@ function mostrarSugerenciasProveedor(val) {
     } else if (val) {
         if (proveedorActual) limpiarCamposProveedor()
         proveedorActual = null
-        proveedorStatus.textContent = '✨ Proveedor nuevo'
+        proveedorStatus.innerHTML = '✨ Proveedor nuevo &nbsp;—&nbsp; '
+            + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+            + ' onclick="guardarProveedorNuevo(event)">Guardar proveedor</a>'
+            + ' o se guardará al añadir un servicio'
         proveedorStatus.style.color = 'var(--accent-warn)'
         document.getElementById('bloque-servicio').style.display            = 'block'
         document.getElementById('bloque-servicios-proveedor').style.display = 'none'
@@ -175,15 +184,99 @@ function mostrarGuardado() {
     }, 2000)
 }
 
+// Guarda un proveedor nuevo sin necesidad de anadir un servicio
+window.guardarProveedorNuevo = async function(e) {
+    e.preventDefault()
+    const proveedorId = normalizarId(inputProveedorId.value)
+    if (!proveedorId) return
+    const { error } = await supabase.from('providers').insert({
+        id:       proveedorId,
+        name:     document.getElementById('inputNombre').value.trim()    || null,
+        address:  document.getElementById('inputDireccion').value.trim() || null,
+        comments: document.getElementById('inputProveedorComments').value.trim() || null
+    })
+    if (error) { alert('Error al guardar el proveedor: ' + error.message); return }
+    const nuevo = { id: proveedorId, name: document.getElementById('inputNombre').value.trim() || null }
+    todosProveedores.push(nuevo)
+    cargarProveedor(nuevo)
+}
+
+// Guarda un servicio nuevo en la BBDD sin necesidad de anadirlo a un proveedor
+window.guardarServicioNuevo = async function(e) {
+    e.preventDefault()
+    const servicioId = inputServicioId.value.trim().toUpperCase()
+    if (!servicioId) return
+    const desc = inputServicioDescription.value.trim() || null
+    const comm = inputServicioComments.value.trim()    || null
+    const { error } = await supabase.from('services')
+        .insert({ id: servicioId, description: desc, comments: comm })
+    if (error) { alert('Error al guardar el servicio: ' + error.message); return }
+    todosServicios.push({ id: servicioId, description: desc, comments: comm })
+    servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
+    servicioDescStatus.style.color = 'var(--accent-ok)'
+}
+
+// Guardado automatico de description y comments al cambiar los campos
+async function guardarDescripcionServicio() {
+    const servicioId = inputServicioId.value.trim().toUpperCase()
+    if (!servicioId) return
+    const svc = todosServicios.find(s => s.id.toUpperCase() === servicioId)
+    if (!svc) return
+    const desc = inputServicioDescription.value.trim() || null
+    const comm = inputServicioComments.value.trim()    || null
+    const { error } = await supabase.from('services')
+        .update({ description: desc, comments: comm })
+        .eq('id', svc.id)
+    if (error) { console.error('Error al guardar descripcion:', error.message); return }
+    svc.description = desc
+    svc.comments    = comm
+    todosServicios  = todosServicios.map(s => s.id === svc.id ? svc : s)
+}
+
 // ===== BLOQUE 2: SERVICIO =====
 
+inputServicioId.addEventListener('keydown', e => {
+    if (e.key === ' ') {
+        e.preventDefault()
+        const pos = inputServicioId.selectionStart
+        const val = inputServicioId.value
+        inputServicioId.value = val.slice(0, pos) + '_' + val.slice(pos)
+        inputServicioId.setSelectionRange(pos + 1, pos + 1)
+        inputServicioId.dispatchEvent(new Event('input'))
+    }
+})
+
 inputServicioId.addEventListener('input', () => {
+    const normalized = normalizarId(inputServicioId.value)
+    if (inputServicioId.value !== normalized) inputServicioId.value = normalized
     const val      = inputServicioId.value.trim().toUpperCase()
     const autoList = document.getElementById('autocompleteServicioList')
-    if (!val) { autoList.style.display = 'none'; return }
+    if (!val) { autoList.style.display = 'none'; servicioDescStatus.textContent = ''; return }
     const coincidencias = todosServicios.filter(s => s.id.toUpperCase().startsWith(val))
     autoList.innerHTML  = coincidencias.map(s => `<div data-id="${s.id}">${s.id}</div>`).join('')
     autoList.style.display = coincidencias.length > 0 ? 'block' : 'none'
+    // Limpiar siempre los campos de availability (son del par proveedor-servicio)
+    inputPlazas.value     = ''
+    inputPrecio.value     = ''
+    inputCosteTotal.value = ''
+    selectModelo.value    = 'capacity'
+    document.getElementById('inputCosteServicio').value = '—'
+    // Si el valor coincide exactamente con un servicio existente, cargar description y comments
+    const exacto = todosServicios.find(s => s.id.toUpperCase() === val)
+    if (exacto) {
+        inputServicioDescription.value = exacto.description ?? ''
+        inputServicioComments.value    = exacto.comments    ?? ''
+        servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
+        servicioDescStatus.style.color = 'var(--accent-ok)'
+    } else {
+        inputServicioDescription.value = ''
+        inputServicioComments.value    = ''
+        servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
+            + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+            + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
+            + ' o se creará al añadir al proveedor'
+        servicioDescStatus.style.color = 'var(--accent-warn)'
+    }
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
@@ -203,6 +296,28 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
     if (!div) return
     inputServicioId.value = div.dataset.id
     document.getElementById('autocompleteServicioList').style.display = 'none'
+    // Limpiar siempre los campos de availability (son del par proveedor-servicio)
+    inputPlazas.value     = ''
+    inputPrecio.value     = ''
+    inputCosteTotal.value = ''
+    selectModelo.value    = 'capacity'
+    document.getElementById('inputCosteServicio').value = '—'
+    // Cargar description y comments del servicio seleccionado
+    const svcSel = todosServicios.find(s => s.id === div.dataset.id)
+    if (svcSel) {
+        inputServicioDescription.value = svcSel.description ?? ''
+        inputServicioComments.value    = svcSel.comments    ?? ''
+        servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
+        servicioDescStatus.style.color = 'var(--accent-ok)'
+    } else {
+        inputServicioDescription.value = ''
+        inputServicioComments.value    = ''
+        servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
+            + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+            + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
+            + ' o se creará al añadir al proveedor'
+        servicioDescStatus.style.color = 'var(--accent-warn)'
+    }
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
@@ -281,7 +396,10 @@ function limpiarFormularioServicio() {
     inputPlazas.value        = ''
     inputPrecio.value        = ''
     inputCosteTotal.value    = ''
-    selectModelo.value       = 'capacity'
+    selectModelo.value                  = 'capacity'
+    inputServicioDescription.value      = ''
+    inputServicioComments.value         = ''
+    if (servicioDescStatus) servicioDescStatus.textContent = ''
     document.getElementById('inputCosteServicio').value = '—'
     document.getElementById('titulo-bloque-servicio').textContent = '➕ Añadir / Editar servicio'
     servicioStatus.textContent    = ''
@@ -349,10 +467,26 @@ btnGuardarServicio.addEventListener('click', async () => {
     const servicioExiste = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!servicioExiste) {
         if (!confirm(`¿Crear servicio nuevo "${servicioId}"?`)) return
-        const { error } = await supabase.from('services').insert({ id: servicioId })
+        const descSvc = inputServicioDescription.value.trim() || null
+        const commSvc = inputServicioComments.value.trim()    || null
+        const { error } = await supabase.from('services')
+            .insert({ id: servicioId, description: descSvc, comments: commSvc })
         if (error) { alert('Error al crear servicio: ' + error.message); return }
-        todosServicios.push({ id: servicioId })
+        todosServicios.push({ id: servicioId, description: descSvc, comments: commSvc })
     }
+
+    const descSvc = inputServicioDescription.value.trim() || null
+    const commSvc = inputServicioComments.value.trim()    || null
+
+    // Actualizar description y comments en la tabla services
+    const svcId = todaDisponibilidad.find(d => d.id === servicioEditandoId)?.service_id
+                  ?? servicioId
+    await supabase.from('services')
+        .update({ description: descSvc, comments: commSvc })
+        .eq('id', svcId)
+    todosServicios = todosServicios.map(s =>
+        s.id === svcId ? { ...s, description: descSvc, comments: commSvc } : s
+    )
 
     if (servicioEditandoId) {
         const { error } = await supabase.from('availability')
@@ -508,7 +642,11 @@ function cargarServicioEnFormulario(dispIds) {
         inputPlazas.value        = disps[0].total_slots
         inputPrecio.value        = disps[0].price_per_slot
         inputCosteTotal.value    = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2)
-        selectModelo.value       = disps[0].billing_model
+        selectModelo.value             = disps[0].billing_model
+        // description y comments vienen de la tabla services, cruzada por service_id
+        const svc = todosServicios.find(s => s.id === disps[0].service_id)
+        inputServicioDescription.value = svc?.description ?? ''
+        inputServicioComments.value    = svc?.comments    ?? ''
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
     } else {
         servicioEditandoId       = null

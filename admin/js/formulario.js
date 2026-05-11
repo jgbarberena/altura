@@ -91,7 +91,9 @@ function mostrarSugerenciasCliente(val) {
             limpiarFormularioReserva()
         }
         clienteActual = null
-        statusDiv.textContent = '✨ Cliente nuevo'
+        statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; ' + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+            + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
+            + ' o se guardará al añadir una reserva'
         statusDiv.style.color = 'var(--accent-warn)'
     } else {
         limpiarCamposCliente()
@@ -115,7 +117,7 @@ function cargarCliente(cliente) {
     inputCompany.value  = cliente.company  ?? ''
     inputPhone.value    = cliente.phone    ?? ''
     inputEmail.value    = cliente.email    ?? ''
-    inputAddress.value = (cliente.address ?? '').replace(/\n/g, ', ')
+    inputAddress.value  = cliente.address  ?? ''
     inputNif.value      = cliente.nif      ?? ''
     inputComments.value = cliente.comments ?? ''
     statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente'
@@ -181,6 +183,32 @@ camposCliente.forEach((input, i) => {
     })
 })
 
+// Guarda un cliente nuevo en la BBDD sin necesidad de añadir una reserva
+// Se llama desde el enlace del statusDiv cuando el ID no existe en la BBDD
+window.guardarClienteNuevo = async function(e) {
+    e.preventDefault()
+    const clienteId = normalizarId(inputId.value)
+    if (!clienteId) return
+
+    const { error } = await supabase.from('clients').insert({
+        id:       clienteId,
+        name:     inputName.value.trim()     || null,
+        company:  inputCompany.value.trim()  || null,
+        phone:    inputPhone.value.trim()    || null,
+        email:    inputEmail.value.trim()    || null,
+        address:  inputAddress.value.trim()  || null,
+        nif:      inputNif.value.trim()      || null,
+        comments: inputComments.value.trim() || null
+    })
+    if (error) { alert('Error al guardar el cliente: ' + error.message); return }
+
+    clienteActual = { id: clienteId, name: inputName.value.trim() || null }
+    todosClientes.push(clienteActual)
+    statusDiv.innerHTML = ''
+    statusDiv.textContent = '✅ Cliente guardado — los cambios se guardan automáticamente'
+    statusDiv.style.color = 'var(--accent-ok)'
+}
+
 // ===== BLOQUE 2: RESERVA =====
 
 selectServicio.addEventListener('change', () => {
@@ -206,6 +234,16 @@ selectProveedor.addEventListener('change', () => {
     validarPrecio()
     actualizarBtnAnadir()
     actualizarBloque3()
+
+    // Si el proveedor seleccionado no tiene plazas suficientes, lanzar el dialog
+    // de reorganización igual que si se hubiera pulsado en la cajita del panel
+    const proveedorId = selectProveedor.value
+    const servicioId  = selectServicio.value
+    const plazas      = parseInt(inputPlazas.value) || 0
+    if (proveedorId && servicioId && plazas > 0) {
+        const { libres } = getPlazasInfo(proveedorId, servicioId)
+        if (libres < plazas) abrirPanelReorganizar(proveedorId, servicioId, plazas)
+    }
 })
 
 function actualizarTotal() {
@@ -346,8 +384,17 @@ let sortReservasDir = 'asc'
 let reservasCliente = []
 
 async function cargarReservasCliente(clienteId) {
-    const { data: reservas } = await supabase
-        .from('reservations').select('*').eq('client_id', clienteId).order('id')
+    const { data: reservasRaw } = await supabase
+        .from('reservations')
+        .select('*, services(description)')
+        .eq('client_id', clienteId)
+        .order('id')
+    // Aplanar el objeto anidado services.description a service_description
+    const reservas = (reservasRaw ?? []).map(r => ({
+        ...r,
+        service_description: r.services?.description ?? null,
+        services: undefined  // limpiar el objeto anidado
+    }))
 
     const bloque = document.getElementById('bloque-reservas-cliente')
 
@@ -561,10 +608,13 @@ btnAnadir.addEventListener('click', async () => {
             const nombre = inputName.value.trim()
             if (!confirm(`¿Crear cliente nuevo "${clienteId}"${nombre ? ' (' + nombre + ')' : ''}?`)) return
             const { error: errCliente } = await supabase.from('clients').insert({
-                id: clienteId, name: nombre || null,
+                id:       clienteId,
+                name:     nombre || null,
                 company:  inputCompany.value.trim()  || null,
                 phone:    inputPhone.value.trim()    || null,
                 email:    inputEmail.value.trim()    || null,
+                address:  inputAddress.value.trim()  || null,
+                nif:      inputNif.value.trim()      || null,
                 comments: inputComments.value.trim() || null
             })
             if (errCliente) { alert('Error al crear cliente: ' + errCliente.message); return }
@@ -696,10 +746,76 @@ window.seleccionarProveedorDesdeCajita = function(proveedorId) {
 
 // ===== BLOQUE 5: COBROS AL CLIENTE =====
 
+// Fecha por defecto para el cobro final: 6 de julio del anio en curso
+// o del siguiente si ya hemos pasado el 15 de julio
+function fechaCobroDefault() {
+    const hoy  = new Date()
+    const anio = hoy.getMonth() < 6 || (hoy.getMonth() === 6 && hoy.getDate() < 15)
+        ? hoy.getFullYear()
+        : hoy.getFullYear() + 1
+    return `${anio}-07-06`
+}
+
 function calcularTotalCobrarCliente(clienteId) {
     return todasReservas
         .filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
         .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+}
+
+// Persiste en Supabase el estado actual de hitosClienteTemp para un cliente.
+// Upsert inteligente: nunca toca hitos con invoice_number (ya facturados).
+// Lanza excepción si algo falla — el llamador debe capturarla y detener su flujo.
+async function persistirHitosCliente(clienteId) {
+    // IDs actualmente en memoria que ya existen en la BBDD (tienen id)
+    const idsEnMemoria = hitosClienteTemp
+        .filter(h => h.id && !h.invoice_number)
+        .map(h => h.id)
+
+    // IDs en la BBDD que no están facturados — candidatos a borrar
+    const { data: enBBDD, error: errLeer } = await supabase
+        .from('charges')
+        .select('id')
+        .eq('client_id', clienteId)
+        .is('invoice_number', null)
+    if (errLeer) throw new Error('Error al leer cobros existentes: ' + errLeer.message)
+
+    // Actualizar o insertar cada hito de memoria
+    for (const h of hitosClienteTemp) {
+        if (h.invoice_number) continue  // facturado — no tocar nunca
+
+        const payload = {
+            client_id:      clienteId,
+            amount:         parseFloat(h.amount),
+            due_date:       h.due_date ?? null,
+            collected:      h.collected ?? false,
+            collected_date: h.collected_date ?? null,
+            comments:       h.comments ?? null,
+            is_final:       h.is_final ?? false
+        }
+
+        if (h.id) {
+            // Hito existente no facturado — actualizar
+            const { error } = await supabase
+                .from('charges').update(payload).eq('id', h.id)
+            if (error) throw new Error(`Error al actualizar cobro ${h.id}: ` + error.message)
+        } else {
+            // Hito nuevo — insertar y capturar el id devuelto
+            const { data, error } = await supabase
+                .from('charges').insert(payload).select('id').single()
+            if (error) throw new Error('Error al insertar cobro: ' + error.message)
+            h.id = data.id  // asignar id para que futuras llamadas hagan update, no insert
+        }
+    }
+
+    // Borrar de la BBDD los hitos no facturados que ya no están en memoria
+    const idsBorrar = (enBBDD ?? [])
+        .map(r => r.id)
+        .filter(id => !idsEnMemoria.includes(id))
+    if (idsBorrar.length > 0) {
+        const { error } = await supabase
+            .from('charges').delete().in('id', idsBorrar)
+        if (error) throw new Error('Error al eliminar cobros obsoletos: ' + error.message)
+    }
 }
 
 async function cargarCobrosCliente(clienteId, reservas) {
@@ -714,21 +830,29 @@ async function cargarCobrosCliente(clienteId, reservas) {
     const { data: charges } = await supabase
         .from('charges').select('*').eq('client_id', clienteId).order('due_date')
 
-    hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.comments === 'Cobro final' }))
+    // esFinal viene de is_final en la BBDD (fuente de verdad)
+    hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.is_final ?? false }))
 
     const total      = calcularTotalCobrarCliente(clienteId)
     const prepagos   = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
     const cobroFinal = total - prepagos
 
     if (!hitosClienteTemp.find(h => h.esFinal)) {
+        // No existe en BBDD — crear y persistir inmediatamente
         hitosClienteTemp.push({
             esFinal:   true,
+            is_final:  true,
             comments:  'Cobro final',
             client_id: clienteId,
             amount:    cobroFinal,
-            due_date:  '2026-07-06',
+            due_date:  fechaCobroDefault(),
             collected: false
         })
+        try {
+            await persistirHitosCliente(clienteId)
+        } catch (err) {
+            console.error('Error al crear cobro final automático:', err.message)
+        }
     } else {
         const idx = hitosClienteTemp.findIndex(h => h.esFinal)
         hitosClienteTemp[idx].amount = cobroFinal
@@ -752,12 +876,16 @@ function actualizarResumenCobros(clienteId, total, prepagos, cobroFinal) {
 function renderCobrosCliente() {
     const tbody = document.getElementById('tbody-cobros-cliente')
     tbody.innerHTML = hitosClienteTemp.map((h, i) => {
-        const yaFacturado = h.invoiced && h.invoice_number
+        const yaFacturado = !!h.invoice_number
         const btnFacturar = !yaFacturado && h.id
             ? `<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
                    onclick="facturarHito('${h.id}')">📄 Facturar</button>`
             : yaFacturado
-                ? `<span style="font-size:11px;color:var(--accent-ok);margin-right:6px">📄 ${h.invoice_number}</span>`
+                ? (h.invoice_path
+                    ? `<span style="font-size:11px;color:var(--accent-ok);margin-right:6px;cursor:pointer;text-decoration:underline"
+                           onclick="descargarFactura('${h.invoice_path}', '${h.invoice_number}')"
+                           title="Descargar factura ${h.invoice_number}">📄 ${h.invoice_number}</span>`
+                    : `<span style="font-size:11px;color:var(--accent-ok);margin-right:6px">📄 ${h.invoice_number}</span>`)
                 : ''
 
         return `<tr>
@@ -780,13 +908,28 @@ function renderCobrosCliente() {
     }).join('')
 }
 
-window.cambiarFechaCobroFinal = function(idx, valor) {
+window.cambiarFechaCobroFinal = async function(idx, valor) {
     hitosClienteTemp[idx].due_date = valor || null
+    try {
+        await persistirHitosCliente(clienteActual.id)
+    } catch (err) {
+        // Si falla, recargar desde la BBDD para que la vista sea coherente
+        await cargarCobrosCliente(clienteActual.id, reservasCliente)
+        alert('Error al guardar la fecha: ' + err.message)
+    }
 }
 
-window.toggleCobroCliente = function(idx) {
+window.toggleCobroCliente = async function(idx) {
     const h = hitosClienteTemp[idx]
+
+    // Guardar estado previo para poder revertir si falla la persistencia
+    const estadoPrevio = { collected: h.collected, collected_date: h.collected_date }
+
     if (!h.collected) {
+        if (!h.invoice_number) {
+            const confirmar = confirm(`Este hito no ha sido facturado todavía.\n¿Desea marcarlo como cobrado de todas formas?`)
+            if (!confirmar) return
+        }
         const fecha = prompt('Fecha de cobro (dejar vacío para hoy):', hoy)
         if (fecha === null) return
         h.collected      = true
@@ -795,25 +938,51 @@ window.toggleCobroCliente = function(idx) {
         h.collected      = false
         h.collected_date = null
     }
+
     const total    = calcularTotalCobrarCliente(clienteActual.id)
     const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
     actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
     renderCobrosCliente()
+
+    try {
+        await persistirHitosCliente(clienteActual.id)
+    } catch (err) {
+        // Revertir cambio en memoria y en vista
+        h.collected      = estadoPrevio.collected
+        h.collected_date = estadoPrevio.collected_date
+        actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
+        renderCobrosCliente()
+        alert('Error al guardar el cambio: ' + err.message)
+    }
 }
 
-window.eliminarCobroCliente = function(idx) {
+window.eliminarCobroCliente = async function(idx) {
     const h = hitosClienteTemp[idx]
-    if (h.invoiced) {
+    if (h.invoice_number) {
         alert('Este hito ya ha sido facturado y no puede eliminarse.\nSi necesitas corregirlo, contacta con el administrador de la base de datos.')
         return
     }
-    hitosClienteTemp.splice(idx, 1)
+    // Guardar hito y posición para revertir si falla la persistencia
+    const hitoEliminado = hitosClienteTemp.splice(idx, 1)[0]
     const total    = calcularTotalCobrarCliente(clienteActual.id)
     const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
     const idxFinal = hitosClienteTemp.findIndex(h => h.esFinal)
     if (idxFinal >= 0) hitosClienteTemp[idxFinal].amount = total - prepagos
     actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
     renderCobrosCliente()
+    try {
+        await persistirHitosCliente(clienteActual.id)
+    } catch (err) {
+        // Revertir: reinsertar el hito en su posición original
+        hitosClienteTemp.splice(idx, 0, hitoEliminado)
+        const totalRev    = calcularTotalCobrarCliente(clienteActual.id)
+        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const idxFinalRev = hitosClienteTemp.findIndex(h => h.esFinal)
+        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev - prepagosRev
+        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev - prepagosRev)
+        renderCobrosCliente()
+        alert('Error al eliminar el cobro: ' + err.message)
+    }
 }
 
 document.getElementById('btnNuevoCobroCliente').addEventListener('click', () => {
@@ -826,7 +995,7 @@ document.getElementById('btnCancelarNuevoCobro').addEventListener('click', () =>
     document.getElementById('btnNuevoCobroCliente').style.display     = 'inline-block'
 })
 
-document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => {
+document.getElementById('btnGuardarNuevoCobro').addEventListener('click', async () => {
     const concepto = document.getElementById('cobroConcepto').value.trim() || 'Prepago'
     const importe  = parseFloat(document.getElementById('cobroImporte').value)
     const fecha    = document.getElementById('cobroFecha').value || null
@@ -834,7 +1003,8 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
     if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
 
     const idxFinal = hitosClienteTemp.findIndex(h => h.esFinal)
-    hitosClienteTemp.splice(idxFinal >= 0 ? idxFinal : hitosClienteTemp.length, 0, {
+    const posInsercion = idxFinal >= 0 ? idxFinal : hitosClienteTemp.length
+    hitosClienteTemp.splice(posInsercion, 0, {
         esFinal:   false,
         comments:  concepto,
         client_id: clienteActual.id,
@@ -857,26 +1027,39 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
 
     actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
     renderCobrosCliente()
-})
 
-document.getElementById('btnGuardarCobros').addEventListener('click', async () => {
-    if (!clienteActual) return
-
-    await supabase.from('charges').delete().eq('client_id', clienteActual.id)
-
-    for (const h of hitosClienteTemp) {
-        await supabase.from('charges').insert({
-            client_id:      clienteActual.id,
-            amount:         parseFloat(h.amount),
-            due_date:       h.due_date,
-            collected:      h.collected,
-            collected_date: h.collected_date ?? null,
-            comments:       h.comments
-        })
+    try {
+        await persistirHitosCliente(clienteActual.id)
+    } catch (err) {
+        // Revertir: eliminar el hito recién insertado de memoria
+        hitosClienteTemp.splice(posInsercion, 1)
+        const totalRev    = calcularTotalCobrarCliente(clienteActual.id)
+        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const idxFinalRev = hitosClienteTemp.findIndex(h => h.esFinal)
+        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev - prepagosRev
+        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev - prepagosRev)
+        renderCobrosCliente()
+        alert('Error al guardar el cobro: ' + err.message)
     }
-
-    await cargarCobrosCliente(clienteActual.id, reservasCliente)  // ← sustituye el alert
 })
+
+
+// Descarga una factura ya emitida desde Supabase Storage
+// Genera una URL firmada temporal (60s) y la abre en una nueva pestana
+window.descargarFactura = async function(invoicePath, invoiceNumber) {
+    const { data, error } = await supabase.storage
+        .from('invoices')
+        .createSignedUrl(invoicePath, 60)
+    if (error) {
+        alert('Error al obtener la factura: ' + error.message)
+        return
+    }
+    const a = document.createElement('a')
+    a.href     = data.signedUrl
+    a.download = invoicePath.split('/').pop()
+    a.target   = '_blank'
+    a.click()
+}
 
 window.facturarHito = async function(hitoId) {
     if (!clienteActual) return
@@ -887,7 +1070,7 @@ window.facturarHito = async function(hitoId) {
 
     if (esHitoFinal) {
         const sinFacturar = hitosClienteTemp.filter(h =>
-            h.id && h.id !== hitoId && !h.invoiced
+            h.id && h.id !== hitoId && !h.invoice_number
         )
         if (sinFacturar.length > 0) {
             const lista = sinFacturar.map(h =>

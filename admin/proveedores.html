@@ -110,7 +110,16 @@
                         <input type="text" id="inputCosteServicio" disabled placeholder="—">
                     </div>
                 </div>
-                <div id="servicio-status" style="margin-top:8px; font-size:12px;"></div>
+                <div class="form-field">
+                    <label>Descripción</label>
+                    <textarea id="inputServicioDescription" rows="2" placeholder="Descripción del servicio" style="width:100%;resize:vertical"></textarea>
+                </div>
+                <div class="form-field">
+                    <label>Comentarios</label>
+                    <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="width:100%;resize:vertical"></textarea>
+                </div>
+                <div id="servicio-desc-status" style="grid-column: 1 / -1; font-size:12px; margin-top:-4px"></div>
+                <div id="servicio-status" style="grid-column: 1 / -1; margin-top:8px; font-size:12px;"></div>
                 <div class="btn-row">
                     <button class="btn btn-primary" id="btnGuardarServicio" disabled>Añadir servicio</button>
                     <button class="btn btn-secondary" id="btnCancelarServicio" style="display:none">✕ Cancelar</button>

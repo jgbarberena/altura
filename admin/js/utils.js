@@ -3,6 +3,25 @@
 // Formatea un número como moneda EUR
 export const fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
+// Fecha por defecto para cobros al cliente: 6 de julio
+// del anio en curso si estamos antes del 15 de julio, del siguiente si no
+export function fechaCobroDefault() {
+    const hoy  = new Date()
+    const anio = hoy.getMonth() < 6 || (hoy.getMonth() === 6 && hoy.getDate() < 15)
+        ? hoy.getFullYear()
+        : hoy.getFullYear() + 1
+    return `${anio}-07-06`
+}
+
+// Fecha por defecto para pagos al proveedor: 15 de julio (misma logica)
+export function fechaPagoDefault() {
+    const hoy  = new Date()
+    const anio = hoy.getMonth() < 6 || (hoy.getMonth() === 6 && hoy.getDate() < 15)
+        ? hoy.getFullYear()
+        : hoy.getFullYear() + 1
+    return `${anio}-07-15`
+}
+
 // Inicializa hamburger y overlay del sidebar
 export function initSidebar() {
     const sidebar     = document.getElementById('sidebar')
@@ -60,29 +79,48 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
     const { data: charges } = await supabase
         .from('charges').select('*').eq('client_id', clienteId)
 
-    const prepagos  = (charges ?? []).filter(c => c.comments !== 'Cobro final')
+    const hitoFinal = (charges ?? []).find(c => c.is_final)
+
+    const prepagos  = (charges ?? []).filter(c => !c.is_final)
         .reduce((s, c) => s + parseFloat(c.amount), 0)
     const cobroFinal = total - prepagos
-
-    const hitoFinal = (charges ?? []).find(c => c.comments === 'Cobro final')
 
     if (!hitoFinal) {
         // No existe — crear
         await supabase.from('charges').insert({
             client_id:      clienteId,
             amount:         cobroFinal,
-            due_date:       '2026-07-06',
+            due_date:       fechaCobroDefault(),
             collected:      false,
             collected_date: null,
-            comments:       'Cobro final'
+            comments:       'Cobro final',
+            is_final:       true
         })
         console.log(`💰 Cobro final creado para ${clienteId}: ${cobroFinal}€`)
     } else if (Math.abs(parseFloat(hitoFinal.amount) - cobroFinal) >= 0.01) {
-        // Existe pero está desactualizado — actualizar
-        await supabase.from('charges')
-            .update({ amount: cobroFinal })
-            .eq('id', hitoFinal.id)
-        console.log(`💰 Cobro final actualizado para ${clienteId}: ${hitoFinal.amount}€ → ${cobroFinal}€`)
+        if (hitoFinal.invoice_number) {
+            // Ya facturado — degradar el hito anterior a prepago y crear ajuste como nuevo final
+            const diferencia = cobroFinal - parseFloat(hitoFinal.amount)
+            await supabase.from('charges')
+                .update({ is_final: false })
+                .eq('id', hitoFinal.id)
+            await supabase.from('charges').insert({
+                client_id:      clienteId,
+                amount:         diferencia,
+                due_date:       fechaCobroDefault(),
+                collected:      false,
+                collected_date: null,
+                comments:       'Ajuste s/ factura ' + hitoFinal.invoice_number,
+                is_final:       true
+            })
+            alert(`⚠️ El cobro final de ${clienteId} ya estaba facturado (${hitoFinal.invoice_number}).\n\nSe ha creado un hito de ajuste por ${diferencia > 0 ? '+' : ''}${diferencia}€ que queda pendiente de cobro.`)
+        } else {
+            // Existe pero no facturado — actualizar normalmente
+            await supabase.from('charges')
+                .update({ amount: cobroFinal })
+                .eq('id', hitoFinal.id)
+            console.log(`💰 Cobro final actualizado para ${clienteId}: ${hitoFinal.amount}€ → ${cobroFinal}€`)
+        }
     }
 }
 
@@ -118,7 +156,7 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
         await supabase.from('payments').insert({
             provider_id: proveedorId,
             amount:      pagoFinal,
-            due_date:    '2026-07-15',
+            due_date:    fechaPagoDefault(),
             paid:        false,
             comments:    'Pago final'
         })

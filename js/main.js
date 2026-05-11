@@ -135,7 +135,7 @@ async function initMiniGallery(root, resolveAsset, resolvePage) {
     }
 
     // ======================================================
-    // 1) CARGAR IMÁGENES (TU CÓDIGO ORIGINAL)
+    // 1) CARGAR IMÁGENES 
     // ======================================================
     await loadMiniGalleryImages(root, resolveAsset);
 
@@ -431,6 +431,12 @@ async function loadMiniGalleryImages(root, resolveAsset) {
         });
     }
 
+    // Limitar número de imágenes con selección ponderada por weight
+    const maxImg = parseInt(root.dataset.maxImg, 10);
+    if (!isNaN(maxImg) && maxImg > 0 && filtered.length > maxImg) {
+        filtered = selectWeightedByField(filtered, maxImg, "weight");
+    }
+    
     if (filtered.length === 0) {
         console.warn("MiniGallery: no hay imágenes para:", categoryAttr);
         return;
