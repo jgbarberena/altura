@@ -526,7 +526,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
             "areaServed"  = @{ "@type" = "Place"; "name" = "$orgCity" }
             "mentions"    = @(
                 @{ "@type" = "Place"; "name" = "$orgCity" },
-                @{ "name" = "Fiestas de San Fermin $sfYear" }
+                @{ "@type" = "Thing"; "name" = "Fiestas de San Fermin $sfYear" }
             )
         } | ConvertTo-Json -Depth 4 -Compress)
     }
@@ -548,7 +548,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
         "url"         = $url
         "about"       = @(
             @{ "@type" = "Place"; "name" = "$orgCity" },
-            @{ "name" = "Fiestas de San Fermin $sfYear" }
+            @{ "@type" = "Thing"; "name" = "Fiestas de San Fermin $sfYear" }
         )
     }
     if ($pageType -eq "website" -or $pageType -eq "landing") {

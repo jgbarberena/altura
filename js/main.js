@@ -654,7 +654,7 @@ function initFormulario(root, resolveAsset, resolvePage) {
 
             const asunto = "Solicitud experiencia San Fermín";
 
-            const mailto = `mailto:paula@lemonmilk.es?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+            const mailto = `mailto:paula@experienciasanfermin.com?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
             window.location.href = mailto;
         });
