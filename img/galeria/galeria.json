@@ -352,14 +352,6 @@
         "weight":  "5"
     },
     {
-        "id":  "cena-empresa-san-fermin-pamplona-restaurante-vip",
-        "desktop":  "cena-empresa-san-fermin-pamplona-restaurante-vip_desktop.jpg",
-        "mobile":  "cena-empresa-san-fermin-pamplona-restaurante-vip_mobile.jpg",
-        "alt":  "Gran mesa de cena corporativa privada con vistas a las monta├▒as de Pamplona durante San Ferm├¡n, servicio de hospitalidad VIP para equipos de empresa en fiestas exclusivas.",
-        "clasificacion":  "empresa",
-        "weight":  "5"
-    },
-    {
         "id":  "cena-fuegos-artificiales-san-fermin-pamplona-vip",
         "desktop":  "cena-fuegos-artificiales-san-fermin-pamplona-vip_desktop.jpg",
         "mobile":  "cena-fuegos-artificiales-san-fermin-pamplona-vip_mobile.jpg",
@@ -508,14 +500,6 @@
         "desktop":  "chupinazo-gran-angular-plaza-ayuntamiento-pamplona_desktop.jpg",
         "mobile":  "chupinazo-gran-angular-plaza-ayuntamiento-pamplona_mobile.jpg",
         "alt":  "Imagen gran angular del Chupinazo de San Ferm├¡n con el Ayuntamiento de Pamplona y la plaza desbordada de celebrantes, confeti y serpentinas desde balc├│n VIP.",
-        "clasificacion":  "chupinazo",
-        "weight":  "5"
-    },
-    {
-        "id":  "chupinazo-pamplona-balcon-vip-toros-callejuela",
-        "desktop":  "chupinazo-pamplona-balcon-vip-toros-callejuela_desktop.jpg",
-        "mobile":  "chupinazo-pamplona-balcon-vip-toros-callejuela_mobile.jpg",
-        "alt":  "Encierro de San Ferm├¡n captado en plena carrera desde balc├│n privado: toros y corredores en callejuela hist├│rica de Pamplona con espectadores a ambos lados. Alquiler de posici├│n exclusiva con vistas al coraz├│n del Encierro.",
         "clasificacion":  "chupinazo",
         "weight":  "5"
     },
@@ -680,14 +664,6 @@
         "weight":  "5"
     },
     {
-        "id":  "clientes-vip-balcon-encierro-estafeta-pamplona",
-        "desktop":  "clientes-vip-balcon-encierro-estafeta-pamplona_desktop.jpg",
-        "mobile":  "clientes-vip-balcon-encierro-estafeta-pamplona_mobile.jpg",
-        "alt":  "Clientes disfrutando del ambiente previo al Encierro de San Ferm├¡n desde balc├│n privado VIP con vistas directas a la calle Estafeta de Pamplona.",
-        "clasificacion":  "encierro",
-        "weight":  "5"
-    },
-    {
         "id":  "confeti-chupinazo-balcones-san-fermin-pamplona",
         "desktop":  "confeti-chupinazo-balcones-san-fermin-pamplona_desktop.jpg",
         "mobile":  "confeti-chupinazo-balcones-san-fermin-pamplona_mobile.jpg",
@@ -776,27 +752,11 @@
         "weight":  "5"
     },
     {
-        "id":  "encierro-toros-vista-cenital-balcon-vip",
-        "desktop":  "encierro-toros-vista-cenital-balcon-vip_desktop.jpg",
-        "mobile":  "encierro-toros-vista-cenital-balcon-vip_mobile.jpg",
-        "alt":  "Vista cenital del Encierro de San Ferm├¡n desde balc├│n privado VIP: toros bravos y corredores en plena carrera por el adoquinado hist├│rico de Pamplona.",
-        "clasificacion":  "encierro",
-        "weight":  "5"
-    },
-    {
         "id":  "espacio-hospitalidad-premium-toko-san-fermin-pamplona",
         "desktop":  "espacio-hospitalidad-premium-toko-san-fermin-pamplona_desktop.jpg",
         "mobile":  "espacio-hospitalidad-premium-toko-san-fermin-pamplona_mobile.jpg",
         "alt":  "Interior del espacio de hospitalidad premium Toko para eventos corporativos de San Ferm├¡n en Pamplona, con cocina y zona de reuni├│n.",
         "clasificacion":  "toko",
-        "weight":  "5"
-    },
-    {
-        "id":  "familia-balcon-ayuntamiento-san-fermin-pamplona",
-        "desktop":  "familia-balcon-ayuntamiento-san-fermin-pamplona_desktop.jpg",
-        "mobile":  "familia-balcon-ayuntamiento-san-fermin-pamplona_mobile.jpg",
-        "alt":  "Madre con hijos en balc├│n privado con vista directa al Ayuntamiento de Pamplona engalanado para San Ferm├¡n, experiencia VIP familiar en el Chupinazo.",
-        "clasificacion":  "chupinazo",
         "weight":  "5"
     },
     {
@@ -1149,6 +1109,22 @@
         "mobile":  "toros-encierro-calle-san-fermin-balcon-vip-pamplona_mobile.jpg",
         "alt":  "Toros y corredores en plena carrera por las calles de Pamplona durante el encierro de San Ferm├¡n, vista cenital desde balc├│n privado.",
         "clasificacion":  "encierro",
+        "weight":  "5"
+    },
+    {
+        "id":  "Visita-guiada-barrera-santo-domingo",
+        "desktop":  "Visita-guiada-barrera-santo-domingo_desktop.jpg",
+        "mobile":  "Visita-guiada-barrera-santo-domingo_mobile.jpg",
+        "alt":  "Recorre con nuestro gu├¡a los rincones con m├ís historia: la capilla del Santo, las murallas, la Cuesta de Santo Domingo con la hornacina donde cantan los corredores, el Ayuntamiento, la tienda de toros y la Plaza.",
+        "clasificacion":  "personalizada",
+        "weight":  "5"
+    },
+    {
+        "id":  "visita-guiada-corralillos-del-gas-toro",
+        "desktop":  "visita-guiada-corralillos-del-gas-toro_desktop.jpg",
+        "mobile":  "visita-guiada-corralillos-del-gas-toro_mobile.jpg",
+        "alt":  "Accede a los corrales donde pasan la noche los toros antes del encierro. Una experiencia exclusiva, a metros de los animales, que te dar├í una perspectiva completamente diferente de la fiesta.",
+        "clasificacion":  "personalizada",
         "weight":  "5"
     }
 ]

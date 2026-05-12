@@ -1,0 +1,409 @@
+/*
+ * programa-san-fermin.css
+ * Estilos exclusivos de la página del programa de San Fermín 2026.
+ * Depende de style.css (variables, tipografía, layout base).
+ * No usa articulo.css.
+ */
+
+/* =====================================================
+   LAYOUT: ancho completo en esta página
+===================================================== */
+.articulo-page--wide {
+    max-width: none;
+    padding-left: clamp(16px, 4vw, 60px);
+    padding-right: clamp(16px, 4vw, 60px);
+}
+
+/* Texto interior: columna de lectura cómoda */
+.articulo-page--wide .guia-resumen,
+.articulo-page--wide .text-body--intro,
+.articulo-page--wide .guia-articulo > h1,
+.articulo-page--wide .guia-articulo > h2,
+.articulo-page--wide .guia-articulo > h3,
+.articulo-page--wide .guia-articulo > p,
+.articulo-page--wide .guia-articulo > .faq-item,
+.articulo-page--wide .guia-articulo > .list-container,
+.articulo-page--wide .guia-autora,
+.articulo-page--wide .relacionados {
+    max-width: var(--width-text);
+}
+
+/* Tablas: más anchas que el texto */
+.programa-table-wrap {
+    max-width: var(--width-main);
+    overflow-x: auto;
+    margin: 20px 0 36px;
+}
+
+@media (min-width: 769px) {
+    .articulo-page--wide {
+        padding-top: calc(var(--header-height) + 60px);
+    }
+}
+
+/* =====================================================
+   WRAPPER EXTERIOR DEL MAPA
+   Solo redondeo y sombra. Sin overflow:hidden aquí —
+   el grid interior necesita libertad para dimensionarse.
+===================================================== */
+.mapa-sf-wrapper {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.13);
+    background: #fff;
+    margin: 32px 0 0;
+    /* overflow:hidden SOLO en controles y leyenda, no aquí */
+}
+
+/* =====================================================
+   CONTROLES (barra superior del mapa)
+===================================================== */
+.mapa-sf-controls {
+    background: #fff;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    padding: 12px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+}
+
+.mapa-sf-controls label {
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
+    font-weight: 500;
+    color: var(--color-body);
+    white-space: nowrap;
+}
+
+#sf-day-select {
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: var(--color-heading);
+    background: #fafafa;
+    cursor: pointer;
+}
+
+.mapa-sf-hour-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 200px;
+}
+
+#sf-hour-slider {
+    flex: 1;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+}
+
+#sf-hour-label {
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
+    font-weight: 600;
+    color: var(--color-accent);
+    min-width: 140px;
+}
+
+/* =====================================================
+   GRID: MAPA + PANEL LATERAL
+===================================================== */
+.mapa-sf-body {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    /* Sin overflow:hidden aquí — Leaflet necesita que el
+       contenedor del mapa tenga dimensiones reales */
+}
+
+#mapa-sf {
+    width: 100%;
+    height: 70vh;
+    min-height: 500px;
+    max-height: 800px;
+    display: block; /* evitar inline-block gaps */
+}
+
+/* =====================================================
+   PANEL LATERAL
+===================================================== */
+.mapa-sf-panel {
+    width: 100%;
+    height: 70vh;
+    min-height: 500px;
+    max-height: 800px;
+    background: rgba(18,12,12,0.92);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    box-sizing: border-box;
+}
+
+/* Estado vacío del panel */
+.mapa-sf-panel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 24px 16px;
+    text-align: center;
+    color: rgba(255,255,255,0.25);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    gap: 12px;
+    line-height: 1.5;
+    user-select: none;
+}
+
+.mapa-sf-panel-empty-icon {
+    font-size: 32px;
+    opacity: 0.35;
+}
+
+/* =====================================================
+   LEYENDA (barra inferior del mapa)
+===================================================== */
+.mapa-sf-leyenda {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-subtle);
+    background: #fafafa;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    padding: 8px 20px;
+    line-height: 1.7;
+    border-radius: 0 0 12px 12px;
+    overflow: hidden;
+}
+
+/* =====================================================
+   CARD DE DETALLE (dentro del panel)
+===================================================== */
+.sfp-card {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: rgba(255,255,255,0.9);
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.sfp-img {
+    width: 100%;
+    height: 130px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.sfp-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 0.85;
+}
+
+.sfp-body {
+    padding: 14px 16px 16px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.sfp-loc {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.sfp-ev {
+    margin-bottom: 12px;
+}
+
+.sfp-ev + .sfp-ev {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+}
+
+.sfp-etit {
+    font-weight: 600;
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.35;
+    margin-bottom: 4px;
+}
+
+.sfp-edesc {
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.48);
+    line-height: 1.5;
+    margin-bottom: 6px;
+}
+
+.sfp-pend {
+    font-size: 10px;
+    color: #e0a020;
+    font-style: italic;
+}
+
+.sfp-dia {
+    font-size: 12px;
+    color: rgba(255,255,255,0.65);
+    margin-top: 3px;
+    line-height: 1.5;
+}
+
+.sfp-hora {
+    font-weight: 700;
+    color: #e87070;
+    font-size: 12px;
+}
+
+.sfp-link {
+    display: inline-block;
+    margin-top: 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #e87070;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(232,112,112,0.35);
+    transition: color .2s, border-color .2s;
+}
+
+.sfp-link:hover {
+    color: #fff;
+    border-bottom-color: rgba(255,255,255,0.5);
+}
+
+/* =====================================================
+   TABLAS DEL PROGRAMA
+===================================================== */
+.programa-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
+    min-width: 480px;
+}
+
+.programa-table th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--color-accent);
+    color: #fff;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.programa-table td {
+    padding: 8px 12px;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(0,0,0,0.07);
+    color: var(--color-body);
+    line-height: 1.5;
+}
+
+.programa-table tr:nth-child(even) td {
+    background: rgba(0,0,0,0.02);
+}
+
+.programa-table td.hora {
+    font-weight: 600;
+    color: var(--color-accent);
+    white-space: nowrap;
+}
+
+.programa-table .pendiente {
+    color: #c07000;
+    font-style: italic;
+}
+
+.programa-table .grupo-header td {
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--color-subtle);
+    background: rgba(0,0,0,0.035);
+    padding: 6px 12px;
+}
+
+.badge-pendiente {
+    display: inline-block;
+    background: #fff3cd;
+    color: #856404;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* =====================================================
+   MOBILE
+===================================================== */
+@media (max-width: 768px) {
+    .mapa-sf-controls {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        border-radius: 12px 12px 0 0;
+    }
+
+    .mapa-sf-hour-group {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .mapa-sf-body {
+        grid-template-columns: 1fr;
+    }
+
+    #mapa-sf {
+        height: 55vh;
+        min-height: 320px;
+        max-height: unset;
+    }
+
+    /* En mobile el panel se superpone sobre el mapa desde abajo */
+    .mapa-sf-body {
+        position: relative; /* contexto para el panel absoluto */
+    }
+
+    .mapa-sf-panel {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: auto;
+        min-height: 0;
+        max-height: 0;
+        overflow: hidden;
+        border-left: none;
+        border-top: none;
+        background: rgba(18,12,12,0.88);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 1000; /* por encima de Leaflet */
+        transition: max-height 0.35s ease;
+        border-radius: 0;
+    }
+
+    .mapa-sf-panel.panel-open {
+        max-height: 55vh;
+        overflow-y: auto;
+    }
+}

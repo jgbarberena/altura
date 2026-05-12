@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="../img/logos/sanfermin-logo-white.png" type="image/png">
+    <!-- AUTO-SEO HEAD INIT -->
+<title>Programa San Fermín 2026: Horarios, Conciertos y Todos los Actos</title>
+<meta name="description" content="Programa completo de San Fermín 2026 día a día: encierros, corridas, conciertos, procesión, gigantes y todos los actos con horarios y mapa interactivo.">
+<link rel="canonical" href="https://www.experienciasanfermin.com/guias/programa-san-fermin.html">
+<meta property="og:title" content="Programa San Fermín 2026: Horarios, Conciertos y Todos los Actos">
+<meta property="og:description" content="Programa completo de San Fermín 2026 día a día: encierros, corridas, conciertos, procesión, gigantes y todos los actos con horarios y mapa interactivo.">
+<meta property="og:image" content="https://www.experienciasanfermin.com/img/guias/primera-vez_mobile.jpg">
+<meta property="og:url" content="https://www.experienciasanfermin.com/guias/programa-san-fermin.html">
+<meta property="og:type" content="article">
+<!-- AUTO-SEO HEAD END -->
+
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/components.css">
+    <link rel="stylesheet" href="../css/programa-san-fermin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div id="header-placeholder"></div>
+
+    <main class="articulo-page articulo-page--wide page-data"
+        data-author="PAULA DIAZ ECHALECU"
+        data-published="2026-05-12"
+        data-modified="2026-05-12"
+        data-page-type="article"
+        data-page-title="Programa San Fermín 2026: Horarios, Conciertos y Todos los Actos">
+
+        <!-- Cabecera: sin sticky, sin section--inner--sticky -->
+        <article class="section section--inner guia-articulo"
+            data-category="core"
+            data-topics="encierro; chupinazo; procesion; conciertos; toros; gigantes; personalizada; empresa"
+            data-feature="high">
+
+            <h1 class="text-title page-title-source">Programa de San Fermín 2026</h1>
+
+            <p class="text-body guia-resumen page-description-source">
+                Horarios, ubicaciones y actos del programa oficial de San Fermín 2026, organizados por temática. Con mapa interactivo para explorar qué ocurre en cada punto de la ciudad y cuándo.
+            </p>
+
+            <p class="text-body--intro">
+                San Fermín 2026 arranca el lunes 6 de julio con el Chupinazo y cierra en la madrugada del 15 con el Pobre de Mí. En los nueve días que median entre uno y otro hay encierros, corridas, música, procesiones, gigantes, fuegos y mucho más, todo con sus propios horarios, lugares y lógica. Esta página recoge el programa por temáticas y lo pone en el mapa.
+            </p>
+
+        </article>
+
+        <div id="sticky-placeholder"></div>
+
+        <!-- ── SECCIÓN 1: MAPA ─────────────────────────────────── -->
+        <section id="mapa" data-sticky-section="Mapa" class="section section--inner--sticky">
+
+            <article class="guia-articulo">
+                <h2 class="text-sub">Dónde y cuándo: el mapa del programa</h2>
+                <p class="text-body">
+                    Haz click en cualquier punto o recorrido para ver los detalles en el panel lateral. Usa el selector de día y el slider de hora para filtrar qué hay activo en cada momento. Los marcadores en gris tienen actividad ese día pero fuera de la franja seleccionada.
+                </p>
+            </article>
+
+            <div class="mapa-sf-wrapper">
+                <div class="mapa-sf-controls">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <label for="sf-day-select">Día:</label>
+                        <select id="sf-day-select">
+                            <option value="all">Todos los días</option>
+                            <option value="2026-07-05">Dom 5 jul — Novillada</option>
+                            <option value="2026-07-06">Lun 6 jul — Chupinazo</option>
+                            <option value="2026-07-07">Mar 7 jul — Día grande · Procesión</option>
+                            <option value="2026-07-08">Mié 8 jul</option>
+                            <option value="2026-07-09">Jue 9 jul</option>
+                            <option value="2026-07-10">Vie 10 jul</option>
+                            <option value="2026-07-11">Sáb 11 jul</option>
+                            <option value="2026-07-12">Dom 12 jul</option>
+                            <option value="2026-07-13">Lun 13 jul</option>
+                            <option value="2026-07-14">Mar 14 jul — Último día · Pobre de Mí</option>
+                        </select>
+                    </div>
+                    <div class="mapa-sf-hour-group">
+                        <label for="sf-hour-slider">Hora:</label>
+                        <input type="range" id="sf-hour-slider" min="-1" max="23" value="-1" step="1">
+                        <span id="sf-hour-label">Todo el día</span>
+                    </div>
+                </div>
+
+                <div class="mapa-sf-body">
+                    <div id="mapa-sf"></div>
+                    <div class="mapa-sf-panel" id="mapa-sf-panel">
+                        <div class="mapa-sf-panel-empty" id="mapa-sf-panel-empty">
+                            <span class="mapa-sf-panel-empty-icon">📍</span>
+                            <span>Haz click en un punto del mapa para ver los detalles</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="mapa-sf-leyenda">
+                    <span style="color:#c0392b">🐂 Toros</span> &nbsp;·&nbsp;
+                    <span style="color:#7d3c98">⭐ Eventos únicos</span> &nbsp;·&nbsp;
+                    <span style="color:#c07000">🎭 Tradición callejera</span> &nbsp;·&nbsp;
+                    <span style="color:#2471a3">🎵 Conciertos</span> &nbsp;·&nbsp;
+                    <span style="color:#1e8449">🎪 Ocio y cultura</span> &nbsp;·&nbsp;
+                    <span style="color:#d4ac0d">✨ Fuegos</span>
+                    &nbsp;&nbsp;— Gris: activo ese día, fuera de la franja horaria.
+                </p>
+            </div>
+
+        </section>
+
+        <!-- ── SECCIÓN 2: PROGRAMA DIARIO ─────────────────────── -->
+        <section id="programa-diario" data-sticky-section="Programa diario" class="section section--inner--sticky">
+            <article class="guia-articulo">
+
+                <h2 class="text-sub">El esqueleto de la fiesta: lo que pasa todos los días</h2>
+                <p class="text-body">
+                    San Fermín tiene una estructura interna que se repite con variaciones a lo largo de los nueve días. Conocerla de antemano ayuda mucho a orientarse y a no perderse por sorpresa lo que ocurre a cada hora.
+                </p>
+
+                <div class="programa-table-wrap">
+                    <table class="programa-table">
+                        <thead><tr><th>Hora</th><th>Acto</th><th>Lugar</th></tr></thead>
+                        <tbody>
+                            <tr><td class="hora">07:00</td><td>Diana — La Pamplonesa recorre el casco viejo</td><td>Sale del Ayuntamiento</td></tr>
+                            <tr><td class="hora">08:00</td><td>Encierro (del 7 al 14 de julio)</td><td>Santo Domingo → Plaza de Toros</td></tr>
+                            <tr><td class="hora">09:00</td><td>Baile de la Alpargata</td><td>Nuevo Casino Principal (Plaza del Castillo)</td></tr>
+                            <tr><td class="hora">09:30</td><td>Comparsa de Gigantes y Cabezudos</td><td>Sale del Ayuntamiento, recorre casco viejo</td></tr>
+                            <tr><td class="hora">~12:00</td><td>Apartado <span class="badge-pendiente">Pendiente horario exacto</span></td><td>Corrales de la Plaza de Toros</td></tr>
+                            <tr><td class="hora">~18:00</td><td>Jota navarra <span class="badge-pendiente">Pendiente</span></td><td>Paseo de Sarasate</td></tr>
+                            <tr><td class="hora">18:30</td><td>Corrida de toros (del 7 al 14)</td><td>Plaza de Toros Monumental</td></tr>
+                            <tr><td class="hora">20:00</td><td>Concierto vespertino — artistas locales</td><td>Plaza de la Compañía</td></tr>
+                            <tr><td class="hora">~21:00</td><td>Salida de peñas tras la corrida</td><td>Plaza de Toros → casco viejo</td></tr>
+                            <tr><td class="hora">21:45</td><td>Torico de Fuego</td><td>Plaza de Santiago → Plaza Consistorial</td></tr>
+                            <tr><td class="hora">23:00</td><td>Fuegos artificiales — Concurso Internacional</td><td>Ciudadela (vista: Vuelta del Castillo)</td></tr>
+                            <tr><td class="hora">23:30</td><td>Conciertos nocturnos Plaza de la Compañía</td><td>Plaza de la Compañía</td></tr>
+                            <tr><td class="hora">23:30–00:50</td><td>Conciertos Plaza del Castillo</td><td>Plaza del Castillo</td></tr>
+                            <tr><td class="hora">~23:30</td><td>Encierrillo — traslado nocturno de toros</td><td>Corrales de Gas → Santo Domingo</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="text-body">
+                    Si quieres entender cómo aprovechar la mañana más allá del encierro, tenemos una guía específica sobre <a class="text-link" href="mananas-sanfermineras.html">las mañanas sanfermineras</a>. Y para una visión de conjunto de todos los planes posibles, revisa <a class="text-link" href="que-hacer-san-fermin.html">qué hacer en San Fermín</a>.
+                </p>
+
+            </article>
+        </section>
+
+        <!-- ── SECCIÓN 3: EVENTOS ÚNICOS ──────────────────────── -->
+        <section id="eventos-unicos" data-sticky-section="Eventos únicos" class="section section--inner--sticky">
+            <article class="guia-articulo">
+
+                <h2 class="text-sub">Los actos únicos: momentos que solo pasan una vez</h2>
+                <p class="text-body">
+                    Sobre la estructura diaria, hay varios momentos que ocurren una sola vez en toda la semana, con un peso emocional y simbólico muy distinto al resto del programa.
+                </p>
+
+                <div class="programa-table-wrap">
+                    <table class="programa-table">
+                        <thead><tr><th>Fecha</th><th>Hora</th><th>Acto</th><th>Lugar</th></tr></thead>
+                        <tbody>
+                            <tr><td><strong>5 jul</strong></td><td class="hora">18:30</td><td>Novillada — Ganadería Pincha (Lodosa). Toreros por confirmar.</td><td>Plaza de Toros</td></tr>
+                            <tr><td><strong>6 jul</strong></td><td class="hora">12:00</td><td><strong>Chupinazo.</strong> Inicio oficial de las fiestas. <a class="text-link" href="../experiencias/chupinazo/">Ver experiencia del chupinazo</a>.</td><td>Plaza Consistorial</td></tr>
+                            <tr><td><strong>6 jul</strong></td><td class="hora">18:30</td><td>Corrida de Rejones — El Capea / Carmen Lorenzo. G. Hermoso de Mendoza, R. Armendáriz + por confirmar.</td><td>Plaza de Toros</td></tr>
+                            <tr><td><strong>6 jul</strong></td><td class="hora">20:00</td><td>Vísperas solemnes de San Fermín.</td><td>Iglesia de San Lorenzo</td></tr>
+                            <tr><td><strong>7 jul</strong></td><td class="hora">10:00</td><td><strong>Procesión de San Fermín.</strong> El santo recorre el casco viejo. <a class="text-link" href="../experiencias/procesion/">Ver experiencia de la procesión</a>.</td><td>Iglesia San Lorenzo → casco viejo</td></tr>
+                            <tr><td><strong>14 jul</strong></td><td class="hora">~18:00</td><td><strong>Despedida de los Gigantes.</strong> <a class="text-link" href="../experiencias/gigantes/">Ver experiencia</a>.</td><td>Plaza Consistorial</td></tr>
+                            <tr><td><strong>14 jul</strong></td><td class="hora">24:00</td><td><strong>Pobre de Mí.</strong> El pañuelo baja del cuello. San Fermín termina. <a class="text-link" href="../experiencias/pobre-de-mi/">Ver experiencia</a>.</td><td>Plaza Consistorial</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </article>
+        </section>
+
+        <!-- ── SECCIÓN 4: FERIA DEL TORO ──────────────────────── -->
+        <section id="feria-del-toro" data-sticky-section="Feria del Toro" class="section section--inner--sticky">
+            <article class="guia-articulo">
+
+                <h2 class="text-sub">La Feria del Toro 2026</h2>
+                <p class="text-body">
+                    El ciclo taurino de San Fermín es uno de los más importantes del mundo. Tiene tres fases: el encierrillo de la noche anterior, el encierro a las 8:00, y la corrida de tarde a las 18:30.
+                </p>
+                <p class="text-body">
+                    El <strong>encierrillo</strong> traslada los toros desde los Corrales de Gas hasta los Corrales de Santo Domingo hacia las 23:30. El <strong>encierro</strong> dura entre 2 y 4 minutos por 875 metros: Santo Domingo, Plaza Consistorial, Mercaderes, Estafeta, Telefónica y el callejón. Si no corres, la mejor forma de verlo es desde un balcón privado: <a class="text-link" href="../experiencias/encierro/">ver opciones del encierro</a>.
+                </p>
+                <p class="text-body">
+                    Las <strong>corridas</strong> empiezan a las 18:30. Tres toreros y una ganadería por tarde. Los carteles completos se publicarán a finales de mayo, tras la Feria de San Isidro.
+                </p>
+
+                <h3 class="text-title2">Ganaderías y carteles 2026</h3>
+
+                <div class="programa-table-wrap">
+                    <table class="programa-table">
+                        <thead><tr><th>Fecha</th><th>Festejo</th><th>Ganadería</th><th>Toreros / Estado</th></tr></thead>
+                        <tbody>
+                            <tr><td><strong>5 jul</strong></td><td>Novillada</td><td>Pincha (Lodosa, Navarra)</td><td class="pendiente">Pendiente de confirmar</td></tr>
+                            <tr><td><strong>6 jul</strong></td><td>Rejones</td><td>El Capea / Carmen Lorenzo</td><td>G. Hermoso de Mendoza, R. Armendáriz + por confirmar</td></tr>
+                            <tr><td><strong>7 jul</strong></td><td>Corrida</td><td>Fuente Ymbro</td><td>D. Luque, V. Hernández + por confirmar <span class="badge-pendiente">Pendiente</span></td></tr>
+                            <tr><td><strong>8 jul</strong></td><td>Corrida</td><td>Por confirmar</td><td class="pendiente">Pendiente de confirmar</td></tr>
+                            <tr><td><strong>9 jul</strong></td><td>Corrida</td><td>Jandilla</td><td>A. Roca Rey + por confirmar <span class="badge-pendiente">Pendiente</span></td></tr>
+                            <tr><td><strong>10 jul</strong></td><td>Corrida</td><td>José Escolar</td><td>J. de Castilla + por confirmar <span class="badge-pendiente">Pendiente</span></td></tr>
+                            <tr><td><strong>11 jul</strong></td><td>Corrida</td><td>Cebada Gago</td><td>A. Ferrera + por confirmar <span class="badge-pendiente">Pendiente</span></td></tr>
+                            <tr><td><strong>12 jul</strong></td><td>Corrida</td><td>La Palmosilla</td><td>Fortes, F. Adrián + por confirmar <span class="badge-pendiente">Pendiente</span></td></tr>
+                            <tr><td><strong>13 jul</strong></td><td>Corrida</td><td>Victoriano del Río</td><td>A. Roca Rey (2ª tarde) + por confirmar <span class="badge-pendiente">Pendiente</span></td></tr>
+                            <tr><td><strong>14 jul</strong></td><td>Corrida</td><td>Álvaro Núñez / Miura</td><td>Morante (Álvaro Núñez); P. Moral, Escribano, Colombo (Miura) <span class="badge-pendiente">Pendiente</span></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </article>
+        </section>
+
+        <!-- ── SECCIÓN 5: CONCIERTOS ───────────────────────────── -->
+        <section id="conciertos" data-sticky-section="Conciertos" class="section section--inner--sticky">
+            <article class="guia-articulo">
+
+                <h2 class="text-sub">Los conciertos de San Fermín 2026</h2>
+                <p class="text-body">
+                    La Plaza del Castillo es el escenario principal. La Plaza de la Compañía combina nombres internacionales de noche con artistas locales por la tarde. En 2026, los conciertos del Castillo adelantan su inicio a las 23:30 para reducir el impacto acústico sobre el entorno.
+                </p>
+
+                <h3 class="text-title2">Plaza del Castillo</h3>
+
+                <div class="programa-table-wrap">
+                    <table class="programa-table">
+                        <thead><tr><th>Día</th><th>Hora</th><th>Artista</th><th>Estilo</th></tr></thead>
+                        <tbody>
+                            <tr class="grupo-header"><td colspan="4">Lunes 6 de julio</td></tr>
+                            <tr><td>6 jul</td><td class="hora">21:30</td><td>Isabel Aaiún</td><td>Pop · "Potra Salvaje" nº1 España</td></tr>
+                            <tr><td>6 jul</td><td class="hora">23:45</td><td>Boney M feat. Maizie Williams</td><td>Música disco · "Daddy Cool", "Rivers of Babylon"</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Martes 7 de julio</td></tr>
+                            <tr><td>7 jul</td><td class="hora">23:30</td><td>Bala</td><td>Hard rock · Gira por UK, Japón, EEUU y Australia</td></tr>
+                            <tr><td>7 jul</td><td class="hora">00:40</td><td>Koma</td><td>Hard rock navarro · 30 años, "Mi jefe"</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Miércoles 8 de julio</td></tr>
+                            <tr><td>8 jul</td><td class="hora">23:45</td><td>Motxila 21</td><td>Rock · 21 aniversario</td></tr>
+                            <tr><td>8 jul</td><td class="hora">00:50</td><td>Brigade Loco</td><td>Punk rock con proyección internacional</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Jueves 9 de julio</td></tr>
+                            <tr><td>9 jul</td><td class="hora">23:45</td><td>Neomak</td><td>Folk electrónico en euskera</td></tr>
+                            <tr><td>9 jul</td><td class="hora">00:50</td><td>Shinova</td><td>Indie rock · Cruïlla, BBKlive, Sonorama</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Viernes 10 de julio</td></tr>
+                            <tr><td>10 jul</td><td class="hora">23:45</td><td>Marlena</td><td>Pop · "Me Sabe Mal" (4x platino), "Gitana"</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Sábado 11 de julio</td></tr>
+                            <tr><td>11 jul</td><td class="hora">23:30</td><td>Ojete Calor</td><td>Pop · 20 años de carrera, "Mocatriz"</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Domingo 12 de julio</td></tr>
+                            <tr><td>12 jul</td><td class="hora">23:30</td><td>Merina Gris</td><td>Pop / electrónica / rock</td></tr>
+                            <tr><td>12 jul</td><td class="hora">00:50</td><td>La Txama</td><td>Corridos urbanos</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Lunes 13 de julio</td></tr>
+                            <tr><td>13 jul</td><td class="hora">23:30</td><td>Hofe</td><td>Pop / electrónica / urbano · Artista navarro, nuevo disco</td></tr>
+                            <tr><td>13 jul</td><td class="hora">00:40</td><td>Jarfaiter</td><td>Kinki rap · "Los chicos de la Demolición"</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3 class="text-title2">Plaza de la Compañía</h3>
+                <p class="text-body">
+                    Dos turnos: tarde a las 20:00 (artistas locales) y noche a las 23:30 (artistas internacionales). House, reggae dub, jazz, músicas africanas y latinas. Del 6 al 13 de julio.
+                </p>
+
+                <div class="programa-table-wrap">
+                    <table class="programa-table">
+                        <thead><tr><th>Día</th><th>Hora</th><th>Artista</th><th>Estilo</th></tr></thead>
+                        <tbody>
+                            <tr class="grupo-header"><td colspan="4">Lunes 6 de julio</td></tr>
+                            <tr><td>6 jul</td><td class="hora">19:00</td><td>Odd Signals</td><td>DJ electrónica local</td></tr>
+                            <tr><td>6 jul</td><td class="hora">20:30</td><td>CC:DISCO!</td><td>House australiano · BBC Essential Mix, Glastonbury, Sònar</td></tr>
+                            <tr><td>6 jul</td><td class="hora">22:30</td><td>Celia Carrera</td><td>DJ electrónica local</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Martes 7 de julio</td></tr>
+                            <tr><td>7 jul</td><td class="hora">20:00</td><td>Puttaneska (de momento)</td><td>Proyecto local</td></tr>
+                            <tr><td>7 jul</td><td class="hora">23:30</td><td>Frente Cumbiero</td><td>Cumbia contemporánea internacional</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Miércoles 8 de julio</td></tr>
+                            <tr><td>8 jul</td><td class="hora">20:00</td><td>Burutik</td><td>Proyecto local</td></tr>
+                            <tr><td>8 jul</td><td class="hora">23:30</td><td>Tarta Relena</td><td>Música regional de vanguardia · Dúo catalán</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Jueves 9 de julio</td></tr>
+                            <tr><td>9 jul</td><td class="hora">20:00</td><td>La Mala Pekora</td><td>Ranchera punk local</td></tr>
+                            <tr><td>9 jul</td><td class="hora">23:30</td><td>The Zawose Queens</td><td>Música tanzana Wagogo con sonidos contemporáneos</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Viernes 10 de julio</td></tr>
+                            <tr><td>10 jul</td><td class="hora">20:00</td><td>Puntu Takoma</td><td>Proyecto local</td></tr>
+                            <tr><td>10 jul</td><td class="hora">23:30</td><td>Bibi Tanga & The Selenites</td><td>Afro-funk y electrónica</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Sábado 11 de julio</td></tr>
+                            <tr><td>11 jul</td><td class="hora">20:00</td><td>Euskoprincess</td><td>Música urbana local</td></tr>
+                            <tr><td>11 jul</td><td class="hora">23:30</td><td>The Scientist feat. Shanique Marie</td><td>Reggae y dub jamaicano · Discípulo de King Tubby</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Domingo 12 de julio</td></tr>
+                            <tr><td>12 jul</td><td class="hora">20:00</td><td>Kumbia vs Salsa</td><td>Colectivo de DJs, world music</td></tr>
+                            <tr><td>12 jul</td><td class="hora">23:30</td><td>Instituto Mexicano del Sonido</td><td>Fusión latina · Referentes internacionales</td></tr>
+                            <tr class="grupo-header"><td colspan="4">Lunes 13 de julio</td></tr>
+                            <tr><td>13 jul</td><td class="hora">20:00</td><td>Sedientos de Cumbia</td><td>World music (Navarra Music Commission)</td></tr>
+                            <tr><td>13 jul</td><td class="hora">23:30</td><td>Izo Fitzroy</td><td>Jazz, soul, gospel, funk y blues</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </article>
+        </section>
+
+        <!-- ── SECCIÓN SIN STICKY: DÍA Y NOCHE ────────────────── -->
+        <section class="section section--inner--sticky">
+            <article class="guia-articulo">
+
+                <h2 class="text-sub">Lo que pasa de día</h2>
+                <p class="text-body">
+                    La mañana sanferminera tiene una personalidad muy propia. Después del encierro, la diana ha sonado desde las siete, la Comparsa de Gigantes recorre las calles a las 9:30, el Baile de la Alpargata empieza en el Casino Principal. Si quieres entender cómo aprovecharlo, tenemos una guía específica sobre <a class="text-link" href="mananas-sanfermineras.html">las mañanas sanfermineras</a>.
+                </p>
+                <p class="text-body">
+                    El <strong>deporte rural</strong> navarro y las <strong>actividades infantiles</strong> tienen programación propia que se publica en la web del Ayuntamiento. El detalle día a día está <span class="badge-pendiente" style="font-size:12px">pendiente de publicación oficial</span>.
+                </p>
+                <p class="text-body">
+                    Los <strong>fuegos artificiales</strong> son a las 23:00 desde la Ciudadela. La mejor vista es desde la Vuelta del Castillo y sus jardines.
+                </p>
+
+                <h2 class="text-sub">Lo que pasa de noche</h2>
+                <p class="text-body">
+                    Después de los fuegos, los conciertos de las dos plazas empiezan entre las 23:30 y la 1:00. Hacia las 23:30 también tiene lugar el <strong>encierrillo</strong>, el traslado nocturno de los toros. Poca gente lo sabe y vale mucho la pena.
+                </p>
+                <p class="text-body">
+                    Si quieres ver alguno de estos momentos desde un buen sitio, puedes explorar todas las opciones en nuestra sección de <a class="text-link" href="../experiencias/">experiencias en San Fermín</a>.
+                </p>
+
+            </article>
+        </section>
+
+        <!-- CTA -->
+        <section class="section section--inner-flush align-center">
+            <div class="buttons">
+                <a href="#contacto" class="btn btn-primary">Quiero vivir San Fermín 2026</a>
+            </div>
+            <p class="text-microcopy">Cuéntanos qué momento quieres vivir y te proponemos cómo hacerlo bien.</p>
+        </section>
+
+        <!-- AUTORA -->
+        <aside class="guia-autora section section--inner-flush">
+            <img class="guia-autora__foto" src="../img/guias/author_paula_diaz_mobile.jpg" alt="Paula Díaz Echalecu" width="112" height="112">
+            <div class="guia-autora__texto">
+                <p class="text-tag">Sobre la autora</p>
+                <p class="text-small guia-autora__nombre"><strong>Paula Díaz Echalecu</strong></p>
+                <p class="text-small">Consultora de eventos y comunicación, y antigua responsable de protocolo y eventos del Ayuntamiento de Pamplona. Ha organizado San Fermín desde dentro durante más de una década.</p>
+            </div>
+        </aside>
+
+        <!-- RELACIONADOS -->
+        <section class="section section--inner relacionados">
+            <div class="relacionados-header">
+                <h3 class="text-title">También te puede interesar</h3>
+                <a class="btn-link" href="../guias/index.html">Ver más guías</a>
+            </div>
+            <div class="list-container">
+                <ul>
+                    <li><a class="text-link" href="primera-vez-san-fermin.html">Guía para vivir San Fermín por primera vez</a></li>
+                    <li><a class="text-link" href="ver-encierro-pamplona.html">Cómo ver el encierro de Pamplona</a></li>
+                    <li><a class="text-link" href="que-hacer-san-fermin.html">Qué hacer en San Fermín</a></li>
+                </ul>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="contact-placeholder"></div>
+    <div id="whatsapp-placeholder"></div>
+    <div id="footer-placeholder"></div>
+
+    <script src="../js/main.js"></script>
+    <script src="../js/include.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="../js/programa-san-fermin.js"></script>
+
+    <!-- AUTO-SEO BODY INIT -->
+<div id="cookie-banner-placeholder"></div>
+<script type="application/ld+json">{"name":"Vive San Fermin a medida","@id":"https://www.experienciasanfermin.com/#organization","@context":"https://schema.org","sameAs":["https://www.linkedin.com/in/pauladiazechalecu","https://www.instagram.com/pauladiazechalecu"],"logo":"https://www.experienciasanfermin.com/img/logos/sanfermin-logo-black.png","@type":"Organization","url":"https://www.experienciasanfermin.com"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","@id":"https://www.experienciasanfermin.com/guias/programa-san-fermin.html#webpage","name":"Programa San Fermín 2026: Horarios, Conciertos y Todos los Actos","description":"Programa completo de San Fermín 2026 día a día: encierros, corridas, conciertos, procesión, gigantes y todos los actos con horarios y mapa interactivo.","url":"https://www.experienciasanfermin.com/guias/programa-san-fermin.html","about":[{"name":"Pamplona","@type":"Place"},{"name":"Fiestas de San Fermin 2026","@type":"Thing"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","itemListElement":[{"position":1,"name":"Home","item":"https://www.experienciasanfermin.com/","@type":"ListItem"},{"position":2,"name":"Guías San Fermín","item":"https://www.experienciasanfermin.com/guias/","@type":"ListItem"},{"position":3,"name":"Programa San Fermín 2026","item":"https://www.experienciasanfermin.com/guias/programa-san-fermin.html","@type":"ListItem"}],"@type":"BreadcrumbList"}</script>
+<script type="application/ld+json">{"image":"https://www.experienciasanfermin.com/img/guias/primera-vez_mobile.jpg","datePublished":"2026-05-12","description":"Programa completo de San Fermín 2026 día a día: encierros, corridas, conciertos, procesión, gigantes y todos los actos con horarios y mapa interactivo.","@type":"Article","dateModified":"2026-05-12","headline":"Programa San Fermín 2026: Horarios, Conciertos y Todos los Actos","author":{"name":"PAULA DIAZ ECHALECU","@type":"Person"},"@context":"https://schema.org","mainEntityOfPage":{"@type":"WebPage","@id":"https://www.experienciasanfermin.com/guias/programa-san-fermin.html#webpage"},"publisher":{"name":"Vive San Fermin a medida","logo":{"@type":"ImageObject","url":"https://www.experienciasanfermin.com/img/logos/sanfermin-logo-black.png"},"@type":"Organization"}}</script>
+<!-- AUTO-SEO BODY END -->
+
+</body>
+</html>
