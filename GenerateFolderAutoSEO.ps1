@@ -15,7 +15,7 @@
 $baseUrl = "https://www.experienciasanfermin.com"
 
 # ---- Organizacion ----
-$orgName          = "Vive San Fermin a medida"
+$orgName          = "Vive San Fermin desde dentro"
 $orgLogo          = "$baseUrl/img/logos/sanfermin-logo-black.png"
 $orgCity          = "Pamplona"
 $orgCountry       = "ES"
