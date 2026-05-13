@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
+import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 
 await requireAuth()
 initFacturacion(supabase)
@@ -12,7 +13,10 @@ initSidebar()
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
 const { data: servicios }      = await supabase.from('services').select('*').order('day')
 const { data: disponibilidad } = await supabase.from('availability').select('*')
+const { data: providers }      = await supabase.from('providers').select('*').order('id')
 let todasReservas              = (await supabase.from('reservations').select('*')).data
+
+initPropuesta(supabase, servicios, providers)
 
 let clienteActual     = null
 let reservaEditandoId = null
@@ -419,6 +423,7 @@ function renderTablaReservas() {
         { label: '€/plaza',     campo: 'price_per_slot' },
         { label: 'Total',       campo: 'total_amount' },
         { label: 'Estado',      campo: 'status' },
+        { label: 'Propuesta',   campo: 'proposal_number' },
     ]
 
     let datos = [...reservasCliente]
@@ -442,7 +447,16 @@ function renderTablaReservas() {
     `).join('')
 
     const tbody = document.getElementById('tbody-reservas-cliente')
-    tbody.innerHTML = datos.map(r => `
+    tbody.innerHTML = datos.map(r => {
+        const celdaPropuesta = r.proposal_number
+            ? (r.proposal_path
+                ? `<span style="font-size:11px;color:var(--accent-ok);cursor:pointer;text-decoration:underline"
+                       onclick="descargarPropuesta('${r.proposal_path}', '${r.proposal_number}')"
+                       title="Descargar ${r.proposal_number}">📋 ${r.proposal_number}</span>`
+                : `<span style="font-size:11px;color:var(--accent-ok)">📋 ${r.proposal_number}</span>`)
+            : '—'
+
+        return `
         <tr data-id="${r.id}" style="cursor:pointer">
             <td><input type="checkbox" class="chk-reserva"></td>
             <td>${r.id}</td>
@@ -452,12 +466,13 @@ function renderTablaReservas() {
             <td>${r.price_per_slot}€</td>
             <td>${r.total_amount}€</td>
             <td class="${r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'}">${r.status}</td>
+            <td>${celdaPropuesta}</td>
         </tr>`
-    ).join('')
+    }).join('')
 
     tbody.querySelectorAll('tr').forEach(tr => {
         tr.addEventListener('click', e => {
-            if (e.target.type === 'checkbox') return
+            if (e.target.type === 'checkbox' || e.target.closest('[onclick]')) return
             const id      = tr.dataset.id
             const reserva = todasReservas.find(r => r.id === id)
             if (!reserva) return
@@ -566,6 +581,25 @@ async function eliminarSeleccionadas() {
 document.getElementById('btnCancelar').addEventListener('click', () => cambiarEstadoSeleccionadas('Cancelada'))
 document.getElementById('btnEliminar').addEventListener('click', eliminarSeleccionadas)
 document.getElementById('btnCancelarEdicion').addEventListener('click', limpiarFormularioReserva)
+
+document.getElementById('btnGenerarPropuesta').addEventListener('click', () => {
+    if (!clienteActual) return
+
+    // Reservas seleccionadas con checkbox; si ninguna, todas las Pendientes
+    const seleccionadas = [...document.querySelectorAll('.chk-reserva:checked')]
+        .map(chk => chk.closest('tr').dataset.id)
+
+    const reservasFiltradas = seleccionadas.length > 0
+        ? reservasCliente.filter(r => seleccionadas.includes(r.id))
+        : reservasCliente.filter(r => r.status === 'Pendiente')
+
+    if (reservasFiltradas.length === 0) {
+        alert('No hay reservas Pendientes para incluir en la propuesta.')
+        return
+    }
+
+    abrirPanelPropuesta(clienteActual, reservasFiltradas)
+})
 
 // ===== AÑADIR / GUARDAR RESERVA =====
 
@@ -1061,6 +1095,21 @@ window.descargarFactura = async function(invoicePath, invoiceNumber) {
     a.click()
 }
 
+window.descargarPropuesta = async function(proposalPath, proposalNumber) {
+    const { data, error } = await supabase.storage
+        .from('proposals')
+        .createSignedUrl(proposalPath, 60)
+    if (error) {
+        alert('Error al obtener la propuesta: ' + error.message)
+        return
+    }
+    const a = document.createElement('a')
+    a.href     = data.signedUrl
+    a.download = proposalPath.split('/').pop()
+    a.target   = '_blank'
+    a.click()
+}
+
 window.facturarHito = async function(hitoId) {
     if (!clienteActual) return
     hitoId = parseInt(hitoId)
@@ -1093,6 +1142,10 @@ window.facturarHito = async function(hitoId) {
 }
 
 document.addEventListener('facturaEmitida', () => {
+    if (clienteActual) cargarReservasCliente(clienteActual.id)
+})
+
+document.addEventListener('propuestaEmitida', () => {
     if (clienteActual) cargarReservasCliente(clienteActual.id)
 })
 

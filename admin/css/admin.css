@@ -782,3 +782,228 @@ dialog::backdrop {
         margin: 0;
     }
 }
+/* =========================
+   PROPUESTA — documento
+========================= */
+.prop-doc {
+    background: #fff;
+    border: 1px solid #e0ddd8;
+    border-radius: 8px;
+    overflow: hidden;
+    color: #222;
+    font-size: 13px;
+    position: relative;
+}
+
+.prop-inner { position: relative; z-index: 1; }
+
+.prop-header {
+    padding: 14px 16px 10px;
+    border-top: 3px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.prop-header-meta { text-align: right; font-size: 12px; line-height: 1.8; color: #444; }
+.prop-num          { font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+.prop-fecha        { font-size: 11px; color: var(--subtle); }
+.prop-etiqueta     { font-size: 10px; letter-spacing: 0.12em; color: #aaa; text-transform: uppercase; }
+.prop-destinatario { font-size: 13px; font-weight: 700; color: #222; }
+
+.prop-intro {
+    padding: 20px 16px 16px;
+    background: #fef8f8;
+    border-bottom: 1px solid #f0e0e0;
+}
+
+.prop-titulo {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent-dark);
+    line-height: 1.35;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0d8d8;
+}
+
+.prop-cuerpo {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.7;
+    font-style: italic;
+}
+
+.prop-seccion {
+    padding: 10px 16px;
+    border-bottom: 1px solid #eee;
+}
+
+.prop-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-top: 8px;
+}
+
+.prop-tabla th {
+    text-align: left;
+    padding: 5px 6px;
+    background: transparent;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--accent);
+    text-transform: none;
+}
+
+.prop-tabla td {
+    padding: 6px;
+    border-bottom: 1px solid #f4f4f4;
+    color: #333;
+    background: transparent;
+    white-space: normal;
+    vertical-align: middle;
+}
+
+.prop-tabla tbody tr:hover td { background: #fdf9f9; }
+
+/* Columna imagen oculta en móvil */
+.prop-col-img { display: none; }
+.prop-col-num { white-space: nowrap; font-size: 11px; }
+
+.prop-img {
+    width: 54px;
+    height: 38px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+}
+
+.prop-svc-nombre  { font-weight: 600; color: #222; margin-bottom: 2px; font-size: 12px; }
+.prop-svc-meta    { font-size: 10px; color: var(--accent); margin-bottom: 2px; }
+.prop-svc-dir     { font-size: 10px; color: #999; font-style: italic; }
+
+.prop-total-row td {
+    font-weight: 700;
+    font-size: 12px;
+    color: #222;
+    border-top: 2px solid var(--accent);
+    padding-top: 10px;
+}
+
+.prop-cierre {
+    padding: 16px;
+    border-bottom: 1px solid #eee;
+    text-align: center;
+}
+
+.prop-cierre-frase {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-dark);
+    margin-bottom: 8px;
+}
+
+.prop-cierre-cta {
+    font-size: 12px;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* Banner: dos líneas, claim arriba + web abajo */
+.prop-banner {
+    padding: 12px 16px;
+    background: var(--accent);
+    text-align: center;
+}
+
+.prop-banner-claim {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+
+.prop-banner-web {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.06em;
+}
+
+/* Footer con logo */
+.prop-footer {
+    padding: 10px 16px;
+    background: #f9f0f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #999;
+}
+
+.prop-footer-logo {
+    height: 14px;
+    width: auto;
+    filter: grayscale(1) brightness(0.55);
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+
+.prop-footer-web {
+    margin-left: auto;
+    color: var(--accent);
+}
+
+/* campo editable dentro de la propuesta */
+.prop-editable {
+    border-bottom: 1px dashed #e0b0b0;
+    cursor: text;
+    outline: none;
+    min-width: 40px;
+    display: block;
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+.prop-editable:focus  { border-bottom-color: var(--accent); background: #fff5f5; }
+.prop-editable:hover  { border-bottom-color: #c07070; }
+
+/* Desktop */
+@media (min-width: 769px) {
+    .prop-header   { padding: 18px 24px 14px; gap: 16px; flex-wrap: nowrap; }
+    .prop-intro    { padding: 22px 24px 18px; }
+    .prop-seccion  { padding: 14px 24px; }
+    .prop-cierre   { padding: 22px 24px; }
+    .prop-banner   { padding: 16px 24px; }
+    .prop-footer   { padding: 10px 24px; }
+
+    .prop-num          { font-size: 15px; }
+    .prop-destinatario { font-size: 14px; }
+    .prop-titulo       { font-size: 17px; margin-bottom: 14px; padding-bottom: 12px; }
+    .prop-tabla        { font-size: 12px; }
+    .prop-col-num      { font-size: 12px; }
+    .prop-svc-nombre   { font-size: 13px; }
+    .prop-svc-meta     { font-size: 11px; }
+    .prop-svc-dir      { font-size: 11px; }
+    .prop-total-row td { font-size: 13px; }
+    .prop-cierre-frase { font-size: 15px; }
+    .prop-banner-claim { font-size: 12px; }
+    .prop-banner-web   { font-size: 15px; }
+
+    /* Columna imagen visible en desktop */
+    .prop-col-img { display: table-cell; width: 66px; vertical-align: middle; }
+
+    .prop-img {
+        width: 60px;
+        height: 42px;
+    }
+}

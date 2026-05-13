@@ -151,6 +151,7 @@
                 <div class="btn-row">
                     <button class="btn btn-secondary" id="btnCancelar">🚫 Cancelar</button>
                     <button class="btn btn-danger" id="btnEliminar">🗑 Eliminar</button>
+                    <button class="btn btn-secondary" id="btnGenerarPropuesta">📋 Generar propuesta</button>
                 </div>
             </div>
 
@@ -203,6 +204,22 @@
             </div>
         </main>
     </div>
+
+    <!-- DIALOG DE PROPUESTA COMERCIAL -->
+    <dialog id="dialogPropuesta">
+        <div class="dialog-header">
+            <div>
+                <h2 class="dialog-titulo">📋 Revisar y generar propuesta</h2>
+                <div id="panel-propuesta-subtitulo"></div>
+            </div>
+            <button class="btn btn-secondary dialog-cerrar" id="btnCerrarPropuesta">✕ Cerrar</button>
+        </div>
+        <div id="panel-propuesta-contenido"></div>
+        <div class="dialog-footer">
+            <button class="btn btn-secondary" id="btnCancelarPropuesta">Cancelar</button>
+            <button class="btn btn-primary" id="btnGenerarPropuestaPDF">⬇ Generar PDF y preparar correo</button>
+        </div>
+    </dialog>
 
     <!-- DIALOG DE REORGANIZACIÓN DE DISPONIBILIDAD -->
     <dialog id="dialogReorganizar">
