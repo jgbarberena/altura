@@ -35,9 +35,79 @@
     margin: 20px 0 36px;
 }
 
+/* --- ESTRUCTURA BASE (MOBILE FIRST) --- */
+.header-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    width: 100%;
+}
+
+/* Forzamos el tamaño del H1 para que no se hereden restricciones del grid */
+.header-grid .text-title {
+    display: block;
+    width: 100%;
+    /* Si el clamp falla, esto asegura el tamaño que buscas */
+    font-size: var(--text-section) !important; 
+    order: 1;
+}
+
+.guia-resumen { order: 2; }
+
+.page-image-source { 
+    order: 3; 
+    width: 100%; 
+}
+
+.page-image-source img {
+    display: block;
+    width: 100%;
+    height: auto; /* Mantiene la proporción original sin cortes */
+    border-radius: 4px;
+}
+
+.text-body--intro { order: 4; }
+
+/* --- VISTA DESKTOP (desde 800px) --- */
+
 @media (min-width: 769px) {
     .articulo-page--wide {
         padding-top: calc(var(--header-height) + 60px);
+    }
+
+    .header-grid {
+        display: grid;
+        /* 'auto' se ajusta al ancho de la imagen, '1fr' al resto */
+        grid-template-columns: auto 1fr; 
+        grid-template-areas: 
+            "imagen titulo"
+            "imagen resumen"
+            "imagen intro";
+        column-gap: 3.5rem;
+        align-items: start; /* Alineación superior */
+    }
+
+    .page-image-source {
+        grid-area: imagen;
+        order: unset;
+        /* Ajustamos el ancho en desktop para que la columna derecha tenga espacio */
+        max-width: 380px; 
+    }
+
+    .page-title-source { 
+        grid-area: titulo; 
+        order: unset; 
+        margin-top: 0; /* Alinea el texto con el borde superior de la imagen */
+    }
+
+    .guia-resumen { 
+        grid-area: resumen; 
+        order: unset; 
+    }
+
+    .text-body--intro { 
+        grid-area: intro; 
+        order: unset; 
     }
 }
 
