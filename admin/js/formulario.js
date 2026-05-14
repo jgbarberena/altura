@@ -1261,7 +1261,11 @@ function renderPanelReorganizar() {
                 </select>
             </td>
             <td style="font-size:12px; text-align:center">${r.slots}</td>
-            <td style="font-size:12px; text-align:center">${r.price_per_slot}€</td>
+            <td>
+                <input type="number" step="0.01" value="${r.price_per_slot}"
+                    style="font-size:11px; padding:3px 4px; width:80px; text-align:right"
+                    onchange="reorgCambiarPrecio(${idx}, this.value)">
+            </td>
         </tr>`
     }).join('')
 }
@@ -1314,11 +1318,55 @@ window.reorgCambiarProveedor = function(idx, nuevoProveedor) {
 
 function registrarCambioReorg(idx, original) {
     const r = reorgFilas[idx]
+    const precioModificado = reorgCambios[r.id]?.price_per_slot
+
     if (r.service_id !== original.service_id || r.provider_id !== original.provider_id) {
-        reorgCambios[r.id] = { service_id: r.service_id, provider_id: r.provider_id }
-    } else {
+        reorgCambios[r.id] = {
+            service_id:  r.service_id,
+            provider_id: r.provider_id,
+            ...(precioModificado !== undefined && { price_per_slot: precioModificado })
+        }
+    } else if (precioModificado === undefined) {
         delete reorgCambios[r.id]
     }
+}
+
+window.reorgCambiarPrecio = function(idx, nuevoPrecio) {
+    const precio   = parseFloat(nuevoPrecio)
+    const r        = reorgFilas[idx]
+    const original = todasReservas.find(res => res.id === r.id)
+    if (isNaN(precio) || precio < 0) return
+
+    reorgFilas[idx].price_per_slot = precio
+
+    if (Math.abs(precio - parseFloat(original.price_per_slot)) >= 0.01) {
+        // Hay cambio de precio — registrar, preservando service_id y provider_id si ya cambiaron
+        reorgCambios[r.id] = {
+            service_id:    reorgCambios[r.id]?.service_id  ?? r.service_id,
+            provider_id:   reorgCambios[r.id]?.provider_id ?? r.provider_id,
+            price_per_slot: precio
+        }
+    } else {
+        // Precio volvió al original — eliminar solo price_per_slot
+        if (reorgCambios[r.id]) {
+            delete reorgCambios[r.id].price_per_slot
+            // Si tampoco hay cambio de servicio ni proveedor, eliminar la entrada completa
+            if (reorgCambios[r.id].service_id  === original.service_id &&
+                reorgCambios[r.id].provider_id === original.provider_id) {
+                delete reorgCambios[r.id]
+            }
+        }
+    }
+
+    // Recalcular estado del botón sin re-renderizar la tabla (evita perder el foco del input)
+    const { plazasNecesarias, proveedorId, servicioId } = reorgContexto
+    const plazasOcupadas = reorgFilas
+        .filter(f => f.provider_id === proveedorId && f.service_id === servicioId)
+        .reduce((s, f) => s + f.slots, 0)
+    const dispObj     = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const libresAhora = (dispObj?.total_slots ?? 0) - plazasOcupadas
+    document.getElementById('btnConfirmarReorg').disabled =
+        libresAhora < plazasNecesarias || Object.keys(reorgCambios).length === 0
 }
 
 window.confirmarReorganizacion = async function() {
@@ -1327,8 +1375,12 @@ window.confirmarReorganizacion = async function() {
     const lineas = Object.entries(reorgCambios).map(([id, cambio]) => {
         const original = todasReservas.find(r => r.id === id)
         const partes   = []
-        if (cambio.service_id  !== original.service_id)  partes.push(`${original.service_id} → ${cambio.service_id}`)
-        if (cambio.provider_id !== original.provider_id) partes.push(`${original.provider_id} → ${cambio.provider_id}`)
+        if (cambio.service_id  !== undefined && cambio.service_id  !== original.service_id)
+            partes.push(`${original.service_id} → ${cambio.service_id}`)
+        if (cambio.provider_id !== undefined && cambio.provider_id !== original.provider_id)
+            partes.push(`${original.provider_id} → ${cambio.provider_id}`)
+        if (cambio.price_per_slot !== undefined)
+            partes.push(`precio ${original.price_per_slot}€ → ${cambio.price_per_slot}€`)
         return `${id}  ${original.client_id}  ${partes.join('  |  ')}`
     })
 
@@ -1336,8 +1388,13 @@ window.confirmarReorganizacion = async function() {
     if (!confirmado) return
 
     for (const [id, cambio] of Object.entries(reorgCambios)) {
+        const updateData = {}
+        if (cambio.service_id     !== undefined) updateData.service_id     = cambio.service_id
+        if (cambio.provider_id    !== undefined) updateData.provider_id    = cambio.provider_id
+        if (cambio.price_per_slot !== undefined) updateData.price_per_slot = cambio.price_per_slot
+
         const { error } = await supabase.from('reservations')
-            .update({ service_id: cambio.service_id, provider_id: cambio.provider_id })
+            .update(updateData)
             .eq('id', id)
         if (error) { alert(`Error al actualizar ${id}: ` + error.message); return }
     }
