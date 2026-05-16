@@ -1104,3 +1104,156 @@ header.dark .hamburger {
     border-radius: 999px;
     padding: 6px 18px;
 }
+
+/* ======================================================
+   SOLICITUD DIALOG
+   CSS mínimo — reutiliza .formulario, .on-dark, .btn,
+   .text-* de style.css y components.css.
+   Mobile first: pantalla completa hasta 769px,
+   centrado y contenido en desktop.
+   ====================================================== */
+
+/* ---- Posición y tamaño ---- */
+.solicitud-dialog {
+    border: none;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    margin: 0;
+    overflow-y: auto;
+    background: transparent; /* ← añadir esto */
+}
+
+.solicitud-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+@media (min-width: 769px) {
+    .solicitud-dialog {
+        width: 520px;
+        height: auto;
+        max-width: 520px;
+        max-height: 88vh;
+        margin: auto;
+       
+    }
+}
+
+/* ---- Pantallas ---- */
+.solicitud-pantalla {
+    background: rgba(17, 17, 17, 0.9); /* ← cambiar #111 por esto */
+    padding: 2.5rem 1.25rem 2rem;
+    position: relative;
+    min-height: 100%;
+    box-sizing: border-box;
+}
+
+.solicitud-oculta {
+    display: none;
+}
+
+@media (min-width: 769px) {
+    .solicitud-pantalla {
+        padding: 2.5rem 2rem 2rem;
+        min-height: auto;
+    }
+}
+
+/* ---- Cerrar ---- */
+.solicitud-cerrar {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #aaa;
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.solicitud-cerrar:hover { color: #fff; }
+
+/* ---- Subtítulo ---- */
+.solicitud-subtitulo {
+    color: #aaa;
+    margin-bottom: 1.5rem;
+}
+
+/* ---- Layout grupo email/tel y fila nivel+personas ---- */
+.solicitud-contacto-grupo,
+.solicitud-fila {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.solicitud-contacto-o {
+    color: #666;
+    text-align: center;
+}
+
+@media (min-width: 769px) {
+    .solicitud-contacto-grupo {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .solicitud-contacto-grupo input { flex: 1; min-width: 0; }
+    .solicitud-contacto-o { flex-shrink: 0; text-align: left; }
+
+    .solicitud-fila { flex-direction: row; }
+    .solicitud-fila select { flex: 2; }
+    .solicitud-fila input  { flex: 1; min-width: 70px; }
+}
+
+/* ---- Campo oculto ---- */
+.solicitud-campo-oculto { display: none; }
+
+/* ---- Error ---- */
+.solicitud-error {
+    color: #e57373;
+    min-height: 1.2em;
+    margin: 0;
+}
+
+/* ---- Confirmación ---- */
+.solicitud-confirmacion {
+    text-align: center;
+    padding: 1.5rem 0;
+}
+
+.solicitud-icono-ok {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background: #1b3a1e;
+    color: #81c784;
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+/* ---- Fallback ---- */
+#solicitud-fallback-motivo {
+    color: #aaa;
+    margin-bottom: 0.5rem;
+}
+
+/* ---- Botón ghost ---- */
+.btn-ghost {
+    background: transparent;
+    border: 1px solid #444;
+    color: #aaa;
+}
+
+.btn-ghost:hover {
+    border-color: #666;
+    color: #fff;
+}

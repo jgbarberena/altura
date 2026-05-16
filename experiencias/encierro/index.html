@@ -31,6 +31,8 @@
 
     <!-- ========================= HEADER ========================= -->
     <div id="header-placeholder"></div>
+    <!-- ========================= DIALOG ========================= -->
+    <div id="solicitud-dialog-placeholder"></div>
 
 
     <!-- ========================= CONTENIDO ========================= -->
@@ -140,7 +142,7 @@
                     </picture>
 
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Estándar</h3>
+                        <h3>Ver el encierro</h3>
                         <p>
                             Una forma directa de vivir el encierro desde dentro del recorrido, con cercanía e
                             intensidad:
@@ -150,7 +152,7 @@
                         </p>
 
                         <div class="buttons buttons--left">
-                            <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="ver-el-encierro">Quiero verlo</button>
                         </div>
                     </div>
                 </div>
@@ -164,7 +166,7 @@
                     </picture>
 
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Selección</h3>
+                        <h3>Entender el encierro</h3>
                         <p>
                             Mejores perspectivas y mayor comodidad para disfrutar el encierro con más claridad.
                             <span class="text-detail">
@@ -173,7 +175,7 @@
                         </p>
 
                         <div class="buttons buttons--left">
-                            <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="entender-el-encierro">Quiero entenderlo</button>
                         </div>
                     </div>
                 </div>
@@ -187,7 +189,7 @@
                     </picture>
 
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Premium</h3>
+                        <h3>Vivir el encierro</h3>
                         <p>
                             Espacios privados en ubicaciones clave para vivir el encierro con máxima tranquilidad.
                             <span class="text-detail">
@@ -196,7 +198,7 @@
                         </p>
 
                         <div class="buttons buttons--left">
-                            <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="vivir-el-encierro">Quiero vivirlo</button>
                         </div>
                     </div>
                 </div>
@@ -218,7 +220,7 @@
                             </p>
 
                             <div class="buttons buttons--left">
-                                <a href="?interes=encierros#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                                <button class="btn btn-primary btn-mini" data-solicitud="encierro-desde-barrera">Quiero barrera</button>
                             </div>
                         </div>
                 </div>
@@ -411,6 +413,8 @@
 
 
     <!-- ========================= JS ========================= -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../../js/supabase-global.js"></script>
     <script src="../../js/main.js"></script>
     <script src="../../js/include.js"></script>
 

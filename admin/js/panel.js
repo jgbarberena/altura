@@ -15,14 +15,16 @@ const [
     { data: servicios },
     { data: proveedores },
     { data: payments },
-    { data: charges }
+    { data: charges },
+    { data: solicitudesNuevas }   // ← añadir esta línea
 ] = await Promise.all([
     supabase.from('reservations').select('*'),
     supabase.from('availability').select('*'),
     supabase.from('services').select('*').order('day'),
     supabase.from('providers').select('*').order('id'),
     supabase.from('payments').select('*').order('due_date'),
-    supabase.from('charges').select('*').order('due_date')  // ya no hay join a reservations
+    supabase.from('charges').select('*').order('due_date'),
+    supabase.from('reservation_requests').select('id').eq('status', 'nueva')  // ← añadir
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -70,8 +72,17 @@ function calcularAlertas() {
             `${cobrosVencidos.length} cobro(s) a clientes vencido(s) sin cobrar — ${fmt(totalCobrosVencidos)}`
     }
 
+    // Solicitudes pendientes desde la web
+    const alertaSolicitudes = document.getElementById('alerta-solicitudes')
+    if (solicitudesNuevas && solicitudesNuevas.length > 0) {
+        alertaSolicitudes.style.display = 'flex'
+        document.getElementById('txt-solicitudes').textContent =
+            `${solicitudesNuevas.length} solicitud(es) pendiente(s) de atender desde la web`
+    }
+
     bloqueAlertas.style.display =
-        (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0) ? 'block' : 'none'
+        (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
+         || (solicitudesNuevas && solicitudesNuevas.length > 0)) ? 'block' : 'none'
 }
 
 // ===== BLOQUE 1: CALENDARIO =====

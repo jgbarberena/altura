@@ -21,6 +21,7 @@ initPropuesta(supabase, servicios, providers)
 let clienteActual     = null
 let reservaEditandoId = null
 let hitosClienteTemp  = []
+let _cargandoSolicitud = false
 const hoy             = new Date().toISOString().split('T')[0]
 const fmt             = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
@@ -87,6 +88,7 @@ function mostrarSugerenciasCliente(val) {
     if (exacto) {
         cargarCliente(exacto)
     } else if (val) {
+        if (_cargandoSolicitud) return
         if (clienteActual) {
             inputName.value = inputCompany.value = inputPhone.value =
             inputEmail.value = inputComments.value = ''
@@ -1429,7 +1431,168 @@ window.confirmarReorganizacion = async function() {
     alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }
 
-// ===== LISTENERS DEL DIALOG DE REORGANIZACIÓN =====
-document.getElementById('btnCerrarReorg').addEventListener('click', cerrarPanelReorganizar)
-document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPanelReorganizar)
-document.getElementById('btnConfirmarReorg').addEventListener('click', confirmarReorganizacion)
+// Infiere el service_id probable a partir del slug (level) y el día
+// Solo se usa en admin al cargar una solicitud — nunca en la web pública
+function _inferirServiceId(slug, day) {
+    if (!slug) return null
+    const partes = slug.toLowerCase().split('-')
+    if (partes.indexOf('encierro')  !== -1) return day ? 'ENCIERRO_' + day : null
+    if (partes.indexOf('chupinazo') !== -1) return 'CHUPINAZO_6'
+    if (partes.indexOf('procesion') !== -1) return 'PROCESION_7'
+    if (partes.indexOf('gigantes')  !== -1) return 'DESPEDIDA_GIGANTES_14'
+    if (partes.indexOf('pobre')     !== -1) return 'POBRE_DE_MI'
+    return null
+}
+
+// ===== SOLICITUDES PENDIENTES =====
+// Lee reservation_requests con status='nueva' y las muestra
+// en el bloque-solicitudes. Click en fila carga datos sin cambiar status.
+// Botón "Atendida" marca como atendida. Botón "Descartar" descarta.
+// service_id no se lee ni se preselecciona — lo asigna el admin manualmente.
+ 
+async function cargarSolicitudes() {
+    const { data: solicitudes, error } = await supabase
+        .from('reservation_requests')
+        .select('*')
+        .eq('status', 'nueva')
+        .order('created_at', { ascending: true })
+ 
+    if (error) { console.error('Error cargando solicitudes:', error); return }
+ 
+    const bloque = document.getElementById('bloque-solicitudes')
+    const tbody  = document.getElementById('tbody-solicitudes')
+ 
+    if (!solicitudes || solicitudes.length === 0) {
+        bloque.style.display = 'none'
+        return
+    }
+ 
+    bloque.style.display = 'block'
+    tbody.innerHTML = solicitudes.map(s => {
+        const fecha    = s.created_at
+            ? new Date(s.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+            : '—'
+        const contacto = [s.client_email, s.client_phone].filter(Boolean).join(' / ') || '—'
+        const dia      = s.day ? s.day + '/jul' : '—'
+        const comentario = s.comments || '—'
+ 
+        return `<tr class="fila-solicitud" style="cursor:pointer"
+            data-id="${s.id}"
+            data-nombre="${(s.client_name || '').replace(/"/g, '&quot;')}"
+            data-email="${(s.client_email || '').replace(/"/g, '&quot;')}"
+            data-telefono="${(s.client_phone || '').replace(/"/g, '&quot;')}"
+            data-level="${(s.level || '').replace(/"/g, '&quot;')}"
+            data-day="${s.day || ''}"
+            data-slots="${s.slots || ''}"
+            data-comments="${comentario.replace(/"/g, '&quot;')}">
+            <td>${fecha}</td>
+            <td>${s.client_name || '—'}</td>
+            <td>${contacto}</td>
+            <td>${s.level || '—'}</td>
+            <td>${s.slots || '—'}</td>
+            <td>${dia}</td>
+            <td>${comentario}</td>
+            <td class="td-acciones" onclick="event.stopPropagation()">
+                <button class="btn-sm btn-ok btn-atendida" data-id="${s.id}">✅ Atendida</button>
+                <button class="btn-sm btn-err btn-descartar" data-id="${s.id}">🗑️ Descartar</button>
+            </td>
+        </tr>`
+    }).join('')
+ 
+    tbody.querySelectorAll('.fila-solicitud').forEach(tr => {
+        tr.addEventListener('click', () => cargarDesdeSolicitud(tr.dataset))
+    })
+ 
+    tbody.querySelectorAll('.btn-atendida').forEach(btn => {
+        btn.addEventListener('click', () => marcarAtendida(btn.dataset.id))
+    })
+ 
+    tbody.querySelectorAll('.btn-descartar').forEach(btn => {
+        btn.addEventListener('click', () => descartarSolicitud(btn.dataset.id))
+    })
+}
+ 
+async function cargarDesdeSolicitud(data) {
+    // Generar ID de cliente: NOMBRE_APELLIDO, con _2, _3... si ya existe
+    const nombreBase = (data.nombre || 'CLIENTE')
+        .toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Z0-9\s]/g, '')
+        .trim()
+        .replace(/\s+/g, '_')
+ 
+    let clienteId = nombreBase
+    let sufijo = 2
+    while (todosClientes.find(c => c.id === clienteId)) {
+        clienteId = nombreBase + '_' + sufijo
+        sufijo++
+    }
+ 
+    // Activar flag para inhibir vaciado de campos al rellenar inputId
+    _cargandoSolicitud = true
+ 
+    // Rellenar bloque de cliente
+    inputId.value       = clienteId
+    inputName.value     = data.nombre   || ''
+    inputPhone.value    = data.telefono || ''
+    inputEmail.value    = data.email    || ''
+    inputCompany.value  = ''
+    inputComments.value = data.comments || ''
+ 
+    clienteActual = null
+    statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
+        + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+        + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
+        + ' o se guardará al añadir una reserva'
+    statusDiv.style.color = 'var(--accent-warn)'
+ 
+    // Rellenar bloque de reserva
+    if (data.slots) inputPlazas.value = data.slots
+ 
+    // Inferir service_id desde el slug y el día, y preseleccionar si existe
+    const serviceIdInferido = _inferirServiceId(data.level, data.day)
+    if (serviceIdInferido) {
+        const existe = servicios.find(s => s.id === serviceIdInferido)
+        if (existe) {
+            selectServicio.value = serviceIdInferido
+            selectServicio.dispatchEvent(new Event('change'))
+        }
+    }
+
+    // Comentarios de reserva
+    const inputComentariosReserva = document.getElementById('inputComentarios')
+    if (inputComentariosReserva && data.comments) {
+        inputComentariosReserva.value = data.comments
+    }
+ 
+    // Desactivar flag
+    _cargandoSolicitud = false
+ 
+    // Scroll al bloque de cliente
+    document.getElementById('bloque-cliente').scrollIntoView({ behavior: 'smooth' })
+}
+ 
+async function marcarAtendida(id) {
+    const { error } = await supabase
+        .from('reservation_requests')
+        .update({ status: 'atendida', attended_at: new Date().toISOString() })
+        .eq('id', id)
+ 
+    if (error) console.error('Error marcando como atendida:', error)
+    await cargarSolicitudes()
+}
+ 
+async function descartarSolicitud(id) {
+    if (!confirm('¿Descartar esta solicitud? No se podrá recuperar.')) return
+ 
+    const { error } = await supabase
+        .from('reservation_requests')
+        .update({ status: 'descartada', attended_at: new Date().toISOString() })
+        .eq('id', id)
+ 
+    if (error) console.error('Error descartando solicitud:', error)
+    await cargarSolicitudes()
+}
+ 
+// Cargar solicitudes al iniciar
+cargarSolicitudes()

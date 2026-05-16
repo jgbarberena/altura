@@ -922,6 +922,311 @@ function resetCookieConsent() {
     if (banner) banner.style.display = '';
 }
 
+
+// ======================================================
+// SOLICITUD DIALOG
+// Gestiona el dialog de solicitud de experiencia.
+// Se inicializa al cargar el componente y escucha clicks
+// en todos los botones con data-solicitud de la página.
+// Escribe en reservation_requests via window.supabasePublic.
+// Si falla, ofrece fallback por WhatsApp o Email.
+// ======================================================
+
+// ---- Configuración ----
+const _SD_WHATSAPP = '34625638977'
+const _SD_EMAIL    = 'paula@experienciasanfermin.com'
+const _SD_ASUNTO   = 'Solicitud experiencia San Fermín'
+
+// Día fijo por evento (para pre-seleccionar y deshabilitar el selector)
+const _SD_DIA_FIJO = {
+    'chupinazo':   '6',
+    'procesion':   '7',
+    'gigantes':    '14',
+    'pobre-de-mi': '14'
+}
+
+// Detecta la palabra clave del evento dentro del slug.
+// Se usa solo para saber si hay día fijo — no para inferir service_id.
+function _sdDetectarEvento(slug) {
+    var partes = slug.toLowerCase().split('-')
+    if (partes.indexOf('chupinazo') !== -1) return 'chupinazo'
+    if (partes.indexOf('procesion') !== -1) return 'procesion'
+    if (partes.indexOf('gigantes')  !== -1) return 'gigantes'
+    if (partes.indexOf('pobre')     !== -1) return 'pobre-de-mi'
+    return null  // encierro y cualquier otro: sin día fijo
+}
+
+// ---- Convierte slug a etiqueta legible ----
+// "ver-el-encierro" → "Ver El Encierro"
+function _sdSlugToLabel(slug) {
+    return slug.split('-').map(function(w) {
+        return w.charAt(0).toUpperCase() + w.slice(1)
+    }).join(' ')
+}
+
+function initSolicitudDialog(root) {
+
+    // ---- Referencias DOM ----
+    var dialog         = document.getElementById('solicitud-dialog')
+    var pantForma      = document.getElementById('solicitud-pantalla-form')
+    var pantOk         = document.getElementById('solicitud-pantalla-ok')
+    var pantError      = document.getElementById('solicitud-pantalla-error')
+    var form           = document.getElementById('solicitud-form')
+    var inputNombre    = document.getElementById('solicitud-nombre')
+    var inputEmail     = document.getElementById('solicitud-email')
+    var inputTel       = document.getElementById('solicitud-telefono')
+    var selectNivel    = document.getElementById('solicitud-nivel')
+    var inputPersonas  = document.getElementById('solicitud-personas')
+    var selectDia      = document.getElementById('solicitud-dia')
+    var inputComents   = document.getElementById('solicitud-comentarios')
+    var errorMsg       = document.getElementById('solicitud-error')
+    var okTexto        = document.getElementById('solicitud-ok-texto')
+    var fallbackMotivo = document.getElementById('solicitud-fallback-motivo')
+
+    if (!dialog) return
+
+    // Mover el dialog al body para que showModal() funcione correctamente
+    if (dialog.parentElement !== document.body) {
+        document.body.appendChild(dialog)
+    }
+
+    // ---- Construir select dinámicamente desde los botones de la página ----
+    var slugsEnPagina = []
+    document.querySelectorAll('[data-solicitud]').forEach(function(btn) {
+        var s = btn.dataset.solicitud
+        if (slugsEnPagina.indexOf(s) === -1) slugsEnPagina.push(s)
+    })
+
+    // Vaciar opciones existentes (menos la primera: placeholder)
+    while (selectNivel.options.length > 1) selectNivel.remove(1)
+
+    // Añadir una opción por cada slug encontrado
+    slugsEnPagina.forEach(function(s) {
+        var opt = document.createElement('option')
+        opt.value = s
+        opt.textContent = _sdSlugToLabel(s)
+        selectNivel.appendChild(opt)
+    })
+
+    // ======================================================
+    // FUNCIÓN PARA ABRIR EL DIALOG CON UN SLUG CONCRETO
+    // ======================================================
+
+    function abrirDialog(slug) {
+
+        var eventoBase = _sdDetectarEvento(slug)
+
+        // Pre-seleccionar nivel
+        selectNivel.value = slug
+
+        // Selector de día: siempre visible
+        selectDia.classList.remove('solicitud-campo-oculto')
+        selectDia.disabled = false
+        selectDia.value = ''
+
+        // Si el evento tiene día fijo, pre-seleccionarlo y deshabilitar
+        if (eventoBase && _SD_DIA_FIJO[eventoBase]) {
+            selectDia.value    = _SD_DIA_FIJO[eventoBase]
+            selectDia.disabled = true
+        }
+
+        // Limpiar estado anterior
+        errorMsg.textContent = ''
+        mostrar(pantForma)
+
+        // Actualizar URL sin navegar ni hacer scroll
+        var url = new URL(window.location)
+        url.searchParams.set('solicitud', slug)
+        history.pushState(null, '', url.pathname + url.search)
+
+        if (!dialog.open) dialog.showModal()
+    }
+
+    // ---- Listeners en botones de solicitud ----
+    document.querySelectorAll('[data-solicitud]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            abrirDialog(btn.dataset.solicitud)
+        })
+    })
+
+    // ---- Si la página carga con ?solicitud= en la URL, abrir el dialog ----
+    var params = new URLSearchParams(window.location.search)
+    var slugInicial = params.get('solicitud')
+    if (slugInicial) abrirDialog(slugInicial)
+
+    // ======================================================
+    // NAVEGACIÓN ENTRE PANTALLAS
+    // ======================================================
+
+    function mostrar(pantalla) {
+        [pantForma, pantOk, pantError].forEach(function(p) {
+            p.classList.add('solicitud-oculta')
+        })
+        pantalla.classList.remove('solicitud-oculta')
+    }
+
+    function cerrarDialog() {
+        dialog.close()
+        var url = new URL(window.location)
+        url.searchParams.delete('solicitud')
+        var search = url.search === '?' ? '' : url.search
+        history.replaceState(null, '', url.pathname + search)
+    }
+
+    document.getElementById('solicitud-cerrar-form').addEventListener('click', cerrarDialog)
+    document.getElementById('solicitud-cancelar').addEventListener('click', cerrarDialog)
+    document.getElementById('solicitud-ok-cerrar').addEventListener('click', cerrarDialog)
+    document.getElementById('solicitud-cerrar-fallback').addEventListener('click', cerrarDialog)
+    document.getElementById('solicitud-fallback-volver').addEventListener('click', function() {
+        mostrar(pantForma)
+    })
+
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) cerrarDialog()
+    })
+
+    // ======================================================
+    // VALIDACIÓN
+    // ======================================================
+
+    function validar() {
+        var nombre = inputNombre.value.trim()
+        var email  = inputEmail.value.trim()
+        var tel    = inputTel.value.trim()
+
+        if (!nombre) return {
+            tipo: 'campo',
+            msg:  'Escribe tu nombre para que podamos contactarte.'
+        }
+
+        if (!email && !tel) return {
+            tipo: 'sin-contacto',
+            msg:  'No hemos podido registrar tu solicitud porque no tienes datos de contacto. Cierra, añade tu email o teléfono y vuelve a solicitar la experiencia.'
+        }
+
+        if (email && (!email.includes('@') || email.lastIndexOf('.') < email.indexOf('@'))) return {
+            tipo: 'contacto-invalido',
+            msg:  'El formato del email no parece correcto. Cierra, corrígelo y vuelve a solicitar la experiencia.'
+        }
+
+        if (tel) {
+            var soloNum = tel.replace(/[\s\-\+\(\)]/g, '')
+            if (!/^\d{7,15}$/.test(soloNum)) return {
+                tipo: 'contacto-invalido',
+                msg:  'El formato del teléfono no parece correcto. Cierra, corrígelo y vuelve a solicitar la experiencia.'
+            }
+        }
+
+        return null
+    }
+
+    // ======================================================
+    // CONSTRUCCIÓN DEL MENSAJE FALLBACK (WhatsApp / Email)
+    // ======================================================
+
+    function buildMensaje() {
+        var slugVal  = selectNivel.value
+        var personas = inputPersonas.value
+        var dia      = selectDia.value
+        var nombre   = inputNombre.value.trim()
+        var email    = inputEmail.value.trim()
+        var tel      = inputTel.value.trim()
+        var coments  = inputComents.value.trim()
+
+        var texto = 'Hola, quiero solicitar una experiencia en San Fermín:\n\n'
+        if (nombre)   texto += 'Nombre: '      + nombre + '\n'
+        if (email)    texto += 'Email: '       + email  + '\n'
+        if (tel)      texto += 'Teléfono: '    + tel    + '\n'
+        if (slugVal)  texto += 'Experiencia: ' + _sdSlugToLabel(slugVal) + '\n'
+        if (personas) texto += 'Personas: '    + personas + '\n'
+        if (dia)      texto += 'Día: '         + dia + ' de julio\n'
+        if (coments)  texto += '\nComentarios:\n' + coments
+        return texto
+    }
+
+    // ======================================================
+    // FALLBACK: WHATSAPP Y EMAIL
+    // ======================================================
+
+    function mostrarFallback(motivo) {
+        fallbackMotivo.textContent = motivo
+        mostrar(pantError)
+    }
+
+    document.getElementById('solicitud-fallback-whatsapp').addEventListener('click', function() {
+        window.open('https://wa.me/' + _SD_WHATSAPP + '?text=' + encodeURIComponent(buildMensaje()), '_blank')
+    })
+
+    document.getElementById('solicitud-fallback-email').addEventListener('click', function() {
+        window.open('mailto:' + _SD_EMAIL +
+            '?subject=' + encodeURIComponent(_SD_ASUNTO) +
+            '&body='    + encodeURIComponent(buildMensaje()))
+    })
+
+    // ======================================================
+    // ENVÍO DEL FORMULARIO
+    // ======================================================
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault()
+        errorMsg.textContent = ''
+
+        var errorVal = validar()
+
+        if (errorVal && errorVal.tipo === 'campo') {
+            errorMsg.textContent = errorVal.msg
+            return
+        }
+
+        if (errorVal) {
+            mostrarFallback(errorVal.msg)
+            return
+        }
+
+        var nombre   = inputNombre.value.trim()
+        var email    = inputEmail.value.trim()
+        var tel      = inputTel.value.trim()
+        var slugVal  = selectNivel.value
+        var personas = inputPersonas.value ? parseInt(inputPersonas.value) : null
+        var dia      = selectDia.value     ? parseInt(selectDia.value)     : null
+
+        // ---- Guardar en Supabase ----
+        // service_id no se infiere desde la web — lo asigna el admin al gestionar la solicitud
+        var guardadoOk = false
+        if (window.supabasePublic) {
+            try {
+                var result = await window.supabasePublic
+                    .from('reservation_requests')
+                    .insert({
+                        client_name:  nombre,
+                        client_email: email    || null,
+                        client_phone: tel      || null,
+                        slots:        personas,
+                        level:        slugVal  || null,
+                        comments:     inputComents.value.trim() || null,
+                        day:          dia      || null
+                    })
+                if (result.error) throw result.error
+                guardadoOk = true
+            } catch (err) {
+                console.error('Error guardando solicitud:', err)
+            }
+        }
+
+        // ---- Resultado ----
+        if (guardadoOk) {
+            var contacto = email || tel
+            okTexto.textContent = contacto
+                ? 'Hemos recibido tu solicitud. Nos pondremos en contacto contigo en 24-48 horas en ' + contacto + '.'
+                : 'Hemos recibido tu solicitud. Nos pondremos en contacto contigo en 24-48 horas.'
+            mostrar(pantOk)
+        } else {
+            mostrarFallback('Ha habido un problema técnico al registrar tu solicitud. Puedes contactarnos directamente:')
+        }
+    })
+}
+
+
 // ================================ LOGICA =====================================//
 
 

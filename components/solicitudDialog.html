@@ -1,0 +1,101 @@
+<!-- ======================================================
+     SOLICITUD-DIALOG.HTML
+     Dialog de solicitud de experiencia.
+     Se activa cuando la URL contiene ?solicitud=NIVEL-EVENTO
+     Cargado con loadComponent desde include.js.
+     Inicializado con initSolicitudDialog en main.js.
+     ====================================================== -->
+
+<dialog id="solicitud-dialog" class="solicitud-dialog">
+
+    <!-- ========================= PANTALLA 1: FORMULARIO ========================= -->
+    <div class="solicitud-pantalla on-dark" id="solicitud-pantalla-form">
+
+        <button class="solicitud-cerrar" id="solicitud-cerrar-form" aria-label="Cerrar">✕</button>
+
+        <h2 class="text-title" id="solicitud-titulo">Solicitar experiencia</h2>
+        <p class="text-small solicitud-subtitulo">
+            Registramos tu solicitud y te contactamos en 24-48 horas para confirmar todos los detalles.
+        </p>
+
+        <form id="solicitud-form" class="formulario" novalidate>
+
+            <input type="text" id="solicitud-nombre" placeholder="Tu nombre *" autocomplete="name">
+
+            <div class="solicitud-contacto-grupo">
+                <input type="email" id="solicitud-email" placeholder="Email" autocomplete="email">
+                <span class="solicitud-contacto-o text-small">o</span>
+                <input type="tel" id="solicitud-telefono" placeholder="Teléfono" autocomplete="tel">
+            </div>
+
+            <div class="solicitud-fila">
+                <select id="solicitud-nivel">
+                    <option value="">Tipo de experiencia</option>
+                    <option value="ver">Ver</option>
+                    <option value="entender">Entender</option>
+                    <option value="vivir">Vivir</option>
+                </select>
+
+                <input type="number" id="solicitud-personas" placeholder="Personas" min="1" max="30">
+            </div>
+
+            <!-- Solo visible para encierro — initSolicitudDialog lo muestra/oculta -->
+            <select id="solicitud-dia" class="solicitud-campo-oculto">
+                <option value="">Día del encierro (opcional)</option>
+                <option value="7">7 de julio</option>
+                <option value="8">8 de julio</option>
+                <option value="9">9 de julio</option>
+                <option value="10">10 de julio</option>
+                <option value="11">11 de julio</option>
+                <option value="12">12 de julio</option>
+                <option value="13">13 de julio</option>
+                <option value="14">14 de julio</option>
+            </select>
+
+            <textarea id="solicitud-comentarios" placeholder="Cuéntanos qué más te gustaría vivir en San Fermin..." rows="3"></textarea>
+
+            <p class="solicitud-error text-small" id="solicitud-error" aria-live="polite"></p>
+
+            <div class="buttons">
+                <button type="submit" class="btn btn-primary btn--full">Solicitar experiencia</button>
+                <button type="button" class="btn btn-secondary btn--full" id="solicitud-cancelar">Busco otra cosa</button>
+            </div>
+
+        </form>
+
+    </div>
+
+    <!-- ========================= PANTALLA 2: CONFIRMACIÓN ========================= -->
+    <div class="solicitud-pantalla on-dark solicitud-oculta" id="solicitud-pantalla-ok">
+
+        <div class="solicitud-confirmacion">
+            <span class="solicitud-icono-ok">✓</span>
+            <h2 class="text-title">¡Solicitud registrada!</h2>
+            <p class="text-body" id="solicitud-ok-texto">
+                Hemos recibido tu solicitud. Nos pondremos en contacto contigo en 24-48 horas.
+            </p>
+            <div class="buttons">
+                <button class="btn btn-primary" id="solicitud-ok-cerrar">Perfecto</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================= PANTALLA 3: FALLBACK ========================= -->
+    <div class="solicitud-pantalla on-dark solicitud-oculta" id="solicitud-pantalla-error">
+
+        <button class="solicitud-cerrar" id="solicitud-cerrar-fallback" aria-label="Cerrar">✕</button>
+
+        <h2 class="text-title">Algo no ha ido bien</h2>
+        <p class="text-small" id="solicitud-fallback-motivo"></p>
+        <p class="text-small">Puedes contactarnos directamente:</p>
+
+        <div class="buttons">
+            <button class="btn btn-primary btn--full" id="solicitud-fallback-whatsapp">Enviar por WhatsApp</button>
+            <button class="btn btn-secondary btn--full" id="solicitud-fallback-email">Enviar por Email</button>
+            <button class="btn btn-ghost btn--full" id="solicitud-fallback-volver">Volver y corregir</button>
+        </div>
+
+    </div>
+
+</dialog>

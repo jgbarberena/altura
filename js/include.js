@@ -79,13 +79,14 @@ function loadComponent(placeholderId, componentPath, initFn) {
 // 4. LISTA DE COMPONENTES A CARGAR
 // ======================================================
 
-loadComponent("header-placeholder",         "components/header.html",       initHeader);
-loadComponent("sticky-placeholder",         "components/stickyNav.html",    initStickyNav);
-loadComponent("miniGallery-placeholder",    "components/miniGallery.html",  initMiniGallery);
-loadComponent("miniGuias-placeholder",      "components/miniGuias.html",    initMiniGuias);
-loadComponent("miniFAQ-placeholder",        "components/miniFAQ.html",      initMiniFAQ);
-loadComponent("toko-placeholder",           "components/toko.html",         initTokoSection);
-loadComponent("contact-placeholder",        "components/contact.html",      initFormulario);
-loadComponent("whatsapp-placeholder",       "components/whatsapp.html",     initWhatsappIcon);
-loadComponent("footer-placeholder",         "components/footer.html",       initFooter);
-loadComponent("cookie-banner-placeholder",  "components/cookieBanner.html", initCookieBanner);
+loadComponent("header-placeholder",             "components/header.html",           initHeader);
+loadComponent("sticky-placeholder",             "components/stickyNav.html",        initStickyNav);
+loadComponent("miniGallery-placeholder",        "components/miniGallery.html",      initMiniGallery);
+loadComponent("miniGuias-placeholder",          "components/miniGuias.html",        initMiniGuias);
+loadComponent("miniFAQ-placeholder",            "components/miniFAQ.html",          initMiniFAQ);
+loadComponent("toko-placeholder",               "components/toko.html",             initTokoSection);
+loadComponent("contact-placeholder",            "components/contact.html",          initFormulario);
+loadComponent("whatsapp-placeholder",           "components/whatsapp.html",         initWhatsappIcon);
+loadComponent("footer-placeholder",             "components/footer.html",           initFooter);
+loadComponent("cookie-banner-placeholder",      "components/cookieBanner.html",     initCookieBanner);
+loadComponent("solicitud-dialog-placeholder",   "components/solicitudDialog.html",  initSolicitudDialog);
