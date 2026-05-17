@@ -38,6 +38,23 @@ const TABLAS = {
             { label: 'Comentarios', campo: 'comments' },
         ]
     },
+    reservation_requests: {
+        titulo: 'Solicitudes web',
+        query:  () => supabase.from('reservation_requests').select('*').order('created_at', { ascending: false }),
+        cols: [
+            { label: 'Fecha',        campo: 'created_at',   fmt: v => v ? new Date(v).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—' },
+            { label: 'Nombre',       campo: 'client_name' },
+            { label: 'Email',        campo: 'client_email' },
+            { label: 'Teléfono',     campo: 'client_phone' },
+            { label: 'Experiencia',  campo: 'level' },
+            { label: 'Personas',     campo: 'slots' },
+            { label: 'Día',          campo: 'day',          fmt: v => v ? v + '/jul' : '—' },
+            { label: 'Comentarios',  campo: 'comments' },
+            { label: 'Estado',       campo: 'status',
+                clase: v => v === 'nueva' ? 'estado-pendiente' : v === 'atendida' ? 'estado-confirmada' : 'estado-cancelada' },
+            { label: 'Atendida',     campo: 'attended_at',  fmt: v => v ? new Date(v).toLocaleDateString('es-ES') : '—' },
+        ]
+    },
     charges:  {
         titulo: 'Cobros',
         query:  () => supabase.from('charges').select('*').order('due_date'),
