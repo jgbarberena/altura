@@ -1725,6 +1725,10 @@ async function descartarSolicitud(id) {
     await cargarSolicitudes()
 }
 
+document.getElementById('btnCerrarReorg').addEventListener('click', cerrarPanelReorganizar)
+document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPanelReorganizar)
+document.getElementById('btnConfirmarReorg').addEventListener('click', confirmarReorganizacion)
+
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
 
