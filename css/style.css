@@ -438,18 +438,13 @@ html {
 .hero-content .text-sub   { margin-bottom: 24px; }
 
 /* =========================
-   EXPERIENCIAS GRID GENÉRICO
+   CARD GRID GENÉRICO
 ========================= */
 
 .cards-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
-}
-
-.cards-grid .card img {
-    height: 420px;
-    object-fit: cover;
 }
 
 @media (min-width: 769px) {
@@ -483,33 +478,72 @@ html {
     position: relative;
     overflow: hidden;
     border-radius: 10px;
+    height: 70vh;
 }
 
 .card img {
     width: 100%;
+    height: 100%;
     object-fit: cover;
     transition: transform 0.5s ease;
     filter: contrast(1.1) brightness(0.95);
+}
+
+@media (min-width: 769px) {
+    .card { height: 80vh; }
 }
 
 .card-overlay {
     position: absolute;
     bottom: 0;
     width: 100%;
-    padding: clamp(12px, 3vw, 20px);
+    height: 35%;
+    padding: clamp(8px, 2vw, 14px) clamp(12px, 3vw, 20px) clamp(12px, 3vw, 20px);
     background: rgba(50,50,50,0.6);
     backdrop-filter: blur(4px);
     color: var(--color-light);
     transition: background 0.3s ease;
-    z-index: 10
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .card-overlay h3,
-.card-overlay h2 { margin-bottom: 10px; }
+.card-overlay h2 {
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
+.card-overlay-body {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.3) transparent;
+}
+
+.card-overlay-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.card-overlay-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.card-overlay-body::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.3);
+    border-radius: 4px;
+}
 
 .card-overlay p {
     font-size: var(--text-small);
-    margin-bottom: 15px;
+    margin-bottom: 10px;
+}
+
+.card-overlay .buttons {
+    flex-shrink: 0;
+    margin-top: 4px;
 }
 
 .card:hover img { transform: scale(1.1); }
@@ -522,6 +556,31 @@ html {
 .card:hover .card-overlay .text-detail {
     color: var(--color-subtle-light);
 }
+
+/* ---- Badge de disponibilidad ---- */
+.disponibilidad-badge {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 3;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(10, 10, 10, 0.82);
+    backdrop-filter: blur(6px);
+    font-size: 0.7rem;
+    font-family: var(--font-sans);
+    letter-spacing: 0.03em;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.15rem;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+.disp-linea-disponible { color: #a5d6a7; }
+.disp-linea-ultimas    { color: #ffcc80; }
+.disp-linea-agotado    { color: #ef9a9a; }
 
 /* =========================
    LISTAS

@@ -3,6 +3,7 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave } from './sfcom.js'
 
 await requireAuth()
 initFacturacion(supabase)
@@ -534,8 +535,9 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
-        for (const { proveedorId } of afectadas) {
+        for (const { proveedorId, servicioId } of afectadas) {
             await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
+            await syncStockToSfcom(supabase, proveedorId, servicioId)
         }
         cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
@@ -549,7 +551,7 @@ async function eliminarSeleccionadas() {
     if (!confirm(`¿Eliminar ${ids.length} reserva(s) definitivamente?`)) return
 
     const afectadas = todasReservas.filter(r => ids.includes(r.id))
-        .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id }))
+        .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id, cancelada: r.status === 'Cancelada' }))
 
     const { error: errReservas } = await supabase.from('reservations').delete().in('id', ids)
     if (errReservas) { alert('Error al borrar reservas: ' + errReservas.message); return }
@@ -571,8 +573,9 @@ async function eliminarSeleccionadas() {
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
     }
 
-    for (const { proveedorId } of afectadas) {
+    for (const { proveedorId, servicioId, cancelada } of afectadas) {
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
+        if (!cancelada) await syncStockToSfcom(supabase, proveedorId, servicioId)
     }
 
     limpiarFormularioReserva()
@@ -629,6 +632,7 @@ btnAnadir.addEventListener('click', async () => {
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
+        await syncStockToSfcom(supabase, proveedorId, servicioId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -677,6 +681,7 @@ btnAnadir.addEventListener('click', async () => {
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
+        await syncStockToSfcom(supabase, proveedorId, servicioId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -1431,8 +1436,20 @@ window.confirmarReorganizacion = async function() {
     alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }
 
+// Infiere service_id y provider_id desde el mapeo de sfcom (usando disponibilidad en memoria)
+// Se usa cuando la solicitud viene de sfcom (source tiene formato WEBxxx_nnnn)
+function _inferirDesdeSfcom(source, productId, variationId) {
+    if (!source || !productId) return { serviceId: null, providerId: null }
+    const fila = disponibilidad.find(d =>
+        d.sfcom_product_id   == productId &&
+        (variationId ? d.sfcom_variation_id == variationId : !d.sfcom_variation_id)
+    )
+    if (!fila) return { serviceId: null, providerId: null }
+    return { serviceId: fila.service_id, providerId: fila.provider_id }
+}
+
 // Infiere el service_id probable a partir del slug (level) y el día
-// Solo se usa en admin al cargar una solicitud — nunca en la web pública
+// Solo se usa en admin al cargar una solicitud web — nunca en la web pública
 function _inferirServiceId(slug, day) {
     if (!slug) return null
     const partes = slug.toLowerCase().split('-')
@@ -1444,75 +1461,107 @@ function _inferirServiceId(slug, day) {
     return null
 }
 
+// Detecta si un source tiene formato sfcom (WEBxxx_nnnn)
+function _esSfcom(source) {
+    return source && /^WEB\d+_\d+$/.test(source)
+}
+
 // ===== SOLICITUDES PENDIENTES =====
 // Lee reservation_requests con status='nueva' y las muestra
 // en el bloque-solicitudes. Click en fila carga datos sin cambiar status.
-// Botón "Atendida" marca como atendida. Botón "Descartar" descarta.
-// service_id no se lee ni se preselecciona — lo asigna el admin manualmente.
- 
+// Las de sfcom se muestran en rojo (máxima prioridad), sin botón Descartar.
+// Las web se muestran en naranja con botón Descartar.
+
 async function cargarSolicitudes() {
     const { data: solicitudes, error } = await supabase
         .from('reservation_requests')
         .select('*')
         .eq('status', 'nueva')
         .order('created_at', { ascending: true })
- 
+
     if (error) { console.error('Error cargando solicitudes:', error); return }
- 
+
     const bloque = document.getElementById('bloque-solicitudes')
     const tbody  = document.getElementById('tbody-solicitudes')
- 
+
     if (!solicitudes || solicitudes.length === 0) {
         bloque.style.display = 'none'
         return
     }
- 
+
     bloque.style.display = 'block'
-    tbody.innerHTML = solicitudes.map(s => {
+
+    // Separar sfcom de web para mostrar sfcom primero
+    const deSfcom = solicitudes.filter(s => _esSfcom(s.source))
+    const deWeb   = solicitudes.filter(s => !_esSfcom(s.source))
+    const ordenadas = [...deSfcom, ...deWeb]
+
+    tbody.innerHTML = ordenadas.map(s => {
+        const esSfcom  = _esSfcom(s.source)
         const fecha    = s.created_at
             ? new Date(s.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
             : '—'
         const contacto = [s.client_email, s.client_phone].filter(Boolean).join(' / ') || '—'
         const dia      = s.day ? s.day + '/jul' : '—'
         const comentario = s.comments || '—'
- 
-        return `<tr class="fila-solicitud" style="cursor:pointer"
+        const experiencia = esSfcom
+            ? (s.level || s.comments || '—')   // sfcom: usamos comments que guardamos el nombre del producto
+            : (s.level || '—')
+        const importe = esSfcom && s.price_per_slot && s.slots
+            ? `${(s.price_per_slot * s.slots).toFixed(0)}€ bruto<br><strong>${(s.price_per_slot * s.slots / 1.15).toFixed(0)}€ neto</strong>`
+            : '—'
+        const rowStyle = esSfcom
+            ? 'cursor:pointer;background:#fff0f0;border-left:3px solid #dc2626'
+            : 'cursor:pointer'
+        const badge = esSfcom
+            ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">sfcom</span>`
+            : ''
+
+        return `<tr class="fila-solicitud" style="${rowStyle}"
             data-id="${s.id}"
+            data-source="${(s.source || '').replace(/"/g, '&quot;')}"
             data-nombre="${(s.client_name || '').replace(/"/g, '&quot;')}"
             data-email="${(s.client_email || '').replace(/"/g, '&quot;')}"
             data-telefono="${(s.client_phone || '').replace(/"/g, '&quot;')}"
+            data-address="${(s.client_address || '').replace(/"/g, '&quot;')}"
             data-level="${(s.level || '').replace(/"/g, '&quot;')}"
             data-day="${s.day || ''}"
             data-slots="${s.slots || ''}"
+            data-price-per-slot="${s.price_per_slot || ''}"
+            data-sfcom-product-id="${s.sfcom_product_id || ''}"
+            data-sfcom-variation-id="${s.sfcom_variation_id || ''}"
             data-comments="${comentario.replace(/"/g, '&quot;')}">
-            <td>${fecha}</td>
+            <td>${badge}${fecha}</td>
             <td>${s.client_name || '—'}</td>
             <td>${contacto}</td>
-            <td>${s.level || '—'}</td>
+            <td>${experiencia}</td>
             <td>${s.slots || '—'}</td>
             <td>${dia}</td>
+            <td style="font-size:12px">${importe}</td>
             <td>${comentario}</td>
             <td class="td-acciones" onclick="event.stopPropagation()">
-                <button class="btn-sm btn-ok btn-atendida" data-id="${s.id}">✅ Atendida</button>
-                <button class="btn-sm btn-err btn-descartar" data-id="${s.id}">🗑️ Descartar</button>
+                <button class="btn-sm btn-ok btn-atendida" data-id="${s.id}">✅ Procesado</button>
+                ${!esSfcom ? `<button class="btn-sm btn-err btn-descartar" data-id="${s.id}">🗑️ Descartar</button>` : ''}
             </td>
         </tr>`
     }).join('')
- 
+
     tbody.querySelectorAll('.fila-solicitud').forEach(tr => {
         tr.addEventListener('click', () => cargarDesdeSolicitud(tr.dataset))
     })
- 
+
     tbody.querySelectorAll('.btn-atendida').forEach(btn => {
         btn.addEventListener('click', () => marcarAtendida(btn.dataset.id))
     })
- 
+
     tbody.querySelectorAll('.btn-descartar').forEach(btn => {
         btn.addEventListener('click', () => descartarSolicitud(btn.dataset.id))
     })
 }
- 
+
 async function cargarDesdeSolicitud(data) {
+    const esSfcom = _esSfcom(data.source)
+
     // Generar ID de cliente: NOMBRE_APELLIDO, con _2, _3... si ya existe
     const nombreBase = (data.nombre || 'CLIENTE')
         .toUpperCase()
@@ -1520,79 +1569,170 @@ async function cargarDesdeSolicitud(data) {
         .replace(/[^A-Z0-9\s]/g, '')
         .trim()
         .replace(/\s+/g, '_')
- 
+
     let clienteId = nombreBase
     let sufijo = 2
     while (todosClientes.find(c => c.id === clienteId)) {
         clienteId = nombreBase + '_' + sufijo
         sufijo++
     }
- 
-    // Activar flag para inhibir vaciado de campos al rellenar inputId
+
     _cargandoSolicitud = true
- 
+
     // Rellenar bloque de cliente
     inputId.value       = clienteId
     inputName.value     = data.nombre   || ''
     inputPhone.value    = data.telefono || ''
     inputEmail.value    = data.email    || ''
+    inputAddress.value  = data.address  || ''
     inputCompany.value  = ''
     inputComments.value = data.comments || ''
- 
+
     clienteActual = null
     statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
         + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
         + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
         + ' o se guardará al añadir una reserva'
     statusDiv.style.color = 'var(--accent-warn)'
- 
+
     // Rellenar bloque de reserva
     if (data.slots) inputPlazas.value = data.slots
- 
-    // Inferir service_id desde el slug y el día, y preseleccionar si existe
-    const serviceIdInferido = _inferirServiceId(data.level, data.day)
-    if (serviceIdInferido) {
-        const existe = servicios.find(s => s.id === serviceIdInferido)
-        if (existe) {
-            selectServicio.value = serviceIdInferido
+
+    if (esSfcom) {
+        // Inferir servicio y proveedor desde el mapeo de sfcom
+        const { serviceId, providerId } = _inferirDesdeSfcom(
+            data.source,
+            data.sfcomProductId || data['sfcom-product-id'],
+            data.sfcomVariationId || data['sfcom-variation-id']
+        )
+        if (serviceId) {
+            selectServicio.value = serviceId
             selectServicio.dispatchEvent(new Event('change'))
+            // Esperar a que se actualicen los proveedores y luego seleccionar
+            if (providerId) {
+                setTimeout(() => {
+                    selectProveedor.value = providerId
+                    selectProveedor.dispatchEvent(new Event('change'))
+                }, 100)
+            }
+        }
+        // Precio neto precargado (bruto / 1.15)
+        if (data.pricePerSlot || data['price-per-slot']) {
+            const bruto = parseFloat(data.pricePerSlot || data['price-per-slot'])
+            if (!isNaN(bruto)) {
+                setTimeout(() => {
+                    inputPrecio.value = (bruto / 1.15).toFixed(2)
+                    validarPrecio()
+                    actualizarTotal()
+                }, 150)
+            }
+        }
+    } else {
+        // Solicitud web: inferir solo servicio desde slug
+        const serviceIdInferido = _inferirServiceId(data.level, data.day)
+        if (serviceIdInferido) {
+            const existe = servicios.find(s => s.id === serviceIdInferido)
+            if (existe) {
+                selectServicio.value = serviceIdInferido
+                selectServicio.dispatchEvent(new Event('change'))
+            }
+        }
+        // Comentarios de reserva
+        const inputComentariosReserva = document.getElementById('inputReservaComments')
+        if (inputComentariosReserva && data.comments) {
+            inputComentariosReserva.value = data.comments
         }
     }
 
-    // Comentarios de reserva
-    const inputComentariosReserva = document.getElementById('inputComentarios')
-    if (inputComentariosReserva && data.comments) {
-        inputComentariosReserva.value = data.comments
-    }
- 
-    // Desactivar flag
     _cargandoSolicitud = false
- 
-    // Scroll al bloque de cliente
     document.getElementById('bloque-cliente').scrollIntoView({ behavior: 'smooth' })
 }
- 
+
+// Registra pedidos nuevos de sfcom en reservation_requests
+// Se llama al cargar el panel con el resultado de checkSfcomOrders
+async function registrarPedidosSfcom(pedidos) {
+    if (!pedidos?.length) return
+
+    // Leer los source ya registrados para no duplicar
+    const { data: existentes } = await supabase
+        .from('reservation_requests')
+        .select('source')
+        .not('source', 'is', null)
+
+    const sourcesRegistrados = new Set((existentes ?? []).map(r => r.source))
+
+    const nuevos = pedidos.filter(p => !sourcesRegistrados.has(p.sfcom_order_ref))
+    if (!nuevos.length) return
+
+    for (const pedido of nuevos) {
+        const li = pedido.productos?.[0]
+        if (!li) continue
+
+        // Buscar en disponibilidad para guardar product_id y variation_id
+        const filaAvail = disponibilidad.find(d =>
+            d.sfcom_product_id   == li.product_id &&
+            (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
+        )
+
+        const slots         = li.cantidad ?? 1
+        const totalBruto    = parseFloat(pedido.total ?? 0)
+        const precioSlotBruto = slots > 0 ? totalBruto / slots : totalBruto
+
+        // day: intentar extraer el número de día de julio del nombre de la variación
+        const diaMatch = (li.nombre || li.parent_name || '').match(/(\d{1,2})\s+de\s+julio/i)
+        const dia      = diaMatch ? parseInt(diaMatch[1]) : null
+
+        // address: concatenar ciudad y país
+        const address = pedido.cliente?.direccion || null
+
+        await supabase.from('reservation_requests').insert({
+            client_name:    pedido.cliente.nombre || 'Sin nombre',
+            client_email:   pedido.cliente.email  || null,
+            client_phone:   pedido.cliente.telefono || null,
+            client_address: address,
+            slots,
+            day:            dia,
+            level:          li.parent_name || li.nombre || null,
+            comments:       pedido.cliente.comentarios || null,
+            price_per_slot: precioSlotBruto,
+            source:         pedido.sfcom_order_ref,
+            status:         'nueva'
+        })
+    }
+
+    await cargarSolicitudes()
+}
+
 async function marcarAtendida(id) {
     const { error } = await supabase
         .from('reservation_requests')
         .update({ status: 'atendida', attended_at: new Date().toISOString() })
         .eq('id', id)
- 
+
     if (error) console.error('Error marcando como atendida:', error)
     await cargarSolicitudes()
 }
- 
+
 async function descartarSolicitud(id) {
     if (!confirm('¿Descartar esta solicitud? No se podrá recuperar.')) return
- 
+
     const { error } = await supabase
         .from('reservation_requests')
         .update({ status: 'descartada', attended_at: new Date().toISOString() })
         .eq('id', id)
- 
+
     if (error) console.error('Error descartando solicitud:', error)
     await cargarSolicitudes()
 }
- 
+
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
+
+// Comprobar pedidos nuevos en sfcom al iniciar
+// WORKAROUND TEMPORAL: fallará por CORS hasta que Hilario añada nuestro dominio.
+// Cuando funcione, registrarPedidosSfcom recibirá los pedidos y los insertará.
+checkSfcomOrders(supabase, 90).then(resultado => {
+    if (resultado.ok && resultado.nuevos?.length) {
+        registrarPedidosSfcom(resultado.nuevos)
+    }
+}).catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
