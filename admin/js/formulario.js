@@ -1436,16 +1436,25 @@ window.confirmarReorganizacion = async function() {
     alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }
 
-// Infiere service_id y provider_id desde el mapeo de sfcom (usando disponibilidad en memoria)
-// Se usa cuando la solicitud viene de sfcom (source tiene formato WEBxxx_nnnn)
-function _inferirDesdeSfcom(source, productId, variationId) {
-    if (!source || !productId) return { serviceId: null, providerId: null }
-    const fila = disponibilidad.find(d =>
-        d.sfcom_product_id   == productId &&
-        (variationId ? d.sfcom_variation_id == variationId : !d.sfcom_variation_id)
+// Infiere service_id y provider_id desde el mapeo de availability
+// Busca por sfcom_service_name (coincide con level) y filtra por día si es encierro
+function _inferirDesdeSfcom(level, day) {
+    if (!level) return { serviceId: null, providerId: null }
+
+    // Buscar todas las filas con ese nombre de servicio en sfcom
+    const filas = disponibilidad.filter(d =>
+        d.sfcom_service_name &&
+        d.sfcom_service_name.toLowerCase() === level.toLowerCase()
     )
-    if (!fila) return { serviceId: null, providerId: null }
-    return { serviceId: fila.service_id, providerId: fila.provider_id }
+    if (!filas.length) return { serviceId: null, providerId: null }
+
+    // Si hay varias (encierros por día), filtrar por día
+    if (filas.length > 1 && day) {
+        const filaDia = filas.find(d => d.service_id === 'ENCIERRO_' + day)
+        if (filaDia) return { serviceId: filaDia.service_id, providerId: filaDia.provider_id }
+    }
+
+    return { serviceId: filas[0].service_id, providerId: filas[0].provider_id }
 }
 
 // Infiere el service_id probable a partir del slug (level) y el día
@@ -1600,11 +1609,7 @@ async function cargarDesdeSolicitud(data) {
 
     if (esSfcom) {
         // Inferir servicio y proveedor desde el mapeo de sfcom
-        const { serviceId, providerId } = _inferirDesdeSfcom(
-            data.source,
-            data.sfcomProductId || data['sfcom-product-id'],
-            data.sfcomVariationId || data['sfcom-variation-id']
-        )
+        const { serviceId, providerId } = _inferirDesdeSfcom(data.level, data.day)
         if (serviceId) {
             selectServicio.value = serviceId
             selectServicio.dispatchEvent(new Event('change'))
@@ -1740,3 +1745,4 @@ checkSfcomOrders(supabase, 90).then(resultado => {
         registrarPedidosSfcom(resultado.nuevos)
     }
 }).catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
+
