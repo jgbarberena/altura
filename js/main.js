@@ -1040,8 +1040,53 @@ function initSolicitudDialog(root) {
         history.pushState(null, '', url.pathname + url.search)
 
         if (!dialog.open) dialog.showModal()
+        // Colorear opciones según disponibilidad y limpiar aviso
+        _dispColorearOpciones()
+        _dispActualizarAviso(selectDia.value)
     }
 
+    // ---- Disponibilidad por día en el selector ----
+    var diaAviso = document.getElementById('solicitud-dia-aviso')
+
+    function _dispGetFreeSlots(dia) {
+        if (!window._dispDisponibilidad || !dia) return null
+        var sid  = 'ENCIERRO_' + dia
+        var item = window._dispDisponibilidad.find(function(d) { return d.service_id === sid })
+        return item ? item.free_slots : null
+    }
+
+    function _dispColorearOpciones() {
+        Array.from(selectDia.options).forEach(function(opt) {
+            if (!opt.value) return
+            var free = _dispGetFreeSlots(opt.value)
+            if (free === null) return
+            opt.style.color = free <= 0 ? '#888' : ''
+            opt.textContent = free <= 0
+                ? opt.value + ' de julio (sin plazas)'
+                : opt.value + ' de julio'
+        })
+    }
+
+    function _dispActualizarAviso(dia) {
+        if (!diaAviso) return
+        if (!dia) { diaAviso.style.display = 'none'; return }
+
+        var free = _dispGetFreeSlots(dia)
+        if (free === null || free > 5) {
+            diaAviso.style.display = 'none'
+            return
+        }
+
+        diaAviso.style.display = 'block'
+
+        if (free <= 0) {
+            diaAviso.style.color = '#cc8888'
+            diaAviso.textContent = 'Sin plazas confirmadas para este día. Puedes solicitarlo igualmente — si tienes flexibilidad de fechas, indícanoslo en el mensaje.'
+        } else {
+            diaAviso.style.color = '#ccaa66'
+            diaAviso.textContent = 'Quedan pocas plazas. Te recomendamos solicitarlo cuanto antes.'
+        }
+    }
     // ---- Listeners en botones de solicitud ----
     document.querySelectorAll('[data-solicitud]').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -1085,6 +1130,9 @@ function initSolicitudDialog(root) {
         if (e.target === dialog) cerrarDialog()
     })
 
+    selectDia.addEventListener('change', function() {
+        _dispActualizarAviso(selectDia.value)
+    })
     // ======================================================
     // VALIDACIÓN
     // ======================================================

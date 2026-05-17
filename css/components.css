@@ -1130,6 +1130,13 @@ header.dark .hamburger {
     background: rgba(0, 0, 0, 0.55);
 }
 
+.solicitud-dia-aviso {
+    font-size: 0.7rem;
+    line-height: 1.4;
+    margin-top: -0.25rem;
+    opacity: 0.85;
+}
+
 @media (min-width: 769px) {
     .solicitud-dialog {
         width: 520px;

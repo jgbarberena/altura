@@ -24,7 +24,7 @@ const [
     supabase.from('providers').select('*').order('id'),
     supabase.from('payments').select('*').order('due_date'),
     supabase.from('charges').select('*').order('due_date'),
-    supabase.from('reservation_requests').select('id').eq('status', 'nueva')  // ← añadir
+    supabase.from('reservation_requests').select('id, source').eq('status', 'nueva')
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -73,16 +73,27 @@ function calcularAlertas() {
     }
 
     // Solicitudes pendientes desde la web
+    // Separar solicitudes sfcom (source tipo WEBxxx_nnnn) de solicitudes web
+    const solicitudesSfcom = (solicitudesNuevas ?? []).filter(s => s.source && /^WEB\d+_\d+$/.test(s.source))
+    const solicitudesWeb   = (solicitudesNuevas ?? []).filter(s => !s.source || !/^WEB\d+_\d+$/.test(s.source))
+
+    const alertaSfcom = document.getElementById('alerta-sfcom')
+    if (solicitudesSfcom.length > 0) {
+        alertaSfcom.style.display = 'flex'
+        document.getElementById('txt-sfcom').textContent =
+            `${solicitudesSfcom.length} reserva(s) nueva(s) recibida(s) desde sfcom sin registrar`
+    }
+
     const alertaSolicitudes = document.getElementById('alerta-solicitudes')
-    if (solicitudesNuevas && solicitudesNuevas.length > 0) {
+    if (solicitudesWeb.length > 0) {
         alertaSolicitudes.style.display = 'flex'
         document.getElementById('txt-solicitudes').textContent =
-            `${solicitudesNuevas.length} solicitud(es) pendiente(s) de atender desde la web`
+            `${solicitudesWeb.length} solicitud(es) pendiente(s) de atender desde la web`
     }
 
     bloqueAlertas.style.display =
         (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
-         || (solicitudesNuevas && solicitudesNuevas.length > 0)) ? 'block' : 'none'
+        || solicitudesSfcom.length > 0 || solicitudesWeb.length > 0) ? 'block' : 'none'
 }
 
 // ===== BLOQUE 1: CALENDARIO =====

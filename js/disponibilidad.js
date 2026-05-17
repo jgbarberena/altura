@@ -139,6 +139,7 @@ function _dispActualizarBadge(badge, resultado) {
 
 // ---- Aplica el fallback a todos los badges ----
 function _dispAplicarFallback() {
+    window._dispDisponibilidad = []  // ← añadir esta línea
     document.querySelectorAll('.disponibilidad-badge').forEach(function(badge) {
         badge.className = 'disponibilidad-badge'
         badge.innerHTML = '<span class="disp-linea-ultimas">Últimas plazas</span>'
@@ -229,6 +230,9 @@ async function initDisponibilidad() {
 
         _dispActualizarBadge(badge, resultado)
     })
+
+    // Exponer datos para uso en el dialog
+    window._dispDisponibilidad = disponibilidad
 }
 
 // ---- Ejecutar al cargar el DOM ----
