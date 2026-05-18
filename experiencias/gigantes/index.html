@@ -31,6 +31,8 @@
 
     <!-- ========================= HEADER ========================= -->
     <div id="header-placeholder"></div>
+    <!-- ========================= DIALOG ========================= -->
+    <div id="solicitud-dialog-placeholder"></div>
 
 
     <!-- ========================= CONTENIDO ========================= -->
@@ -136,76 +138,120 @@
             <div class="cards-grid cards-grid--3">
 
                 <!-- ESTANDAR -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
                     <picture class="page-image-source">
                         <source srcset="../../img/cards/card-despedida-gigantes-balcon_mobile.webp" type="image/webp">
                         <img src="../../img/cards/card-despedida-gigantes-balcon_mobile.jpg"
                             alt="Balcón privado para ver la Despedida de los Gigantes en la Plaza del Ayuntamiento"
                             loading="lazy">
                     </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-despedida-gigantes-balcon_mobile.webp" type="image/webp">
+                        <img src="../../img/cards/card-despedida-gigantes-balcon_mobile.jpg"
+                            alt="Balcón privado para ver la Despedida de los Gigantes en la Plaza del Ayuntamiento"
+                            loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-despedida-gigantes-balcon_mobile.webp" type="image/webp">
+                        <img src="../../img/cards/card-despedida-gigantes-balcon_mobile.jpg"
+                            alt="Balcón privado para ver la Despedida de los Gigantes en la Plaza del Ayuntamiento"
+                            loading="lazy">
+                    </picture>
 
+                    <span class="disponibilidad-badge"></span>
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Estándar</h3>
-                        <p>
-                            Una forma accesible de disfrutar del ambiente y la despedida desde una posición elevada.
-                            <span class="text-detail">
-                                Ubicaciones cercanas a la plaza · Acceso sencillo · Ambiente vivo y familiar
-                            </span>
-                        </p>
-
+                        <h3>Ver la Despedida</h3>
+                        <div class="card-overlay-body">
+                            <p>
+                                Una forma accesible de disfrutar del ambiente y la despedida desde una posición elevada.
+                                <span class="text-detail">
+                                    Ubicaciones cercanas a la plaza · Acceso sencillo · Ambiente vivo y familiar
+                                </span>
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="ver-la-despedida-gigantes">Quiero verla</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- SELECCION -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
                     <picture>
                         <source srcset="../../img/cards/card-despedida-gigantes-balcon-seleccion_mobile.webp"
                             type="image/webp">
                         <img src="../../img/cards/card-despedida-gigantes-balcon-seleccion_mobile.jpg"
                             alt="Despedida de los Gigantes desde balcon privado en Pamplona" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-despedida-gigantes-balcon-seleccion_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-despedida-gigantes-balcon-seleccion_mobile.jpg"
+                            alt="Despedida de los Gigantes desde balcon privado en Pamplona" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-despedida-gigantes-balcon-seleccion_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-despedida-gigantes-balcon-seleccion_mobile.jpg"
+                            alt="Despedida de los Gigantes desde balcon privado en Pamplona" loading="lazy">
+                    </picture>
 
-                        <div class="experiencia-overlay card-overlay">
-                            <h3>Balcones Selección</h3>
+                    <span class="disponibilidad-badge"></span>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Entender la Despedida</h3>
+                        <div class="card-overlay-body">
                             <p>
                                 Mejores perspectivas sobre la plaza y mayor comodidad para seguir todo el recorrido.
                                 <span class="text-detail">
                                     Vistas más abiertas · Mejores alturas · Acceso más cuidado
                                 </span>
                             </p>
-
-                            <div class="buttons buttons--left">
-                                <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero
-                                    vivirlo</a>
-                            </div>
                         </div>
+                        <div class="buttons buttons--left">
+                            <button class="btn btn-primary btn-mini" data-solicitud="entender-la-despedida-gigantes">Quiero entenderla</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- PREMIUM -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
                     <picture>
                         <source srcset="../../img/cards/card-despedida-gigantes-pamplona-balcon-premium_mobile.webp"
                             type="image/webp">
                         <img src="../../img/cards/card-despedida-gigantes-pamplona-balcon-premium_mobile.jpg"
                             alt="Despedida de los Gigantes en la Plaza del Ayuntamiento desde balcon premium"
                             loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-despedida-gigantes-pamplona-balcon-premium_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-despedida-gigantes-pamplona-balcon-premium_mobile.jpg"
+                            alt="Despedida de los Gigantes en la Plaza del Ayuntamiento desde balcon premium"
+                            loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-despedida-gigantes-pamplona-balcon-premium_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-despedida-gigantes-pamplona-balcon-premium_mobile.jpg"
+                            alt="Despedida de los Gigantes en la Plaza del Ayuntamiento desde balcon premium"
+                            loading="lazy">
+                    </picture>
 
-                        <div class="experiencia-overlay card-overlay">
-                            <h3>Balcones Premium</h3>
+                    <span class="disponibilidad-badge"></span>
+                    <div class="experiencia-overlay card-overlay">
+                        <h3>Vivir la Despedida</h3>
+                        <div class="card-overlay-body">
                             <p>
                                 Espacios privados en ubicaciones clave para vivir la despedida con máxima tranquilidad.
                                 <span class="text-detail">
                                     Ubicaciones privilegiadas · Acceso independiente · Experiencia más cuidada
                                 </span>
                             </p>
-
-                            <div class="buttons buttons--left">
-                                <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero
-                                    vivirlo</a>
-                            </div>
                         </div>
+                        <div class="buttons buttons--left">
+                            <button class="btn btn-primary btn-mini" data-solicitud="vivir-la-despedida-gigantes">Quiero vivirla</button>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -418,6 +464,9 @@
 <!-- AUTO-SEO BODY END -->
 
     <!-- ========================= JS ========================= -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../../js/supabase-global.js"></script>
+    <script src="../../js/disponibilidad.js"></script>
     <script src="../../js/main.js"></script>
     <script src="../../js/include.js"></script>
 

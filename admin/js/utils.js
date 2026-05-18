@@ -70,55 +70,42 @@ export function buscarConPrioridad(lista, texto, campos) {
 // Recalcula y persiste en Supabase el cobro final de un cliente
 // Llama siempre que cambie cualquier reserva del cliente
 export async function persistirCobrosCliente(supabase, clienteId, todasReservas) {
-    // Calcular total a cobrar desde reservas no canceladas
     const total = todasReservas
         .filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
         .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
 
-    // Obtener cobros existentes del cliente
-    const { data: charges } = await supabase
+    const { data: charges, error: errSelect } = await supabase
         .from('charges').select('*').eq('client_id', clienteId)
+    if (errSelect) { console.error('persistirCobrosCliente: error leyendo charges:', errSelect); return }
 
-    const hitoFinal = (charges ?? []).find(c => c.is_final)
-
-    const prepagos  = (charges ?? []).filter(c => !c.is_final)
-        .reduce((s, c) => s + parseFloat(c.amount), 0)
+    const hitoFinal  = (charges ?? []).find(c => c.is_final)
+    const prepagos   = (charges ?? []).filter(c => !c.is_final).reduce((s, c) => s + parseFloat(c.amount), 0)
     const cobroFinal = total - prepagos
 
     if (!hitoFinal) {
-        // No existe — crear
-        await supabase.from('charges').insert({
-            client_id:      clienteId,
-            amount:         cobroFinal,
-            due_date:       fechaCobroDefault(),
-            collected:      false,
-            collected_date: null,
-            comments:       'Cobro final',
-            is_final:       true
+        const { error } = await supabase.from('charges').insert({
+            client_id: clienteId, amount: cobroFinal, due_date: fechaCobroDefault(),
+            collected: false, collected_date: null, comments: 'Cobro final', is_final: true
         })
+        if (error) { console.error('persistirCobrosCliente: error creando cobro final:', error); return }
         console.log(`💰 Cobro final creado para ${clienteId}: ${cobroFinal}€`)
     } else if (Math.abs(parseFloat(hitoFinal.amount) - cobroFinal) >= 0.01) {
         if (hitoFinal.invoice_number) {
-            // Ya facturado — degradar el hito anterior a prepago y crear ajuste como nuevo final
             const diferencia = cobroFinal - parseFloat(hitoFinal.amount)
-            await supabase.from('charges')
-                .update({ is_final: false })
-                .eq('id', hitoFinal.id)
-            await supabase.from('charges').insert({
-                client_id:      clienteId,
-                amount:         diferencia,
-                due_date:       fechaCobroDefault(),
-                collected:      false,
-                collected_date: null,
-                comments:       'Ajuste s/ factura ' + hitoFinal.invoice_number,
-                is_final:       true
+            const { error: e1 } = await supabase.from('charges')
+                .update({ is_final: false }).eq('id', hitoFinal.id)
+            if (e1) { console.error('persistirCobrosCliente: error degradando hito facturado:', e1); return }
+            const { error: e2 } = await supabase.from('charges').insert({
+                client_id: clienteId, amount: diferencia, due_date: fechaCobroDefault(),
+                collected: false, collected_date: null,
+                comments: 'Ajuste s/ factura ' + hitoFinal.invoice_number, is_final: true
             })
+            if (e2) { console.error('persistirCobrosCliente: error creando ajuste:', e2); return }
             alert(`⚠️ El cobro final de ${clienteId} ya estaba facturado (${hitoFinal.invoice_number}).\n\nSe ha creado un hito de ajuste por ${diferencia > 0 ? '+' : ''}${diferencia}€ que queda pendiente de cobro.`)
         } else {
-            // Existe pero no facturado — actualizar normalmente
-            await supabase.from('charges')
-                .update({ amount: cobroFinal })
-                .eq('id', hitoFinal.id)
+            const { error } = await supabase.from('charges')
+                .update({ amount: cobroFinal }).eq('id', hitoFinal.id)
+            if (error) { console.error('persistirCobrosCliente: error actualizando cobro final:', error); return }
             console.log(`💰 Cobro final actualizado para ${clienteId}: ${hitoFinal.amount}€ → ${cobroFinal}€`)
         }
     }
@@ -127,8 +114,7 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
 // Recalcula y persiste en Supabase el pago final de un proveedor
 // Llama siempre que cambie cualquier reserva o servicio del proveedor
 export async function persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad) {
-    // Calcular coste total: capacity (plazas×precio) + consumption (reservadas×precio)
-    const dispProv = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
+    const dispProv  = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
     const costTotal = dispProv.reduce((total, d) => {
         if (d.billing_model === 'capacity') {
             return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
@@ -142,29 +128,26 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
         }
     }, 0)
 
-    // Obtener pagos existentes del proveedor
-    const { data: payments } = await supabase
+    const { data: payments, error: errSelect } = await supabase
         .from('payments').select('*').eq('provider_id', proveedorId)
+    if (errSelect) { console.error('persistirPagosProveedor: error leyendo payments:', errSelect); return }
 
     const prepagos  = (payments ?? []).filter(p => p.comments !== 'Pago final')
         .reduce((s, p) => s + parseFloat(p.amount), 0)
     const pagoFinal = costTotal - prepagos
-
     const hitoFinal = (payments ?? []).find(p => p.comments === 'Pago final')
 
     if (!hitoFinal) {
-        await supabase.from('payments').insert({
-            provider_id: proveedorId,
-            amount:      pagoFinal,
-            due_date:    fechaPagoDefault(),
-            paid:        false,
-            comments:    'Pago final'
+        const { error } = await supabase.from('payments').insert({
+            provider_id: proveedorId, amount: pagoFinal,
+            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final'
         })
+        if (error) { console.error('persistirPagosProveedor: error creando pago final:', error); return }
         console.log(`💸 Pago final creado para ${proveedorId}: ${pagoFinal}€`)
     } else if (Math.abs(parseFloat(hitoFinal.amount) - pagoFinal) >= 0.01) {
-        await supabase.from('payments')
-            .update({ amount: pagoFinal })
-            .eq('id', hitoFinal.id)
+        const { error } = await supabase.from('payments')
+            .update({ amount: pagoFinal }).eq('id', hitoFinal.id)
+        if (error) { console.error('persistirPagosProveedor: error actualizando pago final:', error); return }
         console.log(`💸 Pago final actualizado para ${proveedorId}: ${hitoFinal.amount}€ → ${pagoFinal}€`)
     }
 }

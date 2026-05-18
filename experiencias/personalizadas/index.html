@@ -31,6 +31,8 @@
 
     <!-- ========================= HEADER ========================= -->
     <div id="header-placeholder"></div>
+    <!-- ========================= DIALOG ========================= -->
+    <div id="solicitud-dialog-placeholder"></div>
 
 
     <!-- ========================= CONTENIDO ========================= -->
@@ -142,8 +144,20 @@
             <div class="cards-grid cards-grid--4">
 
                 <!-- MAÑANA -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
                     <picture class="page-image-source">
+                        <source srcset="../../img/cards/card-personalizadas-apartado-toros-pamplona_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-personalizadas-apartado-toros-pamplona_mobile.jpg"
+                            alt="Sorteo taurino en el apartado de la plaza de toros de Pamplona" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-personalizadas-apartado-toros-pamplona_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-personalizadas-apartado-toros-pamplona_mobile.jpg"
+                            alt="Sorteo taurino en el apartado de la plaza de toros de Pamplona" loading="lazy">
+                    </picture>
+                    <picture>
                         <source srcset="../../img/cards/card-personalizadas-apartado-toros-pamplona_mobile.webp"
                             type="image/webp">
                         <img src="../../img/cards/card-personalizadas-apartado-toros-pamplona_mobile.jpg"
@@ -152,21 +166,34 @@
 
                     <div class="experiencia-overlay card-overlay">
                         <h3>Mañana sanferminera</h3>
-                        <p>
-                            Una forma de empezar el día conectando con el lado más tradicional y cercano de la fiesta: 
-                            <span class="text-detail">
-                                Baile de la alpargata · Pasacalles con los gigantes · Almuerzo típico · Acompañamiento con guía
-                            </span>
-                        </p>
+                        <div class="card-overlay-body">
+                            <p>
+                                Una forma de empezar el día conectando con el lado más tradicional y cercano de la fiesta:
+                                <span class="text-detail">
+                                    Baile de la alpargata · Pasacalles con los gigantes · Almuerzo típico · Acompañamiento con guía
+                                </span>
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=personalizadas#contacto" class="btn btn-primary btn-mini">Quiero
-                                vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="manana-sanferminera">Quiero vivirlo</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- TARDE -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../../img/cards/card-personalizadas-grupos-san-fermini_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-personalizadas-grupos-san-fermini_mobile.jpg"
+                            alt="Experiencias exclusivas para grupos en san fermin en pamplona" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-personalizadas-grupos-san-fermini_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-personalizadas-grupos-san-fermini_mobile.jpg"
+                            alt="Experiencias exclusivas para grupos en san fermin en pamplona" loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../../img/cards/card-personalizadas-grupos-san-fermini_mobile.webp"
                             type="image/webp">
@@ -176,22 +203,34 @@
 
                     <div class="experiencia-overlay card-overlay">
                         <h3>Tarde sanferminera</h3>
-                        <p>
-                            La parte más social y vibrante del día, vivida con acceso y perspectiva:
-                        <span class="text-detail">
-                            Salida de las peñas · Concierto o ambiente musical · Fuegos artificiales desde balcón · compañamiento con guía
-                        </span>
-                        </p>
-
+                        <div class="card-overlay-body">
+                            <p>
+                                La parte más social y vibrante del día, vivida con acceso y perspectiva:
+                                <span class="text-detail">
+                                    Salida de las peñas · Concierto o ambiente musical · Fuegos artificiales desde balcón · compañamiento con guía
+                                </span>
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=personalizadas#contacto" class="btn btn-primary btn-mini">Quiero
-                                vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="tarde-sanferminera">Quiero vivirlo</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- TOROS -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../../img/cards/card-personalizadas-toros-san-fermin_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-personalizadas-toros-san-fermin_mobile.jpg"
+                            alt="Experiencia completa en torno a los toros en san fermin pamplona" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-personalizadas-toros-san-fermin_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-personalizadas-toros-san-fermin_mobile.jpg"
+                            alt="Experiencia completa en torno a los toros en san fermin pamplona" loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../../img/cards/card-personalizadas-toros-san-fermin_mobile.webp"
                             type="image/webp">
@@ -201,22 +240,38 @@
 
                     <div class="experiencia-overlay card-overlay">
                         <h3>Día de toros</h3>
-                        <p>
-                            Una experiencia completa en torno al mundo del toro, más allá del espectáculo: 
-                            <span class="text-detail">
-                                Encierro · Visita al apartado y sorteo · Corrida de toros · Encierrillo nocturno · Charlas con corredores, pastores o expertos
-                            </span>
-                        </p>
-
+                        <div class="card-overlay-body">
+                            <p>
+                                Una experiencia completa en torno al mundo del toro, más allá del espectáculo:
+                                <span class="text-detail">
+                                    Encierro · Visita al apartado y sorteo · Corrida de toros · Encierrillo nocturno · Charlas con corredores, pastores o expertos
+                                </span>
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=personalizadas#contacto" class="btn btn-primary btn-mini">Quiero
-                                vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="dia-de-toros">Quiero vivirlo</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- COMPLETO -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source media="(max-width: 768px)"
+                            srcset="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.webp">
+                        <source media="(min-width: 769px)"
+                            srcset="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.webp">
+                        <img src="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.jpg"
+                            alt="Experiencia completa en un dia de san fermin" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source media="(max-width: 768px)"
+                            srcset="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.webp">
+                        <source media="(min-width: 769px)"
+                            srcset="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.webp">
+                        <img src="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.jpg"
+                            alt="Experiencia completa en un dia de san fermin" loading="lazy">
+                    </picture>
                     <picture>
                         <source media="(max-width: 768px)"
                             srcset="../../img/cards/card-personalizadas-almuerzo-san-fermin_mobile.webp">
@@ -228,14 +283,14 @@
 
                     <div class="experiencia-overlay card-overlay">
                         <h3>Día completo</h3>
-                        <p>
-                            Un recorrido completo por el día sanferminero, conectando distintos momentos con sentido: 
-                            <span class="text-detail">Encierro desde balcón · Almuerzo tradicional · Salida de las peñas · Fuegos artificiales</span>
-                        </p>
-
+                        <div class="card-overlay-body">
+                            <p>
+                                Un recorrido completo por el día sanferminero, conectando distintos momentos con sentido:
+                                <span class="text-detail">Encierro desde balcón · Almuerzo tradicional · Salida de las peñas · Fuegos artificiales</span>
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=personalizadas#contacto" class="btn btn-primary btn-mini">Quiero
-                                vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="dia-completo">Quiero vivirlo</button>
                         </div>
                     </div>
                 </div>
@@ -456,6 +511,8 @@
 <!-- AUTO-SEO BODY END -->
 
     <!-- ========================= JS ========================= -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../../js/supabase-global.js"></script>
     <script src="../../js/main.js"></script>
     <script src="../../js/include.js"></script>
 

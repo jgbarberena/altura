@@ -16,7 +16,7 @@ const [
     { data: proveedores },
     { data: payments },
     { data: charges },
-    { data: solicitudesNuevas }   // ← añadir esta línea
+    { data: solicitudesNuevas }
 ] = await Promise.all([
     supabase.from('reservations').select('*'),
     supabase.from('availability').select('*'),

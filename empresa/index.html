@@ -29,6 +29,8 @@
 <body>
 
     <div id="header-placeholder"></div>
+    <!-- ========================= DIALOG ========================= -->
+    <div id="solicitud-dialog-placeholder"></div>
 
     <main class="empresa-page page-data" data-author="JAVIER GARCIA-BARBERENA" data-published="2025-06-01"
         data-modified="2026-05-13" data-page-type="landing"
@@ -192,7 +194,19 @@
             <div class="cards-grid cards-grid--3">
 
                 <!-- CLIENTES -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../img/cards/card-empresa-charla-corredor-encierro_mobile.webp"
+                            type="image/webp">
+                        <img src="../img/cards/card-empresa-charla-corredor-encierro_mobile.jpg"
+                            alt="Charla exclusiva con corredor habitual de los encierros de San Fermin." loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../img/cards/card-empresa-charla-corredor-encierro_mobile.webp"
+                            type="image/webp">
+                        <img src="../img/cards/card-empresa-charla-corredor-encierro_mobile.jpg"
+                            alt="Charla exclusiva con corredor habitual de los encierros de San Fermin." loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../img/cards/card-empresa-charla-corredor-encierro_mobile.webp"
                             type="image/webp">
@@ -202,25 +216,36 @@
 
                     <div class="card-overlay">
                         <h3>Con clientes</h3>
-
-                        <p>
-                            Un entorno cuidado donde compartir tiempo fuera del contexto habitual.
-                        </p>
-
-                        <p>
-                            Momentos clave de la fiesta: chupinazo, encierros y otros<br>
-                            Espacios privados<br>
-                            Atención personalizada
-                        </p>
-
+                        <div class="card-overlay-body">
+                            <p>
+                                Un entorno cuidado donde compartir tiempo fuera del contexto habitual.
+                            </p>
+                            <p>
+                                Momentos clave de la fiesta: chupinazo, encierros y otros<br>
+                                Espacios privados<br>
+                                Atención personalizada
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=empresa#contacto" class="btn btn-primary btn-mini">Ver opciones</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="empresa-con-clientes">Ver opciones</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- EQUIPO -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../img/cards/card-empresa-experiencia-equipo-san-fermin_mobile.webp"
+                            type="image/webp">
+                        <img src="../img/cards/card-empresa-experiencia-equipo-san-fermin_mobile.jpg"
+                            alt="Experiencias de equipo personalizadas en San Fermin." loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../img/cards/card-empresa-experiencia-equipo-san-fermin_mobile.webp"
+                            type="image/webp">
+                        <img src="../img/cards/card-empresa-experiencia-equipo-san-fermin_mobile.jpg"
+                            alt="Experiencias de equipo personalizadas en San Fermin." loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../img/cards/card-empresa-experiencia-equipo-san-fermin_mobile.webp"
                             type="image/webp">
@@ -230,25 +255,36 @@
 
                     <div class="card-overlay">
                         <h3>Con el equipo</h3>
-
-                        <p>
-                            Una forma distinta de compartir tiempo, desconectar y reforzar relaciones.
-                        </p>
-
-                        <p>
-                            Ritmo flexible, balcones, entradas, charlas y más<br>
-                            Actividades combinadas<br>
-                            Entorno más cercano
-                        </p>
-
+                        <div class="card-overlay-body">
+                            <p>
+                                Una forma distinta de compartir tiempo, desconectar y reforzar relaciones.
+                            </p>
+                            <p>
+                                Ritmo flexible, balcones, entradas, charlas y más<br>
+                                Actividades combinadas<br>
+                                Entorno más cercano
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=empresa#contacto" class="btn btn-primary btn-mini">Ver opciones</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="empresa-con-equipo">Ver opciones</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- A MEDIDA -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../img/cards/card-empresa-visitas-guiadas-san-fermin_mobile.webp"
+                            type="image/webp">
+                        <img src="../img/cards/card-empresa-visitas-guiadas-san-fermin_mobile.jpg"
+                            alt="Visitas personalizadas con guia en las fiestas de San Fermin." loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../img/cards/card-empresa-visitas-guiadas-san-fermin_mobile.webp"
+                            type="image/webp">
+                        <img src="../img/cards/card-empresa-visitas-guiadas-san-fermin_mobile.jpg"
+                            alt="Visitas personalizadas con guia en las fiestas de San Fermin." loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../img/cards/card-empresa-visitas-guiadas-san-fermin_mobile.webp"
                             type="image/webp">
@@ -258,19 +294,18 @@
 
                     <div class="card-overlay">
                         <h3>Propuesta a medida</h3>
-
-                        <p>
-                            Diseñada desde cero según el contexto, los asistentes y lo que se busca conseguir.
-                        </p>
-
-                        <p>
-                            Diseño completo<br>
-                            Integración de experiencias<br>
-                            Coordinación total
-                        </p>
-
+                        <div class="card-overlay-body">
+                            <p>
+                                Diseñada desde cero según el contexto, los asistentes y lo que se busca conseguir.
+                            </p>
+                            <p>
+                                Diseño completo<br>
+                                Integración de experiencias<br>
+                                Coordinación total
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=empresa#contacto" class="btn btn-primary btn-mini">Ver opciones</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="empresa-propuesta-medida">Ver opciones</button>
                         </div>
                     </div>
                 </div>
@@ -429,6 +464,8 @@
 <!-- AUTO-SEO BODY END -->
 
     <!--JScripts-->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../js/supabase-global.js"></script>
     <script src="../js/main.js"></script>
     <script src="../js/include.js"></script>
 

@@ -31,6 +31,8 @@
 
     <!-- ========================= HEADER ========================= -->
     <div id="header-placeholder"></div>
+    <!-- ========================= DIALOG ========================= -->
+    <div id="solicitud-dialog-placeholder"></div>
 
 
     <!-- ========================= CONTENIDO ========================= -->
@@ -154,77 +156,115 @@
             <div class="cards-grid cards-grid--3">
 
                 <!-- ESTANDAR -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
                     <picture class="page-image-source">
                         <source srcset="../../img/cards/card-procesion-san-fermin-pamplona_mobile.webp"
                             type="image/webp">
                         <img src="../../img/cards/card-procesion-san-fermin-pamplona_mobile.jpg"
                             alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
                     </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-procesion-san-fermin-pamplona_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-procesion-san-fermin-pamplona_mobile.jpg"
+                            alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-procesion-san-fermin-pamplona_mobile.webp"
+                            type="image/webp">
+                        <img src="../../img/cards/card-procesion-san-fermin-pamplona_mobile.jpg"
+                            alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+                    </picture>
 
+                    <span class="disponibilidad-badge"></span>
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Estándar</h3>
-                        <p>
-                            Ubicaciones dentro del recorrido tradicional, con cercanía y conexión directa con el
-                            ambiente.
-                            <span class="text-detail">
-                                Acceso desde la calle · Tramos vivos del recorrido · Experiencia auténtica
-                            </span>
-                        </p>
-
+                        <h3>Ver la Procesión</h3>
+                        <div class="card-overlay-body">
+                            <p>
+                                Ubicaciones dentro del recorrido tradicional, con cercanía y conexión directa con el
+                                ambiente.
+                                <span class="text-detail">
+                                    Acceso desde la calle · Tramos vivos del recorrido · Experiencia auténtica
+                                </span>
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="ver-la-procesion">Quiero verla</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- SELECCION -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../../img/cards/card-procesion-balcon-seleccion_mobile.webp" type="image/webp">
+                        <img src="../../img/cards/card-procesion-balcon-seleccion_mobile.jpg"
+                            alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-procesion-balcon-seleccion_mobile.webp" type="image/webp">
+                        <img src="../../img/cards/card-procesion-balcon-seleccion_mobile.jpg"
+                            alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../../img/cards/card-procesion-balcon-seleccion_mobile.webp" type="image/webp">
                         <img src="../../img/cards/card-procesion-balcon-seleccion_mobile.jpg"
                             alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
                     </picture>
 
+                    <span class="disponibilidad-badge"></span>
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Selección</h3>
-                        <p>
-                            Mejores perspectivas para seguir la Procesión con mayor claridad y continuidad.
-                        </p>
-                        <p>
-                            Ubicaciones seleccionadas<br>
-                            Mejores ángulos<br>
-                            Acceso más cuidado
-                        </p>
-
+                        <h3>Entender la Procesión</h3>
+                        <div class="card-overlay-body">
+                            <p>
+                                Mejores perspectivas para seguir la Procesión con mayor claridad y continuidad.
+                            </p>
+                            <p>
+                                Ubicaciones seleccionadas<br>
+                                Mejores ángulos<br>
+                                Acceso más cuidado
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="entender-la-procesion">Quiero entenderla</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- PREMIUM -->
-                <div class="card experiencia-item">
+                <div class="card experiencia-item slideshow">
+                    <picture>
+                        <source srcset="../../img/cards/card-procesion-balcon-premium_mobile.webp" type="image/webp">
+                        <img src="../../img/cards/card-procesion-balcon-premium_mobile.jpg"
+                            alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+                    </picture>
+                    <picture>
+                        <source srcset="../../img/cards/card-procesion-balcon-premium_mobile.webp" type="image/webp">
+                        <img src="../../img/cards/card-procesion-balcon-premium_mobile.jpg"
+                            alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
+                    </picture>
                     <picture>
                         <source srcset="../../img/cards/card-procesion-balcon-premium_mobile.webp" type="image/webp">
                         <img src="../../img/cards/card-procesion-balcon-premium_mobile.jpg"
                             alt="Balcón privado para ver la Procesión de San Fermín en calle Mercaderes" loading="lazy">
                     </picture>
 
+                    <span class="disponibilidad-badge"></span>
                     <div class="experiencia-overlay card-overlay">
-                        <h3>Balcones Premium</h3>
-                        <p>
-                            Espacios privados donde la Procesión se vive con calma, detalle y una perspectiva
-                            privilegiada.
-                        </p>
-                        <p>
-                            Acceso independiente<br>
-                            Mayor tranquilidad<br>
-                            Experiencia más cuidada
-                        </p>
-
+                        <h3>Vivir la Procesión</h3>
+                        <div class="card-overlay-body">
+                            <p>
+                                Espacios privados donde la Procesión se vive con calma, detalle y una perspectiva
+                                privilegiada.
+                            </p>
+                            <p>
+                                Acceso independiente<br>
+                                Mayor tranquilidad<br>
+                                Experiencia más cuidada
+                            </p>
+                        </div>
                         <div class="buttons buttons--left">
-                            <a href="?interes=chupinazo#contacto" class="btn btn-primary btn-mini">Quiero vivirlo</a>
+                            <button class="btn btn-primary btn-mini" data-solicitud="vivir-la-procesion">Quiero vivirla</button>
                         </div>
                     </div>
                 </div>
@@ -436,6 +476,9 @@
 <!-- AUTO-SEO BODY END -->
 
     <!-- ========================= JS ========================= -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../../js/supabase-global.js"></script>
+    <script src="../../js/disponibilidad.js"></script>
     <script src="../../js/main.js"></script>
     <script src="../../js/include.js"></script>
 

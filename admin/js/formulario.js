@@ -1394,6 +1394,14 @@ window.confirmarReorganizacion = async function() {
     const confirmado = confirm(`¿Confirmar los siguientes cambios?\n\n${lineas.join('\n')}`)
     if (!confirmado) return
 
+    const originales = Object.fromEntries(
+        Object.entries(reorgCambios).map(([id]) => {
+            const r = todasReservas.find(r => r.id === id)
+            return [id, { service_id: r.service_id, provider_id: r.provider_id, price_per_slot: r.price_per_slot }]
+        })
+    )
+
+    const aplicados = []
     for (const [id, cambio] of Object.entries(reorgCambios)) {
         const updateData = {}
         if (cambio.service_id     !== undefined) updateData.service_id     = cambio.service_id
@@ -1403,7 +1411,14 @@ window.confirmarReorganizacion = async function() {
         const { error } = await supabase.from('reservations')
             .update(updateData)
             .eq('id', id)
-        if (error) { alert(`Error al actualizar ${id}: ` + error.message); return }
+        if (error) {
+            await Promise.allSettled(aplicados.map(rid =>
+                supabase.from('reservations').update(originales[rid]).eq('id', rid)
+            ))
+            alert(`Error al reorganizar (${id}). Los cambios anteriores han sido revertidos.`)
+            return
+        }
+        aplicados.push(id)
     }
 
     const { data: reservasActualizadas } = await supabase.from('reservations').select('*')

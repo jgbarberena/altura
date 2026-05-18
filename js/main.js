@@ -1019,15 +1019,14 @@ function initSolicitudDialog(root) {
         // Pre-seleccionar nivel
         selectNivel.value = slug
 
-        // Selector de día: siempre visible
-        selectDia.classList.remove('solicitud-campo-oculto')
         selectDia.disabled = false
         selectDia.value = ''
 
-        // Si el evento tiene día fijo, pre-seleccionarlo y deshabilitar
         if (eventoBase && _SD_DIA_FIJO[eventoBase]) {
-            selectDia.value    = _SD_DIA_FIJO[eventoBase]
-            selectDia.disabled = true
+            selectDia.value = _SD_DIA_FIJO[eventoBase]
+            selectDia.classList.add('solicitud-campo-oculto')
+        } else {
+            selectDia.classList.remove('solicitud-campo-oculto')
         }
 
         // Limpiar estado anterior
