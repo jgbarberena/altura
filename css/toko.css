@@ -1,4 +1,4 @@
-/* =========================
+﻿/* =========================
    TO-KO PAGE
 ========================= */
 
@@ -8,12 +8,20 @@
 
 #hero {
     background: url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_mobile.jpg") type("image/jpeg")
+    );
 }
 
 @media (min-width: 769px) {
 
     #toko-hero {
         background: url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_desktop.jpg") center/cover no-repeat;
+        background-image: image-set(
+            url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-toko-polo-san-fermin-diseno-exclusivo_desktop.jpg") type("image/jpeg")
+        );
     }
 
     .toko-wine .card.slideshow img {

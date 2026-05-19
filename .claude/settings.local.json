@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -oE '\\\\.[a-z]+$')",
+      "Bash(read f *)",
+      "Bash([ ! -f \"d:/Projects/Web/Altura/$f\" ])",
+      "Read(//tmp/**)"
+    ]
+  }
+}

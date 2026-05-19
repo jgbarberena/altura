@@ -1,4 +1,4 @@
-/* =========================
+﻿/* =========================
    ENCierro PAGE
 ========================= */
 
@@ -8,6 +8,10 @@
 
 #hero {
     background: url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_mobile.jpg") type("image/jpeg")
+    );
 }
 
 /* =========================
@@ -18,6 +22,10 @@
 
     #hero {
         background-image: url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-encierro-san-fermin-pamplona-telefonica_desktop.jpg") type("image/jpeg")
+        );
     }
 
 }

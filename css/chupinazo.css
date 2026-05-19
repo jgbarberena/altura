@@ -1,4 +1,4 @@
-/* =========================
+﻿/* =========================
    CHUPINAZO PAGE
 ========================= */
 
@@ -7,6 +7,10 @@
 ========================= */
 #hero {
     background: url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_mobile.jpg") type("image/jpeg")
+    );
 }
 
 /* =========================
@@ -17,6 +21,10 @@
 
     #hero {
         background-image: url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-chupinazo-san-fermin-plaza-castillo_desktop.jpg") type("image/jpeg")
+        );
     }
 
 }

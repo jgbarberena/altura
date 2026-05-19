@@ -1,9 +1,13 @@
-/* =========================
+﻿/* =========================
    HERO EMPRESA
 ========================= */
 
 #hero {
     background: url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_mobile.jpg") type("image/jpeg")
+    );
 }
 
 /* =========================
@@ -14,6 +18,10 @@
 
     #hero {
         background-image: url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-empresa-balcon-san-fermin-hospitality-corporativo_desktop.jpg") type("image/jpeg")
+        );
     }
 
 }

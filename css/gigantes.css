@@ -1,4 +1,4 @@
-/* =========================
+﻿/* =========================
    GIGANTES PAGE
 ========================= */
 
@@ -7,6 +7,10 @@
 ========================= */
 #hero {
     background: url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_mobile.jpg") type("image/jpeg")
+    );
 }
 
 /* =========================
@@ -17,6 +21,10 @@
 
     #experiencia-hero {
         background-image: url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-gigantes-cabezudo-caravinagre-san-fermin-pamplona_desktop.jpg") type("image/jpeg")
+        );
     }
 
 }

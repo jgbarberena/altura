@@ -14,6 +14,9 @@
 # ---- Sitio web ----
 $baseUrl = "https://www.experienciasanfermin.com"
 
+# ---- Favicon ----
+$faviconUrl = "$baseUrl/img/logos/VIVESF_FAVICON.ico"
+
 # ---- Organizacion ----
 $orgName          = "Vive San Fermin desde dentro"
 $orgLogo          = "$baseUrl/img/logos/sanfermin-logo-black.png"
@@ -473,6 +476,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
 <title>$titleSeo</title>
 <meta name="description" content="$descriptionSeo">
 <link rel="canonical" href="$url">
+<link rel="icon" href="$faviconUrl" type="image/x-icon">
 
 <meta property="og:title" content="$titleSeo">
 <meta property="og:description" content="$descriptionSeo">

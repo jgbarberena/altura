@@ -1,4 +1,4 @@
-
+﻿
 /* ============================
    EXPERIENCIAS PAGE
    ============================ */
@@ -9,6 +9,10 @@
 
 #hero {
     background: url("../img/heroes/hero-experiencias-encierro-corredores-san-fermin_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-experiencias-encierro-corredores-san-fermin_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-experiencias-encierro-corredores-san-fermin_mobile.jpg") type("image/jpeg")
+    );
 }
 
 /* ============================
@@ -17,5 +21,9 @@
 @media (min-width: 769px) {
     #hero {
         background-image: url("../img/heroes/hero-experiencias-encierro-corredores-san-fermin_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-experiencias-encierro-corredores-san-fermin_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-experiencias-encierro-corredores-san-fermin_desktop.jpg") type("image/jpeg")
+        );
     }
 }

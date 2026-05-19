@@ -16,36 +16,12 @@
         "weight":  "5"
     },
     {
-        "id":  "balcon-charla-corredor",
-        "desktop":  "balcon-charla-corredor_desktop.jpg",
-        "mobile":  "balcon-charla-corredor_mobile.jpg",
-        "alt":  "Experiencia exclusiva: charla con Corredores hist├│ricos del Encierro",
-        "clasificacion":  "personalizada",
-        "weight":  "4"
-    },
-    {
-        "id":  "balcon-chupinazo-ayuntamiento",
-        "desktop":  "balcon-chupinazo-ayuntamiento_desktop.jpg",
-        "mobile":  "balcon-chupinazo-ayuntamiento_mobile.jpg",
-        "alt":  "Balcon privado en el chupinazo de San Fermin.",
-        "clasificacion":  "chupinazo",
-        "weight":  "4"
-    },
-    {
         "id":  "balcon-chupinazo-nina-ayuntamiento-pamplona-vip",
         "desktop":  "balcon-chupinazo-nina-ayuntamiento-pamplona-vip_desktop.jpg",
         "mobile":  "balcon-chupinazo-nina-ayuntamiento-pamplona-vip_mobile.jpg",
         "alt":  "Ni├▒a en balc├│n privado VIP contemplando la Plaza Consistorial de Pamplona antes del Chupinazo de San Ferm├¡n, con el Ayuntamiento hist├│rico en perspectiva desde alquiler exclusivo.",
         "clasificacion":  "chupinazo",
         "weight":  "5"
-    },
-    {
-        "id":  "balcon-chupinazo-panuelos",
-        "desktop":  "balcon-chupinazo-panuelos_desktop.jpg",
-        "mobile":  "balcon-chupinazo-panuelos_mobile.jpg",
-        "alt":  "Balc├│n privado para ver el Chupinazo en la Plaza del Ayuntamiento",
-        "clasificacion":  "chupinazo",
-        "weight":  "2"
     },
     {
         "id":  "balcon-chupinazo-vip-ayuntamiento-pamplona-clientes",
@@ -1000,14 +976,6 @@
         "weight":  "5"
     },
     {
-        "id":  "pobre-de-mi-ruedo-lleno-san-fermin-panoramica",
-        "desktop":  "pobre-de-mi-ruedo-lleno-san-fermin-panoramica_desktop.jpg",
-        "mobile":  "pobre-de-mi-ruedo-lleno-san-fermin-panoramica_mobile.jpg",
-        "alt":  "Panor├ímica completa de la Plaza de Toros de Pamplona abarrotada durante el Pobre de M├¡, cierre de San Ferm├¡n, vista privilegiada desde palco de primera fila.",
-        "clasificacion":  "personalizada",
-        "weight":  "5"
-    },
-    {
         "id":  "pobre-de-mi-san-fermin-noche-plaza-ayuntamiento",
         "desktop":  "pobre-de-mi-san-fermin-noche-plaza-ayuntamiento_desktop.jpg",
         "mobile":  "pobre-de-mi-san-fermin-noche-plaza-ayuntamiento_mobile.jpg",
@@ -1069,6 +1037,14 @@
         "mobile":  "procesion-santo-pamplona-balcon-vip-san-fermin_mobile.jpg",
         "alt":  "Imagen del Santo San Ferm├¡n en procesi├│n por las calles del casco viejo de Pamplona flanqueada por caperos, vista desde balc├│n privado en primera fila. Experiencia de hospitalidad exclusiva para la Procesi├│n de San Ferm├¡n.",
         "clasificacion":  "procesion",
+        "weight":  "5"
+    },
+    {
+        "id":  "ruedo-lleno-san-fermin-panoramica",
+        "desktop":  "ruedo-lleno-san-fermin-panoramica_desktop.jpg",
+        "mobile":  "ruedo-lleno-san-fermin-panoramica_mobile.jpg",
+        "alt":  "Panor├ímica completa de la Plaza de Toros de Pamplona abarrotada durante el Pobre de M├¡, cierre de San Ferm├¡n, vista privilegiada desde palco de primera fila.",
+        "clasificacion":  "personalizada",
         "weight":  "5"
     },
     {

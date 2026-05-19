@@ -1,9 +1,13 @@
-/* =========================
+﻿/* =========================
    HERO HOME
 ========================= */
 
 #hero {
     background: url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_mobile.jpg") type("image/jpeg")
+    );
 }
 
 
@@ -70,6 +74,10 @@
 @media (min-width: 769px) {
     #hero {
         background-image: url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-vive-san-fermin-balcon-chupinazo-pamplona_desktop.jpg") type("image/jpeg")
+        );
     }
     #sanfermin {
         background: linear-gradient(

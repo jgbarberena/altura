@@ -1,6 +1,10 @@
-/* HERO */
+﻿/* HERO */
 #hero {
     background: url("../img/heroes/hero-momenticos-san-fermin-cabezudo-calles-pamplona_mobile.jpg") center/cover no-repeat;
+    background-image: image-set(
+        url("../img/heroes/hero-momenticos-san-fermin-cabezudo-calles-pamplona_mobile.webp") type("image/webp"),
+        url("../img/heroes/hero-momenticos-san-fermin-cabezudo-calles-pamplona_mobile.jpg") type("image/jpeg")
+    );
 }
 
 /* ============================
@@ -50,6 +54,10 @@
 
     #hero {
         background-image: url("../img/heroes/hero-momenticos-san-fermin-cabezudo-calles-pamplona_desktop.jpg");
+        background-image: image-set(
+            url("../img/heroes/hero-momenticos-san-fermin-cabezudo-calles-pamplona_desktop.webp") type("image/webp"),
+            url("../img/heroes/hero-momenticos-san-fermin-cabezudo-calles-pamplona_desktop.jpg") type("image/jpeg")
+        );
     }
 
 }
