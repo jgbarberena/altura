@@ -36,40 +36,6 @@ function buildStockEndpoint(productId, variationId) {
     return `products/${productId}`
 }
 
-// ─── Utilidad interna: resolver y verificar IDs cacheados ────────────────────
-// Hace GET al producto/variación para verificar que el nombre en sfcom
-// sigue coincidiendo con sfcom_service_name. Si hay discrepancia, avisa.
-// Si el GET falla, devuelve productId null.
-
-async function resolveProductIds(availRow) {
-    const { sfcom_product_id, sfcom_variation_id, sfcom_service_name } = availRow
-
-    if (sfcom_product_id) {
-        try {
-            const endpoint = buildStockEndpoint(sfcom_product_id, sfcom_variation_id)
-            const item = await apiFetch(endpoint)
-
-            let realName
-            if (sfcom_variation_id) {
-                const parent = await apiFetch(`products/${sfcom_product_id}`)
-                realName = parent.name
-            } else {
-                realName = item.name
-            }
-
-            realName = realName.replace(/<[^>]*>/g, '').trim()
-            const nameMatch = realName.toLowerCase() === sfcom_service_name.toLowerCase()
-            return { productId: sfcom_product_id, variationId: sfcom_variation_id, verified: true, nameMatch, realName }
-        } catch (e) {
-            // GET fallido — error de red o IDs incorrectos en availability
-            return { productId: null, variationId: null, verified: false, error: e.message }
-        }
-    }
-
-    console.warn(`[sfcom] Sin sfcom_product_id para "${sfcom_service_name}". Rellena los IDs manualmente en availability.`)
-    return { productId: null, variationId: null, verified: false }
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // FLUJO B: syncStockToSfcom
 // Llama tras guardar, editar o cancelar cualquier reserva en Supabase.
@@ -92,11 +58,11 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
     }
 
     // 2. Si no está mapeado en sfcom, no hacer nada
-    if (!avail.sfcom_service_name || avail.sfcom_slots_listed === null) {
+    if (!avail.sfcom_service_name || avail.sfcom_slots_listed === null || !avail.sfcom_product_id) {
         return { ok: true, skipped: true, reason: 'not_mapped' }
     }
 
-    // 3. Contar reservas no canceladas (se hace antes del GET/PUT para tenerlo listo)
+    // 3. Contar reservas no canceladas
     const { count, error: errCount } = await supabase
         .from('reservations')
         .select('*', { count: 'exact', head: true })
@@ -109,32 +75,11 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
         return { ok: false, error: errCount.message }
     }
 
-    // 4. Calcular nuevo stock
+    // 4. Calcular nuevo stock y hacer el PUT
     const reservasActivas = count ?? 0
     const nuevoStock      = Math.max(0, avail.sfcom_slots_listed - reservasActivas)
     const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
-    // 5. Verificar IDs cacheados y nombre del producto en sfcom (GET)
-    const resolved = await resolveProductIds(avail)
-
-    if (resolved.productId && !resolved.nameMatch) {
-        console.warn(`[sfcom] Nombre cambiado en sfcom. Esperado: "${avail.sfcom_service_name}", Real: "${resolved.realName}". Continuando con IDs cacheados.`)
-    }
-
-    if (!resolved.productId) {
-        console.error(`[sfcom] No se pudieron verificar los IDs para ${avail.sfcom_service_name}.`)
-        mostrarModalError({
-            servicio:   avail.sfcom_service_name,
-            providerId,
-            serviceId,
-            endpoint,
-            nuevoStock,
-            putError:   resolved.error ?? 'No se pudo conectar'
-        })
-        return { ok: false, error: 'ids_not_resolved' }
-    }
-
-    // 6. Hacer el PUT
     try {
         await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
         console.info(`[sfcom] Stock actualizado: ${avail.sfcom_service_name} → ${nuevoStock} plazas (${reservasActivas} reservadas de ${avail.sfcom_slots_listed} listadas)`)
@@ -175,7 +120,7 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
         sfcomOrders = await apiFetch(`orders?status=completed&after=${encodeURIComponent(after.toISOString())}&per_page=100`)
     } catch (e) {
         console.warn(`[sfcom] checkSfcomOrders: GET fallido. ${e.message}`)
-        mostrarModalAvisoSfcom()
+        mostrarModalAvisoOrders()
         return { ok: false, error: e.message, nuevos: [] }
     }
 
@@ -218,9 +163,12 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
 
 // ────────────────────────────────────────────────────────────────────────────
 // checkAvailabilityBeforeSave
-// Verifica disponibilidad real en sfcom justo antes de guardar una reserva.
-// Lee el stock actual y lo compara con las reservas propias.
-// Si el stock de sfcom es insuficiente, bloquea y avisa.
+// Verifica disponibilidad en sfcom justo antes de guardar una reserva nueva.
+// Hace GET del stock actual y detecta si hay pedidos en sfcom que no hemos
+// procesado todavía y que podrían afectar la disponibilidad real.
+//
+// Si el GET falla, permite continuar sin bloquear (la API puede estar caída
+// momentáneamente — no podemos bloquear una reserva legítima por eso).
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function checkAvailabilityBeforeSave(supabase, providerId, serviceId, plazasSolicitadas) {
@@ -247,6 +195,19 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
 
     if (stockSfcom === null) return { ok: true, sfcomCheck: false }
 
+    // Bloqueo duro: sfcom no tiene plazas suficientes para esta reserva.
+    // Indica que hay pedidos externos pendientes de procesar que consumen esas plazas.
+    if (stockSfcom < plazasSolicitadas) {
+        return {
+            ok: false,
+            sfcomCheck: true,
+            stockSfcom,
+            message: `sfcom muestra solo ${stockSfcom} plaza(s) disponibles para "${avail.sfcom_service_name}", insuficientes para esta reserva de ${plazasSolicitadas} plaza(s). Es posible que haya pedidos en sfcom pendientes de procesar.`
+        }
+    }
+
+    // Aviso suave: sfcom tiene menos plazas de las que esperamos según nuestro sistema,
+    // pero suficientes para esta reserva. Puede haber pedidos externos sin procesar.
     const { count } = await supabase
         .from('reservations')
         .select('*', { count: 'exact', head: true })
@@ -254,26 +215,26 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
         .eq('service_id', serviceId)
         .neq('status', 'Cancelada')
 
-    const reservasActivas   = count ?? 0
-    const plazasLibresSfcom = Math.max(0, avail.sfcom_slots_listed - reservasActivas)
+    const reservasActivas = count ?? 0
+    const stockEsperado   = Math.max(0, avail.sfcom_slots_listed - reservasActivas)
 
-    if (plazasSolicitadas > plazasLibresSfcom) {
+    if (stockSfcom < stockEsperado) {
         return {
-            ok: false,
+            ok: true,
             sfcomCheck: true,
             stockSfcom,
-            plazasLibresSfcom,
-            message: `Disponibilidad insuficiente. sfcom tiene ${stockSfcom} plazas visibles y tus reservas dejan solo ${plazasLibresSfcom} libres de las ${avail.sfcom_slots_listed} listadas.`
+            stockEsperado,
+            warning: `sfcom muestra ${stockSfcom} plaza(s) disponibles para "${avail.sfcom_service_name}" pero el sistema espera ${stockEsperado}. Puede haber pedidos en sfcom pendientes de procesar. Hay plazas suficientes para esta reserva, pero verifica el panel de sfcom antes de confirmar.`
         }
     }
 
-    return { ok: true, sfcomCheck: true, stockSfcom, plazasLibresSfcom }
+    return { ok: true, sfcomCheck: true, stockSfcom }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // mostrarModalError (interno)
 // Modal de error con información técnica y texto del correo para Hilario.
-// Se dispara cuando falla la verificación de IDs o el PUT de stock.
+// Se dispara cuando falla el PUT de stock.
 // El modal no se cierra solo — Paula debe pulsar "Cerrar" explícitamente.
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -322,8 +283,8 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
                     </div>
                     <div style="font-size:13px;color:#555;line-height:1.5">
                         La reserva se ha guardado correctamente en tu sistema, pero ha habido un
-                        problema al actualizar el stock en sfcom. Revísalo manualmente en el panel
-                        de sfcom o contacta con Hilario.
+                        problema al actualizar el stock en sfcom. Revísalo manualmente o contacta
+                        con Hilario.
                     </div>
                 </div>
             </div>
@@ -415,7 +376,7 @@ function mostrarModalExito({ servicio, nuevoStock }) {
                     </div>
                     <div style="font-size:13px;color:#555;line-height:1.5">
                         El stock de "${servicio}" se ha actualizado correctamente
-                        a ${nuevoStock} plaza(s) disponibles en sfcom.
+                        a ${nuevoStock} plaza(s) disponibles.
                     </div>
                 </div>
             </div>
@@ -434,12 +395,15 @@ function mostrarModalExito({ servicio, nuevoStock }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// mostrarModalAvisoSfcom (interno)
+// mostrarModalAvisoOrders (interno)
 // Aviso cuando checkSfcomOrders no puede conectar con sfcom.
-// Invita a consultar el panel manualmente.
+// Solo se muestra una vez por sesión para no interrumpir al admin en cada carga.
 // ────────────────────────────────────────────────────────────────────────────
 
-function mostrarModalAvisoSfcom() {
+function mostrarModalAvisoOrders() {
+    if (sessionStorage.getItem('sfcom-orders-warned')) return
+    sessionStorage.setItem('sfcom-orders-warned', '1')
+
     const existente = document.getElementById('sfcom-modal-aviso')
     if (existente) existente.remove()
 

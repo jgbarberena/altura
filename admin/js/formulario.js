@@ -644,6 +644,15 @@ btnAnadir.addEventListener('click', async () => {
             return
         }
 
+        const sfcomResult = await checkAvailabilityBeforeSave(supabase, proveedorId, servicioId, plazas)
+        if (!sfcomResult.ok) {
+            alert(`No se puede guardar la reserva:\n\n${sfcomResult.message}`)
+            return
+        }
+        if (sfcomResult.sfcomCheck && sfcomResult.warning) {
+            if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
+        }
+
         if (!clienteActual) {
             const nombre = inputName.value.trim()
             if (!confirm(`¿Crear cliente nuevo "${clienteId}"${nombre ? ' (' + nombre + ')' : ''}?`)) return
@@ -1443,6 +1452,21 @@ window.confirmarReorganizacion = async function() {
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
     }
 
+    const sfcomPares = new Set()
+    Object.entries(reorgCambios).forEach(([id, cambio]) => {
+        const orig = originales[id]
+        const newProviderId = cambio.provider_id ?? orig.provider_id
+        const newServiceId  = cambio.service_id  ?? orig.service_id
+        if (newProviderId !== orig.provider_id || newServiceId !== orig.service_id) {
+            sfcomPares.add(`${orig.provider_id}|${orig.service_id}`)
+            sfcomPares.add(`${newProviderId}|${newServiceId}`)
+        }
+    })
+    for (const par of sfcomPares) {
+        const [provId, svcId] = par.split('|')
+        await syncStockToSfcom(supabase, provId, svcId)
+    }
+
     cerrarPanelReorganizar()
     actualizarBloque3()
     actualizarProveedores()
@@ -1752,9 +1776,9 @@ document.getElementById('btnConfirmarReorg').addEventListener('click', confirmar
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
 
-// Comprobar pedidos nuevos en sfcom al iniciar
-// WORKAROUND TEMPORAL: fallará por CORS hasta que Hilario añada nuestro dominio.
-// Cuando funcione, registrarPedidosSfcom recibirá los pedidos y los insertará.
+// Comprobar pedidos nuevos en sfcom al iniciar.
+// El endpoint «orders» puede no estar disponible en sf-api-paula.php — si no lo está,
+// se mostrará el modal de aviso y el retorno tendrá ok:false. Ver deuda técnica 12.1.
 checkSfcomOrders(supabase, 90).then(resultado => {
     if (resultado.ok && resultado.nuevos?.length) {
         registrarPedidosSfcom(resultado.nuevos)
