@@ -117,7 +117,7 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │       ├── panel.js                  ← lógica del panel de control (módulo ES6)
 │       ├── proveedores.js            ← lógica de gestión de proveedores (módulo ES6)
 │       ├── tablas.js                 ← lógica de tablas (módulo ES6)
-│       ├── sfcom.js                  ← comunicación con tienda.sanfermin.com via woo-proxy.php (módulo ES6; ver deuda técnica CORS)
+│       ├── sfcom.js                  ← comunicación con tienda.sanfermin.com via sf-api-paula.php (módulo ES6)
 │       ├── supabase.js               ← cliente Supabase admin (export const supabase)
 │       ├── utils.js                  ← utilidades compartidas del admin (fmt, fechas, persistencia)
 │       └── auth.js                   ← requireAuth / logout
@@ -431,7 +431,7 @@ Bloques:
 - **Estado financiero:** métricas de reservas, cobros y pagos con Chart.js.
 - **Resumen por servicio/día:** tabla de ocupación.
 
-**Nota importante:** El aviso de solicitudes pendientes en panel.html lee de `reservation_requests` pero NO funciona hasta resolver el problema de CORS con woo-proxy.php (ver Deudas Técnicas).
+**Nota importante:** El flujo de detección de pedidos sfcom en `panel.html` depende del endpoint `orders` de `sf-api-paula.php`, que no está confirmado por Hilario (ver deuda 12.1).
 
 ### 7.6 proveedores.js — Gestión de proveedores
 
@@ -528,6 +528,8 @@ Se ejecuta desde la raíz del proyecto. Procesa todos los `.html` (excluyendo `i
 
 **Regla crítica:** NUNCA editar el bloque AUTO-SEO directamente. Siempre editar los elementos fuente y ejecutar el script.
 
+**FAQPage:** El script genera el schema `FAQPage` si la página contiene elementos `.faq-item` con un hijo `.faq-question` (h2) y un hijo `.faq-answer` (primer p). A mayo 2026, todas las páginas públicas tienen al menos 3 faq-items y generan FAQPage.
+
 ### generate-index.ps1
 
 Se ejecuta dentro de `guias/`. Lee todos los `.html` de guías, extrae metadatos y genera `guias/index.html` con:
@@ -568,14 +570,12 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 
 ## 12. Deudas técnicas pendientes
 
-### 12.1 CORS con woo-proxy.php — **BLOQUEANTE**
-**Problema:** El dominio `experienciasanfermin.com` no está añadido a la lista de orígenes permitidos en `woo-proxy.php` (servidor externo de Hilario). Afecta a todo lo relacionado con sfcom (WooCommerce).
+### 12.1 Endpoint `orders` de sf-api-paula.php — **Sin confirmar**
+**Situación:** La nueva API `sf-api-paula.php` (acceso directo, clave `X-Paula-Key`) reemplaza al antiguo `woo-proxy.php`. El CORS ya está resuelto y el flujo B (PUT de stock) funciona. Sin embargo, la documentación de Hilario solo describe endpoints de `products` y `variations`; no menciona `orders`.
 
-**Impacto:**
-- El aviso de solicitudes pendientes en `panel.html` no funciona hasta resolver esto.
-- `sfcom.js` tiene bloques marcados como `// WORKAROUND TEMPORAL` que hay que eliminar cuando se resuelva.
+**Impacto:** `checkSfcomOrders` usa `GET orders?status=completed&...`. Si el endpoint no existe en `sf-api-paula.php`, el flujo A (detección de pedidos nuevos) fallará y mostrará el modal de aviso cada vez que se abra el panel.
 
-**Acción pendiente:** Pedir a Hilario que añada el dominio a `woo-proxy.php`.
+**Acción pendiente:** Preguntar a Hilario si `sf-api-paula.php` soporta el endpoint `orders` con los mismos parámetros que la WooCommerce REST API estándar.
 
 ### 12.2 Disponibilidad en sfcom — **Pendiente diseño**
 **Problema:** Los productos de sfcom (WooCommerce) no tienen disponibilidad real sincronizada con Supabase.
@@ -600,6 +600,31 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 **Situación:** Cuando una solicitud web corresponde a un servicio que solo tiene un proveedor con plazas disponibles, el sistema podría inferir automáticamente el proveedor. Actualmente el admin siempre lo selecciona manualmente.
 
 **Decisión:** Dejado para después, no es bloqueante.
+
+### 12.6 Ampliar faq-answers con más contenido — **Mejora SEO pendiente**
+**Situación:** Las respuestas FAQ en la mayoría de páginas usan solo el primer `<p>` como `faq-answer`. En muchos casos tiene sentido incluir más párrafos o bloques dentro del mismo `faq-item` para enriquecer el schema FAQPage.
+
+**Acción pendiente:** Revisar página a página y ampliar `faq-answer` (o marcar más `<p>` dentro del faq-item) donde el contenido adicional aporte valor como respuesta.
+
+### 12.7 Al cargar solicitud no se limpian campos del cliente anterior — **Bug admin**
+**Problema:** En `formulario.js`, cuando el admin hace click en una fila de `reservation_requests` para precargar datos, los campos del cliente anterior (nombre, email, teléfono, etc.) no se borran primero. Si la solicitud nueva tiene menos campos rellenos, quedan datos del cliente previo mezclados.
+
+**Acción pendiente:** Limpiar todos los campos del formulario de cliente antes de precargar los datos de la solicitud seleccionada.
+
+### 12.8 Precio en solicitudes sfcom usa coma en lugar de punto — **Bug admin**
+**Problema:** El campo `price_per_slot` de las solicitudes que llegan desde sfcom puede venir con coma decimal (`"12,50"`) en lugar de punto (`"12.50"`). `parseFloat` en JS no interpreta la coma, devolviendo `NaN` o un valor incorrecto al precargar el precio neto.
+
+**Acción pendiente:** Normalizar el valor antes del `parseFloat`: `str.replace(',', '.')`.
+
+### 12.9 Mejora de micro-story y background image — **Mejora UX pendiente**
+**Situación:** Las secciones con micro-story (textos breves de apoyo narrativo) y las imágenes de fondo tienen margen de mejora visual y de contenido. No hay un criterio uniforme de cuándo usar una u otra, ni se han optimizado todos los casos.
+
+**Acción pendiente:** Definir criterio y revisar secciones afectadas.
+
+### 12.10 Unificar selección aleatoria de guías y destacados — **Deuda técnica menor**
+**Situación:** Hay al menos dos implementaciones independientes de selección aleatoria/ponderada: `guias-rotar-destacados.js` para la rotación de guías, y lógica inline en otras partes. La lógica de selección aleatoria ponderada debería estar en una sola función reutilizable.
+
+**Acción pendiente:** Extraer a función compartida (ej. en `main.js` o un nuevo `utils-public.js`) y eliminar duplicados.
 
 ---
 
@@ -659,7 +684,7 @@ Cuando un admin hace click en un proveedor sin plazas suficientes desde el mapa 
 - Siempre en archivos separados, nunca inline en el HTML.
 - Módulos ES6 (`import`/`export`) en el admin.
 - Scripts clásicos en el frontend público.
-- Comentarios funcionales: qué hace y para qué sirve. **Nunca comentarios relativos a cambios** (sin "// Añadido el 12 de mayo", sin "// TEMPORAL", etc., excepto los workarounds de CORS documentados).
+- Comentarios funcionales: qué hace y para qué sirve. **Nunca comentarios relativos a cambios** (sin "// Añadido el 12 de mayo", sin "// TEMPORAL", etc.).
 - Sin código duplicado: si algo se repite, se extrae a función o archivo compartido (ver `utils.js`).
 - `async/await` para todas las llamadas a Supabase.
 - Errores de Supabase: `console.error()` siempre. Alertas al usuario solo cuando es imprescindible para su acción.

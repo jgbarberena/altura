@@ -1,39 +1,20 @@
 // sfcom.js
-// Comunicación bidireccional con tienda.sanfermin.com via woo-proxy.php
+// Comunicación bidireccional con tienda.sanfermin.com via sf-api-paula.php
 // Flujo A (lectura):  sfcom → detectar pedidos nuevos → avisar al panel
 // Flujo B (escritura): reserva guardada en Supabase → actualizar stock en sfcom
-//
-// ─── WORKAROUND TEMPORAL ────────────────────────────────────────────────────
-// El proxy de sfcom (woo-proxy.php) solo acepta peticiones con Referer:
-// https://tienda.sanfermin.com/dashboard.html y Access-Control-Allow-Origin
-// apuntando a ese mismo dominio. Mientras Hilario no añada nuestro dominio
-// a la lista de orígenes permitidos, todas las llamadas al proxy fallarán
-// con error CORS desde nuestro panel.
-//
-// Impacto actual:
-//   - Flujo A (GET pedidos): falla silenciosamente, solo log en consola.
-//   - Flujo B (PUT stock):   falla y muestra modal con correo a Hilario.
-//   - checkAvailabilityBeforeSave: falla silenciosamente, no bloquea la reserva.
-//
-// Qué hacer cuando Hilario añada el dominio:
-//   1. Borrar este bloque de comentario.
-//   2. Buscar todos los bloques marcados con «WORKAROUND» y eliminarlos.
-//   3. El resto del código ya es la versión definitiva y funcionará sin cambios.
-// ────────────────────────────────────────────────────────────────────────────
 
-const PROXY_URL     = 'https://tienda.sanfermin.com/woo-proxy.php'
-const PROXY_KEY     = 'proxy_SanFer2026_key'
-const EMAIL_HILARIO = 'hilario@goviwebs.com'  // destinatario de notificaciones de error
+const API_URL = 'https://tienda.sanfermin.com/sf-api-paula.php'
+const API_KEY = 'pK9#mX2$vL7@nQ4&wR8!hT3%yU6^zA1*'
 
-// ─── Utilidad interna: llamada al proxy ──────────────────────────────────────
+// ─── Utilidad interna: llamada a la API ──────────────────────────────────────
 
-async function proxyFetch(endpoint, method = 'GET', body = null) {
-    const url = `${PROXY_URL}?endpoint=${encodeURIComponent(endpoint)}`
+async function apiFetch(endpoint, method = 'GET', body = null) {
+    const url = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
     const opts = {
         method,
         headers: {
             'Content-Type': 'application/json',
-            'X-Panel-Key':  PROXY_KEY
+            'X-Paula-Key':  API_KEY
         }
     }
     if (body) opts.body = JSON.stringify(body)
@@ -58,7 +39,7 @@ function buildStockEndpoint(productId, variationId) {
 // ─── Utilidad interna: resolver y verificar IDs cacheados ────────────────────
 // Hace GET al producto/variación para verificar que el nombre en sfcom
 // sigue coincidiendo con sfcom_service_name. Si hay discrepancia, avisa.
-// Si el GET falla (CORS u otro error), devuelve productId null.
+// Si el GET falla, devuelve productId null.
 
 async function resolveProductIds(availRow) {
     const { sfcom_product_id, sfcom_variation_id, sfcom_service_name } = availRow
@@ -66,11 +47,11 @@ async function resolveProductIds(availRow) {
     if (sfcom_product_id) {
         try {
             const endpoint = buildStockEndpoint(sfcom_product_id, sfcom_variation_id)
-            const item = await proxyFetch(endpoint)
+            const item = await apiFetch(endpoint)
 
             let realName
             if (sfcom_variation_id) {
-                const parent = await proxyFetch(`products/${sfcom_product_id}`)
+                const parent = await apiFetch(`products/${sfcom_product_id}`)
                 realName = parent.name
             } else {
                 realName = item.name
@@ -80,7 +61,7 @@ async function resolveProductIds(availRow) {
             const nameMatch = realName.toLowerCase() === sfcom_service_name.toLowerCase()
             return { productId: sfcom_product_id, variationId: sfcom_variation_id, verified: true, nameMatch, realName }
         } catch (e) {
-            // GET fallido — puede ser CORS (workaround) o problema real
+            // GET fallido — error de red o IDs incorrectos en availability
             return { productId: null, variationId: null, verified: false, error: e.message }
         }
     }
@@ -134,55 +115,30 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
     const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
     // 5. Verificar IDs cacheados y nombre del producto en sfcom (GET)
-    //    Si el GET falla por CORS u otro error, resolved.productId será null
-    //    y pasaremos directamente al bloque de error con modal.
     const resolved = await resolveProductIds(avail)
 
     if (resolved.productId && !resolved.nameMatch) {
-        // Los IDs responden pero el nombre ha cambiado en sfcom — avisar en consola
-        // El PUT se intenta igualmente con los IDs cacheados
         console.warn(`[sfcom] Nombre cambiado en sfcom. Esperado: "${avail.sfcom_service_name}", Real: "${resolved.realName}". Continuando con IDs cacheados.`)
     }
 
-    // ── WORKAROUND TEMPORAL (inicio) ────────────────────────────────────────
-    // Cuando resolved.productId es null, normalmente significaría que los IDs
-    // son incorrectos. Pero mientras haya error CORS, siempre será null aunque
-    // los IDs sean correctos. Por tanto, aunque no podamos verificar los IDs,
-    // intentamos el PUT igualmente usando los IDs directamente de availability
-    // (que sabemos que son correctos porque los pusimos a mano).
-    // Cuando el CORS esté resuelto, este bloque se puede eliminar y dejar solo
-    // el bloque «versión definitiva» de abajo.
-    //
-    // Versión definitiva (descomentar cuando CORS esté resuelto y borrar el workaround):
-    // if (!resolved.productId) {
-    //     console.error(`[sfcom] No se pudieron verificar los IDs para ${avail.sfcom_service_name}.`)
-    //     mostrarModalError({
-    //         servicio:   avail.sfcom_service_name,
-    //         providerId,
-    //         serviceId,
-    //         endpoint,
-    //         nuevoStock,
-    //         getExito:   false,
-    //         getError:   resolved.error ?? 'No se pudo conectar',
-    //         putError:   'No se intentó — el GET previo ya falló'
-    //     })
-    //     return { ok: false, error: 'ids_not_resolved' }
-    // }
-    const productIdFinal   = resolved.productId   ?? avail.sfcom_product_id
-    const variationIdFinal = resolved.variationId ?? avail.sfcom_variation_id
-    const endpointFinal    = buildStockEndpoint(productIdFinal, variationIdFinal)
-    const getExito         = resolved.productId !== null
-    const getError         = resolved.error ?? ''
-    // ── WORKAROUND TEMPORAL (fin) ────────────────────────────────────────────
+    if (!resolved.productId) {
+        console.error(`[sfcom] No se pudieron verificar los IDs para ${avail.sfcom_service_name}.`)
+        mostrarModalError({
+            servicio:   avail.sfcom_service_name,
+            providerId,
+            serviceId,
+            endpoint,
+            nuevoStock,
+            putError:   resolved.error ?? 'No se pudo conectar'
+        })
+        return { ok: false, error: 'ids_not_resolved' }
+    }
 
     // 6. Hacer el PUT
     try {
-        await proxyFetch(endpointFinal, 'PUT', {
-            stock_quantity: nuevoStock,
-            manage_stock:   true,
-            stock_anterior: avail.sfcom_slots_listed
-        })
+        await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
         console.info(`[sfcom] Stock actualizado: ${avail.sfcom_service_name} → ${nuevoStock} plazas (${reservasActivas} reservadas de ${avail.sfcom_slots_listed} listadas)`)
+        mostrarModalExito({ servicio: avail.sfcom_service_name, nuevoStock })
         return { ok: true, nuevoStock, reservasActivas }
     } catch (e) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
@@ -190,10 +146,8 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
             servicio:   avail.sfcom_service_name,
             providerId,
             serviceId,
-            endpoint:   endpointFinal,
+            endpoint,
             nuevoStock,
-            getExito,
-            getError,
             putError:   e.message
         })
         return { ok: false, error: e.message }
@@ -206,9 +160,11 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
 // registrados en reservations (por sfcom_order_ref).
 // Se llama al cargar el panel y antes de guardar una reserva.
 //
-// WORKAROUND TEMPORAL: mientras haya error CORS, este GET fallará siempre
-// y devolverá { ok: false, nuevos: [] }. El llamador debe ignorar el error
-// y no bloquear el flujo. Cuando el CORS esté resuelto, funcionará sin cambios.
+// Nota: el endpoint «orders» no está documentado en sf-api-paula.php (la
+// documentación de Hilario cubre solo products y variations). Si la API no
+// lo soporta, el GET fallará y se mostrará el modal de aviso. Confirmar con
+// Hilario si este endpoint está disponible antes de asumir que el flujo A
+// funciona.
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function checkSfcomOrders(supabase, diasAtras = 90) {
@@ -216,13 +172,11 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
     try {
         const after = new Date()
         after.setDate(after.getDate() - diasAtras)
-        sfcomOrders = await proxyFetch(`orders?status=completed&after=${encodeURIComponent(after.toISOString())}&per_page=100`)
+        sfcomOrders = await apiFetch(`orders?status=completed&after=${encodeURIComponent(after.toISOString())}&per_page=100`)
     } catch (e) {
-        // WORKAROUND TEMPORAL: falla por CORS — silencioso, sin modal, sin bloqueo
-        console.warn(`[sfcom] checkSfcomOrders: GET fallido (probablemente CORS). ${e.message}`)
+        console.warn(`[sfcom] checkSfcomOrders: GET fallido. ${e.message}`)
+        mostrarModalAvisoSfcom()
         return { ok: false, error: e.message, nuevos: [] }
-        // Versión definitiva: este catch no necesita cambios — el comportamiento
-        // es el mismo, pero cuando CORS esté resuelto el try tendrá éxito.
     }
 
     if (!sfcomOrders?.length) return { ok: true, nuevos: [] }
@@ -265,13 +219,8 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
 // ────────────────────────────────────────────────────────────────────────────
 // checkAvailabilityBeforeSave
 // Verifica disponibilidad real en sfcom justo antes de guardar una reserva.
-// Lee el stock actual del proxy y lo compara con las reservas propias.
+// Lee el stock actual y lo compara con las reservas propias.
 // Si el stock de sfcom es insuficiente, bloquea y avisa.
-//
-// WORKAROUND TEMPORAL: mientras haya error CORS, el GET fallará y la función
-// devolverá { ok: true, sfcomCheck: false } sin bloquear la reserva.
-// Cuando el CORS esté resuelto, el GET tendrá éxito y la verificación
-// funcionará correctamente sin cambios en el código.
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function checkAvailabilityBeforeSave(supabase, providerId, serviceId, plazasSolicitadas) {
@@ -289,14 +238,11 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
     let stockSfcom
     try {
         const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-        const item     = await proxyFetch(endpoint)
+        const item     = await apiFetch(endpoint)
         stockSfcom     = item.stock_quantity ?? null
     } catch (e) {
-        // WORKAROUND TEMPORAL: falla por CORS — no bloqueamos la reserva
-        console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido (probablemente CORS). No se verifica disponibilidad sfcom. ${e.message}`)
+        console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido. No se verifica disponibilidad sfcom. ${e.message}`)
         return { ok: true, sfcomCheck: false, warning: e.message }
-        // Versión definitiva: este catch no necesita cambios — mismo comportamiento,
-        // pero cuando CORS esté resuelto el try tendrá éxito y se verificará.
     }
 
     if (stockSfcom === null) return { ok: true, sfcomCheck: false }
@@ -326,39 +272,32 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
 
 // ────────────────────────────────────────────────────────────────────────────
 // mostrarModalError (interno)
-// Modal con el texto del correo a Hilario, botón mailto y botón cerrar.
-// Se dispara únicamente cuando falla un PUT de sincronización de stock.
+// Modal de error con información técnica y texto del correo para Hilario.
+// Se dispara cuando falla la verificación de IDs o el PUT de stock.
 // El modal no se cierra solo — Paula debe pulsar "Cerrar" explícitamente.
 // ────────────────────────────────────────────────────────────────────────────
 
-function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoStock, getExito, getError, putError }) {
+function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoStock, putError }) {
     const existente = document.getElementById('sfcom-modal-error')
     if (existente) existente.remove()
 
-    const endpointCompleto = `${PROXY_URL}?endpoint=${encodeURIComponent(endpoint)}`
-    const subject          = `Disponibilidad "${servicio}" — actualización pendiente`
+    const endpointCompleto = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
+    const subject          = `Disponibilidad "${servicio}" — revisión pendiente`
 
     const cuerpoCorreo = [
         `Hola Hilario,`,
         ``,
-        `Te escribo porque hemos tenido un problema al intentar sincronizar la disponibilidad de uno de los balcones.`,
+        `Ha habido un problema al sincronizar la disponibilidad de uno de los balcones desde nuestro sistema.`,
         ``,
-        `Al registrar una reserva para "${servicio}" (referencia interna: ${providerId} / ${serviceId}), el sistema intentó realizar dos operaciones automáticas:`,
+        `Al registrar una reserva para "${servicio}" (${providerId} / ${serviceId}), el sistema intentó actualizar automáticamente el stock:`,
         ``,
-        `1. GET ${endpointCompleto}`,
-        `   Resultado: ${getExito ? 'OK' : `Error — ${getError}`}`,
+        `PUT ${endpointCompleto}`,
+        `Nuevo stock calculado: ${nuevoStock} plaza(s)`,
+        `Resultado: Error — ${putError}`,
         ``,
-        `2. PUT ${endpointCompleto}`,
-        `   Nuevo stock calculado: ${nuevoStock} plazas`,
-        `   Resultado: Error — ${putError}`,
+        `Lo más probable es que sea un problema puntual. El stock correcto para "${servicio}" debería quedar en ${nuevoStock} plaza(s) disponibles. ¿Podrías revisarlo y actualizarlo manualmente si es necesario?`,
         ``,
-        `No hemos podido actualizar la disponibilidad automáticamente porque no tenemos acceso a la API necesaria para realizar estas operaciones.`,
-        ``,
-        `El stock correcto para "${servicio}" debería quedar en ${nuevoStock} plazas disponibles.`,
-        ``,
-        `¿Podrías actualizarlo manualmente en la tienda, o facilitarnos el acceso necesario para que podamos hacerlo de forma automática en el futuro? Te lo agradecemos mucho.`,
-        ``,
-        `Un saludo,`,
+        `Muchas gracias,`,
         `Paula`
     ].join('\n')
 
@@ -382,19 +321,28 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
                         No se pudo actualizar la disponibilidad en sfcom
                     </div>
                     <div style="font-size:13px;color:#555;line-height:1.5">
-                        La reserva se ha guardado correctamente en tu sistema, pero no se ha podido
-                        notificar a sfcom. Envía el correo a Hilario para que lo actualice manualmente.
+                        La reserva se ha guardado correctamente en tu sistema, pero ha habido un
+                        problema al actualizar el stock en sfcom. Revísalo manualmente en el panel
+                        de sfcom o contacta con Hilario.
                     </div>
                 </div>
+            </div>
+
+            <div style="background:#f3f4f6;border-radius:8px;padding:12px;font-size:12px;
+                        font-family:monospace;color:#374151;line-height:1.7">
+                <div><strong>Servicio:</strong> ${servicio}</div>
+                <div><strong>Endpoint:</strong> ${endpointCompleto}</div>
+                <div><strong>Nuevo stock:</strong> ${nuevoStock} plaza(s)</div>
+                <div><strong>Error:</strong> ${putError}</div>
             </div>
 
             <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px">
                 <div style="font-size:11px;color:#6b7280;margin-bottom:8px;text-transform:uppercase;
                             letter-spacing:.06em;font-weight:500">
-                    Texto del correo — cópialo si el botón no abre tu cliente de correo
+                    Texto del correo para Hilario
                 </div>
                 <textarea id="sfcom-email-texto"
-                    style="width:100%;height:220px;font-size:12px;font-family:monospace;
+                    style="width:100%;height:200px;font-size:12px;font-family:monospace;
                            border:none;background:transparent;resize:vertical;color:#1f2937;
                            outline:none;line-height:1.65;box-sizing:border-box"
                     readonly>${cuerpoCorreo}</textarea>
@@ -408,11 +356,11 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
                     📋 Copiar texto
                 </button>
                 <a id="sfcom-btn-mailto"
-                    href="mailto:${EMAIL_HILARIO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
-                    style="background:#dc2626;color:#fff;border-radius:6px;padding:8px 16px;
+                    href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
+                    style="background:#1d4ed8;color:#fff;border-radius:6px;padding:8px 16px;
                            font-size:13px;text-decoration:none;display:inline-flex;
                            align-items:center;gap:6px;white-space:nowrap">
-                    📧 Enviar correo a Hilario
+                    ✉️ Abrir en correo
                 </a>
                 <button id="sfcom-btn-cerrar"
                     style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
@@ -426,15 +374,115 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
     document.body.appendChild(overlay)
 
     document.getElementById('sfcom-btn-copiar').addEventListener('click', () => {
-        const ta = document.getElementById('sfcom-email-texto')
+        const ta  = document.getElementById('sfcom-email-texto')
+        const btn = document.getElementById('sfcom-btn-copiar')
         ta.select()
         document.execCommand('copy')
-        const btn = document.getElementById('sfcom-btn-copiar')
-        const original = btn.textContent
         btn.textContent = '✅ Copiado'
-        setTimeout(() => { btn.textContent = original }, 2000)
+        setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
     })
 
-    // El botón cerrar es la única forma de cerrar el modal
     document.getElementById('sfcom-btn-cerrar').addEventListener('click', () => overlay.remove())
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// mostrarModalExito (interno)
+// Confirmación visual cuando el PUT de stock se completa correctamente.
+// ────────────────────────────────────────────────────────────────────────────
+
+function mostrarModalExito({ servicio, nuevoStock }) {
+    const existente = document.getElementById('sfcom-modal-exito')
+    if (existente) existente.remove()
+
+    const overlay = document.createElement('div')
+    overlay.id = 'sfcom-modal-exito'
+    overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'z-index:10000', 'padding:16px'
+    ].join(';')
+
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:100%;
+                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
+                    display:flex;flex-direction:column;gap:18px">
+
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <span style="font-size:22px;line-height:1">✅</span>
+                <div>
+                    <div style="font-size:15px;font-weight:600;color:#166534;margin-bottom:4px">
+                        Disponibilidad actualizada en sfcom
+                    </div>
+                    <div style="font-size:13px;color:#555;line-height:1.5">
+                        El stock de "${servicio}" se ha actualizado correctamente
+                        a ${nuevoStock} plaza(s) disponibles en sfcom.
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end">
+                <button id="sfcom-btn-exito-aceptar"
+                    style="background:#166534;color:#fff;border:none;border-radius:6px;
+                           padding:8px 20px;font-size:13px;cursor:pointer;white-space:nowrap">
+                    Aceptar
+                </button>
+            </div>
+        </div>`
+
+    document.body.appendChild(overlay)
+    document.getElementById('sfcom-btn-exito-aceptar').addEventListener('click', () => overlay.remove())
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// mostrarModalAvisoSfcom (interno)
+// Aviso cuando checkSfcomOrders no puede conectar con sfcom.
+// Invita a consultar el panel manualmente.
+// ────────────────────────────────────────────────────────────────────────────
+
+function mostrarModalAvisoSfcom() {
+    const existente = document.getElementById('sfcom-modal-aviso')
+    if (existente) existente.remove()
+
+    const overlay = document.createElement('div')
+    overlay.id = 'sfcom-modal-aviso'
+    overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'z-index:10000', 'padding:16px'
+    ].join(';')
+
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:100%;
+                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
+                    display:flex;flex-direction:column;gap:18px">
+
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <span style="font-size:22px;line-height:1">⚠️</span>
+                <div>
+                    <div style="font-size:15px;font-weight:600;color:#92400e;margin-bottom:4px">
+                        No se pudieron cargar los pedidos de sfcom
+                    </div>
+                    <div style="font-size:13px;color:#555;line-height:1.5">
+                        No ha sido posible conectar con sfcom para comprobar si hay pedidos nuevos.
+                        Consulta el panel manualmente:<br><br>
+                        <a href="https://tienda.sanfermin.com/dashboard.html" target="_blank"
+                           style="color:#1d4ed8;text-decoration:underline">
+                            Panel de Métricas — San Fermín
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end">
+                <button id="sfcom-btn-aviso-aceptar"
+                    style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
+                           padding:8px 20px;font-size:13px;cursor:pointer;color:#374151;
+                           white-space:nowrap">
+                    Aceptar
+                </button>
+            </div>
+        </div>`
+
+    document.body.appendChild(overlay)
+    document.getElementById('sfcom-btn-aviso-aceptar').addEventListener('click', () => overlay.remove())
 }

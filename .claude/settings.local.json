@@ -4,7 +4,9 @@
       "Bash(grep -oE '\\\\.[a-z]+$')",
       "Bash(read f *)",
       "Bash([ ! -f \"d:/Projects/Web/Altura/$f\" ])",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(ls -la .nojekyll)",
+      "Bash(ls -la _config.yml)"
     ]
   }
 }
