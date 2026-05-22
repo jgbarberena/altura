@@ -450,3 +450,145 @@ function mostrarModalAvisoOrders() {
     document.body.appendChild(overlay)
     document.getElementById('sfcom-btn-aviso-aceptar').addEventListener('click', () => overlay.remove())
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// verificarCoherencia
+// Lee Supabase completo y verifica la integridad interna + disponibilidad sfcom.
+//
+// Devuelve:
+//   {
+//     ok: boolean,              — false si hay errores de coherencia en Supabase
+//     errores: string[],        — problemas críticos (FK rotas, sobrereservas, etc.)
+//     avisos: string[],         — impactos potenciales sin ser errores (solicitudes pendientes)
+//     sfcom: {
+//       verificado: boolean,    — true si todos los GETs a sfcom completaron
+//       discrepancias: [...],   — stocks que no coinciden con lo esperado
+//       error: string | null    — mensaje si algún GET falló
+//     }
+//   }
+//
+// Si algún GET a sfcom falla, sfcom.verificado queda false y sfcom.error contiene
+// el motivo. Los errores y avisos de Supabase se devuelven igualmente.
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function verificarCoherencia(supabase) {
+    const resultado = {
+        ok:     true,
+        errores: [],
+        avisos:  [],
+        sfcom: { verificado: false, discrepancias: [], error: null }
+    }
+
+    // ── Carga en paralelo ───────────────────────────────────────────
+    const [
+        { data: reservas,     error: eRes },
+        { data: availability, error: eAvail },
+        { data: clients,      error: eClients },
+        { data: providers,    error: eProviders },
+        { data: services,     error: eServices },
+        { data: solicitudes,  error: eSol }
+    ] = await Promise.all([
+        supabase.from('reservations').select('id, client_id, provider_id, service_id, status, slots'),
+        supabase.from('availability').select('*'),
+        supabase.from('clients').select('id'),
+        supabase.from('providers').select('id'),
+        supabase.from('services').select('id'),
+        supabase.from('reservation_requests').select('id, source, client_name').eq('status', 'nueva')
+    ])
+
+    if (eRes || eAvail || eClients || eProviders || eServices || eSol) {
+        resultado.errores.push('Error al leer datos de Supabase — verifica la conexión')
+        resultado.ok = false
+        return resultado
+    }
+
+    // ── Sets para lookup rápido ─────────────────────────────────────
+    const clienteIds   = new Set((clients     ?? []).map(c => c.id))
+    const proveedorIds = new Set((providers   ?? []).map(p => p.id))
+    const servicioIds  = new Set((services    ?? []).map(s => s.id))
+    const availKeys    = new Set((availability ?? []).map(a => `${a.provider_id}|${a.service_id}`))
+
+    // ── Coherencia de FK en reservas ────────────────────────────────
+    for (const r of (reservas ?? [])) {
+        if (!clienteIds.has(r.client_id))
+            resultado.errores.push(`Reserva ${r.id}: cliente "${r.client_id}" no existe en la BD`)
+        if (!proveedorIds.has(r.provider_id))
+            resultado.errores.push(`Reserva ${r.id}: proveedor "${r.provider_id}" no existe en la BD`)
+        if (!servicioIds.has(r.service_id))
+            resultado.errores.push(`Reserva ${r.id}: servicio "${r.service_id}" no existe en la BD`)
+        if (r.status !== 'Cancelada' && !availKeys.has(`${r.provider_id}|${r.service_id}`))
+            resultado.errores.push(`Reserva ${r.id}: sin fila availability para ${r.provider_id} / ${r.service_id}`)
+    }
+
+    // ── Sobrereserva por par proveedor/servicio ─────────────────────
+    for (const avail of (availability ?? [])) {
+        const activas = (reservas ?? []).filter(r =>
+            r.provider_id === avail.provider_id &&
+            r.service_id  === avail.service_id  &&
+            r.status      !== 'Cancelada'
+        ).length  // count de reservas (igual que syncStockToSfcom)
+
+        if (activas > avail.total_slots) {
+            resultado.errores.push(
+                `Sobrereserva: ${avail.provider_id} / ${avail.service_id} — ` +
+                `${activas} reservas activas sobre ${avail.total_slots} plazas totales`
+            )
+        }
+    }
+
+    // ── Solicitudes pendientes (aviso, no error) ────────────────────
+    const sfcomPend = (solicitudes ?? []).filter(s => s.source && /^WEB\d+_\d+$/.test(s.source))
+    const webPend   = (solicitudes ?? []).filter(s => !s.source || !/^WEB\d+_\d+$/.test(s.source))
+
+    if (sfcomPend.length > 0)
+        resultado.avisos.push(`${sfcomPend.length} solicitud(es) de sfcom sin atender`)
+    if (webPend.length > 0)
+        resultado.avisos.push(`${webPend.length} solicitud(es) web sin atender`)
+
+    // ── Verificación de stock en sfcom ──────────────────────────────
+    const mappedAvails = (availability ?? []).filter(a =>
+        a.sfcom_product_id && a.sfcom_slots_listed !== null && a.sfcom_service_name
+    )
+
+    if (mappedAvails.length === 0) {
+        resultado.sfcom.verificado = true
+    } else {
+        let sfcomFallo = false
+        for (const avail of mappedAvails) {
+            try {
+                const endpoint  = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
+                const item      = await apiFetch(endpoint)
+                const stockReal = item.stock_quantity ?? null
+
+                if (stockReal === null) continue
+
+                const activas       = (reservas ?? []).filter(r =>
+                    r.provider_id === avail.provider_id &&
+                    r.service_id  === avail.service_id  &&
+                    r.status      !== 'Cancelada'
+                ).length
+                const stockEsperado = Math.max(0, avail.sfcom_slots_listed - activas)
+
+                if (stockReal !== stockEsperado) {
+                    resultado.sfcom.discrepancias.push({
+                        servicio:     avail.sfcom_service_name,
+                        providerId:   avail.provider_id,
+                        serviceId:    avail.service_id,
+                        stockSfcom:   stockReal,
+                        stockEsperado,
+                        diferencia:   stockReal - stockEsperado  // positivo → sfcom tiene MÁS stock del esperado
+                    })
+                }
+            } catch (e) {
+                sfcomFallo          = true
+                resultado.sfcom.error = e.message
+                console.warn(`[verificacion] GET sfcom fallido para ${avail.sfcom_service_name}: ${e.message}`)
+                break  // un fallo es suficiente para saber que sfcom no está accesible
+            }
+        }
+        if (!sfcomFallo) resultado.sfcom.verificado = true
+    }
+
+    resultado.ok = resultado.errores.length === 0
+    return resultado
+}

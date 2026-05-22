@@ -272,7 +272,7 @@ Hay dos clientes Supabase:
 | provider_id | text FK→providers | |
 | slots | integer NOT NULL | |
 | price_per_slot | decimal NOT NULL | Precio de venta al cliente por plaza |
-| total_amount | decimal | Calculado por el JS: slots × price_per_slot (ver decisión 13.2) |
+| total_amount | decimal | Columna generada por Supabase: slots × price_per_slot. El JS no la calcula ni la envía (ver decisión 13.2) |
 | status | text NOT NULL | `'Confirmada'`, `'Pendiente'`, `'Cancelada'`; default `'Pendiente'` |
 | comments | text | |
 | proposal_number | text | Número de propuesta emitida (serie PRP) |
@@ -344,7 +344,7 @@ La vista agrega `availability` con las reservas `Confirmada` + `Pendiente`. La u
 - Todo en snake_case y minúsculas (los IDs de texto son excepción: mayúsculas, reforzado por trigger).
 - FK siempre presentes.
 - Lógica de presentación en JS, no en BD. Excepción: la vista `service_availability` y el trigger `uppercase_ids` son lógica de integridad aceptable en BD.
-- Cuando hay lógica calculada (totales, pagos finales), el JS calcula y corrige automáticamente en Supabase si detecta inconsistencia, notificando solo en consola (sin alertas al usuario).
+- Los totales simples (total_amount) los calcula la BD como columna generada. Los importes con lógica de negocio (hito final de cobros, hito final de pagos) los recalcula y persiste el JS automáticamente cuando cambia alguna reserva relevante, notificando solo en consola.
 
 ---
 
@@ -352,7 +352,7 @@ La vista agrega `availability` con las reservas `Confirmada` + `Pendiente`. La u
 
 ### 7.1 formulario.js — Gestión de reservas
 
-Módulo ES6. Importa de `supabase.js`, `utils.js`, `factura.js`, `propuesta.js`.
+Módulo ES6. Importa de `supabase.js`, `utils.js`, `factura.js`, `propuesta.js`, `sfcom.js`.
 
 El panel tiene **6 bloques** que se muestran/ocultan según el estado:
 
@@ -360,13 +360,17 @@ El panel tiene **6 bloques** que se muestran/ocultan según el estado:
 
 **Bloque 1 — Cliente:** Campo `ID_CLIENTE` con autocomplete en tiempo real contra `clients`. Si el ID coincide exactamente con un cliente existente, carga sus datos y activa el guardado automático por campo (`change` → `supabase.update`). Si es un ID nuevo, muestra "Cliente nuevo". Los datos del cliente nunca se guardan manualmente; el guardado es automático en cuanto cambia cualquier campo de un cliente existente.
 
-**Bloque 2 — Reserva:** Selector de servicio, selector de proveedor (se habilita y filtra al seleccionar servicio), número de plazas, precio por plaza, total calculado (plazas × precio, nunca editable directamente), estado (`Confirmada`/`Pendiente`) y comentarios. Los IDs de reserva tienen formato `RSV-NNN` (correlativo). Permite editar una reserva existente seleccionándola desde Bloque 4.
+**Bloque 2 — Reserva:** Selector de servicio, selector de proveedor (se habilita y filtra al seleccionar servicio), número de plazas, precio por plaza, total calculado (plazas × precio, nunca editable directamente), estado (`Confirmada`/`Pendiente`) y comentarios. Los IDs de reserva tienen formato `R0001`, `R0002`… (R + 4 dígitos, correlativo). Antes de guardar una reserva nueva llama a `checkAvailabilityBeforeSave` de `sfcom.js` para verificar que el stock en sfcom es coherente con la operación. Al guardar en modo edición, si cambia el proveedor o servicio, sincroniza el stock de sfcom tanto para el par original como para el par nuevo. Permite editar una reserva existente seleccionándola desde Bloque 4.
 
 **Bloque 3 — Disponibilidad:** Se activa al seleccionar servicio. Mapa visual de columnas por proveedor con sus reservas actuales y estado de disponibilidad para el número de plazas introducido (verde/amarillo/rojo). Click en columna de proveedor con plazas insuficientes abre panel de reorganización.
 
 **Bloque 4 — Reservas del cliente:** Tabla con todas las reservas del cliente cargado. Permite seleccionar reservas con checkbox para editar, cancelar o eliminar. Botón "Generar propuesta" → abre panel de propuesta.
 
 **Bloque 5 — Cobros al cliente:** Tabla de hitos de cobro del cliente. Botón de facturación por hito. Hito final (`is_final: true`) se recalcula automáticamente vía `persistirCobrosCliente()`.
+
+**Sincronización con sfcom:** Todas las operaciones que cambian el número de reservas activas de un par (proveedor, servicio) llaman a `syncStockToSfcom` de `sfcom.js` tras persistir en Supabase. Esto incluye: añadir reserva, editar reserva, cambiar estado de reservas seleccionadas, eliminar reservas, y confirmar reorganización. Si una operación afecta a varios pares, los pares se deduplicatan y se hace exactamente una llamada PUT por par único. La reorganización de reservas también sincroniza los pares de origen y destino de cada cambio.
+
+**Verificación de coherencia:** Al cargar la página, `verificarCoherencia` de `sfcom.js` se ejecuta automáticamente. Si todo está correcto muestra un toast verde fugaz; si hay errores o discrepancias con sfcom, abre un modal con el detalle. El botón "🔍 Verificar datos" del sidebar ejecuta la misma verificación en modo manual, abriendo siempre el modal (con resumen OK o con errores).
 
 **Inferencia de service_id desde solicitudes web:**
 ```js
@@ -435,17 +439,38 @@ Bloques:
 
 ### 7.6 proveedores.js — Gestión de proveedores
 
-Módulo ES6. Gestiona:
+Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js`. Gestiona:
 - CRUD de proveedores con autocomplete (igual que clientes en formulario.js)
-- Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability`
+- Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability`. Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
 - Hitos de pago al proveedor: gestión de `payments` con modelo `capacity`/`consumption`
 - Guardado automático por campo para proveedores existentes
 
-### 7.7 tablas.js — Vista de tablas
+### 7.7 sfcom.js — Integración con tienda.sanfermin.com
+
+Módulo ES6. Gestiona toda la comunicación con la tienda WooCommerce de sfcom a través de `sf-api-paula.php` (API directa de Hilario). No tiene estado propio; cada función recibe `supabase` como argumento.
+
+**API:** `https://tienda.sanfermin.com/wp-content/plugins/sf-api-paula/sf-api-paula.php`  
+Cabecera de autenticación: `X-Paula-Key`. Endpoints disponibles: `GET/PUT products/{id}` y `GET/PUT products/{id}/variations/{variation_id}`. Solo se envía `stock_quantity` en los PUT.
+
+**Fórmula de stock:** `nuevoStock = Math.max(0, sfcom_slots_listed - reservasActivas)` donde `reservasActivas` es el número de filas en `reservations` con ese par (provider_id, service_id) y status distinto de `'Cancelada'`. Nota: es el conteo de filas de reserva, no la suma de plazas — cada reserva ocupa un "hueco" visible en sfcom independientemente de sus plazas.
+
+**Exports:**
+
+`syncStockToSfcom(supabase, proveedorId, servicioId)` — Recalcula el stock esperado para el par y hace PUT a sfcom si hay una fila de `availability` con `sfcom_product_id`. Si el par no tiene configuración sfcom (`sfcom_slots_listed` null), no hace nada. Llamada después de cualquier operación que cambie reservas activas del par.
+
+`checkAvailabilityBeforeSave(supabase, proveedorId, servicioId, plazas)` — Verifica antes de guardar una reserva nueva que: (a) Supabase tiene plazas libres, y (b) si el par tiene sfcom configurado, el stock actual en sfcom no es cero. Devuelve `{ ok, message?, sfcomCheck, warning? }`. Si el GET de sfcom falla, devuelve `ok: true` con aviso de que no se pudo verificar sfcom (no bloquea).
+
+`checkSfcomOrders(supabase)` — Llama a `GET orders?status=completed&...` de sf-api-paula.php para detectar pedidos nuevos. Si encuentra pedidos sin `source` correspondiente en `reservation_requests`, los inserta como solicitudes nuevas. Si el endpoint `orders` no existe en sf-api-paula.php, muestra el modal de aviso (ver deuda 12.1). Llamada al cargar `formulario.html`.
+
+`verificarCoherencia(supabase)` — Lee en paralelo reservations, availability, clients, providers, services y reservation_requests (status='nueva'). Verifica: integridad FK en reservas, reservas activas sin fila de availability, sobrereservas (count activas > total_slots). También hace GET a sfcom para cada fila de availability con sfcom_product_id y compara stock real contra el esperado por la fórmula — discrepancia positiva (sfcom muestra más del esperado) es más grave que negativa. Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], error } }`.
+
+**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError`, `mostrarModalExito`, `mostrarModalAvisoOrders`. El toast y el modal de verificación están en `formulario.js` (consumen el resultado de `verificarCoherencia`).
+
+### 7.8 tablas.js — Vista de tablas
 
 Módulo ES6. Vista de solo lectura de todas las tablas: `reservations`, `charges`, `payments`, `availability`, `clients`, `providers`, `services`, `reservation_requests`. Selector de tabla, búsqueda en tiempo real, formateo de columnas con lambdas.
 
-### 7.8 auth.js
+### 7.9 auth.js
 
 ```js
 requireAuth()  // redirige a ./index.html si no hay sesión
@@ -606,16 +631,6 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 
 **Acción pendiente:** Revisar página a página y ampliar `faq-answer` (o marcar más `<p>` dentro del faq-item) donde el contenido adicional aporte valor como respuesta.
 
-### 12.7 Al cargar solicitud no se limpian campos del cliente anterior — **Bug admin**
-**Problema:** En `formulario.js`, cuando el admin hace click en una fila de `reservation_requests` para precargar datos, los campos del cliente anterior (nombre, email, teléfono, etc.) no se borran primero. Si la solicitud nueva tiene menos campos rellenos, quedan datos del cliente previo mezclados.
-
-**Acción pendiente:** Limpiar todos los campos del formulario de cliente antes de precargar los datos de la solicitud seleccionada.
-
-### 12.8 Precio en solicitudes sfcom usa coma en lugar de punto — **Bug admin**
-**Problema:** El campo `price_per_slot` de las solicitudes que llegan desde sfcom puede venir con coma decimal (`"12,50"`) en lugar de punto (`"12.50"`). `parseFloat` en JS no interpreta la coma, devolviendo `NaN` o un valor incorrecto al precargar el precio neto.
-
-**Acción pendiente:** Normalizar el valor antes del `parseFloat`: `str.replace(',', '.')`.
-
 ### 12.9 Mejora de micro-story y background image — **Mejora UX pendiente**
 **Situación:** Las secciones con micro-story (textos breves de apoyo narrativo) y las imágenes de fondo tienen margen de mejora visual y de contenido. No hay un criterio uniforme de cuándo usar una u otra, ni se han optimizado todos los casos.
 
@@ -626,6 +641,11 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 
 **Acción pendiente:** Extraer a función compartida (ej. en `main.js` o un nuevo `utils-public.js`) y eliminar duplicados.
 
+### 12.11 Sort por columna en tablas del panel de control — **Resuelto**
+**Situación:** Las tablas de `panel.js` (calendario de pagos/cobros, disponibilidad por evento, disponibilidad por proveedor) no permiten ordenar por columna. El sort ya está implementado en la tabla de reservas de `formulario.js` y puede usarse como referencia. Complejidad extra: cuando hay un proveedor/evento seleccionado, la primera fila es un resumen no ordenable y las filas de detalle son las que hay que ordenar; al cambiar el selector el sort debe resetearse.
+
+**Acción pendiente:** Implementar sort en las 4 tablas de `panel.js` con manejo especial de la fila resumen.
+
 ---
 
 ## 13. Decisiones de arquitectura tomadas
@@ -633,8 +653,8 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 ### 13.1 Sin servidor propio
 Todo corre en el navegador. Supabase es el único backend. Esta decisión es deliberada y permanente para el volumen del proyecto (< 200 reservas). No cambiar por complejidad técnica.
 
-### 13.2 No hay total_amount calculado en BD
-El campo `total_amount` en `reservations` es un campo guardado (no una columna calculada de PostgreSQL). Lo calcula el JS antes de insertar/actualizar. Razón: simplicidad, el volumen no justifica triggers de BD.
+### 13.2 total_amount es columna generada en BD
+El campo `total_amount` en `reservations` es una columna generada por Supabase (`slots × price_per_slot`). El JS no la calcula ni la envía en INSERT/UPDATE; Supabase la mantiene siempre coherente. Razón: es un producto simple sin lógica de negocio; delegarlo a la BD elimina una posible fuente de inconsistencia.
 
 ### 13.3 charges es por cliente, no por reserva
 La tabla `charges` tiene `client_id` (no `reservation_id`). Razón: un cliente puede tener múltiples reservas y el cobro se gestiona a nivel cliente, no por reserva individual. El hito final (`is_final: true`) se recalcula automáticamente considerando todas las reservas del cliente.

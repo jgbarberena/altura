@@ -6,7 +6,8 @@
       "Bash([ ! -f \"d:/Projects/Web/Altura/$f\" ])",
       "Read(//tmp/**)",
       "Bash(ls -la .nojekyll)",
-      "Bash(ls -la _config.yml)"
+      "Bash(ls -la _config.yml)",
+      "PowerShell(cmdkey /delete:git:https://github.com)"
     ]
   }
 }

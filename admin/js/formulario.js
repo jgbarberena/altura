@@ -3,7 +3,7 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
-import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave } from './sfcom.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia } from './sfcom.js'
 
 await requireAuth()
 initFacturacion(supabase)
@@ -248,7 +248,7 @@ selectProveedor.addEventListener('change', () => {
     const servicioId  = selectServicio.value
     const plazas      = parseInt(inputPlazas.value) || 0
     if (proveedorId && servicioId && plazas > 0) {
-        const { libres } = getPlazasInfo(proveedorId, servicioId)
+        const { libres } = getPlazasInfo(proveedorId, servicioId, reservaEditandoId)
         if (libres < plazas) abrirPanelReorganizar(proveedorId, servicioId, plazas)
     }
 })
@@ -261,11 +261,12 @@ function actualizarTotal() {
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
 }
 
-function getPlazasInfo(proveedorId, servicioId) {
+function getPlazasInfo(proveedorId, servicioId, excluirId = null) {
     const reservasPS  = todasReservas.filter(r =>
         r.provider_id === proveedorId &&
         r.service_id  === servicioId  &&
-        r.status      !== 'Cancelada'
+        r.status      !== 'Cancelada' &&
+        r.id          !== excluirId
     )
     const confirmadas = reservasPS.filter(r => r.status === 'Confirmada').reduce((s, r) => s + r.slots, 0)
     const pendientes  = reservasPS.filter(r => r.status === 'Pendiente').reduce((s, r) => s + r.slots, 0)
@@ -289,7 +290,7 @@ function actualizarProveedores() {
     selectProveedor.disabled = false
 
     dispServicio.forEach(d => {
-        const { total, pendientes, libres } = getPlazasInfo(d.provider_id, servicioId)
+        const { total, pendientes, libres } = getPlazasInfo(d.provider_id, servicioId, reservaEditandoId)
         if (plazas > 0 && total < plazas) return
 
         let simbolo = ''
@@ -312,7 +313,7 @@ function actualizarProveedores() {
         if (opcionExiste) {
             selectProveedor.value = proveedorActual
             if (plazas > 0) {
-                const { libres } = getPlazasInfo(proveedorActual, servicioId)
+                const { libres } = getPlazasInfo(proveedorActual, servicioId, reservaEditandoId)
                 if (libres < plazas) {
                     precioStatus.textContent = `⚠️ ${proveedorActual} no tiene plazas libres suficientes para ${plazas} plazas`
                     precioStatus.style.color = 'var(--accent-warn)'
@@ -322,7 +323,7 @@ function actualizarProveedores() {
     }
 
     if (proveedorActual && selectProveedor.value === proveedorActual) {
-        const { libres } = getPlazasInfo(proveedorActual, servicioId)
+        const { libres } = getPlazasInfo(proveedorActual, servicioId, reservaEditandoId)
         if (plazas === 0 || libres >= plazas) {
             if (precioStatus.textContent.includes('no tiene plazas')) {
                 precioStatus.textContent = ''
@@ -506,6 +507,7 @@ function cargarReservaEnFormulario(reserva) {
         selectProveedor.value = reserva.provider_id
         validarPrecio()
         actualizarBloque3()
+        actualizarBtnAnadir()
     }, 50)
 
     inputPlazas.value  = reserva.slots
@@ -526,8 +528,10 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         .map(chk => chk.closest('tr').dataset.id)
     if (ids.length === 0) return
 
-    const afectadas = todasReservas.filter(r => ids.includes(r.id))
-        .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id }))
+    const afectadas = [...new Map(
+        todasReservas.filter(r => ids.includes(r.id))
+            .map(r => [`${r.provider_id}|${r.service_id}`, { proveedorId: r.provider_id, servicioId: r.service_id }])
+    ).values()]
 
     const { error } = await supabase.from('reservations').update({ status: nuevoEstado }).in('id', ids)
     if (!error && clienteActual) {
@@ -550,8 +554,18 @@ async function eliminarSeleccionadas() {
     if (ids.length === 0) return
     if (!confirm(`¿Eliminar ${ids.length} reserva(s) definitivamente?`)) return
 
-    const afectadas = todasReservas.filter(r => ids.includes(r.id))
-        .map(r => ({ proveedorId: r.provider_id, servicioId: r.service_id, cancelada: r.status === 'Cancelada' }))
+    const afectadas = [...todasReservas
+        .filter(r => ids.includes(r.id))
+        .reduce((map, r) => {
+            const key  = `${r.provider_id}|${r.service_id}`
+            const prev = map.get(key)
+            map.set(key, {
+                proveedorId: r.provider_id,
+                servicioId:  r.service_id,
+                cancelada:   prev ? (prev.cancelada && r.status === 'Cancelada') : r.status === 'Cancelada'
+            })
+            return map
+        }, new Map()).values()]
 
     const { error: errReservas } = await supabase.from('reservations').delete().in('id', ids)
     if (errReservas) { alert('Error al borrar reservas: ' + errReservas.message); return }
@@ -621,6 +635,10 @@ btnAnadir.addEventListener('click', async () => {
     if (plazas === 0) { if (!confirm('¿Crear una reserva con 0 plazas?')) return }
 
     if (reservaEditandoId) {
+        const reservaOriginal     = todasReservas.find(r => r.id === reservaEditandoId)
+        const proveedorIdAnterior = reservaOriginal?.provider_id
+        const servicioIdAnterior  = reservaOriginal?.service_id
+
         const { error } = await supabase.from('reservations').update({
             service_id: servicioId, provider_id: proveedorId,
             slots: plazas, price_per_slot: precio, status: estado, comments
@@ -632,7 +650,14 @@ btnAnadir.addEventListener('click', async () => {
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
+        if (proveedorIdAnterior !== undefined && proveedorIdAnterior !== proveedorId) {
+            await persistirPagosProveedor(supabase, proveedorIdAnterior, todasReservas, disponibilidad)
+        }
         await syncStockToSfcom(supabase, proveedorId, servicioId)
+        if (proveedorIdAnterior !== undefined &&
+            (proveedorIdAnterior !== proveedorId || servicioIdAnterior !== servicioId)) {
+            await syncStockToSfcom(supabase, proveedorIdAnterior, servicioIdAnterior)
+        }
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -719,7 +744,7 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
     }
 
     const proveedoresConInfo = dispServicio.map(d => ({
-        d, ...getPlazasInfo(d.provider_id, servicioId)
+        d, ...getPlazasInfo(d.provider_id, servicioId, reservaEditandoId)
     })).filter(({ total }) => plazas === 0 || total >= plazas)
     .sort((a, b) => b.libres - a.libres)
 
@@ -775,7 +800,7 @@ window.seleccionarProveedorDesdeCajita = function(proveedorId) {
     const plazas     = parseInt(inputPlazas.value) || 0
 
     if (plazas > 0) {
-        const { libres } = getPlazasInfo(proveedorId, servicioId)
+        const { libres } = getPlazasInfo(proveedorId, servicioId, reservaEditandoId)
         if (libres < plazas) {
             abrirPanelReorganizar(proveedorId, servicioId, plazas)
             return
@@ -784,7 +809,7 @@ window.seleccionarProveedorDesdeCajita = function(proveedorId) {
 
     const opcionExiste = [...selectProveedor.options].some(o => o.value === proveedorId)
     if (!opcionExiste) {
-        const { total, libres } = getPlazasInfo(proveedorId, servicioId)
+        const { total, libres } = getPlazasInfo(proveedorId, servicioId, reservaEditandoId)
         const opt = document.createElement('option')
         opt.value       = proveedorId
         opt.textContent = `${proveedorId} (${libres}/${total})`
@@ -1610,6 +1635,8 @@ async function cargarSolicitudes() {
 async function cargarDesdeSolicitud(data) {
     const esSfcom = _esSfcom(data.source)
 
+    limpiarCamposCliente()
+
     // Generar ID de cliente: NOMBRE_APELLIDO, con _2, _3... si ya existe
     const nombreBase = (data.nombre || 'CLIENTE')
         .toUpperCase()
@@ -1662,7 +1689,8 @@ async function cargarDesdeSolicitud(data) {
         }
         // Precio neto precargado (bruto / 1.15)
         if (data.pricePerSlot || data['price-per-slot']) {
-            const bruto = parseFloat(data.pricePerSlot || data['price-per-slot'])
+            const raw   = (data.pricePerSlot || data['price-per-slot']).replace(',', '.')
+            const bruto = parseFloat(raw)
             if (!isNaN(bruto)) {
                 setTimeout(() => {
                     inputPrecio.value = (bruto / 1.15).toFixed(2)
@@ -1784,4 +1812,156 @@ checkSfcomOrders(supabase, 90).then(resultado => {
         registrarPedidosSfcom(resultado.nuevos)
     }
 }).catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
+
+// ===== VERIFICACIÓN DE COHERENCIA =====
+
+function mostrarToastVerificacion() {
+    const prev = document.getElementById('toast-verificacion')
+    if (prev) prev.remove()
+
+    const toast = document.createElement('div')
+    toast.id = 'toast-verificacion'
+    toast.style.cssText = [
+        'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
+        'background:#166534', 'color:#fff', 'border-radius:8px', 'padding:10px 22px',
+        'font-size:14px', 'font-family:system-ui,sans-serif', 'font-weight:500',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.2)', 'z-index:9999',
+        'transition:opacity 0.6s ease', 'opacity:1', 'white-space:nowrap',
+        'pointer-events:none'
+    ].join(';')
+    toast.textContent = '✅ Coherencia de reservas, plazas y sfcom verificada y correcta'
+    document.body.appendChild(toast)
+
+    setTimeout(() => { toast.style.opacity = '0' }, 3500)
+    setTimeout(() => { toast.remove() }, 4200)
+}
+
+function mostrarModalVerificacion(resultado) {
+    const prev = document.getElementById('modal-verificacion')
+    if (prev) prev.remove()
+
+    const tieneErrores       = resultado.errores.length > 0
+    const tieneDiscrepancias = resultado.sfcom.discrepancias.length > 0
+    const hayProblema        = tieneErrores || tieneDiscrepancias
+
+    let secciones = ''
+
+    if (!tieneErrores) {
+        secciones += `
+            <div style="display:flex;align-items:center;gap:10px;padding:12px;
+                        background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+                <span style="font-size:18px">✅</span>
+                <div style="font-size:13px;color:#166534">
+                    No se han detectado inconsistencias en reservas, plazas ni relaciones de datos.
+                </div>
+            </div>`
+    } else {
+        secciones += `
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+                            color:#991b1b;font-weight:700;margin-bottom:8px">
+                    ❌ Errores de coherencia en Supabase
+                </div>
+                <ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;line-height:1.9">
+                    ${resultado.errores.map(e => `<li>${e}</li>`).join('')}
+                </ul>
+            </div>`
+    }
+
+    if (resultado.sfcom.verificado && tieneDiscrepancias) {
+        secciones += `
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+                            color:#92400e;font-weight:700;margin-bottom:8px">
+                    ⚠️ Discrepancias de stock en sfcom
+                </div>
+                <ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;line-height:1.9">
+                    ${resultado.sfcom.discrepancias.map(d => {
+                        const dir = d.diferencia > 0
+                            ? `sfcom muestra <strong>${d.diferencia} plaza(s) de MÁS</strong> — riesgo de sobreventa`
+                            : `sfcom muestra <strong>${Math.abs(d.diferencia)} plaza(s) de MENOS</strong>`
+                        return `<li><strong>${d.servicio}</strong>: ${dir} (sfcom: ${d.stockSfcom}, esperado: ${d.stockEsperado})</li>`
+                    }).join('')}
+                </ul>
+            </div>`
+    } else if (resultado.sfcom.verificado) {
+        secciones += `
+            <div style="font-size:13px;color:#166534;display:flex;align-items:center;gap:6px;
+                        padding:8px 0;border-top:1px solid #f3f4f6">
+                <span>✅</span> Stock en sfcom verificado y correcto
+            </div>`
+    } else {
+        secciones += `
+            <div style="font-size:13px;color:#6b7280;padding:8px;background:#f9fafb;border-radius:6px;
+                        border:1px solid #e5e7eb">
+                ⚠️ No se pudo verificar sfcom${resultado.sfcom.error ? ` — ${resultado.sfcom.error}` : ''}
+            </div>`
+    }
+
+    if (resultado.avisos.length > 0) {
+        secciones += `
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+                            color:#6b7280;font-weight:700;margin-bottom:6px">
+                    ℹ️ Avisos
+                </div>
+                <ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;line-height:1.9">
+                    ${resultado.avisos.map(a => `<li>${a}</li>`).join('')}
+                </ul>
+            </div>`
+    }
+
+    const colorTitulo = tieneErrores ? '#991b1b' : tieneDiscrepancias ? '#92400e' : '#166534'
+    const iconoTitulo = tieneErrores ? '❌' : tieneDiscrepancias ? '⚠️' : '✅'
+    const textoTitulo = hayProblema ? 'Inconsistencias detectadas' : 'Verificación de datos'
+    const colorBtn    = hayProblema ? '#f3f4f6' : '#166534'
+    const colorBtnTxt = hayProblema ? '#374151' : '#fff'
+    const bordeBtn    = hayProblema ? '1px solid #d1d5db' : 'none'
+
+    const overlay = document.createElement('div')
+    overlay.id = 'modal-verificacion'
+    overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'z-index:10000', 'padding:16px'
+    ].join(';')
+
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:28px;max-width:560px;width:100%;
+                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
+                    display:flex;flex-direction:column;gap:16px;max-height:85vh;overflow-y:auto">
+            <div style="font-size:16px;font-weight:600;color:${colorTitulo}">
+                ${iconoTitulo} ${textoTitulo}
+            </div>
+            ${secciones}
+            <div style="display:flex;justify-content:flex-end;padding-top:4px">
+                <button id="btn-verificacion-cerrar"
+                    style="background:${colorBtn};color:${colorBtnTxt};border:${bordeBtn};
+                           border-radius:6px;padding:8px 24px;font-size:13px;cursor:pointer">
+                    ${hayProblema ? 'Cerrar' : 'OK'}
+                </button>
+            </div>
+        </div>`
+
+    document.body.appendChild(overlay)
+    document.getElementById('btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
+}
+
+async function ejecutarVerificacion(modoManual = false) {
+    const resultado  = await verificarCoherencia(supabase)
+    const hayProblema = resultado.errores.length > 0 || resultado.sfcom.discrepancias.length > 0
+
+    if (modoManual || hayProblema) {
+        mostrarModalVerificacion(resultado)
+    } else {
+        mostrarToastVerificacion()
+    }
+}
+
+document.getElementById('btnVerificarDatos').addEventListener('click', () => {
+    ejecutarVerificacion(true).catch(e => console.error('[verificacion] Error:', e.message))
+})
+
+// Verificar coherencia de datos al cargar
+ejecutarVerificacion(false).catch(e => console.error('[verificacion] Error al inicio:', e.message))
 

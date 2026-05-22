@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor } from './utils.js'
+import { syncStockToSfcom } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -455,6 +456,10 @@ btnGuardarServicio.addEventListener('click', async () => {
             )
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
+        for (const dispId of serviciosEditandoIds) {
+            const disp = todaDisponibilidad.find(d => d.id === dispId)
+            if (disp) await syncStockToSfcom(supabase, disp.provider_id, disp.service_id)
+        }
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorActual.id)
         cargarPagosProveedor(proveedorActual.id)
@@ -518,6 +523,7 @@ btnGuardarServicio.addEventListener('click', async () => {
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
+    await syncStockToSfcom(supabase, proveedorActual.id, servicioId)
     limpiarFormularioServicio()
     cargarServiciosProveedor(proveedorActual.id)
     cargarPagosProveedor(proveedorActual.id)

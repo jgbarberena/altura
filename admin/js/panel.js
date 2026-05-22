@@ -96,22 +96,63 @@ function calcularAlertas() {
         || solicitudesSfcom.length > 0 || solicitudesWeb.length > 0) ? 'block' : 'none'
 }
 
+// ===== SORT HELPERS =====
+
+function sortArr(arr, col, dir, getKey) {
+    if (col === null) return arr
+    return [...arr].sort((a, b) => {
+        const cmp = String(getKey(a, col) ?? '').localeCompare(String(getKey(b, col) ?? ''), 'es', { numeric: true })
+        return dir === 'asc' ? cmp : -cmp
+    })
+}
+
+function renderThead(thead, columnas, sortCol, sortDir, onClick) {
+    thead.innerHTML = '<tr>' + columnas.map((label, i) => {
+        const activa = sortCol === i
+        return `<th style="cursor:pointer;user-select:none">${label} <span style="font-size:10px;opacity:${activa ? 1 : 0.4}">${activa ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`
+    }).join('') + '</tr>'
+    thead.querySelectorAll('th').forEach((th, i) => th.addEventListener('click', () => onClick(i)))
+}
+
 // ===== BLOQUE 1: CALENDARIO =====
 let tabActiva = '7'
+let sortPagosCol  = null, sortPagosDir  = 'asc'
+let sortCobrosCol = null, sortCobrosDir = 'asc'
+let pagosFiltradosCache  = []
+let cobrosFiltradosCache = []
 
-function calcularCalendario() {
-    const diasFiltro = tabActiva === '7' ? 7 : tabActiva === '30' ? 30 : 99999
+const PAGOS_COLS  = ['Proveedor', 'Concepto', 'Fecha', 'Importe', 'Estado']
+const COBROS_COLS = ['Cliente',   'Concepto', 'Fecha', 'Importe', 'Estado']
 
-    const pagosFiltrados = payments.filter(p => {
-        if (p.paid) return false
-        const dias = diasDesdeHoy(p.due_date)
-        return dias <= diasFiltro
-    }).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+function pagosSortKey(p, col) {
+    if (col === 0) return p.provider_id
+    if (col === 1) return p.comments ?? ''
+    if (col === 2) return p.due_date ?? ''
+    if (col === 3) return parseFloat(p.amount)
+    if (col === 4) return (p.due_date ?? '') < hoy ? '0' : '1'
+    return ''
+}
 
-    const tbodyPagos = document.getElementById('tbody-pagos-proximos')
-    tbodyPagos.innerHTML = pagosFiltrados.length === 0
+function cobrosSortKey(c, col) {
+    if (col === 0) return c.client_id
+    if (col === 1) return c.comments ?? ''
+    if (col === 2) return c.due_date ?? ''
+    if (col === 3) return parseFloat(c.amount)
+    if (col === 4) return (c.due_date ?? '') < hoy ? '0' : '1'
+    return ''
+}
+
+function renderPagosProximos() {
+    const tabla = document.getElementById('tbody-pagos-proximos').closest('table')
+    renderThead(tabla.querySelector('thead'), PAGOS_COLS, sortPagosCol, sortPagosDir, col => {
+        if (sortPagosCol === col) sortPagosDir = sortPagosDir === 'asc' ? 'desc' : 'asc'
+        else { sortPagosCol = col; sortPagosDir = 'asc' }
+        renderPagosProximos()
+    })
+    const ordenados = sortArr(pagosFiltradosCache, sortPagosCol, sortPagosDir, pagosSortKey)
+    document.getElementById('tbody-pagos-proximos').innerHTML = ordenados.length === 0
         ? '<tr><td colspan="5" style="color:var(--subtle)">Sin pagos en este periodo</td></tr>'
-        : pagosFiltrados.map(p => {
+        : ordenados.map(p => {
             const dias    = diasDesdeHoy(p.due_date)
             const vencido = dias < 0
             const clase   = vencido ? 'error' : dias <= 7 ? 'warn' : ''
@@ -123,17 +164,19 @@ function calcularCalendario() {
                 <td class="${vencido ? 'error' : 'warn'}">Pendiente</td>
             </tr>`
         }).join('')
+}
 
-    const cobrosFiltrados = charges.filter(c => {
-        if (c.collected) return false
-        const dias = diasDesdeHoy(c.due_date)
-        return dias <= diasFiltro
-    }).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
-
-    const tbodyCobros = document.getElementById('tbody-cobros-proximos')
-    tbodyCobros.innerHTML = cobrosFiltrados.length === 0
+function renderCobrosProximos() {
+    const tabla = document.getElementById('tbody-cobros-proximos').closest('table')
+    renderThead(tabla.querySelector('thead'), COBROS_COLS, sortCobrosCol, sortCobrosDir, col => {
+        if (sortCobrosCol === col) sortCobrosDir = sortCobrosDir === 'asc' ? 'desc' : 'asc'
+        else { sortCobrosCol = col; sortCobrosDir = 'asc' }
+        renderCobrosProximos()
+    })
+    const ordenados = sortArr(cobrosFiltradosCache, sortCobrosCol, sortCobrosDir, cobrosSortKey)
+    document.getElementById('tbody-cobros-proximos').innerHTML = ordenados.length === 0
         ? '<tr><td colspan="5" style="color:var(--subtle)">Sin cobros en este periodo</td></tr>'
-        : cobrosFiltrados.map(c => {
+        : ordenados.map(c => {
             const dias    = diasDesdeHoy(c.due_date)
             const vencido = dias < 0
             const clase   = vencido ? 'error' : dias <= 7 ? 'warn' : ''
@@ -145,6 +188,28 @@ function calcularCalendario() {
                 <td class="${vencido ? 'error' : 'warn'}">Pendiente</td>
             </tr>`
         }).join('')
+}
+
+function calcularCalendario() {
+    const diasFiltro = tabActiva === '7' ? 7 : tabActiva === '30' ? 30 : 99999
+
+    pagosFiltradosCache = payments.filter(p => {
+        if (p.paid) return false
+        const dias = diasDesdeHoy(p.due_date)
+        return dias <= diasFiltro
+    }).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+
+    cobrosFiltradosCache = charges.filter(c => {
+        if (c.collected) return false
+        const dias = diasDesdeHoy(c.due_date)
+        return dias <= diasFiltro
+    }).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+
+    sortPagosCol = null;  sortPagosDir  = 'asc'
+    sortCobrosCol = null; sortCobrosDir = 'asc'
+
+    renderPagosProximos()
+    renderCobrosProximos()
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -191,11 +256,87 @@ function barraOcupacion(pct, colorFill) {
 }
 
 // ===== BLOQUE 3: DISPONIBILIDAD POR EVENTO =====
+let eventosFilas = []
+let sortEventosCol = null, sortEventosDir = 'asc'
+let _eventoFiltroActual = ''
+
+const EVENTOS_COLS = ['Evento', 'Día', 'Total', 'Confirmadas', 'Pendientes', 'Libres', 'Ocupación', 'Clientes']
+
+function eventosSortKey(f, col) {
+    if (col === 0) return f.id
+    if (col === 1) return f.dia ?? 99
+    if (col === 2) return f.totalPlazas
+    if (col === 3) return f.confirmadas
+    if (col === 4) return f.pendientes
+    if (col === 5) return f.libres
+    if (col === 6) return f.pct
+    if (col === 7) return f.clientes ?? ''
+    return ''
+}
+
+function eventosDetSortKey(d, col) {
+    if (col === 0) return d.id
+    if (col === 1) return 99
+    if (col === 2) return d.total
+    if (col === 3) return d.confirmadas
+    if (col === 4) return d.pendientes
+    if (col === 5) return d.libres
+    if (col === 6) return d.pct
+    if (col === 7) return d.clientes ?? ''
+    return ''
+}
+
+function filaEvento(f, destacada) {
+    return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
+        <td>${f.id}</td>
+        <td>${f.dia ?? '—'}</td>
+        <td>${f.totalPlazas}</td>
+        <td class="ok">${f.confirmadas}</td>
+        <td class="warn">${f.pendientes}</td>
+        <td>${f.libres}</td>
+        <td>${barraOcupacion(f.pct, f.colorFill)}</td>
+        <td style="font-size:11px;color:var(--subtle)">${f.clientes || '—'}</td>
+    </tr>`
+}
+
+function filaDetalleProveedor(d) {
+    return `<tr style="background:#fafafa">
+        <td style="padding-left:24px;color:var(--subtle)">↳ ${d.id}</td>
+        <td>—</td>
+        <td>${d.total}</td>
+        <td class="ok">${d.confirmadas}</td>
+        <td class="warn">${d.pendientes}</td>
+        <td>${d.libres}</td>
+        <td>${barraOcupacion(d.pct, d.colorFill)}</td>
+        <td style="font-size:11px;color:var(--subtle)">${d.clientes || '—'}</td>
+    </tr>`
+}
+
+function renderEventos(filtro) {
+    _eventoFiltroActual = filtro
+    const thead = document.querySelector('#tabla-eventos thead')
+    const tbody = document.getElementById('tbody-eventos')
+    renderThead(thead, EVENTOS_COLS, sortEventosCol, sortEventosDir, col => {
+        if (sortEventosCol === col) sortEventosDir = sortEventosDir === 'asc' ? 'desc' : 'asc'
+        else { sortEventosCol = col; sortEventosDir = 'asc' }
+        renderEventos(_eventoFiltroActual)
+    })
+    if (!filtro) {
+        tbody.innerHTML = sortArr(eventosFilas, sortEventosCol, sortEventosDir, eventosSortKey)
+            .map(f => filaEvento(f, false)).join('')
+    } else {
+        const f = eventosFilas.find(x => x.id === filtro)
+        if (!f) return
+        tbody.innerHTML = filaEvento(f, true) +
+            sortArr(f.detalleProveedores, sortEventosCol, sortEventosDir, eventosDetSortKey)
+                .map(d => filaDetalleProveedor(d)).join('')
+    }
+}
+
 function calcularEventos() {
-    const tbody    = document.getElementById('tbody-eventos')
     const selector = document.getElementById('selector-evento')
 
-    const filas = servicios.map(s => {
+    eventosFilas = servicios.map(s => {
         const dispS       = disponibilidad.filter(d => d.service_id === s.id)
         const totalPlazas = dispS.reduce((sum, d) => sum + (d.total_slots ?? 0), 0)
         if (totalPlazas === 0) return null
@@ -214,69 +355,105 @@ function calcularEventos() {
             const libP  = (d.total_slots ?? 0) - confP - pendP
             const pctP  = d.total_slots > 0 ? Math.round((confP + pendP) / d.total_slots * 100) : 0
             const colP  = pctP >= 90 ? 'var(--accent)' : pctP >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
-
-            // Clientes con reservas en este proveedor+servicio
             const clientesP = [...new Set(resP.map(r => r.client_id))].join(', ')
-
             return { id: d.provider_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP }
         })
 
-        // Clientes del evento completo
         const clientesEvento = [...new Set(reservasS.map(r => r.client_id))].join(', ')
-
         return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los eventos —</option>' +
-        filas.map(f => `<option value="${f.id}">${f.id}</option>`).join('')
+        eventosFilas.map(f => `<option value="${f.id}">${f.id}</option>`).join('')
 
-    function renderEventos(filtro) {
-        if (!filtro) {
-            tbody.innerHTML = filas.map(f => filaEvento(f, false)).join('')
-        } else {
-            const f = filas.find(x => x.id === filtro)
-            if (!f) return
-            tbody.innerHTML = filaEvento(f, true) +
-                f.detalleProveedores.map(d => filaDetalleProveedor(d)).join('')
-        }
-    }
-
-    function filaEvento(f, destacada) {
-        return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
-            <td>${f.id}</td>
-            <td>${f.dia ?? '—'}</td>
-            <td>${f.totalPlazas}</td>
-            <td class="ok">${f.confirmadas}</td>
-            <td class="warn">${f.pendientes}</td>
-            <td>${f.libres}</td>
-            <td>${barraOcupacion(f.pct, f.colorFill)}</td>
-            <td style="font-size:11px;color:var(--subtle)">${f.clientes || '—'}</td>
-        </tr>`
-    }
-
-    function filaDetalleProveedor(d) {
-        return `<tr style="background:#fafafa">
-            <td style="padding-left:24px;color:var(--subtle)">↳ ${d.id}</td>
-            <td>—</td>
-            <td>${d.total}</td>
-            <td class="ok">${d.confirmadas}</td>
-            <td class="warn">${d.pendientes}</td>
-            <td>${d.libres}</td>
-            <td>${barraOcupacion(d.pct, d.colorFill)}</td>
-            <td style="font-size:11px;color:var(--subtle)">${d.clientes || '—'}</td>
-        </tr>`
-    }
-
+    sortEventosCol = null; sortEventosDir = 'asc'
     renderEventos('')
-    selector.addEventListener('change', () => renderEventos(selector.value))
+    selector.addEventListener('change', () => {
+        sortEventosCol = null; sortEventosDir = 'asc'
+        renderEventos(selector.value)
+    })
 }
 
 // ===== BLOQUE 4: DISPONIBILIDAD POR PROVEEDOR =====
+let provFilas = []
+let sortProvCol = null, sortProvDir = 'asc'
+let _provFiltroActual = ''
+
+const PROV_COLS = ['Proveedor', 'Capacidad', 'Confirmadas', 'Pendientes', 'Libres', 'Ocupación', 'Clientes']
+
+function provSortKey(f, col) {
+    if (col === 0) return f.id
+    if (col === 1) return f.capacidad
+    if (col === 2) return f.confirmadas
+    if (col === 3) return f.pendientes
+    if (col === 4) return f.libres
+    if (col === 5) return f.pct
+    if (col === 6) return f.clientes ?? ''
+    return ''
+}
+
+function provDetSortKey(d, col) {
+    if (col === 0) return d.id
+    if (col === 1) return d.total
+    if (col === 2) return d.confirmadas
+    if (col === 3) return d.pendientes
+    if (col === 4) return d.libres
+    if (col === 5) return d.pct
+    if (col === 6) return d.clientes ?? ''
+    return ''
+}
+
+function filaProveedor(f, destacada) {
+    return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
+        <td>${f.id}</td>
+        <td>${f.capacidad}</td>
+        <td class="ok">${f.confirmadas}</td>
+        <td class="warn">${f.pendientes}</td>
+        <td>${f.libres}</td>
+        <td>${barraOcupacion(f.pct, f.colorFill)}</td>
+        <td style="font-size:11px;color:var(--subtle)">${f.clientes || '—'}</td>
+    </tr>`
+}
+
+function filaDetalleServicio(d) {
+    return `<tr style="background:#fafafa">
+        <td style="padding-left:24px;color:var(--subtle)">
+            ↳ ${d.id}${d.esConsumption ? ' <span style="font-size:10px;color:var(--accent-warn)">(consumo)</span>' : ''}
+        </td>
+        <td>${d.total}</td>
+        <td class="ok">${d.confirmadas}</td>
+        <td class="warn">${d.pendientes}</td>
+        <td>${d.libres}</td>
+        <td>${barraOcupacion(d.pct, d.colorFill)}</td>
+        <td style="font-size:11px;color:var(--subtle)">${d.clientes || '—'}</td>
+    </tr>`
+}
+
+function renderProveedores(filtro) {
+    _provFiltroActual = filtro
+    const thead = document.querySelector('#tabla-proveedores thead')
+    const tbody = document.getElementById('tbody-proveedores')
+    renderThead(thead, PROV_COLS, sortProvCol, sortProvDir, col => {
+        if (sortProvCol === col) sortProvDir = sortProvDir === 'asc' ? 'desc' : 'asc'
+        else { sortProvCol = col; sortProvDir = 'asc' }
+        renderProveedores(_provFiltroActual)
+    })
+    if (!filtro) {
+        tbody.innerHTML = sortArr(provFilas, sortProvCol, sortProvDir, provSortKey)
+            .map(f => filaProveedor(f, false)).join('')
+    } else {
+        const f = provFilas.find(x => x.id === filtro)
+        if (!f) return
+        tbody.innerHTML = filaProveedor(f, true) +
+            sortArr(f.detalleServicios, sortProvCol, sortProvDir, provDetSortKey)
+                .map(d => filaDetalleServicio(d)).join('')
+    }
+}
+
 function calcularProveedores() {
-    const tbody    = document.getElementById('tbody-proveedores')
     const selector = document.getElementById('selector-proveedor')
 
-    const filas = proveedores.map(p => {
+    provFilas = proveedores.map(p => {
         const dispP     = disponibilidad.filter(d => d.provider_id === p.id)
         const capacidad = dispP.reduce((sum, d) => sum + (d.total_slots ?? 0), 0)
         if (capacidad === 0) return null
@@ -296,62 +473,24 @@ function calcularProveedores() {
             const pctS  = d.total_slots > 0 ? Math.round((confS + pendS) / d.total_slots * 100) : 0
             const colS  = pctS >= 90 ? 'var(--accent)' : pctS >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
             const esConsumption = d.billing_model === 'consumption'
-
-            // Clientes con reservas en este servicio+proveedor
             const clientesS = [...new Set(resS.map(r => r.client_id))].join(', ')
-
             return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, clientes: clientesS }
         })
 
-        // Clientes totales del proveedor
         const clientesProv = [...new Set(reservasP.map(r => r.client_id))].join(', ')
-
         return { id: p.id, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los proveedores —</option>' +
-        filas.map(f => `<option value="${f.id}">${f.id}</option>`).join('')
+        provFilas.map(f => `<option value="${f.id}">${f.id}</option>`).join('')
 
-    function renderProveedores(filtro) {
-        if (!filtro) {
-            tbody.innerHTML = filas.map(f => filaProveedor(f, false)).join('')
-        } else {
-            const f = filas.find(x => x.id === filtro)
-            if (!f) return
-            tbody.innerHTML = filaProveedor(f, true) +
-                f.detalleServicios.map(d => filaDetalleServicio(d)).join('')
-        }
-    }
-
-    function filaProveedor(f, destacada) {
-        return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
-            <td>${f.id}</td>
-            <td>${f.capacidad}</td>
-            <td class="ok">${f.confirmadas}</td>
-            <td class="warn">${f.pendientes}</td>
-            <td>${f.libres}</td>
-            <td>${barraOcupacion(f.pct, f.colorFill)}</td>
-            <td style="font-size:11px;color:var(--subtle)">${f.clientes || '—'}</td>
-        </tr>`
-    }
-
-    function filaDetalleServicio(d) {
-        return `<tr style="background:#fafafa">
-            <td style="padding-left:24px;color:var(--subtle)">
-                ↳ ${d.id}${d.esConsumption ? ' <span style="font-size:10px;color:var(--accent-warn)">(consumo)</span>' : ''}
-            </td>
-            <td>${d.total}</td>
-            <td class="ok">${d.confirmadas}</td>
-            <td class="warn">${d.pendientes}</td>
-            <td>${d.libres}</td>
-            <td>${barraOcupacion(d.pct, d.colorFill)}</td>
-            <td style="font-size:11px;color:var(--subtle)">${d.clientes || '—'}</td>
-        </tr>`
-    }
-
-        renderProveedores('')
-        selector.addEventListener('change', () => renderProveedores(selector.value))
-    }
+    sortProvCol = null; sortProvDir = 'asc'
+    renderProveedores('')
+    selector.addEventListener('change', () => {
+        sortProvCol = null; sortProvDir = 'asc'
+        renderProveedores(selector.value)
+    })
+}
 
 // ===== BLOQUE 5: RESUMEN DE NEGOCIO =====
 function calcularResumen() {
