@@ -7,7 +7,16 @@
       "Read(//tmp/**)",
       "Bash(ls -la .nojekyll)",
       "Bash(ls -la _config.yml)",
-      "PowerShell(cmdkey /delete:git:https://github.com)"
+      "PowerShell(cmdkey /delete:git:https://github.com)",
+      "PowerShell(cmdkey /list)",
+      "Bash(git credential-manager *)",
+      "Bash(git credential *)",
+      "PowerShell(ls \"$env:LOCALAPPDATA\\\\GitCredentialManager\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Git Credential Manager\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\Microsoft\\\\Git Credential Manager\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.gcm\" -ErrorAction SilentlyContinue -Recurse | Select-Object FullName)",
+      "Bash(git remote *)",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\Microsoft\\\\git-credential-manager\" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName; Get-ChildItem \"$env:APPDATA\\\\Microsoft\\\\git-credential-manager\" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName)",
+      "Bash(GCM_TRACE=1 git push origin main)"
     ]
   }
 }
