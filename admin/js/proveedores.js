@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor } from './utils.js'
-import { syncStockToSfcom } from './sfcom.js'
+import { syncStockToSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -40,6 +40,118 @@ const inputServicioComments    = document.getElementById('inputServicioComments'
 
 inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
 inputServicioComments.addEventListener('change',    guardarDescripcionServicio)
+
+// ===== REFERENCIAS SFCOM =====
+let sfcomEstadoLocal = null
+
+const sfcomSection         = document.getElementById('sfcom-section')
+const sfcomDetalles        = document.getElementById('sfcomDetalles')
+const sfcomSummaryLabel    = document.getElementById('sfcomSummaryLabel')
+const sfcomBadge           = document.getElementById('sfcomBadge')
+const sfcomNombreProducto  = document.getElementById('sfcomNombreProducto')
+const sfcomNombreAutoList  = document.getElementById('sfcomNombreAutoList')
+const sfcomNombreVariacion = document.getElementById('sfcomNombreVariacion')
+const sfcomSlotsListed     = document.getElementById('sfcomSlotsListed')
+const sfcomPrecioPublico   = document.getElementById('sfcomPrecioPublico')
+const sfcomEstadoLabel     = document.getElementById('sfcomEstadoLabel')
+const sfcomProductId       = document.getElementById('sfcomProductId')
+const sfcomVariationId     = document.getElementById('sfcomVariationId')
+
+document.getElementById('btnSolicitarSfcom').addEventListener('click', async e => {
+    e.stopPropagation()
+    sfcomDetalles.open = true
+    await solicitarAltaSfcom()
+})
+
+document.getElementById('btnConfirmarSfcom').addEventListener('click', async () => {
+    const nombre = sfcomNombreProducto.value.trim()
+    if (!nombre) { alert('Introduce el nombre del producto en sfcom antes de confirmar.'); return }
+    if (!servicioEditandoId) { alert('Guarda el servicio primero para poder confirmar.'); return }
+    const serviceId    = inputServicioId.value.trim().toUpperCase()
+    const excludeNames = todaDisponibilidad
+        .filter(d => d.provider_id === proveedorActual?.id &&
+                     d.id !== servicioEditandoId &&
+                     d.sfcom_status === 'confirmed' && d.sfcom_service_name)
+        .map(d => d.sfcom_service_name)
+    const result = await verificarConfirmarSfcom(supabase, servicioEditandoId, nombre, serviceId, excludeNames)
+    const disp   = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (result?.ok) {
+        if (disp) {
+            disp.sfcom_product_id   = result.product_id
+            disp.sfcom_variation_id = result.variation_id
+            disp.sfcom_status       = 'confirmed'
+            disp.sfcom_service_name = result.name
+        }
+        sfcomEstadoLocal = 'confirmed'
+        actualizarSeccionSfcom(todaDisponibilidad.find(d => d.id === servicioEditandoId))
+    } else if (result?.notInList && result?.name) {
+        sfcomNombreProducto.value    = result.name
+        if (disp) disp.sfcom_service_name = result.name
+        sfcomBadge.style.display     = 'inline-flex'
+        sfcomBadge.textContent       = '⏳ Alta solicitada — nombre no encontrado en sfcom'
+    }
+})
+
+document.getElementById('btnCancelarSolicitud').addEventListener('click', async e => {
+    e.stopPropagation()
+    if (!confirm('¿Cancelar la solicitud de alta en sfcom para este servicio? Se borrarán los datos sfcom.')) return
+    const nombreProducto = sfcomNombreProducto.value.trim() || '—'
+    if (servicioEditandoId) {
+        await supabase.from('availability').update({
+            sfcom_status:       null,
+            sfcom_service_name: null,
+            sfcom_slots_listed: null
+        }).eq('id', servicioEditandoId)
+        const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+        if (disp) {
+            disp.sfcom_status       = null
+            disp.sfcom_service_name = null
+            disp.sfcom_slots_listed = null
+        }
+    }
+    mostrarModalCorreoCancelacionSfcom(nombreProducto, proveedorActual)
+    sfcomEstadoLocal          = null
+    sfcomNombreProducto.value = ''
+    sfcomNombreVariacion.value = ''
+    sfcomSlotsListed.value    = ''
+    sfcomProductId.value      = ''
+    sfcomVariationId.value    = ''
+    sfcomDetalles.open        = false
+    _actualizarEstadoSfcomUI()
+})
+
+document.getElementById('btnEditarNombreSfcom').addEventListener('click', async () => {
+    if (!servicioEditandoId) return
+    const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (!disp) return
+    const excludeNames = todaDisponibilidad
+        .filter(d => d.provider_id === proveedorActual?.id &&
+                     d.id !== servicioEditandoId &&
+                     d.sfcom_status === 'confirmed' && d.sfcom_service_name)
+        .map(d => d.sfcom_service_name)
+    const serviceId = inputServicioId.value.trim().toUpperCase()
+    const nuevoNombre = await editarNombreSfcom(disp.sfcom_service_name, serviceId, excludeNames)
+    if (!nuevoNombre?.name) return
+    const nombre = nuevoNombre.name
+    const { error } = await supabase.from('availability')
+        .update({ sfcom_service_name: nombre })
+        .eq('id', servicioEditandoId)
+    if (error) { alert('Error al actualizar nombre: ' + error.message); return }
+    disp.sfcom_service_name = nombre
+    sfcomNombreProducto.value = nombre
+})
+
+function _variacionAuto(serviceId) {
+    const partes = (serviceId || '').split('_')
+    if (partes[0] !== 'ENCIERRO') return ''
+    const dia = parseInt(partes[1])
+    if (!dia || dia < 7 || dia > 14) return ''
+    const year  = new Date().getFullYear()
+    const fecha = new Date(year, 6, dia)
+    const sem   = fecha.toLocaleDateString('es-ES', { weekday: 'long' })
+    return sem.charAt(0).toUpperCase() + sem.slice(1) + ` ${dia} de Julio ${year}`
+}
+
 const inputCosteTotal        = document.getElementById('inputCosteTotal')
 const selectModelo           = document.getElementById('selectModelo')
 const servicioStatus         = document.getElementById('servicio-status')
@@ -110,6 +222,7 @@ document.addEventListener('click', e => {
     if (!e.target.closest('.autocomplete-wrap')) {
         autoProvList.style.display = 'none'
         document.getElementById('autocompleteServicioList').style.display = 'none'
+        sfcomNombreAutoList.style.display = 'none'
     }
 })
 
@@ -124,6 +237,7 @@ function cargarProveedor(p) {
     proveedorStatus.style.color  = 'var(--accent-ok)'
     document.getElementById('bloque-servicio').style.display = 'block'
     limpiarFormularioServicio()
+    document.getElementById('btnAbrirMultiple').style.display = 'inline-block'
     cargarServiciosProveedor(p.id)
     cargarPagosProveedor(p.id)
 }
@@ -388,6 +502,145 @@ function actualizarBtnServicio() {
     btnGuardarServicio.disabled = !(tieneProveedor && tieneServicio && tienePlazas)
 }
 
+function actualizarSeccionSfcom(disp) {
+    if (!disp) {
+        sfcomSection.style.display = 'none'
+        sfcomEstadoLocal           = null
+        return
+    }
+    sfcomEstadoLocal = disp.sfcom_status ?? null
+    sfcomSection.style.display = 'block'
+
+    sfcomNombreProducto.value  = disp.sfcom_service_name ?? ''
+    sfcomNombreVariacion.value = _variacionAuto(disp.service_id)
+    sfcomSlotsListed.value     = disp.sfcom_slots_listed ?? ''
+    sfcomPrecioPublico.value   = ''  // never stored in DB, always empty on load
+    sfcomProductId.value       = disp.sfcom_product_id   ?? ''
+    sfcomVariationId.value     = disp.sfcom_variation_id ?? ''
+
+    _actualizarEstadoSfcomUI()
+}
+
+function _actualizarEstadoSfcomUI() {
+    const btnSolicitar = document.getElementById('btnSolicitarSfcom')
+    const btnCancelar  = document.getElementById('btnCancelarSolicitud')
+    const btnConfirmar = document.getElementById('btnConfirmarSfcom')
+    const btnEditar    = document.getElementById('btnEditarNombreSfcom')
+
+    if (sfcomEstadoLocal === null) {
+        sfcomSummaryLabel.textContent = 'Alta en sfcom'
+        sfcomSummaryLabel.style.color = 'var(--subtle)'
+        sfcomBadge.style.display      = 'none'
+        btnSolicitar.style.display    = 'inline-block'
+        btnCancelar.style.display     = 'none'
+        sfcomEstadoLabel.textContent  = '—'
+        sfcomEstadoLabel.style.color  = 'var(--subtle)'
+        btnConfirmar.style.display    = 'none'
+        btnEditar.style.display       = 'none'
+        sfcomNombreProducto.disabled  = false
+    } else if (sfcomEstadoLocal === 'pending') {
+        sfcomSummaryLabel.textContent = 'Listado en sfcom'
+        sfcomSummaryLabel.style.color = 'var(--accent-ok)'
+        sfcomBadge.className          = 'sfcom-badge sfcom-badge--pending'
+        sfcomBadge.textContent        = '⏳ Alta solicitada'
+        sfcomBadge.style.display      = 'inline-flex'
+        btnSolicitar.style.display    = 'none'
+        btnCancelar.style.display     = 'inline-block'
+        sfcomEstadoLabel.textContent  = 'Pendiente'
+        sfcomEstadoLabel.style.color  = 'var(--accent-warn)'
+        btnConfirmar.style.display    = 'inline-block'
+        btnEditar.style.display       = 'none'
+        sfcomNombreProducto.disabled  = false
+        sfcomDetalles.open            = true
+    } else {  // confirmed
+        sfcomSummaryLabel.textContent = 'Listado en sfcom'
+        sfcomSummaryLabel.style.color = 'var(--accent-ok)'
+        sfcomBadge.className          = 'sfcom-badge sfcom-badge--confirmed'
+        sfcomBadge.textContent        = '✅ Confirmado'
+        sfcomBadge.style.display      = 'inline-flex'
+        btnSolicitar.style.display    = 'none'
+        btnCancelar.style.display     = 'none'
+        sfcomEstadoLabel.textContent  = 'Confirmado'
+        sfcomEstadoLabel.style.color  = 'var(--accent-ok)'
+        btnConfirmar.style.display    = 'none'
+        btnEditar.style.display       = 'inline-flex'
+        sfcomNombreProducto.disabled  = true
+    }
+}
+
+function mostrarSugerenciasNombreProducto(val) {
+    if (!proveedorActual) { sfcomNombreAutoList.style.display = 'none'; return }
+    const nombresExistentes = [...new Set(
+        todaDisponibilidad
+            .filter(d => d.provider_id === proveedorActual.id &&
+                         d.id          !== servicioEditandoId &&
+                         d.sfcom_service_name)
+            .map(d => d.sfcom_service_name)
+    )]
+    if (nombresExistentes.length === 0) { sfcomNombreAutoList.style.display = 'none'; return }
+    const filtrados = val
+        ? nombresExistentes.filter(n => n.toLowerCase().includes(val.toLowerCase()))
+        : nombresExistentes
+    if (filtrados.length === 0) { sfcomNombreAutoList.style.display = 'none'; return }
+    sfcomNombreAutoList.innerHTML = filtrados.map(n =>
+        `<div data-nombre="${n}">${n}</div>`
+    ).join('')
+    sfcomNombreAutoList.style.display = 'block'
+}
+
+async function solicitarAltaSfcom() {
+    const nombre = sfcomNombreProducto.value.trim()
+    const plazas = parseInt(sfcomSlotsListed.value) || 0
+    if (!nombre) {
+        alert('Introduce el nombre del producto en sfcom antes de solicitar el alta.')
+        sfcomDetalles.open = true
+        sfcomNombreProducto.focus()
+        return false
+    }
+    if (plazas <= 0) {
+        alert('Introduce el número de plazas listadas en sfcom (mayor que 0) antes de solicitar.')
+        sfcomDetalles.open = true
+        sfcomSlotsListed.focus()
+        return false
+    }
+    const serviceId = inputServicioId.value.trim().toUpperCase()
+    const resultado = await mostrarModalCorreoHilario(
+        nombre,
+        [{ serviceId, nombreVariacion: _variacionAuto(serviceId),
+           plazas: String(plazas), precio: sfcomPrecioPublico.value || null }],
+        proveedorActual,
+        { withOkCancel: true }
+    )
+    if (resultado !== 'ok') return false
+    sfcomEstadoLocal = 'pending'
+    _actualizarEstadoSfcomUI()
+    if (servicioEditandoId) {
+        const { error } = await supabase.from('availability').update({
+            sfcom_service_name: nombre,
+            sfcom_slots_listed: plazas,
+            sfcom_status:       'pending'
+        }).eq('id', servicioEditandoId)
+        if (!error) {
+            const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+            if (disp) {
+                disp.sfcom_service_name = nombre
+                disp.sfcom_slots_listed = plazas
+                disp.sfcom_status       = 'pending'
+            }
+        }
+    }
+    return true
+}
+
+sfcomNombreProducto.addEventListener('focus', () => mostrarSugerenciasNombreProducto(sfcomNombreProducto.value))
+sfcomNombreProducto.addEventListener('input', () => mostrarSugerenciasNombreProducto(sfcomNombreProducto.value))
+sfcomNombreAutoList.addEventListener('click', e => {
+    const div = e.target.closest('[data-nombre]')
+    if (!div) return
+    sfcomNombreProducto.value = div.dataset.nombre
+    sfcomNombreAutoList.style.display = 'none'
+})
+
 function limpiarFormularioServicio() {
     servicioEditandoId   = null
     serviciosEditandoIds = []
@@ -404,12 +657,14 @@ function limpiarFormularioServicio() {
     document.getElementById('inputCosteServicio').value = '—'
     document.getElementById('titulo-bloque-servicio').textContent = '➕ Añadir / Editar servicio'
     servicioStatus.textContent    = ''
-    btnGuardarServicio.textContent    = 'Añadir servicio'
-    btnGuardarServicio.disabled       = true
-    btnCancelarServicio.style.display = 'none'
+    btnGuardarServicio.textContent         = 'Añadir servicio'
+    btnGuardarServicio.disabled            = true
+    btnCancelarServicio.style.display      = 'none'
+    document.getElementById('btnAbrirMultiple').style.display = 'none'
     document.querySelectorAll('.chk-servicio:checked').forEach(c => c.checked = false)
     sortServiciosCol = null
     sortServiciosDir = 'asc'
+    actualizarSeccionSfcom(null)
 }
 
 // ===== GUARDAR SERVICIO(S) =====
@@ -469,6 +724,26 @@ btnGuardarServicio.addEventListener('click', async () => {
     // MODO EDICIÓN SIMPLE o CREACIÓN
     const servicioId = inputServicioId.value.trim().toUpperCase()
 
+    // Si hay datos sfcom sin solicitar, preguntar antes de guardar
+    let _sfcomSinSolicitar = false
+    if (sfcomEstadoLocal === null) {
+        const _sfcomNombre = sfcomNombreProducto.value.trim()
+        const _sfcomPlazas = parseInt(sfcomSlotsListed.value) || 0
+        if (_sfcomNombre && _sfcomPlazas > 0) {
+            const quiereSolicitar = confirm('Hay datos en la sección sfcom pero no se ha solicitado el alta. ¿Quieres solicitar el alta en sfcom antes de guardar?')
+            if (quiereSolicitar) {
+                const exito = await solicitarAltaSfcom()
+                if (!exito) return  // email modal cancelado → abortar guardado
+            } else {
+                sfcomNombreProducto.value = ''
+                sfcomSlotsListed.value    = ''
+                sfcomPrecioPublico.value  = ''
+                sfcomDetalles.open        = false
+                _sfcomSinSolicitar        = true
+            }
+        }
+    }
+
     const servicioExiste = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!servicioExiste) {
         if (!confirm(`¿Crear servicio nuevo "${servicioId}"?`)) return
@@ -494,14 +769,27 @@ btnGuardarServicio.addEventListener('click', async () => {
     )
 
     if (servicioEditandoId) {
+        const updatePayload = {
+            total_slots:    plazas,
+            price_per_slot: isNaN(precio) ? 0 : precio,
+            billing_model:  modelo
+        }
+        // sfcom: pending → guardar nombre/plazas/status; confirmed → solo plazas
+        // sfcomPrecioPublico nunca va a la BD (solo para el correo)
+        if (sfcomEstadoLocal === 'pending') {
+            updatePayload.sfcom_service_name = sfcomNombreProducto.value.trim() || null
+            updatePayload.sfcom_slots_listed = parseInt(sfcomSlotsListed.value) || null
+            updatePayload.sfcom_status       = sfcomNombreProducto.value.trim() ? 'pending' : null
+        } else if (sfcomEstadoLocal === 'confirmed') {
+            updatePayload.sfcom_slots_listed = parseInt(sfcomSlotsListed.value) || null
+        }
+
         const { error } = await supabase.from('availability')
-            .update({ total_slots: plazas, price_per_slot: isNaN(precio) ? 0 : precio, billing_model: modelo })
+            .update(updatePayload)
             .eq('id', servicioEditandoId)
         if (error) { alert('Error al actualizar: ' + error.message); return }
         todaDisponibilidad = todaDisponibilidad.map(d =>
-            d.id === servicioEditandoId
-                ? { ...d, total_slots: plazas, price_per_slot: isNaN(precio) ? 0 : precio, billing_model: modelo }
-                : d
+            d.id === servicioEditandoId ? { ...d, ...updatePayload } : d
         )
     } else {
         const yaExiste = todaDisponibilidad.find(d =>
@@ -524,9 +812,16 @@ btnGuardarServicio.addEventListener('click', async () => {
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
     await syncStockToSfcom(supabase, proveedorActual.id, servicioId)
+
     limpiarFormularioServicio()
     cargarServiciosProveedor(proveedorActual.id)
     cargarPagosProveedor(proveedorActual.id)
+
+    if (_sfcomSinSolicitar) {
+        servicioStatus.textContent = 'ℹ️ Servicio guardado. Alta en sfcom no solicitada.'
+        servicioStatus.style.color = 'var(--subtle)'
+        setTimeout(() => { servicioStatus.textContent = '' }, 5000)
+    }
 })
 
 btnCancelarServicio.addEventListener('click', limpiarFormularioServicio)
@@ -654,6 +949,7 @@ function cargarServicioEnFormulario(dispIds) {
         inputServicioDescription.value = svc?.description ?? ''
         inputServicioComments.value    = svc?.comments    ?? ''
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
+        actualizarSeccionSfcom(disps[0])
     } else {
         servicioEditandoId       = null
         inputServicioId.value    = 'Varios servicios'
@@ -671,12 +967,14 @@ function cargarServicioEnFormulario(dispIds) {
 
         document.getElementById('titulo-bloque-servicio').textContent =
             `✏️ Editando ${disps.length} servicios`
+        actualizarSeccionSfcom(null)
     }
 
     actualizarCosteServicio()
     btnGuardarServicio.textContent    = '💾 Guardar cambios'
     btnGuardarServicio.disabled       = false
     btnCancelarServicio.style.display = 'inline-block'
+    document.getElementById('btnAbrirMultiple').style.display = 'none'
     document.getElementById('bloque-servicio').scrollIntoView({ behavior: 'smooth' })
 }
 
@@ -911,4 +1209,471 @@ document.getElementById('btnGuardarPagos').addEventListener('click', async () =>
     }
     todosPayments = (await supabase.from('payments').select('*')).data
     alert('✅ Pagos guardados correctamente')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASISTENTE MÚLTIPLE
+// ═══════════════════════════════════════════════════════════════════════════
+
+let multipleRows      = []
+let sfcomMultipleOpen = false  // persiste entre rerenders
+
+function sugerirNombreVariacion(servicioId) {
+    const partes = servicioId.split('_')
+    if (partes[0] === 'ENCIERRO') {
+        const dia = parseInt(partes[1])
+        if (dia >= 7 && dia <= 14) {
+            const year     = new Date().getFullYear()
+            const fecha    = new Date(year, 6, dia)
+            const semana   = fecha.toLocaleDateString('es-ES', { weekday: 'long' })
+            const semanaCap = semana.charAt(0).toUpperCase() + semana.slice(1)
+            return `${semanaCap} ${dia} de Julio ${year}`
+        }
+    }
+    const svc = todosServicios.find(s => s.id === servicioId)
+    return svc?.description ?? ''
+}
+
+function abrirAsistenteMultiple() {
+    if (!proveedorActual) return
+
+    const existingDisp = todaDisponibilidad.filter(d => d.provider_id === proveedorActual.id)
+    const assignedIds  = new Set(existingDisp.map(d => d.service_id))
+    const unassigned   = todosServicios.filter(s => !assignedIds.has(s.id))
+
+    sfcomMultipleOpen = false
+    multipleRows = [
+        ...existingDisp.map(d => ({
+            dispId:              d.id,
+            serviceId:           d.service_id,
+            isExisting:          true,
+            active:              true,
+            total_slots:         d.total_slots,
+            price_per_slot:      d.price_per_slot,
+            billing_model:       d.billing_model ?? 'capacity',
+            _db_slots:           d.total_slots,
+            _db_precio:          d.price_per_slot,
+            _db_modelo:          d.billing_model ?? 'capacity',
+            modified:            false,
+            sfcom_status:        d.sfcom_status,
+            sfcomListar:         false,
+            sfcomNombreProducto: d.sfcom_service_name ?? '',
+            sfcomNombreVariacion: _variacionAuto(d.service_id),
+            sfcomPlazas:         d.sfcom_slots_listed ?? '',
+            sfcomPrecio:         '',  // nunca de la BD
+        })),
+        ...unassigned.map(s => ({
+            dispId:              null,
+            serviceId:           s.id,
+            isExisting:          false,
+            active:              false,
+            total_slots:         null,
+            price_per_slot:      null,
+            billing_model:       'capacity',
+            modified:            false,
+            sfcom_status:        null,
+            sfcomListar:         false,
+            sfcomNombreProducto: '',
+            sfcomNombreVariacion: _variacionAuto(s.id),
+            sfcomPlazas:         '',
+            sfcomPrecio:         '',
+        })),
+        // Fila vacía para nuevo servicio con ID personalizado
+        {
+            dispId:              null,
+            serviceId:           '',
+            isExisting:          false,
+            isNewRow:            true,
+            active:              false,
+            total_slots:         null,
+            price_per_slot:      null,
+            billing_model:       'capacity',
+            modified:            false,
+            sfcom_status:        null,
+            sfcomListar:         false,
+            sfcomNombreProducto: '',
+            sfcomNombreVariacion: '',
+            sfcomPlazas:         '',
+            sfcomPrecio:         '',
+        }
+    ]
+
+    renderMultiple()
+    document.getElementById('dlgMultiple').showModal()
+}
+
+function harvestMultipleValues() {
+    const contenido = document.getElementById('multiple-contenido')
+    if (!contenido || !contenido.querySelector('.m-plazas')) return
+    multipleRows.forEach((row, i) => {
+        const p   = contenido.querySelector(`.m-plazas[data-idx="${i}"]`)
+        const r   = contenido.querySelector(`.m-precio[data-idx="${i}"]`)
+        const m   = contenido.querySelector(`.m-modelo[data-idx="${i}"]`)
+        const id  = contenido.querySelector(`.m-id[data-idx="${i}"]`)
+        const snp = contenido.querySelector(`.m-sfcom-nombreproducto[data-idx="${i}"]`)
+        const sp  = contenido.querySelector(`.m-sfcom-plazas[data-idx="${i}"]`)
+        const se  = contenido.querySelector(`.m-sfcom-precio[data-idx="${i}"]`)
+        if (p  && !p.disabled)  row.total_slots         = p.value === '' ? null : parseFloat(p.value)
+        if (r  && !r.disabled)  row.price_per_slot      = r.value === '' ? null : parseFloat(r.value)
+        if (m  && !m.disabled)  row.billing_model       = m.value
+        if (id) row.serviceId                           = id.value
+        if (snp && !snp.disabled) row.sfcomNombreProducto = snp.value
+        if (sp  && !sp.disabled)  row.sfcomPlazas         = sp.value
+        if (se  && !se.disabled)  row.sfcomPrecio         = se.value
+    })
+}
+
+function renderMultiple() {
+    harvestMultipleValues()
+    const contenido = document.getElementById('multiple-contenido')
+
+    // ── Tabla principal ─────────────────────────────────────────────────────
+    let html = `
+    <h3 style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)">Servicios</h3>
+    <div class="table-wrapper" style="margin-bottom:22px">
+    <table class="multiple-table">
+        <thead><tr>
+            <th style="width:28px"></th>
+            <th>Servicio</th>
+            <th style="width:90px">Plazas</th>
+            <th style="width:110px">Precio/plaza (€)</th>
+            <th style="width:110px">Modelo</th>
+        </tr></thead>
+        <tbody>`
+
+    multipleRows.forEach((row, i) => {
+        if (row.isNewRow) {
+            html += `<tr data-idx="${i}">
+                <td><input type="checkbox" class="m-chk" data-idx="${i}"></td>
+                <td><input type="text" class="m-id" data-idx="${i}" value=""
+                    placeholder="NUEVO_SERVICIO_ID" autocomplete="off"
+                    style="text-transform:uppercase;font-family:monospace;font-size:11px;width:100%"></td>
+                <td><input type="number" class="m-plazas" data-idx="${i}" value="" placeholder="—" step="1" disabled></td>
+                <td><input type="number" class="m-precio" data-idx="${i}" value="" placeholder="—" step="0.01" disabled></td>
+                <td><select class="m-modelo" data-idx="${i}" disabled>
+                    <option value="capacity">Capacidad</option>
+                    <option value="consumption">Consumo</option>
+                </select></td>
+            </tr>`
+        } else {
+            const rowCls  = (row.isExisting && !row.modified) ? 'multiple-existente' : 'multiple-modificado'
+            const checked = row.active ? 'checked' : ''
+            const dis     = row.active ? '' : 'disabled'
+            const badge   = row.isExisting
+                ? (row.modified
+                    ? '<span class="multiple-badge-editado">editado</span>'
+                    : '<span class="multiple-badge-existente">existente</span>')
+                : ''
+            html += `<tr data-idx="${i}" class="${rowCls}">
+                <td><input type="checkbox" class="m-chk" data-idx="${i}" ${checked}
+                    ${row.isExisting ? '' : ''}></td>
+                <td style="font-family:monospace;font-size:11px">${row.serviceId}${badge}</td>
+                <td><input type="number" class="m-plazas" data-idx="${i}"
+                    value="${row.total_slots ?? ''}" placeholder="—" step="1" ${dis}></td>
+                <td><input type="number" class="m-precio" data-idx="${i}"
+                    value="${row.price_per_slot ?? ''}" placeholder="—" step="0.01" ${dis}></td>
+                <td><select class="m-modelo" data-idx="${i}" ${dis}>
+                    <option value="capacity" ${row.billing_model === 'capacity' ? 'selected' : ''}>Capacidad</option>
+                    <option value="consumption" ${row.billing_model === 'consumption' ? 'selected' : ''}>Consumo</option>
+                </select></td>
+            </tr>`
+        }
+    })
+
+    html += `</tbody></table></div>`
+
+    // ── Sección sfcom (solo filas activas y no confirmadas) ─────────────────
+    const sfcomRows = multipleRows.filter(r => r.active && r.sfcom_status !== 'confirmed')
+    if (sfcomRows.length > 0) {
+        const openAttr = sfcomMultipleOpen ? 'open' : ''
+        html += `
+        <details id="sfcom-multiple-details" ${openAttr} style="margin-top:18px">
+            <summary style="cursor:pointer;display:flex;align-items:center;gap:6px;
+                            font-size:13px;font-weight:600;color:var(--text);
+                            list-style:none;padding:6px 0;user-select:none">
+                <span id="sfcom-multiple-chevron" style="font-size:9px;color:var(--subtle);
+                    transition:transform 0.15s;${sfcomMultipleOpen ? 'transform:rotate(90deg)' : ''}">▶</span>
+                <img src="https://tienda.sanfermin.com/favicon.ico" width="13" height="13"
+                    style="border-radius:2px;flex-shrink:0" onerror="this.style.display='none'">
+                Listar en sfcom
+            </summary>
+            <div style="margin-top:8px">
+                <div style="font-size:12px;color:var(--subtle);margin-bottom:10px">
+                    Marca los servicios que quieres solicitar de alta. Se generará un correo para Hilario con todos los detalles.
+                </div>
+                <div class="table-wrapper">
+                <table class="multiple-table">
+                    <thead><tr>
+                        <th style="width:28px"></th>
+                        <th>Servicio</th>
+                        <th>Nombre del producto (sfcom)</th>
+                        <th>Variación / Día</th>
+                        <th style="width:90px">Plazas sfcom</th>
+                        <th style="width:100px">Precio público (€)</th>
+                    </tr></thead>
+                    <tbody>`
+
+        sfcomRows.forEach(row => {
+            const i   = multipleRows.indexOf(row)
+            const dis = row.sfcomListar ? '' : 'disabled'
+            html += `<tr data-sfcom-idx="${i}">
+                <td><input type="checkbox" class="m-sfcom-chk" data-idx="${i}" ${row.sfcomListar ? 'checked' : ''}></td>
+                <td style="font-family:monospace;font-size:11px">${row.serviceId || '—'}</td>
+                <td><input type="text" class="m-sfcom-nombreproducto" data-idx="${i}"
+                    value="${row.sfcomNombreProducto}" placeholder="Ej: Balcón Estafeta Mitad" ${dis}></td>
+                <td><input type="text" class="m-sfcom-nombrevar" data-idx="${i}"
+                    value="${row.sfcomNombreVariacion}" disabled
+                    style="color:var(--subtle);font-size:11px"></td>
+                <td><input type="number" class="m-sfcom-plazas" data-idx="${i}"
+                    value="${row.sfcomPlazas}" placeholder="—" step="1" ${dis}></td>
+                <td><input type="number" class="m-sfcom-precio" data-idx="${i}"
+                    value="${row.sfcomPrecio}" placeholder="—" step="0.01" ${dis}></td>
+            </tr>`
+        })
+
+        html += `</tbody></table></div></div></details>`
+    }
+
+    contenido.innerHTML = html
+    setupMultipleEvents()
+}
+
+function setupMultipleEvents() {
+    const contenido = document.getElementById('multiple-contenido')
+
+    // Checkboxes de fila
+    contenido.querySelectorAll('.m-chk').forEach(chk => {
+        chk.addEventListener('change', () => {
+            const i   = parseInt(chk.dataset.idx)
+            const row = multipleRows[i]
+            if (!row) return
+
+            row.active = chk.checked
+            if (!row.isExisting && !row.isNewRow) {
+                const tr = contenido.querySelector(`tr[data-idx="${i}"]`)
+                if (tr) {
+                    const dis = chk.checked ? '' : 'disabled'
+                    tr.querySelectorAll('.m-plazas, .m-precio, .m-modelo').forEach(el => {
+                        if (chk.checked) el.removeAttribute('disabled')
+                        else el.setAttribute('disabled', '')
+                    })
+                    tr.className = chk.checked ? 'multiple-modificado' : ''
+                }
+            }
+            if (row.isNewRow) {
+                const tr = contenido.querySelector(`tr[data-idx="${i}"]`)
+                if (tr) {
+                    tr.querySelectorAll('.m-plazas, .m-precio, .m-modelo').forEach(el => {
+                        if (chk.checked) el.removeAttribute('disabled')
+                        else el.setAttribute('disabled', '')
+                    })
+                }
+            }
+            renderMultiple()
+        })
+    })
+
+    // Toggle del details sfcom
+    const sfcomDetails = contenido.querySelector('#sfcom-multiple-details')
+    if (sfcomDetails) {
+        sfcomDetails.addEventListener('toggle', () => {
+            sfcomMultipleOpen = sfcomDetails.open
+            const chevron = contenido.querySelector('#sfcom-multiple-chevron')
+            if (chevron) chevron.style.transform = sfcomDetails.open ? 'rotate(90deg)' : ''
+        })
+    }
+
+    // Checkboxes sfcom
+    contenido.querySelectorAll('.m-sfcom-chk').forEach(chk => {
+        chk.addEventListener('change', () => {
+            const i   = parseInt(chk.dataset.idx)
+            const row = multipleRows[i]
+            if (!row) return
+            row.sfcomListar = chk.checked
+            const tr = contenido.querySelector(`tr[data-sfcom-idx="${i}"]`)
+            if (tr) {
+                tr.querySelectorAll('.m-sfcom-nombreproducto, .m-sfcom-plazas, .m-sfcom-precio').forEach(el => {
+                    if (chk.checked) el.removeAttribute('disabled')
+                    else el.setAttribute('disabled', '')
+                })
+            }
+        })
+    })
+
+    // Inputs de plazas/precio/modelo — sync estado + smart fill
+    contenido.querySelectorAll('.m-plazas, .m-precio, .m-modelo').forEach(input => {
+        input.addEventListener('change', () => {
+            const i     = parseInt(input.dataset.idx)
+            const row   = multipleRows[i]
+            if (!row) return
+            const campo = input.classList.contains('m-plazas') ? 'total_slots'
+                        : input.classList.contains('m-precio')  ? 'price_per_slot'
+                        : 'billing_model'
+            const valor = campo === 'billing_model' ? input.value
+                        : (input.value === '' ? null : parseFloat(input.value))
+            row[campo]  = valor
+            if (row.isExisting) {
+                row.modified = (
+                    row.total_slots    !== row._db_slots  ||
+                    row.price_per_slot !== row._db_precio ||
+                    row.billing_model  !== row._db_modelo
+                )
+                const tr    = contenido.querySelector(`tr[data-idx="${i}"]`)
+                const badge = tr?.querySelector('.multiple-badge-existente, .multiple-badge-editado')
+                if (tr) {
+                    tr.className = row.modified ? 'multiple-modificado' : 'multiple-existente'
+                    if (badge) {
+                        badge.className   = row.modified ? 'multiple-badge-editado' : 'multiple-badge-existente'
+                        badge.textContent = row.modified ? 'editado' : 'existente'
+                    }
+                }
+            }
+            // Smart fill: rellenar solo celdas estrictamente null (0 no se sobreescribe)
+            multipleRows.forEach((r, j) => {
+                if (j === i || !r.active || r.isNewRow) return
+                if (r[campo] !== null) return  // null estricto: 0 no se toca
+                r[campo] = valor
+                const otroInput = contenido.querySelector(`.${input.classList[0]}[data-idx="${j}"]`)
+                if (otroInput && !otroInput.disabled) otroInput.value = input.value
+            })
+        })
+    })
+
+    // Input ID para fila nueva
+    contenido.querySelectorAll('.m-id').forEach(input => {
+        input.addEventListener('input', () => {
+            const i   = parseInt(input.dataset.idx)
+            const row = multipleRows[i]
+            if (!row) return
+            input.value    = normalizarId(input.value)
+            row.serviceId            = input.value
+            row.sfcomNombreVariacion = _variacionAuto(input.value)
+            // Verificar si coincide con servicio existente sin asignar
+            const enUnassigned = todosServicios.find(s => s.id === input.value)
+            if (enUnassigned) {
+                input.style.color = 'var(--accent-warn)'
+                input.title       = `${input.value} ya existe como servicio — se usará el existente`
+            } else {
+                input.style.color = ''
+                input.title       = ''
+            }
+        })
+    })
+
+    // Inputs sfcom — change (no input) para que smart fill no dispare al vuelo
+    contenido.querySelectorAll('.m-sfcom-nombreproducto, .m-sfcom-plazas, .m-sfcom-precio').forEach(input => {
+        input.addEventListener('change', () => {
+            const i   = parseInt(input.dataset.idx)
+            const row = multipleRows[i]
+            if (!row) return
+            if (input.classList.contains('m-sfcom-nombreproducto')) {
+                row.sfcomNombreProducto = input.value
+                // Smart fill: nombre del producto igual para todas las filas sfcom vacías
+                multipleRows.forEach((r, j) => {
+                    if (j === i || !r.active || r.isNewRow || r.sfcomNombreProducto !== '') return
+                    r.sfcomNombreProducto = input.value
+                    const otro = contenido.querySelector(`.m-sfcom-nombreproducto[data-idx="${j}"]`)
+                    if (otro && !otro.disabled) otro.value = input.value
+                })
+            }
+            if (input.classList.contains('m-sfcom-plazas'))  row.sfcomPlazas = input.value
+            if (input.classList.contains('m-sfcom-precio'))  row.sfcomPrecio = input.value
+        })
+    })
+}
+
+document.getElementById('btnAbrirMultiple').addEventListener('click', abrirAsistenteMultiple)
+document.getElementById('dlgMultipleCerrar').addEventListener('click', () => document.getElementById('dlgMultiple').close())
+document.getElementById('btnMultipleCancelar').addEventListener('click', () => document.getElementById('dlgMultiple').close())
+
+document.getElementById('btnMultipleGuardar').addEventListener('click', async () => {
+    if (!proveedorActual) return
+
+    const proveedorId = proveedorActual.id
+    const pairsSync   = []
+
+    for (const row of multipleRows) {
+        if (row.isNewRow && !row.active) continue
+        if (row.isNewRow && row.active && !row.serviceId) continue
+
+        if (row.isExisting && (row.modified || (row.sfcomListar && row.sfcomNombreProducto))) {
+            // UPDATE fila existente
+            const updateData = {}
+            if (row.modified) {
+                updateData.total_slots    = row.total_slots
+                updateData.price_per_slot = row.price_per_slot
+                updateData.billing_model  = row.billing_model
+            }
+            if (row.sfcomListar && row.sfcomNombreProducto) {
+                updateData.sfcom_service_name = row.sfcomNombreProducto
+                updateData.sfcom_slots_listed = parseInt(row.sfcomPlazas) || null
+                updateData.sfcom_status       = 'pending'
+                // sfcomPrecio es UI-only, nunca va a la BD
+            }
+            const { error } = await supabase.from('availability').update(updateData).eq('id', row.dispId)
+            if (error) { alert(`Error al actualizar ${row.serviceId}: ${error.message}`); continue }
+            todaDisponibilidad = todaDisponibilidad.map(d => d.id === row.dispId ? { ...d, ...updateData } : d)
+            if (row.modified) pairsSync.push({ provider_id: proveedorId, service_id: row.serviceId })
+        } else if (!row.isExisting && row.active && row.serviceId) {
+            // INSERT nuevo servicio
+            const servicioExiste = todosServicios.find(s => s.id === row.serviceId)
+            if (!servicioExiste) {
+                const { error: errSvc } = await supabase.from('services').insert({ id: row.serviceId })
+                if (errSvc) { alert(`Error al crear servicio ${row.serviceId}: ${errSvc.message}`); continue }
+                todosServicios.push({ id: row.serviceId })
+            }
+            const yaExiste = todaDisponibilidad.find(d => d.provider_id === proveedorId && d.service_id === row.serviceId)
+            if (yaExiste) continue
+            const insertData = {
+                provider_id:    proveedorId,
+                service_id:     row.serviceId,
+                total_slots:    row.total_slots ?? 0,
+                price_per_slot: row.price_per_slot ?? 0,
+                billing_model:  row.billing_model
+            }
+            if (row.sfcomListar && row.sfcomNombreProducto) {
+                insertData.sfcom_service_name = row.sfcomNombreProducto
+                insertData.sfcom_slots_listed = parseInt(row.sfcomPlazas) || null
+                insertData.sfcom_status       = 'pending'
+                // sfcomPrecio es UI-only, nunca va a la BD
+            }
+            const { data, error } = await supabase.from('availability').insert(insertData).select()
+            if (error) { alert(`Error al añadir ${row.serviceId}: ${error.message}`); continue }
+            todaDisponibilidad.push(data[0])
+            pairsSync.push({ provider_id: proveedorId, service_id: row.serviceId })
+        }
+    }
+
+    await persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)
+    for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
+
+    // Correo a Hilario si hay solicitudes sfcom pendientes
+    const sfcomSolicitados = multipleRows.filter(r => r.sfcomListar && r.sfcomNombreProducto && r.active)
+    if (sfcomSolicitados.length > 0) {
+        // Confirmar si hay múltiples nombres de producto distintos
+        const nombresUnicos = [...new Set(sfcomSolicitados.map(r => r.sfcomNombreProducto))]
+        if (nombresUnicos.length > 1) {
+            const ok = confirm(
+                `Vas a solicitar alta para ${nombresUnicos.length} productos diferentes en sfcom:\n\n` +
+                nombresUnicos.join('\n') +
+                '\n\n¿Es correcto o ha sido un error tipográfico?'
+            )
+            if (!ok) { return }  // se queda abierto el dialog para corregir
+        }
+        // Agrupar por nombre de producto para el correo
+        const variaciones = sfcomSolicitados.map(r => ({
+            serviceId:       r.serviceId,
+            nombreProducto:  r.sfcomNombreProducto,
+            nombreVariacion: r.sfcomNombreVariacion,
+            plazas:          r.sfcomPlazas || null,
+            precio:          r.sfcomPrecio || null
+        }))
+        mostrarModalCorreoHilario(nombresUnicos[0], variaciones, proveedorActual)
+    }
+
+    document.getElementById('dlgMultiple').close()
+    limpiarFormularioServicio()
+    cargarServiciosProveedor(proveedorId)
+    cargarPagosProveedor(proveedorId)
+    document.getElementById('btnAbrirMultiple').style.display = 'inline-block'
 })
