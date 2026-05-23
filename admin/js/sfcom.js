@@ -3,6 +3,48 @@
 // Flujo A (lectura):  sfcom → detectar pedidos nuevos → avisar al panel
 // Flujo B (escritura): reserva guardada en Supabase → actualizar stock en sfcom
 
+// ─── Utilidades de extracción: nombres y días ────────────────────────────────
+
+// Extrae el nombre de producto sfcom de un nombre de variación WooCommerce completo.
+// Ejemplo: "Balcón Estafeta - Viernes 10 de Julio 2026" → "Balcón Estafeta"
+// Ejemplo: "Balcón Estafeta mitad - Martes 14 de Julio 2026" → "Balcón Estafeta mitad"
+// Usa prefix-scan contra la lista de sfcom_service_name conocidos para resolver
+// ambigüedades ("Balcón Estafeta" vs "Balcón Estafeta mitad").
+// Devuelve el nombre original (sin normalizar) tal como está en la BD, o null.
+export function extraerNombreProducto(fullName, nombres) {
+    if (!fullName || !nombres?.length) return null
+
+    const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+    const normalizedFull = norm(fullName)
+    const nombresNorm    = nombres.map(n => ({ original: n, normalized: norm(n) }))
+
+    let lastMatch  = null
+    let candidates = nombresNorm.slice()
+
+    for (let i = 1; i <= normalizedFull.length; i++) {
+        const prefix = normalizedFull.slice(0, i)
+        const exact  = candidates.find(c => c.normalized === prefix)
+        if (exact) lastMatch = exact.original
+        candidates = candidates.filter(c => c.normalized.startsWith(prefix))
+        if (candidates.length === 0) break
+    }
+
+    return lastMatch
+}
+
+// Extrae el número de día de julio (6–14) de cualquier texto sfcom.
+// Cubre "NN de Julio" (variaciones WooCommerce) y fallbacks adicionales.
+export function extraerDia(texto) {
+    if (!texto) return null
+    const m = texto.match(/\b(\d{1,2})\s+de\s+julio\b/i)
+           || texto.match(/\bjulio\s+(\d{1,2})\b/i)
+    if (m) {
+        const n = parseInt(m[1])
+        if (n >= 6 && n <= 14) return n
+    }
+    return null
+}
+
 const API_URL = 'https://tienda.sanfermin.com/sf-api-paula.php'
 const API_KEY = 'pK9#mX2$vL7@nQ4&wR8!hT3%yU6^zA1*'
 
@@ -46,8 +88,8 @@ function buildStockEndpoint(productId, variationId) {
 export async function syncStockToSfcom(supabase, providerId, serviceId) {
     // 1. Leer fila de availability
     const { data: avail, error: errAvail } = await supabase
-        .from('availability')
-        .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id')
+        .from('availability_with_sfcom')
+        .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
         .eq('provider_id', providerId)
         .eq('service_id', serviceId)
         .single()
@@ -57,34 +99,41 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
         return { ok: true, skipped: true, reason: 'no_availability_row' }
     }
 
-    // 2. Si no está mapeado en sfcom, no hacer nada
-    if (!avail.sfcom_service_name || avail.sfcom_slots_listed === null || !avail.sfcom_product_id) {
+    // 2. Solo sincronizar si el servicio está confirmado en sfcom
+    if (avail.sfcom_status !== 'confirmed' || !avail.sfcom_service_name || avail.sfcom_slots_listed === null || !avail.sfcom_product_id) {
         return { ok: true, skipped: true, reason: 'not_mapped' }
     }
 
-    // 3. Contar reservas no canceladas
-    const { count, error: errCount } = await supabase
-        .from('reservations')
-        .select('*', { count: 'exact', head: true })
-        .eq('provider_id', providerId)
-        .eq('service_id', serviceId)
-        .neq('status', 'Cancelada')
+    // 3. Calcular stock: sfcom solo puede vender lo que le corresponde menos lo que ya vendió,
+    //    pero tampoco puede vender más plazas de las que quedan libres en total.
+    const [{ data: sfcomData, error: errSfcom }, { data: allData, error: errAll }] = await Promise.all([
+        supabase.from('reservations').select('slots')
+            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
+        supabase.from('reservations').select('slots')
+            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .neq('status', 'Cancelada')
+    ])
 
-    if (errCount) {
-        console.error(`[sfcom] Error al contar reservas: ${errCount.message}`)
-        return { ok: false, error: errCount.message }
+    if (errSfcom || errAll) {
+        const msg = errSfcom?.message ?? errAll?.message
+        console.error(`[sfcom] Error al leer reservas: ${msg}`)
+        return { ok: false, error: msg }
     }
 
     // 4. Calcular nuevo stock y hacer el PUT
-    const reservasActivas = count ?? 0
-    const nuevoStock      = Math.max(0, avail.sfcom_slots_listed - reservasActivas)
+    const sfcomVendidas = (sfcomData  ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const todasOcupadas = (allData    ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const nuevoStock    = Math.max(0, Math.min(
+        avail.sfcom_slots_listed - sfcomVendidas,
+        avail.total_slots        - todasOcupadas
+    ))
     const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
     try {
         await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
-        console.info(`[sfcom] Stock actualizado: ${avail.sfcom_service_name} → ${nuevoStock} plazas (${reservasActivas} reservadas de ${avail.sfcom_slots_listed} listadas)`)
-        mostrarModalExito({ servicio: avail.sfcom_service_name, nuevoStock })
-        return { ok: true, nuevoStock, reservasActivas }
+        console.info(`[sfcom] Stock actualizado: ${avail.sfcom_service_name} → ${nuevoStock} (${sfcomVendidas} sfcom + ${todasOcupadas - sfcomVendidas} propias de ${avail.sfcom_slots_listed} listadas / ${avail.total_slots} totales)`)
+        return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas }
     } catch (e) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
         mostrarModalError({
@@ -150,7 +199,6 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
             },
             productos: (order.line_items ?? []).map(li => ({
                 nombre:       (li.name ?? '').replace(/<[^>]*>/g, '').trim(),
-                parent_name:  (li.parent_name ?? '').replace(/<[^>]*>/g, '').trim(),
                 product_id:   li.product_id,
                 variation_id: li.variation_id || null,
                 cantidad:     li.quantity,
@@ -173,13 +221,13 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
 
 export async function checkAvailabilityBeforeSave(supabase, providerId, serviceId, plazasSolicitadas) {
     const { data: avail } = await supabase
-        .from('availability')
-        .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id')
+        .from('availability_with_sfcom')
+        .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
         .eq('provider_id', providerId)
         .eq('service_id', serviceId)
         .single()
 
-    if (!avail?.sfcom_service_name || !avail?.sfcom_product_id) {
+    if (!avail?.sfcom_product_id || avail.sfcom_status !== 'confirmed') {
         return { ok: true, sfcomCheck: false }
     }
 
@@ -195,40 +243,159 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
 
     if (stockSfcom === null) return { ok: true, sfcomCheck: false }
 
-    // Bloqueo duro: sfcom no tiene plazas suficientes para esta reserva.
-    // Indica que hay pedidos externos pendientes de procesar que consumen esas plazas.
-    if (stockSfcom < plazasSolicitadas) {
-        return {
-            ok: false,
-            sfcomCheck: true,
-            stockSfcom,
-            message: `sfcom muestra solo ${stockSfcom} plaza(s) disponibles para "${avail.sfcom_service_name}", insuficientes para esta reserva de ${plazasSolicitadas} plaza(s). Es posible que haya pedidos en sfcom pendientes de procesar.`
-        }
-    }
+    // Calcular stock esperado con la fórmula correcta (dos componentes)
+    const [{ data: sfcomData }, { data: allData }] = await Promise.all([
+        supabase.from('reservations').select('slots')
+            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
+        supabase.from('reservations').select('slots')
+            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .neq('status', 'Cancelada')
+    ])
+    const sfcomVendidas  = (sfcomData ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const todasOcupadas  = (allData   ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const stockEsperado  = Math.max(0, Math.min(
+        avail.sfcom_slots_listed - sfcomVendidas,
+        avail.total_slots        - todasOcupadas
+    ))
 
-    // Aviso suave: sfcom tiene menos plazas de las que esperamos según nuestro sistema,
-    // pero suficientes para esta reserva. Puede haber pedidos externos sin procesar.
-    const { count } = await supabase
-        .from('reservations')
-        .select('*', { count: 'exact', head: true })
-        .eq('provider_id', providerId)
-        .eq('service_id', serviceId)
-        .neq('status', 'Cancelada')
-
-    const reservasActivas = count ?? 0
-    const stockEsperado   = Math.max(0, avail.sfcom_slots_listed - reservasActivas)
-
+    // Aviso si sfcom muestra menos stock del esperado (puede haber pedidos pendientes de procesar)
     if (stockSfcom < stockEsperado) {
         return {
             ok: true,
             sfcomCheck: true,
             stockSfcom,
             stockEsperado,
-            warning: `sfcom muestra ${stockSfcom} plaza(s) disponibles para "${avail.sfcom_service_name}" pero el sistema espera ${stockEsperado}. Puede haber pedidos en sfcom pendientes de procesar. Hay plazas suficientes para esta reserva, pero verifica el panel de sfcom antes de confirmar.`
+            warning: `sfcom muestra ${stockSfcom} plaza(s) disponibles para "${avail.sfcom_service_name}" pero el sistema espera ${stockEsperado}. Puede haber pedidos de sfcom pendientes de procesar. Verifica el panel antes de confirmar.`
         }
     }
 
     return { ok: true, sfcomCheck: true, stockSfcom }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// computeExpectedStock (exportado)
+// Calcula el stock esperado para un par después de aplicar un delta de reservas.
+// Sirve para construir la lista de cambios que se muestra en el modal consultivo
+// antes de guardar en Supabase.
+// delta = 0 (cambio de estado), +1 (nueva reserva), -1 (eliminar reserva), etc.
+// Devuelve null si el par no tiene sfcom configurado y confirmado.
+// ────────────────────────────────────────────────────────────────────────────
+
+// sfcomDelta: plazas que se añaden/quitan con sfcom_order_ref (reservas de sfcom)
+// allDelta:   plazas totales que se añaden/quitan (sfcom + propias)
+export async function computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta = 0, allDelta = 0 } = {}) {
+    const { data: avail } = await supabase
+        .from('availability_with_sfcom')
+        .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
+        .eq('provider_id', providerId)
+        .eq('service_id', serviceId)
+        .single()
+
+    if (!avail?.sfcom_product_id || avail.sfcom_status !== 'confirmed') return null
+    if (avail.sfcom_slots_listed === null) return null
+
+    const [{ data: sfcomData }, { data: allData }] = await Promise.all([
+        supabase.from('reservations').select('slots')
+            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
+        supabase.from('reservations').select('slots')
+            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .neq('status', 'Cancelada')
+    ])
+
+    const sfcomVendidas = (sfcomData ?? []).reduce((s, r) => s + (r.slots ?? 0), 0) + sfcomDelta
+    const todasOcupadas = (allData   ?? []).reduce((s, r) => s + (r.slots ?? 0), 0) + allDelta
+    const nuevoStock    = Math.max(0, Math.min(
+        avail.sfcom_slots_listed - sfcomVendidas,
+        avail.total_slots        - todasOcupadas
+    ))
+
+    let stockActual = null
+    try {
+        const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
+        const item     = await apiFetch(endpoint)
+        stockActual    = item.stock_quantity ?? null
+    } catch (e) {
+        console.warn(`[sfcom] No se pudo leer stock actual de ${avail.sfcom_service_name}: ${e.message}`)
+    }
+
+    return { servicio: avail.sfcom_service_name, providerId, serviceId, stockActual, nuevoStock }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// mostrarModalConfirmacionSfcom (exportado)
+// Modal consultivo pre-save: muestra los cambios de stock previstos en sfcom
+// y pide confirmación antes de guardar en Supabase y ejecutar los PUTs.
+// cambios: [{ servicio, providerId, serviceId, stockActual, nuevoStock }]
+// Devuelve Promise<boolean> — true si el admin confirma, false si cancela.
+// ────────────────────────────────────────────────────────────────────────────
+
+export function mostrarModalConfirmacionSfcom(cambios) {
+    return new Promise(resolve => {
+        const existente = document.getElementById('sfcom-modal-confirmacion')
+        if (existente) existente.remove()
+
+        const overlay = document.createElement('div')
+        overlay.id = 'sfcom-modal-confirmacion'
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
+            'display:flex', 'align-items:center', 'justify-content:center',
+            'z-index:10000', 'padding:16px'
+        ].join(';')
+
+        const filas = cambios.map(c => `
+            <tr style="border-top:1px solid #f3f4f6">
+                <td style="padding:6px 10px;font-size:12px;color:#374151">${c.servicio}</td>
+                <td style="padding:6px 10px;font-size:12px;color:#6b7280;text-align:center">${c.stockActual ?? '?'}</td>
+                <td style="padding:6px 10px;font-size:12px;font-weight:600;color:#166534;text-align:center">${c.nuevoStock}</td>
+            </tr>`
+        ).join('')
+
+        overlay.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:28px;max-width:560px;width:100%;
+                        box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
+                        display:flex;flex-direction:column;gap:18px">
+                <div style="display:flex;align-items:flex-start;gap:12px">
+                    <span style="font-size:22px;line-height:1">🔄</span>
+                    <div>
+                        <div style="font-size:15px;font-weight:600;margin-bottom:4px">
+                            Actualizar disponibilidad en sfcom
+                        </div>
+                        <div style="font-size:13px;color:#555;line-height:1.5">
+                            Se guardarán los cambios en el sistema y se actualizará el stock en sfcom.
+                            Cancela si no quieres ejecutar esta actualización.
+                        </div>
+                    </div>
+                </div>
+                <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+                    <thead>
+                        <tr style="background:#f9fafb">
+                            <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:left;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Servicio</th>
+                            <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Stock actual</th>
+                            <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Nuevo stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filas}</tbody>
+                </table>
+                <div style="display:flex;gap:10px;justify-content:flex-end">
+                    <button id="sfcom-conf-cancelar"
+                        style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
+                               padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280">
+                        Cancelar
+                    </button>
+                    <button id="sfcom-conf-aceptar"
+                        style="background:#166534;color:#fff;border:none;border-radius:6px;
+                               padding:8px 20px;font-size:13px;cursor:pointer">
+                        Confirmar y guardar
+                    </button>
+                </div>
+            </div>`
+
+        document.body.appendChild(overlay)
+        document.getElementById('sfcom-conf-cancelar').addEventListener('click', () => { overlay.remove(); resolve(false) })
+        document.getElementById('sfcom-conf-aceptar').addEventListener('click', () => { overlay.remove(); resolve(true) })
+    })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -347,54 +514,6 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// mostrarModalExito (interno)
-// Confirmación visual cuando el PUT de stock se completa correctamente.
-// ────────────────────────────────────────────────────────────────────────────
-
-function mostrarModalExito({ servicio, nuevoStock }) {
-    const existente = document.getElementById('sfcom-modal-exito')
-    if (existente) existente.remove()
-
-    const overlay = document.createElement('div')
-    overlay.id = 'sfcom-modal-exito'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10000', 'padding:16px'
-    ].join(';')
-
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    display:flex;flex-direction:column;gap:18px">
-
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <span style="font-size:22px;line-height:1">✅</span>
-                <div>
-                    <div style="font-size:15px;font-weight:600;color:#166534;margin-bottom:4px">
-                        Disponibilidad actualizada en sfcom
-                    </div>
-                    <div style="font-size:13px;color:#555;line-height:1.5">
-                        El stock de "${servicio}" se ha actualizado correctamente
-                        a ${nuevoStock} plaza(s) disponibles.
-                    </div>
-                </div>
-            </div>
-
-            <div style="display:flex;justify-content:flex-end">
-                <button id="sfcom-btn-exito-aceptar"
-                    style="background:#166534;color:#fff;border:none;border-radius:6px;
-                           padding:8px 20px;font-size:13px;cursor:pointer;white-space:nowrap">
-                    Aceptar
-                </button>
-            </div>
-        </div>`
-
-    document.body.appendChild(overlay)
-    document.getElementById('sfcom-btn-exito-aceptar').addEventListener('click', () => overlay.remove())
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // mostrarModalAvisoOrders (interno)
 // Aviso cuando checkSfcomOrders no puede conectar con sfcom.
 // Solo se muestra una vez por sesión para no interrumpir al admin en cada carga.
@@ -488,8 +607,8 @@ export async function verificarCoherencia(supabase) {
         { data: services,     error: eServices },
         { data: solicitudes,  error: eSol }
     ] = await Promise.all([
-        supabase.from('reservations').select('id, client_id, provider_id, service_id, status, slots'),
-        supabase.from('availability').select('*'),
+        supabase.from('reservations').select('id, client_id, provider_id, service_id, status, slots, sfcom_order_ref'),
+        supabase.from('availability_with_sfcom').select('*'),
         supabase.from('clients').select('id'),
         supabase.from('providers').select('id'),
         supabase.from('services').select('id'),
@@ -522,16 +641,18 @@ export async function verificarCoherencia(supabase) {
 
     // ── Sobrereserva por par proveedor/servicio ─────────────────────
     for (const avail of (availability ?? [])) {
-        const activas = (reservas ?? []).filter(r =>
-            r.provider_id === avail.provider_id &&
-            r.service_id  === avail.service_id  &&
-            r.status      !== 'Cancelada'
-        ).length  // count de reservas (igual que syncStockToSfcom)
+        const plazasActivas = (reservas ?? [])
+            .filter(r =>
+                r.provider_id === avail.provider_id &&
+                r.service_id  === avail.service_id  &&
+                r.status      !== 'Cancelada'
+            )
+            .reduce((sum, r) => sum + (r.slots ?? 0), 0)
 
-        if (activas > avail.total_slots) {
+        if (plazasActivas > avail.total_slots) {
             resultado.errores.push(
                 `Sobrereserva: ${avail.provider_id} / ${avail.service_id} — ` +
-                `${activas} reservas activas sobre ${avail.total_slots} plazas totales`
+                `${plazasActivas} plazas reservadas sobre ${avail.total_slots} plazas totales`
             )
         }
     }
@@ -572,12 +693,17 @@ export async function verificarCoherencia(supabase) {
 
                 if (stockReal === null) continue
 
-                const activas       = (reservas ?? []).filter(r =>
+                const resParProp = (reservas ?? []).filter(r =>
                     r.provider_id === avail.provider_id &&
                     r.service_id  === avail.service_id  &&
                     r.status      !== 'Cancelada'
-                ).length
-                const stockEsperado = Math.max(0, avail.sfcom_slots_listed - activas)
+                )
+                const sfcomVendidas  = resParProp.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+                const todasOcupadas  = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
+                const stockEsperado  = Math.max(0, Math.min(
+                    avail.sfcom_slots_listed - sfcomVendidas,
+                    avail.total_slots        - todasOcupadas
+                ))
 
                 if (stockReal !== stockEsperado) {
                     resultado.sfcom.discrepancias.push({
@@ -590,10 +716,17 @@ export async function verificarCoherencia(supabase) {
                     })
                 }
             } catch (e) {
-                sfcomFallo          = true
-                resultado.sfcom.error = e.message
                 console.warn(`[verificacion] GET sfcom fallido para ${avail.sfcom_service_name}: ${e.message}`)
-                break  // un fallo es suficiente para saber que sfcom no está accesible
+                if (e.message.includes('404') && avail.sfcom_status === 'deactivation_pending') {
+                    resultado.avisos.push(
+                        `${avail.sfcom_service_name} (${avail.provider_id}): producto ya retirado de sfcom ` +
+                        `— puedes confirmar la baja en proveedores.html`
+                    )
+                } else {
+                    sfcomFallo            = true
+                    resultado.sfcom.error = e.message
+                }
+                continue
             }
         }
         if (!sfcomFallo) resultado.sfcom.verificado = true
@@ -678,9 +811,8 @@ export async function verificarConfirmarSfcom(supabase, dispId, productName, ser
     // Si el resultado no tiene product_id, el nombre no está en la lista de sfcom
     if (!match.product_id) {
         if (match.name && match.name !== productName) {
-            await supabase.from('availability')
-                .update({ sfcom_service_name: match.name })
-                .eq('id', dispId)
+            await supabase.from('sfcom_listings')
+                .upsert({ availability_id: dispId, sfcom_service_name: match.name }, { onConflict: 'availability_id' })
         }
         return { ok: false, notInList: true, name: match.name ?? productName }
     }
@@ -688,12 +820,13 @@ export async function verificarConfirmarSfcom(supabase, dispId, productName, ser
     // Encontrado → confirmar con product_id y variation_id
     // Guardamos el product_name (no la variation name) en sfcom_service_name
     const nombreAGuardar = match.product_name ?? match.name
-    const { error } = await supabase.from('availability').update({
+    const { error } = await supabase.from('sfcom_listings').upsert({
+        availability_id:    dispId,
         sfcom_service_name: nombreAGuardar,
         sfcom_product_id:   match.product_id,
         sfcom_variation_id: match.variation_id ?? null,
         sfcom_status:       'confirmed'
-    }).eq('id', dispId)
+    }, { onConflict: 'availability_id' })
 
     if (error) {
         console.error('[sfcom] Error al confirmar:', error.message)
@@ -976,6 +1109,117 @@ export function mostrarModalCorreoCancelacionSfcom(nombreProducto, proveedor) {
         setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
     })
     document.getElementById('sfcom-cancel-cerrar').addEventListener('click', () => overlay.remove())
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// verificarBajaSfcom (exportado)
+// Comprueba via GET si un producto en sfcom ya no está disponible (stock 0 o 404).
+// Se usa en el flujo de baja antes de limpiar los datos en Supabase.
+// Devuelve { ok, gone, stock? } — gone=true si el producto ya no tiene stock activo.
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function verificarBajaSfcom(productId, variationId) {
+    if (!productId) return { ok: false, error: 'Sin product_id' }
+    try {
+        const endpoint = buildStockEndpoint(productId, variationId)
+        const item     = await apiFetch(endpoint)
+        const stock    = item.stock_quantity ?? null
+        if (stock === 0 || stock === null) return { ok: true, gone: true, stock }
+        return { ok: true, gone: false, stock }
+    } catch (e) {
+        if (e.message.includes('404')) return { ok: true, gone: true }
+        return { ok: false, error: e.message }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// mostrarModalCorreoBajaSfcom (exportado)
+// Modal con el correo a enviar a Hilario para solicitar la baja de un servicio
+// en sfcom. Simétrico a mostrarModalCorreoHilario pero para el flujo de baja.
+// Devuelve Promise<'ok'|'cancel'>.
+// ────────────────────────────────────────────────────────────────────────────
+
+export function mostrarModalCorreoBajaSfcom(nombreProducto, proveedor) {
+    return new Promise(resolve => {
+        const existente = document.getElementById('sfcom-modal-correo-baja')
+        if (existente) existente.remove()
+
+        const subject = `Baja en sfcom — ${nombreProducto}`
+        const cuerpoCorreo = [
+            `Hola Hilario,`,
+            ``,
+            `Necesitamos dar de baja en la tienda sfcom el siguiente balcón:`,
+            ``,
+            `Producto: ${nombreProducto}`,
+            `Proveedor: ${proveedor?.name ?? proveedor?.id ?? '—'}${proveedor?.address ? ' — ' + proveedor.address : ''}`,
+            ``,
+            `Por favor, retira el producto de la venta (puedes dejarlo en borrador o eliminarlo).`,
+            `Cuando lo hayas hecho, nos lo confirmas para que podamos actualizar nuestro sistema.`,
+            ``,
+            `Muchas gracias,`,
+            `Paula`
+        ].join('\n')
+
+        const overlay = document.createElement('div')
+        overlay.id = 'sfcom-modal-correo-baja'
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
+            'display:flex', 'align-items:center', 'justify-content:center',
+            'z-index:10000', 'padding:16px'
+        ].join(';')
+
+        overlay.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:28px;max-width:640px;width:100%;
+                        box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
+                        max-height:90vh;display:flex;flex-direction:column;gap:18px">
+                <div>
+                    <div style="font-size:15px;font-weight:600;margin-bottom:4px">Correo para Hilario — solicitar baja en sfcom</div>
+                    <div style="font-size:13px;color:#555">Envía este correo a Hilario para que retire el producto de la venta.</div>
+                </div>
+                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px">
+                    <textarea id="sfcom-correo-baja-texto"
+                        style="width:100%;height:200px;font-size:12px;font-family:monospace;
+                               border:none;background:transparent;resize:vertical;color:#1f2937;
+                               outline:none;line-height:1.65;box-sizing:border-box"
+                        readonly>${cuerpoCorreo}</textarea>
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+                    <button id="sfcom-baja-copiar"
+                        style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
+                               padding:8px 16px;font-size:13px;cursor:pointer;color:#374151;white-space:nowrap">
+                        📋 Copiar texto
+                    </button>
+                    <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
+                        style="background:#1d4ed8;color:#fff;border-radius:6px;padding:8px 16px;
+                               font-size:13px;text-decoration:none;display:inline-flex;
+                               align-items:center;gap:6px;white-space:nowrap">
+                        ✉️ Abrir en correo
+                    </a>
+                    <button id="sfcom-baja-cancelar"
+                        style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
+                               padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280;white-space:nowrap">
+                        Cancelar
+                    </button>
+                    <button id="sfcom-baja-ok"
+                        style="background:#991b1b;color:#fff;border:none;border-radius:6px;
+                               padding:8px 20px;font-size:13px;cursor:pointer;white-space:nowrap">
+                        Correo enviado — solicitar baja
+                    </button>
+                </div>
+            </div>`
+
+        document.body.appendChild(overlay)
+        document.getElementById('sfcom-baja-copiar').addEventListener('click', () => {
+            const ta  = document.getElementById('sfcom-correo-baja-texto')
+            const btn = document.getElementById('sfcom-baja-copiar')
+            ta.select()
+            document.execCommand('copy')
+            btn.textContent = '✅ Copiado'
+            setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        })
+        document.getElementById('sfcom-baja-cancelar').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
+        document.getElementById('sfcom-baja-ok').addEventListener('click',       () => { overlay.remove(); resolve('ok')     })
+    })
 }
 
 export function mostrarModalCorreoHilario(nombreProducto, variaciones, proveedor, opciones = {}) {

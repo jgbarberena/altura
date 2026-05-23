@@ -258,10 +258,20 @@ Hay dos clientes Supabase:
 | price_per_slot | decimal | Coste que se paga al proveedor por plaza |
 | billing_model | text NOT NULL | `'capacity'` o `'consumption'`; default `'capacity'` |
 | comments | text | |
-| sfcom_service_name | text | Nombre del servicio en sfcom (para inferir service_id desde pedidos) |
+
+**`sfcom_listings`** — Configuración de publicación en sfcom por par proveedor/servicio
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | serial PK | |
+| availability_id | integer FK→availability | UNIQUE. ON DELETE CASCADE — si se elimina la fila de availability, desaparece automáticamente |
+| sfcom_service_name | text | Nombre del producto en sfcom (coincide con `product_name`, no con el nombre de variación) |
 | sfcom_slots_listed | integer | Plazas publicadas en sfcom (puede diferir de total_slots) |
 | sfcom_product_id | integer | ID del producto en WooCommerce |
-| sfcom_variation_id | integer | ID de la variación del producto en WooCommerce (nullable si no hay variaciones) |
+| sfcom_variation_id | integer | ID de la variación del producto en WooCommerce (null si el producto es simple) |
+| sfcom_status | text | Estado: `null` (no publicado), `'pending'` (solicitado a Hilario), `'confirmed'` (activo, sincroniza stock), `'deactivation_pending'` (baja solicitada) |
+| sfcom_public_price | numeric | Precio público al que se vende en sfcom (informativo, nunca se persiste desde el JS — solo se usa en el correo a Hilario) |
+
+Cada fila de `availability` tiene como máximo una fila en `sfcom_listings` (UNIQUE en `availability_id`). No todas las filas de `availability` tienen entrada en `sfcom_listings`; solo las que tienen o han tenido actividad en sfcom.
 
 **`reservations`** — Reservas
 | Campo | Tipo | Notas |
@@ -323,27 +333,70 @@ Hay dos clientes Supabase:
 | attended_at | timestamptz | Cuándo fue atendida o descartada |
 | source | text | Referencia del pedido sfcom (ej: `WEB123_456`). Nulo si viene de la web. Se usa para evitar duplicados al re-sincronizar |
 | price_per_slot | numeric | Precio bruto por plaza (solo en solicitudes de sfcom) |
-| service_id | text | Campo reservado, sin FK. Actualmente sin uso funcional |
+| service_id | text | Sin FK. Se guarda al registrar pedidos sfcom cuando el nombre del producto se resuelve sin ambigüedad. Se usa como verificación (cross-check) al cargar la solicitud en el formulario, nunca como búsqueda primaria (el nombre es el contrato) |
 
-### Vista
+### Vistas
 
 **`service_availability`** — Plazas libres por servicio (vista calculada, solo lectura)
 | Campo | Tipo | Notas |
 |---|---|---|
 | service_id | text | |
-| free_slots | numeric | `sum(total_slots) - sum(slots reservados)` agregado por servicio y proveedor |
+| free_slots | numeric | `sum(total_slots) - sum(slots reservados)` agregado por servicio |
 
-La vista agrega `availability` con las reservas `Confirmada` + `Pendiente`. La usa `disponibilidad.js` en el frontend público para mostrar los badges de disponibilidad por experiencia.
+SQL real (confirmado):
+```sql
+SELECT a.service_id,
+    (sum(a.total_slots) - COALESCE(sum(r.slots_reservados), 0)) AS free_slots
+FROM availability a
+LEFT JOIN (
+    SELECT service_id, provider_id, sum(slots) AS slots_reservados
+    FROM reservations
+    WHERE status = ANY (ARRAY['Confirmada', 'Pendiente'])
+    GROUP BY service_id, provider_id
+) r ON r.service_id = a.service_id AND r.provider_id = a.provider_id
+GROUP BY a.service_id
+```
 
-### Trigger
+La vista agrega por `service_id` (suma todos los proveedores de ese servicio). La usa `disponibilidad.js` en el frontend público para los badges de disponibilidad.
 
-**`uppercase_ids`** — Trigger BEFORE INSERT OR UPDATE en todas las tablas con IDs de texto. Convierte automáticamente a mayúsculas los campos `id`, `client_id`, `provider_id` y `service_id` antes de persistir. Esto garantiza que los IDs son siempre mayúsculas en la BD independientemente de lo que envíe el JS.
+**`availability_with_sfcom`** — JOIN de availability + sfcom_listings (vista de lectura para el panel)
+
+Reconstruye la estructura plana que usaba el JS antes de la separación de tablas. Hace un LEFT JOIN de `availability` con `sfcom_listings` por `availability_id`, exponiendo todos los campos de ambas tablas más `sfcom_listing_id` (el id de `sfcom_listings`). Las filas sin entrada en `sfcom_listings` tienen los campos sfcom a null.
+
+Todo el código del admin que necesita leer datos de disponibilidad con campos sfcom usa esta vista. Los writes de campos sfcom van siempre directamente a `sfcom_listings`.
+
+### Constraints relevantes
+
+- `availability`: UNIQUE (provider_id, service_id) — un par proveedor/servicio es único.
+- `sfcom_listings`: UNIQUE (availability_id) — un par proveedor/servicio tiene como máximo una entrada sfcom.
+- `charges`: UNIQUE (client_id, amount, due_date) — un cliente no puede tener dos hitos con el mismo importe y fecha. Tenerlo en cuenta si se crean hitos iguales.
+- `payments`: UNIQUE (provider_id, amount, due_date) — idem para pagos a proveedores.
+
+### Triggers
+
+**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en todas las tablas con IDs de texto (`clients`, `providers`, `services`, `availability`, `charges`, `payments`, `reservations`). Convierte a mayúsculas los campos `id`, `client_id`, `provider_id`, `service_id`. El JS no necesita hacerlo.
+
+**`notificar-solicitud`** — AFTER INSERT en `reservation_requests`. Llama a la Supabase Edge Function `notificar-solicitud` vía HTTP POST. Esto significa que **cada vez que se inserta una solicitud nueva** (desde la web pública o desde el admin al procesar pedidos de sfcom con `checkSfcomOrders`), se dispara automáticamente una notificación. Probablemente envía un email o alerta. Este trigger no requiere ninguna acción del JS — es transparente.
+
+### Volumen de datos actual (mayo 2026)
+
+| Tabla | Filas |
+|---|---|
+| availability | 90 |
+| sfcom_listings | 20 |
+| reservations | 80 |
+| payments | 44 |
+| charges | 31 |
+| clients | 31 |
+| providers | 31 |
+| services | 20 |
+| reservation_requests | 7 |
 
 ### Principios de BD
 - Fuente de verdad siempre. La BD nunca queda con datos incompletos ni huérfanos.
 - Todo en snake_case y minúsculas (los IDs de texto son excepción: mayúsculas, reforzado por trigger).
 - FK siempre presentes.
-- Lógica de presentación en JS, no en BD. Excepción: la vista `service_availability` y el trigger `uppercase_ids` son lógica de integridad aceptable en BD.
+- Lógica de presentación en JS, no en BD. Excepción aceptada: las vistas `service_availability` y `availability_with_sfcom`, y el trigger `uppercase_ids`, son lógica de integridad o de acceso aceptable en BD.
 - Los totales simples (total_amount) los calcula la BD como columna generada. Los importes con lógica de negocio (hito final de cobros, hito final de pagos) los recalcula y persiste el JS automáticamente cuando cambia alguna reserva relevante, notificando solo en consola.
 
 ---
@@ -356,7 +409,7 @@ Módulo ES6. Importa de `supabase.js`, `utils.js`, `factura.js`, `propuesta.js`,
 
 El panel tiene **6 bloques** que se muestran/ocultan según el estado:
 
-**Bloque 0 — Solicitudes pendientes:** Lee `reservation_requests` con `status='nueva'`. Las solicitudes de sfcom (`source` con formato `WEB\d+_\d+`) se muestran primero en rojo y sin botón "Descartar". Las solicitudes web se muestran en naranja con botón "Descartar". Click en fila carga nombre, email, teléfono, dirección, plazas, día y comentarios en el formulario. Para solicitudes sfcom, intenta inferir servicio y proveedor desde `availability.sfcom_service_name` (`_inferirDesdeSfcom`) y precarga el precio neto (precio bruto / 1.15). Para solicitudes web, infiere solo el servicio desde el slug (`_inferirServiceId`). El admin confirma o corrige siempre. Botón "Procesado" → status `atendida`. Nunca cambia status al hacer click en la fila.
+**Bloque 0 — Solicitudes pendientes:** Lee `reservation_requests` con `status='nueva'`. Las solicitudes de sfcom (`source` con formato `WEB\d+_\d+`) se muestran primero en rojo y sin botón "Descartar". Las solicitudes web se muestran en naranja con botón "Descartar". Click en fila carga nombre, email, teléfono, dirección, plazas, día y comentarios en el formulario. Para solicitudes sfcom, intenta inferir servicio y proveedor desde `sfcom_listings.sfcom_service_name` (vía `availability_with_sfcom`) con `_inferirDesdeSfcom`, y precarga el precio neto (precio bruto / 1.15). Para solicitudes web, infiere solo el servicio desde el slug (`_inferirServiceId`). El admin confirma o corrige siempre. Botón "Procesado" → status `atendida`. Nunca cambia status al hacer click en la fila.
 
 **Bloque 1 — Cliente:** Campo `ID_CLIENTE` con autocomplete en tiempo real contra `clients`. Si el ID coincide exactamente con un cliente existente, carga sus datos y activa el guardado automático por campo (`change` → `supabase.update`). Si es un ID nuevo, muestra "Cliente nuevo". Los datos del cliente nunca se guardan manualmente; el guardado es automático en cuanto cambia cualquier campo de un cliente existente.
 
@@ -435,15 +488,19 @@ Bloques:
 - **Estado financiero:** métricas de reservas, cobros y pagos con Chart.js.
 - **Resumen por servicio/día:** tabla de ocupación.
 
-**Nota importante:** El flujo de detección de pedidos sfcom en `panel.html` depende del endpoint `orders` de `sf-api-paula.php`, que no está confirmado por Hilario (ver deuda 12.1).
+`panel.js` lee `availability` directamente (sin la vista) porque no necesita campos sfcom.
+
+**Nota importante:** El flujo de detección de pedidos sfcom en `panel.html` usa el endpoint `orders` de `sf-api-paula.php`, que está activo y confirmado por Hilario.
 
 ### 7.6 proveedores.js — Gestión de proveedores
 
 Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js`. Gestiona:
 - CRUD de proveedores con autocomplete (igual que clientes en formulario.js)
-- Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability`. Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
+- Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability` y `sfcom_listings`. Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
 - Hitos de pago al proveedor: gestión de `payments` con modelo `capacity`/`consumption`
 - Guardado automático por campo para proveedores existentes
+
+**Patrón de acceso a datos sfcom:** La carga inicial de `todaDisponibilidad` usa `from('availability_with_sfcom').select('*')` para tener los campos sfcom disponibles en memoria. Todos los writes de campos sfcom (solicitar alta, confirmar, cancelar, dar de baja, confirmar baja, editar nombre) van a `sfcom_listings` con `upsert` o `delete`, nunca a `availability`.
 
 ### 7.7 sfcom.js — Integración con tienda.sanfermin.com
 
@@ -452,19 +509,40 @@ Módulo ES6. Gestiona toda la comunicación con la tienda WooCommerce de sfcom a
 **API:** `https://tienda.sanfermin.com/wp-content/plugins/sf-api-paula/sf-api-paula.php`  
 Cabecera de autenticación: `X-Paula-Key`. Endpoints disponibles: `GET/PUT products/{id}` y `GET/PUT products/{id}/variations/{variation_id}`. Solo se envía `stock_quantity` en los PUT.
 
-**Fórmula de stock:** `nuevoStock = Math.max(0, sfcom_slots_listed - reservasActivas)` donde `reservasActivas` es el número de filas en `reservations` con ese par (provider_id, service_id) y status distinto de `'Cancelada'`. Nota: es el conteo de filas de reserva, no la suma de plazas — cada reserva ocupa un "hueco" visible en sfcom independientemente de sus plazas.
+**Fórmula de stock:**
+```
+nuevoStock = Math.max(0, Math.min(
+    sfcom_slots_listed - SUM(slots WHERE sfcom_order_ref NOT NULL AND status != 'Cancelada'),
+    total_slots        - SUM(slots WHERE status != 'Cancelada')
+))
+```
+El primer término limita lo que sfcom puede vender por lo que sfcom ya vendió (reservas con `sfcom_order_ref NOT NULL`). El segundo término limita por la capacidad física restante (todas las reservas activas). Ambos son necesarios: añadir una reserva propia baja el stock en sfcom cuando la capacidad física se agota, aunque sfcom no haya vendido nada propio.
+
+**`sfcom_order_ref` en reservas:** Cuando el admin procesa una solicitud de sfcom y guarda la reserva, el INSERT incluye `sfcom_order_ref` con el valor de `data.source` (formato `WEBxxx_nnnn`). Las reservas propias tienen `sfcom_order_ref = null`. La variable `solicitudSfcomRef` en `formulario.js` persiste el source entre el click en la solicitud y el INSERT.
+
+**Comisión sfcom:** sfcom cobra el 15% de los pedidos que gestiona. El precio neto que recibimos es `precio_bruto / 1.15`. Esta constante aparece en `formulario.js` al precargar el precio desde solicitudes sfcom (`_inferirDesdeSfcom`). No se aplica a los PUTs de stock (que solo envían `stock_quantity`).
+
+**Flujo de activación en sfcom:** `null` → click "Solicitar a SFcom" → `'pending'` (correo a Hilario) → Hilario activa el producto → click "Confirmar" → GET de verificación → `'confirmed'` + sync inicial de stock. Solo cuando `sfcom_status === 'confirmed'` se ejecutan PUTs de stock automáticos.
+
+**Flujo de baja en sfcom:** `'confirmed'` → click "Dar de baja" → `'deactivation_pending'` (correo a Hilario) → Hilario retira el producto → click "Confirmar baja" → GET de verificación (stock debe ser 0 o producto inexistente) → DELETE en `sfcom_listings` → `null`. Mientras `sfcom_status` no sea `null`, el servicio no se puede eliminar de Supabase.
 
 **Exports:**
 
-`syncStockToSfcom(supabase, proveedorId, servicioId)` — Recalcula el stock esperado para el par y hace PUT a sfcom si hay una fila de `availability` con `sfcom_product_id`. Si el par no tiene configuración sfcom (`sfcom_slots_listed` null), no hace nada. Llamada después de cualquier operación que cambie reservas activas del par.
+`syncStockToSfcom(supabase, proveedorId, servicioId)` — Lee los datos del par vía `availability_with_sfcom` y hace PUT a sfcom si `sfcom_status === 'confirmed'`. Si el par no tiene entrada en `sfcom_listings` o no está confirmado, no hace nada. Silencioso en caso de éxito; muestra modal de error con correo a Hilario en caso de fallo. Se llama después de cualquier operación que cambie reservas activas del par: siempre precedida de un modal consultivo que muestra el PUT previsto antes de ejecutarlo.
 
-`checkAvailabilityBeforeSave(supabase, proveedorId, servicioId, plazas)` — Verifica antes de guardar una reserva nueva que: (a) Supabase tiene plazas libres, y (b) si el par tiene sfcom configurado, el stock actual en sfcom no es cero. Devuelve `{ ok, message?, sfcomCheck, warning? }`. Si el GET de sfcom falla, devuelve `ok: true` con aviso de que no se pudo verificar sfcom (no bloquea).
+`checkAvailabilityBeforeSave(supabase, proveedorId, servicioId, plazas)` — Verifica antes de guardar una reserva nueva que: (a) Supabase tiene plazas libres, y (b) si el par tiene sfcom confirmado, si sfcom muestra menos stock del esperado (aviso suave, no bloquea). Lee vía `availability_with_sfcom`. Devuelve `{ ok, sfcomCheck, warning? }`. Si el GET de sfcom falla, devuelve `ok: true` con aviso (no bloquea).
 
-`checkSfcomOrders(supabase)` — Llama a `GET orders?status=completed&...` de sf-api-paula.php para detectar pedidos nuevos. Si encuentra pedidos sin `source` correspondiente en `reservation_requests`, los inserta como solicitudes nuevas. Si el endpoint `orders` no existe en sf-api-paula.php, muestra el modal de aviso (ver deuda 12.1). Llamada al cargar `formulario.html`.
+`checkSfcomOrders(supabase)` — Llama a `GET orders?status=completed&...` de sf-api-paula.php para detectar pedidos nuevos. El endpoint `orders` está activo. Si encuentra pedidos sin `source` correspondiente en `reservation_requests`, los devuelve como `nuevos`. `registrarPedidosSfcom` los inserta en `reservation_requests` usando el sistema de dos capas (nombre como contrato, IDs como verificación). Llamada al cargar `formulario.html`.
 
-`verificarCoherencia(supabase)` — Lee en paralelo reservations, availability, clients, providers, services y reservation_requests (status='nueva'). Verifica: integridad FK en reservas, reservas activas sin fila de availability, sobrereservas (count activas > total_slots). También hace GET a sfcom para cada fila de availability con sfcom_product_id y compara stock real contra el esperado por la fórmula — discrepancia positiva (sfcom muestra más del esperado) es más grave que negativa. Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], error } }`.
+`verificarCoherencia(supabase)` — Lee en paralelo reservations, `availability_with_sfcom`, clients, providers, services y reservation_requests (status='nueva'). Verifica: integridad FK en reservas, reservas activas sin fila de availability, sobrereservas (count activas > total_slots). También hace GET a sfcom para cada fila con sfcom_product_id y compara stock real contra el esperado por la fórmula — discrepancia positiva (sfcom muestra más del esperado) es más grave que negativa. Continúa verificando todos los pares aunque uno falle (no rompe el bucle). Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], error } }`.
 
-**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError`, `mostrarModalExito`, `mostrarModalAvisoOrders`. El toast y el modal de verificación están en `formulario.js` (consumen el resultado de `verificarCoherencia`).
+`verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)` — Busca el nombre propuesto en sfcom y confirma la entrada. Si hay coincidencia, hace UPSERT en `sfcom_listings` con `availability_id = dispId`, `sfcom_product_id`, `sfcom_variation_id` y `sfcom_status: 'confirmed'`. Si no hay coincidencia exacta, muestra el modal picker.
+
+`verificarBajaSfcom(productId, variationId)` — GET a sfcom para comprobar que el producto ya no está activo (stock 0 o error 404). Usado en el flujo de baja antes de confirmarla y hacer DELETE en `sfcom_listings`.
+
+`mostrarModalConfirmacionSfcom(cambios)` — Modal consultivo (devuelve `Promise<boolean>`). Muestra los PUTs planeados antes de ejecutarlos: par proveedor/servicio, stock actual, stock nuevo. Botones "Confirmar" (resolve true) y "Cancelar" (resolve false). Se llama desde `formulario.js` y `proveedores.js` antes de llamar a `syncStockToSfcom`. Si el admin cancela, no se ejecuta ningún PUT ni ningún guardado en Supabase.
+
+**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError` (fallo de PUT, incluye correo a Hilario), `mostrarModalConfirmacionSfcom` (pre-save consultivo, exportado), `mostrarModalCorreoBajaSfcom` (correo a Hilario para solicitar baja), `mostrarModalAvisoOrders` (orders endpoint no disponible). El toast y el modal de verificación están en `formulario.js` (consumen el resultado de `verificarCoherencia`). El antiguo `mostrarModalExito` ha sido eliminado; el éxito de un PUT es silencioso.
 
 ### 7.8 tablas.js — Vista de tablas
 
@@ -581,7 +659,87 @@ DESPEDIDA_GIGANTES_14
 POBRE_DE_MI
 ```
 
-El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado con hijos 215 y 216) corresponde a `DESPEDIDA_GIGANTES_14`.
+---
+
+## 10b. Catálogo de productos sfcom (tienda.sanfermin.com) — verificado 2026-05-23
+
+API: `https://tienda.sanfermin.com/sf-api-paula.php` · Auth: `X-Paula-Key`
+
+### Productos simples (sin variaciones)
+
+| ID sfcom | Nombre en sfcom | Servicio Supabase | Stock actual | Notas |
+|---|---|---|---|---|
+| 138 | Balcón Chupinazo 6 Julio (Plaza del Castillo) | CHUPINAZO_6 | 12 | |
+| 140 | Barrera Encierro (Cuesta Santo Domingo) | ENCIERRO_? | null | Sin stock gestionado |
+| 142 | Pobre de Mí 14 Julio | POBRE_DE_MI | 9 | |
+| 145 | Procesión San Fermín 7 Julio | PROCESION_7 | 12 | |
+| 215 | Entrada Adulto Gigantes | DESPEDIDA_GIGANTES_14 | 10 | Hijo del agrupado 147 |
+| 216 | Entrada Niño Gigantes | DESPEDIDA_GIGANTES_14 | 10 | Hijo del agrupado 147 |
+
+### Producto agrupado
+
+| ID sfcom | Nombre en sfcom | Tipo | Hijos |
+|---|---|---|---|
+| 147 | Despedida de gigantes Día 14 julio (único) | grouped | 215 (Adulto), 216 (Niño) |
+
+El producto agrupado 147 no tiene stock propio (`null`). El stock real está en los hijos 215 y 216. Para sincronizar DESPEDIDA_GIGANTES_14 hay que hacer PUT a 215 y a 216 por separado.
+
+### Productos variables (con variaciones por día)
+
+**133 — Balcón Estafeta** (variable)
+
+| ID variación | Nombre variación | Día julio | Stock |
+|---|---|---|---|
+| 152 | Miércoles 8 de Julio 2026 | 8 | 6 |
+| 154 | Viernes 10 de Julio 2026 | 10 | 6 |
+| 156 | Lunes 13 de Julio 2026 | 13 | 6 |
+| 157 | Martes 14 de Julio 2026 | 14 | 6 |
+
+**883 — Balcon Estafeta mitad** (variable)
+
+| ID variación | Nombre variación | Día julio | Stock |
+|---|---|---|---|
+| 886 | Martes 7 de Julio 2026 | 7 | 8 |
+| 887 | Miércoles 8 de Julio 2026 | 8 | 4 |
+| 889 | Viernes 10 de Julio 2026 | 10 | 12 |
+| 890 | Lunes 13 de Julio 2026 | 13 | 14 |
+| 891 | Martes 14 de Julio 2026 | 14 | 16 |
+| 943 | Sábado 11 de Julio 2026 | 11 | 0 (outofstock) |
+
+**894 — Balcón Mercaderes** (variable)
+
+| ID variación | Nombre variación | Día julio | Stock |
+|---|---|---|---|
+| 897 | Miércoles 8 de Julio 2026 | 8 | 0 (outofstock) |
+| 898 | Jueves 9 de Julio 2026 | 9 | 4 |
+| 899 | Viernes 10 de Julio 2026 | 10 | 9 |
+| 900 | Lunes 13 de Julio 2026 | 13 | 16 |
+| 901 | Martes 14 de Julio 2026 | 14 | 16 |
+| 1089 | Sábado 11 de Julio 2026 | 11 | 16 |
+
+### Formato de pedidos (`GET orders`)
+
+```js
+{
+    id:           1090,              // ID numérico WooCommerce
+    number:       'WEB026',          // Número de pedido (string, siempre empieza por WEB)
+    status:       'completed',       // 'completed', 'cancelled', 'processing', etc.
+    date_created: '2026-05-21T13:14:55',
+    total:        '300.00',          // string
+    // + billing, line_items, customer_note (estructura WooCommerce estándar, pendiente verificar)
+}
+```
+
+`sfcom_order_ref` se forma como `${order.number}_${order.id}` → ej: `WEB026_1090`.
+
+El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `after=<ISO>`, `per_page=N`.
+
+### Notas importantes sobre el catálogo
+
+- Los nombres de variación siguen el patrón `"Día de Semana DD de Mes YYYY"`. La inferencia por día en `_inferirProductoEnSfcom` busca el número del día en el nombre de la variación.
+- Producto 140 (Barrera Encierro) tiene `stock_quantity: null` → WooCommerce no gestiona su stock o está configurado como "no gestionar stock". No sincronizar hasta aclarar.
+- Producto 147 (Despedida Gigantes) es `grouped` → su stock es `null`; solo se pueden hacer PUT a los hijos 215 y 216.
+- La temporada activa es 2026 (julio). Los IDs de variación cambiarán cuando se creen los productos de 2027.
 
 ---
 
@@ -595,12 +753,8 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 
 ## 12. Deudas técnicas pendientes
 
-### 12.1 Endpoint `orders` de sf-api-paula.php — **Sin confirmar**
-**Situación:** La nueva API `sf-api-paula.php` (acceso directo, clave `X-Paula-Key`) reemplaza al antiguo `woo-proxy.php`. El CORS ya está resuelto y el flujo B (PUT de stock) funciona. Sin embargo, la documentación de Hilario solo describe endpoints de `products` y `variations`; no menciona `orders`.
-
-**Impacto:** `checkSfcomOrders` usa `GET orders?status=completed&...`. Si el endpoint no existe en `sf-api-paula.php`, el flujo A (detección de pedidos nuevos) fallará y mostrará el modal de aviso cada vez que se abra el panel.
-
-**Acción pendiente:** Preguntar a Hilario si `sf-api-paula.php` soporta el endpoint `orders` con los mismos parámetros que la WooCommerce REST API estándar.
+### 12.1 API sf-api-paula.php — **Activa y operativa**
+**Situación:** La API `sf-api-paula.php` (acceso directo, clave `X-Paula-Key`) está activa. CORS resuelto. Endpoints confirmados: `products`, `products/{id}/variations`, `orders`. El formato exacto de respuesta de `orders` está pendiente de verificar (ver 12.14).
 
 ### 12.2 Disponibilidad en sfcom — **Pendiente diseño**
 **Problema:** Los productos de sfcom (WooCommerce) no tienen disponibilidad real sincronizada con Supabase.
@@ -621,10 +775,8 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 ### 12.4 SEO — Indexación y errores GSC — **Pendiente revisión**
 **Acción pendiente:** Repasar estado de indexación y errores en Google Search Console.
 
-### 12.5 Inferencia de proveedor en solicitudes web — **Mejora pendiente**
-**Situación:** Cuando una solicitud web corresponde a un servicio que solo tiene un proveedor con plazas disponibles, el sistema podría inferir automáticamente el proveedor. Actualmente el admin siempre lo selecciona manualmente.
-
-**Decisión:** Dejado para después, no es bloqueante.
+### 12.5 Inferencia de proveedor en solicitudes web — **Resuelto**
+**Situación:** Implementado en `cargarDesdeSolicitud`: tras inferir el servicio desde el slug, se buscan los proveedores con ese `service_id` en `disponibilidad`. Si solo hay uno, se auto-selecciona. Si hay varios, el admin elige manualmente.
 
 ### 12.6 Ampliar faq-answers con más contenido — **Mejora SEO pendiente**
 **Situación:** Las respuestas FAQ en la mayoría de páginas usan solo el primer `<p>` como `faq-answer`. En muchos casos tiene sentido incluir más párrafos o bloques dentro del mismo `faq-item` para enriquecer el schema FAQPage.
@@ -642,9 +794,47 @@ El producto 142 de sfcom corresponde a `POBRE_DE_MI`. El producto 147 (agrupado 
 **Acción pendiente:** Extraer a función compartida (ej. en `main.js` o un nuevo `utils-public.js`) y eliminar duplicados.
 
 ### 12.11 Sort por columna en tablas del panel de control — **Resuelto**
-**Situación:** Las tablas de `panel.js` (calendario de pagos/cobros, disponibilidad por evento, disponibilidad por proveedor) no permiten ordenar por columna. El sort ya está implementado en la tabla de reservas de `formulario.js` y puede usarse como referencia. Complejidad extra: cuando hay un proveedor/evento seleccionado, la primera fila es un resumen no ordenable y las filas de detalle son las que hay que ordenar; al cambiar el selector el sort debe resetearse.
+**Situación:** Implementado en las 4 tablas de `panel.js`: pagos, cobros, eventos por día y proveedores. Incluye fila resumen no ordenable cuando hay selector activo y reset del sort al cambiar el selector. Funciones `sortArr` y `renderThead` compartidas internamente.
 
-**Acción pendiente:** Implementar sort en las 4 tablas de `panel.js` con manejo especial de la fila resumen.
+### 12.12 Campos sfcom — **Implementados en sfcom_listings**
+**Situación:** Los campos sfcom (`sfcom_status`, `sfcom_product_id`, `sfcom_variation_id`, `sfcom_service_name`, `sfcom_slots_listed`) están en la tabla `sfcom_listings`, separada de `availability`. El JS los lee vía la vista `availability_with_sfcom` y los escribe directamente en `sfcom_listings`.
+
+### 12.13 GET de productos sfcom con latencia alta (N+1 sin caché) — **Deuda técnica**
+**Situación:** `getSfcomProducts()` hace un GET inicial para listar todos los productos y luego un GET por cada producto que tiene variaciones (N+1). En verificarCoherencia, si hay muchos pares con sfcom activo, el tiempo de carga puede ser notable. No hay caché entre llamadas.
+
+**Impacto:** Latencia visible en verificarCoherencia cuando hay múltiples pares sfcom. Actualmente aceptable por volumen bajo.
+
+**Acción pendiente:** Si el volumen crece, implementar caché en memoria con TTL corto (ej. 60s) dentro de la sesión de admin.
+
+### 12.14 `checkSfcomOrders` — estructura verificada, inferencia de nombre y día implementada — **Resuelto**
+**Situación:** Estructura confirmada por GET real: `{id, number, status, date_created, total, billing: {first_name, last_name, email, phone, address_1, address_2, city, country}, line_items: [{name, product_id, variation_id, quantity, total}]}`. No existe `parent_name` — el campo `li.name` contiene el nombre completo de la variación (ej: `"Balcón Estafeta - Viernes 10 de Julio 2026"`).
+
+**Implementado:** `extraerNombreProducto` (prefix-scan en `sfcom.js`) extrae el nombre canónico del producto a partir del nombre de variación WooCommerce. `extraerDia` extrae el día de julio del mismo texto. `registrarPedidosSfcom` implementa el sistema de dos capas: nombre como contrato (búsqueda primaria), IDs como verificación (tres casos: consistente / IDs cambiaron con modal+Hilario / nombre no reconocido con modal).
+
+### 12.16 Modal consultivo sfcom ausente al reactivar reservas en lote — **Resuelto**
+**Situación:** Añadido bloque `else` en `cambiarEstadoSeleccionadas` que construye `pairsParaModal` para reservas canceladas que se reactivan (`status === 'Cancelada'` → activo). El modal se muestra antes del UPDATE con los deltas positivos correspondientes.
+
+### 12.17 Reorganización sin modal consultivo sfcom — **Resuelto**
+**Situación:** Añadido cálculo de pares con deltas (origen pierde plazas, destino las gana) antes de los writes de BD. `confirmarStockSfcom` se llama antes del bucle de updates. El `syncStockToSfcom` posterior al loop permanece inalterado.
+
+### 12.18 DB escrita antes del modal sfcom en proveedores.js — **Resuelto**
+**Situación:** `confirmarStockSfcom` movido antes de los writes tanto en modo edición múltiple como en modo edición simple/creación. Si el admin cancela, nada se escribe. Nota: en edición simple, el modal muestra stock basado en los valores actuales (antes del cambio de `total_slots`); el sync posterior usa los valores correctos del DB.
+
+### 12.19 `computeExpectedStock` no guarda contra `sfcom_slots_listed=null` — **Resuelto**
+**Situación:** Añadido guard `if (avail.sfcom_slots_listed === null) return null` en `computeExpectedStock` tras el guard de `sfcom_status`. Consistente con el comportamiento de `syncStockToSfcom`.
+
+### 12.20 `verificarCoherencia` trata 404 de sfcom como error genérico — **Resuelto**
+**Situación:** En el catch de `verificarCoherencia`, si el error incluye '404' y el estado es `deactivation_pending`, se añade un aviso descriptivo al array `avisos` ("producto ya retirado de sfcom — puedes confirmar la baja") sin marcar `sfcom.verificado = false`. Cualquier otro 404 sigue siendo un error genérico.
+
+### 12.21 `sfcom_public_price` nunca se persiste — **Campo informativo**
+**Situación:** El campo `sfcom_public_price` existe en `sfcom_listings` pero el JS nunca lo escribe. El campo de UI `sfcomPrecioPublico` solo se usa para incluir el precio en el correo a Hilario. No afecta a ninguna lógica.
+
+**Decisión pendiente:** Si en el futuro tiene sentido mostrar el precio público en el panel (ej. para comparar con el precio neto), persistirlo tendría valor. Por ahora se deja como campo reservado.
+
+### 12.22 Riesgo de PUT a productos sfcom mal configurados — **Riesgo de datos**
+**Situación:** Dos casos de configuración incorrecta en `sfcom_listings` pueden provocar efectos no deseados: (a) si una fila se linkea con `sfcom_product_id=147` (el producto agrupado Despedida Gigantes) en lugar de sus hijos 215 o 216, el PUT de stock no tendrá efecto (WooCommerce no gestiona stock del padre agrupado); (b) si se linkea el producto 140 (Barrera Encierro, `stock_quantity: null`) como `confirmed`, el PUT activaría la gestión de stock en WooCommerce con efecto lateral no deseado.
+
+**Acción:** No es un bug de código sino de configuración de datos. Reglas a respetar: el producto 147 nunca debe ser `sfcom_product_id` (usar 215 o 216 según corresponda); el producto 140 no debe activarse como `confirmed` hasta aclarar su modelo de gestión de stock.
 
 ---
 
@@ -683,6 +873,9 @@ El hito final en `payments` se identifica por `comments === 'Pago final'` (no po
 ### 13.11 Panel de reorganización de reservas
 Cuando un admin hace click en un proveedor sin plazas suficientes desde el mapa de disponibilidad, se abre un panel de reorganización que permite reubicar reservas existentes a otros proveedores con disponibilidad.
 
+### 13.12 Datos sfcom separados de availability en tabla propia (sfcom_listings)
+Los campos de publicación en sfcom (`sfcom_status`, `sfcom_product_id`, `sfcom_variation_id`, `sfcom_service_name`, `sfcom_slots_listed`, `sfcom_public_price`) están en una tabla propia `sfcom_listings` con FK a `availability.id`, en lugar de como columnas de `availability`. Razón: son conceptos distintos — `availability` describe la capacidad física de un proveedor en un servicio; `sfcom_listings` describe cómo esa capacidad está publicada en WooCommerce. La separación permite que evolucionen de forma independiente y garantiza que un par proveedor/servicio tenga como máximo una entrada sfcom (UNIQUE en `availability_id`). Para las lecturas del panel, la vista `availability_with_sfcom` reconstruye el JOIN de forma transparente.
+
 ---
 
 ## 14. Convenciones de código
@@ -714,6 +907,7 @@ Cuando un admin hace click en un proveedor sin plazas suficientes desde el mapa 
 - FK siempre presentes y respetadas.
 - La BD es fuente de verdad. Nunca queda inconsistente.
 - La lógica calculada (totales, pagos finales) se persiste automáticamente sin intervención del admin.
+- Los writes de campos sfcom van siempre a `sfcom_listings`, nunca a `availability`. Las lecturas que necesiten ambos usan la vista `availability_with_sfcom`.
 
 ### Nomenclatura
 - IDs de reserva: `R` + 4 dígitos correlativo (ej: `R0001`, `R0012`). El JS calcula el siguiente con `select id order by id desc limit 1` → `parseInt(id.slice(1)) + 1`.

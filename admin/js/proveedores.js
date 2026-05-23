@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor } from './utils.js'
-import { syncStockToSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom } from './sfcom.js'
+import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -10,7 +10,7 @@ initSidebar()
 // ===== DATOS GLOBALES =====
 let todosProveedores   = (await supabase.from('providers').select('*').order('id')).data
 let todosServicios     = (await supabase.from('services').select('*').order('id')).data
-let todaDisponibilidad = (await supabase.from('availability').select('*')).data
+let todaDisponibilidad = (await supabase.from('availability_with_sfcom').select('*')).data
 let todosPayments      = (await supabase.from('payments').select('*')).data
 let todasReservas      = (await supabase.from('reservations').select('*')).data
 
@@ -21,6 +21,19 @@ let hitosProvTemp        = []
 let ultimoCampoActivo    = 'precio'
 
 const hoy = new Date().toISOString().split('T')[0]
+
+// pares: [{providerId, serviceId}]
+// Computa el stock esperado (sin deltas — solo muestra el estado actual post-guardado) y
+// muestra el modal consultivo. Devuelve true si el admin confirma, false si cancela.
+async function confirmarStockSfcom(pares) {
+    const cambios = []
+    for (const { providerId, serviceId } of pares) {
+        const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta: 0, allDelta: 0 })
+        if (cambio) cambios.push(cambio)
+    }
+    if (cambios.length === 0) return true
+    return mostrarModalConfirmacionSfcom(cambios)
+}
 
 // ===== REFERENCIAS DOM =====
 const inputProveedorId       = document.getElementById('inputProveedorId')
@@ -84,6 +97,9 @@ document.getElementById('btnConfirmarSfcom').addEventListener('click', async () 
         }
         sfcomEstadoLocal = 'confirmed'
         actualizarSeccionSfcom(todaDisponibilidad.find(d => d.id === servicioEditandoId))
+        // Sincronización inicial: stock puede estar en estado desconocido en sfcom.
+        const sfcomOk = await confirmarStockSfcom([{ providerId: proveedorActual.id, serviceId }])
+        if (sfcomOk) await syncStockToSfcom(supabase, proveedorActual.id, serviceId)
     } else if (result?.notInList && result?.name) {
         sfcomNombreProducto.value    = result.name
         if (disp) disp.sfcom_service_name = result.name
@@ -97,16 +113,14 @@ document.getElementById('btnCancelarSolicitud').addEventListener('click', async 
     if (!confirm('¿Cancelar la solicitud de alta en sfcom para este servicio? Se borrarán los datos sfcom.')) return
     const nombreProducto = sfcomNombreProducto.value.trim() || '—'
     if (servicioEditandoId) {
-        await supabase.from('availability').update({
-            sfcom_status:       null,
-            sfcom_service_name: null,
-            sfcom_slots_listed: null
-        }).eq('id', servicioEditandoId)
+        await supabase.from('sfcom_listings').delete().eq('availability_id', servicioEditandoId)
         const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
         if (disp) {
             disp.sfcom_status       = null
             disp.sfcom_service_name = null
             disp.sfcom_slots_listed = null
+            disp.sfcom_product_id   = null
+            disp.sfcom_variation_id = null
         }
     }
     mostrarModalCorreoCancelacionSfcom(nombreProducto, proveedorActual)
@@ -133,12 +147,57 @@ document.getElementById('btnEditarNombreSfcom').addEventListener('click', async 
     const nuevoNombre = await editarNombreSfcom(disp.sfcom_service_name, serviceId, excludeNames)
     if (!nuevoNombre?.name) return
     const nombre = nuevoNombre.name
-    const { error } = await supabase.from('availability')
+    const { error } = await supabase.from('sfcom_listings')
         .update({ sfcom_service_name: nombre })
-        .eq('id', servicioEditandoId)
+        .eq('availability_id', servicioEditandoId)
     if (error) { alert('Error al actualizar nombre: ' + error.message); return }
     disp.sfcom_service_name = nombre
     sfcomNombreProducto.value = nombre
+})
+
+document.getElementById('btnDarDeBajaSfcom').addEventListener('click', async () => {
+    if (!servicioEditandoId || !proveedorActual) return
+    const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (!disp || disp.sfcom_status !== 'confirmed') return
+
+    const resultado = await mostrarModalCorreoBajaSfcom(disp.sfcom_service_name, proveedorActual)
+    if (resultado !== 'ok') return
+
+    await supabase.from('sfcom_listings').update({ sfcom_status: 'deactivation_pending' }).eq('availability_id', servicioEditandoId)
+    disp.sfcom_status = 'deactivation_pending'
+    sfcomEstadoLocal  = 'deactivation_pending'
+    _actualizarEstadoSfcomUI()
+})
+
+document.getElementById('btnConfirmarBajaSfcom').addEventListener('click', async () => {
+    if (!servicioEditandoId || !proveedorActual) return
+    const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (!disp || disp.sfcom_status !== 'deactivation_pending') return
+    if (!disp.sfcom_product_id) {
+        alert('No hay product_id registrado. Limpia los datos sfcom manualmente si el producto ya no existe en sfcom.')
+        return
+    }
+
+    const check = await verificarBajaSfcom(disp.sfcom_product_id, disp.sfcom_variation_id)
+    if (!check.ok) {
+        alert(`No se pudo verificar el estado del producto en sfcom: ${check.error}`)
+        return
+    }
+    if (!check.gone) {
+        alert(`El producto sigue disponible en sfcom con stock = ${check.stock}. Espera a que Hilario lo retire antes de confirmar la baja.`)
+        return
+    }
+
+    const { error } = await supabase.from('sfcom_listings').delete().eq('availability_id', servicioEditandoId)
+    if (error) { alert('Error al limpiar datos sfcom: ' + error.message); return }
+
+    disp.sfcom_status       = null
+    disp.sfcom_service_name = null
+    disp.sfcom_slots_listed = null
+    disp.sfcom_product_id   = null
+    disp.sfcom_variation_id = null
+    sfcomEstadoLocal        = null
+    actualizarSeccionSfcom(disp)
 })
 
 function _variacionAuto(serviceId) {
@@ -392,6 +451,12 @@ inputServicioId.addEventListener('input', () => {
             + ' o se creará al añadir al proveedor'
         servicioDescStatus.style.color = 'var(--accent-warn)'
     }
+    // Mostrar sección sfcom para nuevo servicio si no hay una fila de availability activa
+    if (!servicioEditandoId && val) {
+        actualizarSeccionSfcom(null, true)
+    } else if (!servicioEditandoId && !val) {
+        actualizarSeccionSfcom(null)
+    }
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
@@ -502,21 +567,21 @@ function actualizarBtnServicio() {
     btnGuardarServicio.disabled = !(tieneProveedor && tieneServicio && tienePlazas)
 }
 
-function actualizarSeccionSfcom(disp) {
-    if (!disp) {
+function actualizarSeccionSfcom(disp, modoNuevo = false) {
+    if (!disp && !modoNuevo) {
         sfcomSection.style.display = 'none'
         sfcomEstadoLocal           = null
         return
     }
-    sfcomEstadoLocal = disp.sfcom_status ?? null
+    sfcomEstadoLocal = disp ? (disp.sfcom_status ?? null) : null
     sfcomSection.style.display = 'block'
 
-    sfcomNombreProducto.value  = disp.sfcom_service_name ?? ''
-    sfcomNombreVariacion.value = _variacionAuto(disp.service_id)
-    sfcomSlotsListed.value     = disp.sfcom_slots_listed ?? ''
+    sfcomNombreProducto.value  = disp?.sfcom_service_name ?? ''
+    sfcomNombreVariacion.value = _variacionAuto(disp?.service_id ?? inputServicioId.value.trim().toUpperCase())
+    sfcomSlotsListed.value     = disp?.sfcom_slots_listed ?? ''
     sfcomPrecioPublico.value   = ''  // never stored in DB, always empty on load
-    sfcomProductId.value       = disp.sfcom_product_id   ?? ''
-    sfcomVariationId.value     = disp.sfcom_variation_id ?? ''
+    sfcomProductId.value       = disp?.sfcom_product_id   ?? ''
+    sfcomVariationId.value     = disp?.sfcom_variation_id ?? ''
 
     _actualizarEstadoSfcomUI()
 }
@@ -526,6 +591,8 @@ function _actualizarEstadoSfcomUI() {
     const btnCancelar  = document.getElementById('btnCancelarSolicitud')
     const btnConfirmar = document.getElementById('btnConfirmarSfcom')
     const btnEditar    = document.getElementById('btnEditarNombreSfcom')
+    const btnDarBaja   = document.getElementById('btnDarDeBajaSfcom')
+    const btnConfBaja  = document.getElementById('btnConfirmarBajaSfcom')
 
     if (sfcomEstadoLocal === null) {
         sfcomSummaryLabel.textContent = 'Alta en sfcom'
@@ -537,6 +604,8 @@ function _actualizarEstadoSfcomUI() {
         sfcomEstadoLabel.style.color  = 'var(--subtle)'
         btnConfirmar.style.display    = 'none'
         btnEditar.style.display       = 'none'
+        if (btnDarBaja)  btnDarBaja.style.display  = 'none'
+        if (btnConfBaja) btnConfBaja.style.display  = 'none'
         sfcomNombreProducto.disabled  = false
     } else if (sfcomEstadoLocal === 'pending') {
         sfcomSummaryLabel.textContent = 'Listado en sfcom'
@@ -550,9 +619,11 @@ function _actualizarEstadoSfcomUI() {
         sfcomEstadoLabel.style.color  = 'var(--accent-warn)'
         btnConfirmar.style.display    = 'inline-block'
         btnEditar.style.display       = 'none'
+        if (btnDarBaja)  btnDarBaja.style.display  = 'none'
+        if (btnConfBaja) btnConfBaja.style.display  = 'none'
         sfcomNombreProducto.disabled  = false
         sfcomDetalles.open            = true
-    } else {  // confirmed
+    } else if (sfcomEstadoLocal === 'confirmed') {
         sfcomSummaryLabel.textContent = 'Listado en sfcom'
         sfcomSummaryLabel.style.color = 'var(--accent-ok)'
         sfcomBadge.className          = 'sfcom-badge sfcom-badge--confirmed'
@@ -564,7 +635,25 @@ function _actualizarEstadoSfcomUI() {
         sfcomEstadoLabel.style.color  = 'var(--accent-ok)'
         btnConfirmar.style.display    = 'none'
         btnEditar.style.display       = 'inline-flex'
+        if (btnDarBaja)  btnDarBaja.style.display  = 'inline-block'
+        if (btnConfBaja) btnConfBaja.style.display  = 'none'
         sfcomNombreProducto.disabled  = true
+    } else {  // deactivation_pending
+        sfcomSummaryLabel.textContent = 'Listado en sfcom'
+        sfcomSummaryLabel.style.color = 'var(--accent-ok)'
+        sfcomBadge.className          = 'sfcom-badge sfcom-badge--deactivation'
+        sfcomBadge.textContent        = '⏳ Baja solicitada'
+        sfcomBadge.style.display      = 'inline-flex'
+        btnSolicitar.style.display    = 'none'
+        btnCancelar.style.display     = 'none'
+        sfcomEstadoLabel.textContent  = 'Baja pendiente'
+        sfcomEstadoLabel.style.color  = 'var(--accent-warn)'
+        btnConfirmar.style.display    = 'none'
+        btnEditar.style.display       = 'none'
+        if (btnDarBaja)  btnDarBaja.style.display  = 'none'
+        if (btnConfBaja) btnConfBaja.style.display  = 'inline-block'
+        sfcomNombreProducto.disabled  = true
+        sfcomDetalles.open            = true
     }
 }
 
@@ -615,11 +704,12 @@ async function solicitarAltaSfcom() {
     sfcomEstadoLocal = 'pending'
     _actualizarEstadoSfcomUI()
     if (servicioEditandoId) {
-        const { error } = await supabase.from('availability').update({
+        const { error } = await supabase.from('sfcom_listings').upsert({
+            availability_id:    servicioEditandoId,
             sfcom_service_name: nombre,
             sfcom_slots_listed: plazas,
             sfcom_status:       'pending'
-        }).eq('id', servicioEditandoId)
+        }, { onConflict: 'availability_id' })
         if (!error) {
             const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
             if (disp) {
@@ -695,6 +785,14 @@ btnGuardarServicio.addEventListener('click', async () => {
 
     // MODO EDICIÓN MÚLTIPLE
     if (serviciosEditandoIds.length > 1) {
+        // Modal consultivo antes de escribir (provider_id/service_id no cambian en edición múltiple)
+        const paresMulti = serviciosEditandoIds
+            .map(id => todaDisponibilidad.find(d => d.id === id))
+            .filter(Boolean)
+            .map(d => ({ providerId: d.provider_id, serviceId: d.service_id }))
+        const sfcomOkMulti = await confirmarStockSfcom(paresMulti)
+        if (!sfcomOkMulti) return
+
         for (const dispId of serviciosEditandoIds) {
             const dispActual = todaDisponibilidad.find(d => d.id === dispId)
             if (!dispActual) continue
@@ -711,9 +809,8 @@ btnGuardarServicio.addEventListener('click', async () => {
             )
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
-        for (const dispId of serviciosEditandoIds) {
-            const disp = todaDisponibilidad.find(d => d.id === dispId)
-            if (disp) await syncStockToSfcom(supabase, disp.provider_id, disp.service_id)
+        for (const { providerId, serviceId } of paresMulti) {
+            await syncStockToSfcom(supabase, providerId, serviceId)
         }
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorActual.id)
@@ -768,28 +865,43 @@ btnGuardarServicio.addEventListener('click', async () => {
         s.id === svcId ? { ...s, description: descSvc, comments: commSvc } : s
     )
 
+    // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
+    const sfcomOkSingle = await confirmarStockSfcom([{ providerId: proveedorActual.id, serviceId: servicioId }])
+    if (!sfcomOkSingle) return
+
     if (servicioEditandoId) {
-        const updatePayload = {
+        const availPayload = {
             total_slots:    plazas,
             price_per_slot: isNaN(precio) ? 0 : precio,
             billing_model:  modelo
         }
-        // sfcom: pending → guardar nombre/plazas/status; confirmed → solo plazas
-        // sfcomPrecioPublico nunca va a la BD (solo para el correo)
-        if (sfcomEstadoLocal === 'pending') {
-            updatePayload.sfcom_service_name = sfcomNombreProducto.value.trim() || null
-            updatePayload.sfcom_slots_listed = parseInt(sfcomSlotsListed.value) || null
-            updatePayload.sfcom_status       = sfcomNombreProducto.value.trim() ? 'pending' : null
-        } else if (sfcomEstadoLocal === 'confirmed') {
-            updatePayload.sfcom_slots_listed = parseInt(sfcomSlotsListed.value) || null
-        }
-
         const { error } = await supabase.from('availability')
-            .update(updatePayload)
+            .update(availPayload)
             .eq('id', servicioEditandoId)
         if (error) { alert('Error al actualizar: ' + error.message); return }
+
+        // sfcom: pending → guardar nombre/plazas/status; confirmed → solo plazas
+        // sfcomPrecioPublico nunca va a la BD (solo para el correo)
+        let sfcomUpdate = {}
+        if (sfcomEstadoLocal === 'pending') {
+            sfcomUpdate = {
+                sfcom_service_name: sfcomNombreProducto.value.trim() || null,
+                sfcom_slots_listed: parseInt(sfcomSlotsListed.value) || null,
+                sfcom_status:       sfcomNombreProducto.value.trim() ? 'pending' : null
+            }
+            await supabase.from('sfcom_listings').upsert(
+                { availability_id: servicioEditandoId, ...sfcomUpdate },
+                { onConflict: 'availability_id' }
+            )
+        } else if (sfcomEstadoLocal === 'confirmed') {
+            sfcomUpdate = { sfcom_slots_listed: parseInt(sfcomSlotsListed.value) || null }
+            await supabase.from('sfcom_listings')
+                .update(sfcomUpdate)
+                .eq('availability_id', servicioEditandoId)
+        }
+
         todaDisponibilidad = todaDisponibilidad.map(d =>
-            d.id === servicioEditandoId ? { ...d, ...updatePayload } : d
+            d.id === servicioEditandoId ? { ...d, ...availPayload, ...sfcomUpdate } : d
         )
     } else {
         const yaExiste = todaDisponibilidad.find(d =>
@@ -799,15 +911,25 @@ btnGuardarServicio.addEventListener('click', async () => {
             alert(`Este proveedor ya tiene el servicio ${servicioId}. Selecciónalo en la tabla para editarlo.`)
             return
         }
-        const { data, error } = await supabase.from('availability').insert({
+        const { data: nuevaDisp, error } = await supabase.from('availability').insert({
             provider_id:    proveedorActual.id,
             service_id:     servicioId,
             total_slots:    plazas,
             price_per_slot: isNaN(precio) ? 0 : precio,
             billing_model:  modelo
-        }).select()
+        }).select().single()
         if (error) { alert('Error al añadir servicio: ' + error.message); return }
-        todaDisponibilidad.push(data[0])
+
+        let sfcomInsert = {}
+        if (sfcomEstadoLocal === 'pending') {
+            sfcomInsert = {
+                sfcom_service_name: sfcomNombreProducto.value.trim() || null,
+                sfcom_slots_listed: parseInt(sfcomSlotsListed.value) || null,
+                sfcom_status:       sfcomNombreProducto.value.trim() ? 'pending' : null
+            }
+            await supabase.from('sfcom_listings').insert({ availability_id: nuevaDisp.id, ...sfcomInsert })
+        }
+        todaDisponibilidad.push({ ...nuevaDisp, ...sfcomInsert })
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
@@ -1000,6 +1122,11 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
         if (!disp) continue
 
         const { service_id: servicioId, provider_id: proveedorId } = disp
+
+        if (disp.sfcom_status !== null && disp.sfcom_status !== undefined) {
+            noEliminados.push(`${servicioId} (tiene sfcom activo: "${disp.sfcom_status}" — da de baja en sfcom primero)`)
+            continue
+        }
 
         const reservasActivas = todasReservas.filter(r =>
             r.provider_id === proveedorId &&
@@ -1604,15 +1731,21 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 updateData.price_per_slot = row.price_per_slot
                 updateData.billing_model  = row.billing_model
             }
-            if (row.sfcomListar && row.sfcomNombreProducto) {
-                updateData.sfcom_service_name = row.sfcomNombreProducto
-                updateData.sfcom_slots_listed = parseInt(row.sfcomPlazas) || null
-                updateData.sfcom_status       = 'pending'
-                // sfcomPrecio es UI-only, nunca va a la BD
-            }
             const { error } = await supabase.from('availability').update(updateData).eq('id', row.dispId)
             if (error) { alert(`Error al actualizar ${row.serviceId}: ${error.message}`); continue }
-            todaDisponibilidad = todaDisponibilidad.map(d => d.id === row.dispId ? { ...d, ...updateData } : d)
+            let sfcomUpdateMulti = {}
+            if (row.sfcomListar && row.sfcomNombreProducto) {
+                sfcomUpdateMulti = {
+                    sfcom_service_name: row.sfcomNombreProducto,
+                    sfcom_slots_listed: parseInt(row.sfcomPlazas) || null,
+                    sfcom_status:       'pending'
+                }
+                await supabase.from('sfcom_listings').upsert(
+                    { availability_id: row.dispId, ...sfcomUpdateMulti },
+                    { onConflict: 'availability_id' }
+                )
+            }
+            todaDisponibilidad = todaDisponibilidad.map(d => d.id === row.dispId ? { ...d, ...updateData, ...sfcomUpdateMulti } : d)
             if (row.modified) pairsSync.push({ provider_id: proveedorId, service_id: row.serviceId })
         } else if (!row.isExisting && row.active && row.serviceId) {
             // INSERT nuevo servicio
@@ -1631,15 +1764,18 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 price_per_slot: row.price_per_slot ?? 0,
                 billing_model:  row.billing_model
             }
-            if (row.sfcomListar && row.sfcomNombreProducto) {
-                insertData.sfcom_service_name = row.sfcomNombreProducto
-                insertData.sfcom_slots_listed = parseInt(row.sfcomPlazas) || null
-                insertData.sfcom_status       = 'pending'
-                // sfcomPrecio es UI-only, nunca va a la BD
-            }
             const { data, error } = await supabase.from('availability').insert(insertData).select()
             if (error) { alert(`Error al añadir ${row.serviceId}: ${error.message}`); continue }
-            todaDisponibilidad.push(data[0])
+            let sfcomInsertMulti = {}
+            if (row.sfcomListar && row.sfcomNombreProducto) {
+                sfcomInsertMulti = {
+                    sfcom_service_name: row.sfcomNombreProducto,
+                    sfcom_slots_listed: parseInt(row.sfcomPlazas) || null,
+                    sfcom_status:       'pending'
+                }
+                await supabase.from('sfcom_listings').insert({ availability_id: data[0].id, ...sfcomInsertMulti })
+            }
+            todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti })
             pairsSync.push({ provider_id: proveedorId, service_id: row.serviceId })
         }
     }
@@ -1648,10 +1784,19 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
     for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
 
     // Correo a Hilario si hay solicitudes sfcom pendientes
-    const sfcomSolicitados = multipleRows.filter(r => r.sfcomListar && r.sfcomNombreProducto && r.active)
-    if (sfcomSolicitados.length > 0) {
-        // Confirmar si hay múltiples nombres de producto distintos
-        const nombresUnicos = [...new Set(sfcomSolicitados.map(r => r.sfcomNombreProducto))]
+    const sfcomSolicitados = multipleRows.filter(r => r.sfcomListar && r.active)
+    const sfcomSinNombre   = sfcomSolicitados.filter(r => !r.sfcomNombreProducto)
+    if (sfcomSinNombre.length > 0) {
+        alert(
+            `Los siguientes servicios están marcados para sfcom pero les falta el nombre del producto:\n\n` +
+            sfcomSinNombre.map(r => r.serviceId || '(nuevo)').join('\n') +
+            '\n\nIntroduce el nombre antes de guardar.'
+        )
+        return
+    }
+    const sfcomConNombre = sfcomSolicitados.filter(r => r.sfcomNombreProducto)
+    if (sfcomConNombre.length > 0) {
+        const nombresUnicos = [...new Set(sfcomConNombre.map(r => r.sfcomNombreProducto))]
         if (nombresUnicos.length > 1) {
             const ok = confirm(
                 `Vas a solicitar alta para ${nombresUnicos.length} productos diferentes en sfcom:\n\n` +
@@ -1660,15 +1805,16 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
             )
             if (!ok) { return }  // se queda abierto el dialog para corregir
         }
-        // Agrupar por nombre de producto para el correo
-        const variaciones = sfcomSolicitados.map(r => ({
+        const variaciones = sfcomConNombre.map(r => ({
             serviceId:       r.serviceId,
             nombreProducto:  r.sfcomNombreProducto,
             nombreVariacion: r.sfcomNombreVariacion,
             plazas:          r.sfcomPlazas || null,
             precio:          r.sfcomPrecio || null
         }))
-        mostrarModalCorreoHilario(nombresUnicos[0], variaciones, proveedorActual)
+        // Texto de asunto genérico cuando hay múltiples productos distintos
+        const nombrePrimary = nombresUnicos.length === 1 ? nombresUnicos[0] : 'nuevos productos'
+        mostrarModalCorreoHilario(nombrePrimary, variaciones, proveedorActual)
     }
 
     document.getElementById('dlgMultiple').close()

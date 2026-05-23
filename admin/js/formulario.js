@@ -3,25 +3,43 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
-import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia } from './sfcom.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, extraerNombreProducto, extraerDia } from './sfcom.js'
 
 await requireAuth()
 initFacturacion(supabase)
 document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
 
+// ─── Helper: modal consultivo de stock sfcom pre-save ────────────────────────
+// pares: [{ providerId, serviceId, sfcomDelta, allDelta }]
+// sfcomDelta: plazas de reservas sfcom (sfcom_order_ref NOT NULL) que cambian
+// allDelta:   plazas totales que cambian (sfcom + propias)
+// Calcula el stock esperado para cada par con sfcom confirmado y muestra un
+// modal consultivo. Devuelve true si el admin confirma o si ningún par tiene
+// sfcom activo. Devuelve false si el admin cancela (abortar operación).
+async function confirmarStockSfcom(pares) {
+    const cambios = []
+    for (const { providerId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
+        const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta, allDelta })
+        if (cambio) cambios.push(cambio)
+    }
+    if (cambios.length === 0) return true
+    return mostrarModalConfirmacionSfcom(cambios)
+}
+
 // ===== DATOS GLOBALES =====
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
 const { data: servicios }      = await supabase.from('services').select('*').order('day')
-const { data: disponibilidad } = await supabase.from('availability').select('*')
+const { data: disponibilidad } = await supabase.from('availability_with_sfcom').select('*')
 const { data: providers }      = await supabase.from('providers').select('*').order('id')
 let todasReservas              = (await supabase.from('reservations').select('*')).data
 
 initPropuesta(supabase, servicios, providers)
 
-let clienteActual     = null
-let reservaEditandoId = null
-let hitosClienteTemp  = []
+let clienteActual      = null
+let reservaEditandoId  = null
+let solicitudSfcomRef  = null   // sfcom_order_ref de la solicitud activa (null si no es de sfcom)
+let hitosClienteTemp   = []
 let _cargandoSolicitud = false
 const hoy             = new Date().toISOString().split('T')[0]
 const fmt             = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
@@ -145,6 +163,7 @@ function limpiarCamposCliente() {
 
 function limpiarFormularioReserva() {
     reservaEditandoId = null
+    solicitudSfcomRef = null
     selectServicio.value      = ''
     selectServicio.disabled   = false
     selectProveedor.innerHTML = '<option value="">— Selecciona servicio primero —</option>'
@@ -533,6 +552,39 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             .map(r => [`${r.provider_id}|${r.service_id}`, { proveedorId: r.provider_id, servicioId: r.service_id }])
     ).values()]
 
+    // Modal consultivo cuando el cambio altera el conteo de reservas activas en sfcom
+    if (nuevoEstado === 'Cancelada') {
+        // Cancelar reservas activas → stock sube (deltas negativos de plazas activas)
+        const pairsParaModal = [...new Map(
+            todasReservas.filter(r => ids.includes(r.id) && r.status !== 'Cancelada')
+                .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
+        ).values()].map(p => {
+            const activas    = todasReservas.filter(r => ids.includes(r.id) && r.provider_id === p.providerId && r.service_id === p.serviceId && r.status !== 'Cancelada')
+            const allDelta   = -activas.reduce((s, r) => s + (r.slots ?? 0), 0)
+            const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+            return { ...p, sfcomDelta, allDelta }
+        })
+        if (pairsParaModal.length > 0) {
+            const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+            if (!sfcomOk) return
+        }
+    } else {
+        // Reactivar reservas canceladas → stock baja (deltas positivos de plazas que vuelven a ser activas)
+        const pairsParaModal = [...new Map(
+            todasReservas.filter(r => ids.includes(r.id) && r.status === 'Cancelada')
+                .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
+        ).values()].map(p => {
+            const reactivadas = todasReservas.filter(r => ids.includes(r.id) && r.provider_id === p.providerId && r.service_id === p.serviceId && r.status === 'Cancelada')
+            const allDelta    = reactivadas.reduce((s, r) => s + (r.slots ?? 0), 0)
+            const sfcomDelta  = reactivadas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+            return { ...p, sfcomDelta, allDelta }
+        })
+        if (pairsParaModal.length > 0) {
+            const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+            if (!sfcomOk) return
+        }
+    }
+
     const { error } = await supabase.from('reservations').update({ status: nuevoEstado }).in('id', ids)
     if (!error && clienteActual) {
         todasReservas = todasReservas.map(r =>
@@ -553,6 +605,21 @@ async function eliminarSeleccionadas() {
         .map(chk => chk.closest('tr').dataset.id)
     if (ids.length === 0) return
     if (!confirm(`¿Eliminar ${ids.length} reserva(s) definitivamente?`)) return
+
+    // Modal consultivo: eliminar reservas activas sube el stock en sfcom
+    const pairsParaModal = [...new Map(
+        todasReservas.filter(r => ids.includes(r.id) && r.status !== 'Cancelada')
+            .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
+    ).values()].map(p => {
+        const activas    = todasReservas.filter(r => ids.includes(r.id) && r.provider_id === p.providerId && r.service_id === p.serviceId && r.status !== 'Cancelada')
+        const allDelta   = -activas.reduce((s, r) => s + (r.slots ?? 0), 0)
+        const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+        return { ...p, sfcomDelta, allDelta }
+    })
+    if (pairsParaModal.length > 0) {
+        const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+        if (!sfcomOk) return
+    }
 
     const afectadas = [...todasReservas
         .filter(r => ids.includes(r.id))
@@ -639,6 +706,35 @@ btnAnadir.addEventListener('click', async () => {
         const proveedorIdAnterior = reservaOriginal?.provider_id
         const servicioIdAnterior  = reservaOriginal?.service_id
 
+        // Calcular deltas para el modal consultivo antes de guardar
+        const pairsParaModal = []
+        const parCambia  = proveedorId !== proveedorIdAnterior || servicioId !== servicioIdAnterior
+        const esSfcomRes = Boolean(reservaOriginal?.sfcom_order_ref)
+        if (parCambia) {
+            const eraActiva  = reservaOriginal?.status !== 'Cancelada'
+            const seraActiva = estado !== 'Cancelada'
+            if (eraActiva) pairsParaModal.push({
+                providerId: proveedorIdAnterior, serviceId: servicioIdAnterior,
+                sfcomDelta: esSfcomRes ? -(reservaOriginal?.slots ?? 0) : 0,
+                allDelta:   -(reservaOriginal?.slots ?? 0)
+            })
+            if (seraActiva) pairsParaModal.push({
+                providerId: proveedorId, serviceId: servicioId,
+                sfcomDelta: esSfcomRes ? plazas : 0,
+                allDelta:   plazas
+            })
+        } else {
+            const eraActiva  = reservaOriginal?.status !== 'Cancelada'
+            const seraActiva = estado !== 'Cancelada'
+            const allDelta   = (seraActiva ? plazas : 0) - (eraActiva ? (reservaOriginal?.slots ?? 0) : 0)
+            const sfcomDelta = esSfcomRes ? allDelta : 0
+            if (allDelta !== 0) pairsParaModal.push({ providerId: proveedorId, serviceId: servicioId, sfcomDelta, allDelta })
+        }
+        if (pairsParaModal.length > 0) {
+            const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+            if (!sfcomOk) return
+        }
+
         const { error } = await supabase.from('reservations').update({
             service_id: servicioId, provider_id: proveedorId,
             slots: plazas, price_per_slot: precio, status: estado, comments
@@ -678,6 +774,13 @@ btnAnadir.addEventListener('click', async () => {
             if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
         }
 
+        const sfcomOk = await confirmarStockSfcom([{
+            providerId: proveedorId, serviceId: servicioId,
+            sfcomDelta: solicitudSfcomRef ? plazas : 0,
+            allDelta:   plazas
+        }])
+        if (!sfcomOk) return
+
         if (!clienteActual) {
             const nombre = inputName.value.trim()
             if (!confirm(`¿Crear cliente nuevo "${clienteId}"${nombre ? ' (' + nombre + ')' : ''}?`)) return
@@ -706,7 +809,8 @@ btnAnadir.addEventListener('click', async () => {
         const { error: errReserva } = await supabase.from('reservations').insert({
             id: nuevaId, client_id: clienteActual.id,
             provider_id: proveedorId, service_id: servicioId,
-            slots: plazas, price_per_slot: precio, status: estado, comments
+            slots: plazas, price_per_slot: precio, status: estado, comments,
+            sfcom_order_ref: solicitudSfcomRef || null
         })
         if (errReserva) { alert('Error al crear reserva: ' + errReserva.message); return }
 
@@ -1435,6 +1539,33 @@ window.confirmarReorganizacion = async function() {
         })
     )
 
+    // Modal consultivo de sfcom para los pares afectados por la reorganización
+    const sfcomDeltasMap = new Map()
+    Object.entries(reorgCambios).forEach(([id, cambio]) => {
+        const r = todasReservas.find(r => r.id === id)
+        if (!r) return
+        const newProviderId = cambio.provider_id ?? r.provider_id
+        const newServiceId  = cambio.service_id  ?? r.service_id
+        if (newProviderId === r.provider_id && newServiceId === r.service_id) return
+        const isSfcom = Boolean(r.sfcom_order_ref)
+        const slots   = r.slots ?? 0
+        const origKey = `${r.provider_id}|${r.service_id}`
+        const newKey  = `${newProviderId}|${newServiceId}`
+        const orig = sfcomDeltasMap.get(origKey) ?? { providerId: r.provider_id, serviceId: r.service_id, sfcomDelta: 0, allDelta: 0 }
+        orig.allDelta   -= slots
+        orig.sfcomDelta -= isSfcom ? slots : 0
+        sfcomDeltasMap.set(origKey, orig)
+        const dest = sfcomDeltasMap.get(newKey) ?? { providerId: newProviderId, serviceId: newServiceId, sfcomDelta: 0, allDelta: 0 }
+        dest.allDelta   += slots
+        dest.sfcomDelta += isSfcom ? slots : 0
+        sfcomDeltasMap.set(newKey, dest)
+    })
+    const sfcomPairsReorg = [...sfcomDeltasMap.values()].filter(p => p.allDelta !== 0 || p.sfcomDelta !== 0)
+    if (sfcomPairsReorg.length > 0) {
+        const sfcomOk = await confirmarStockSfcom(sfcomPairsReorg)
+        if (!sfcomOk) return
+    }
+
     const aplicados = []
     for (const [id, cambio] of Object.entries(reorgCambios)) {
         const updateData = {}
@@ -1500,19 +1631,33 @@ window.confirmarReorganizacion = async function() {
     alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }
 
-// Infiere service_id y provider_id desde el mapeo de availability
-// Busca por sfcom_service_name (coincide con level) y filtra por día si es encierro
+// Infiere service_id y provider_id desde el mapeo de availability.
+// El nombre (sfcom_service_name) es la búsqueda primaria.
+// Fallback de prefix-scan para solicitudes antiguas donde level contiene
+// el nombre completo de variación ("Balcón Estafeta - Viernes 10 de Julio...").
 function _inferirDesdeSfcom(level, day) {
     if (!level) return { serviceId: null, providerId: null }
 
-    // Buscar todas las filas con ese nombre de servicio en sfcom
-    const filas = disponibilidad.filter(d =>
-        d.sfcom_service_name &&
-        d.sfcom_service_name.toLowerCase() === level.toLowerCase()
+    const norm = s => s.toLowerCase()
+    let filas = disponibilidad.filter(d =>
+        d.sfcom_service_name && norm(d.sfcom_service_name) === norm(level)
     )
+
+    // Fallback para registros antiguos con nombre completo de variación
+    if (!filas.length) {
+        const nombres        = [...new Set(disponibilidad.filter(d => d.sfcom_service_name).map(d => d.sfcom_service_name))]
+        const nombreExtraido = extraerNombreProducto(level, nombres)
+        if (nombreExtraido) {
+            filas = disponibilidad.filter(d =>
+                d.sfcom_service_name && norm(d.sfcom_service_name) === norm(nombreExtraido)
+            )
+        }
+    }
+
     if (!filas.length) return { serviceId: null, providerId: null }
 
-    // Si hay varias (encierros por día), filtrar por día
+    // Varias filas con el mismo nombre (e.g. "Balcón Estafeta" con varios días):
+    // intentar filtrar por día
     if (filas.length > 1 && day) {
         const filaDia = filas.find(d => d.service_id === 'ENCIERRO_' + day)
         if (filaDia) return { serviceId: filaDia.service_id, providerId: filaDia.provider_id }
@@ -1598,11 +1743,10 @@ async function cargarSolicitudes() {
             data-telefono="${(s.client_phone || '').replace(/"/g, '&quot;')}"
             data-address="${(s.client_address || '').replace(/"/g, '&quot;')}"
             data-level="${(s.level || '').replace(/"/g, '&quot;')}"
+            data-service-id="${(s.service_id || '').replace(/"/g, '&quot;')}"
             data-day="${s.day || ''}"
             data-slots="${s.slots || ''}"
             data-price-per-slot="${s.price_per_slot || ''}"
-            data-sfcom-product-id="${s.sfcom_product_id || ''}"
-            data-sfcom-variation-id="${s.sfcom_variation_id || ''}"
             data-comments="${comentario.replace(/"/g, '&quot;')}">
             <td>${badge}${fecha}</td>
             <td>${s.client_name || '—'}</td>
@@ -1634,6 +1778,7 @@ async function cargarSolicitudes() {
 
 async function cargarDesdeSolicitud(data) {
     const esSfcom = _esSfcom(data.source)
+    solicitudSfcomRef = esSfcom ? (data.source || null) : null
 
     limpiarCamposCliente()
 
@@ -1674,12 +1819,21 @@ async function cargarDesdeSolicitud(data) {
     if (data.slots) inputPlazas.value = data.slots
 
     if (esSfcom) {
-        // Inferir servicio y proveedor desde el mapeo de sfcom
+        // Nombre como búsqueda primaria; service_id almacenado solo como verificación
         const { serviceId, providerId } = _inferirDesdeSfcom(data.level, data.day)
+
+        // Cross-check: si hay service_id guardado y no coincide con el inferido por nombre → modal de aviso
+        if (serviceId && data.serviceId && serviceId !== data.serviceId) {
+            _mostrarModalAvisoSolicitud(
+                `Inconsistencia detectada en esta solicitud: el servicio inferido por el nombre del producto (${serviceId}) ` +
+                `no coincide con el que estaba guardado (${data.serviceId}). ` +
+                `Se usará el inferido por nombre — verifica manualmente.`
+            )
+        }
+
         if (serviceId) {
             selectServicio.value = serviceId
             selectServicio.dispatchEvent(new Event('change'))
-            // Esperar a que se actualicen los proveedores y luego seleccionar
             if (providerId) {
                 setTimeout(() => {
                     selectProveedor.value = providerId
@@ -1700,13 +1854,21 @@ async function cargarDesdeSolicitud(data) {
             }
         }
     } else {
-        // Solicitud web: inferir solo servicio desde slug
+        // Solicitud web: inferir servicio desde slug
         const serviceIdInferido = _inferirServiceId(data.level, data.day)
         if (serviceIdInferido) {
             const existe = servicios.find(s => s.id === serviceIdInferido)
             if (existe) {
                 selectServicio.value = serviceIdInferido
                 selectServicio.dispatchEvent(new Event('change'))
+                // Si solo hay un proveedor para este servicio, auto-seleccionarlo
+                const proveedoresServicio = disponibilidad.filter(d => d.service_id === serviceIdInferido)
+                if (proveedoresServicio.length === 1) {
+                    setTimeout(() => {
+                        selectProveedor.value = proveedoresServicio[0].provider_id
+                        selectProveedor.dispatchEvent(new Event('change'))
+                    }, 100)
+                }
             }
         }
         // Comentarios de reserva
@@ -1720,51 +1882,184 @@ async function cargarDesdeSolicitud(data) {
     document.getElementById('bloque-cliente').scrollIntoView({ behavior: 'smooth' })
 }
 
-// Registra pedidos nuevos de sfcom en reservation_requests
-// Se llama al cargar el panel con el resultado de checkSfcomOrders
+// ─── Modales de solicitud sfcom ───────────────────────────────────────────────
+
+function _mostrarModalAvisoSolicitud(mensaje) {
+    const id   = 'modal-aviso-solicitud'
+    const prev = document.getElementById(id)
+    if (prev) prev.remove()
+
+    const overlay = document.createElement('div')
+    overlay.id = id
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;font-family:system-ui,sans-serif'
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <div style="font-size:14px;color:#374151;line-height:1.6;margin-bottom:20px">${mensaje}</div>
+            <button style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Entendido</button>
+        </div>`
+    document.body.appendChild(overlay)
+    overlay.querySelector('button').addEventListener('click', () => overlay.remove())
+}
+
+function _mostrarModalIDsCambiados(nombre, idProdAnterior, idVarAnterior, idProdNuevo, idVarNuevo) {
+    return new Promise(resolve => {
+        const id   = 'modal-ids-cambiados'
+        const prev = document.getElementById(id)
+        if (prev) prev.remove()
+
+        const subject      = `sfcom — cambio de IDs detectado: ${nombre}`
+        const cuerpoCorreo = [
+            `Hola Hilario,`,
+            ``,
+            `Hemos detectado que el producto "${nombre}" tiene nuevos IDs en la tienda:`,
+            `  - IDs anteriores: product_id ${idProdAnterior} / variation_id ${idVarAnterior || '—'}`,
+            `  - IDs nuevos:     product_id ${idProdNuevo} / variation_id ${idVarNuevo || '—'}`,
+            ``,
+            `Hemos actualizado los IDs en nuestro sistema. ¿Puedes confirmar que el cambio es correcto?`,
+            ``,
+            `Gracias`
+        ].join('\n')
+
+        const overlay = document.createElement('div')
+        overlay.id = id
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;font-family:system-ui,sans-serif'
+        overlay.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:540px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+                <div style="font-size:14px;font-weight:700;color:#92400e;margin-bottom:12px">⚠️ IDs de sfcom cambiados — ${nombre}</div>
+                <div style="font-size:13px;color:#374151;line-height:1.8;margin-bottom:20px">
+                    Se detectaron nuevos IDs para este producto en sfcom. Puede que Hilario lo haya recreado.<br>
+                    <strong>Anteriores:</strong> product_id ${idProdAnterior} / variation_id ${idVarAnterior || '—'}<br>
+                    <strong>Nuevos:</strong> product_id ${idProdNuevo} / variation_id ${idVarNuevo || '—'}<br><br>
+                    ¿Actualizar los IDs en la base de datos?
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <button id="${id}-ok" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Actualizar IDs</button>
+                    <button id="${id}-cancel" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Mantener anteriores</button>
+                    <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
+                       style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;padding:8px 16px;font-size:13px;text-decoration:none">
+                        📧 Notificar a Hilario
+                    </a>
+                </div>
+            </div>`
+        document.body.appendChild(overlay)
+        overlay.querySelector(`#${id}-ok`).addEventListener('click', () => { overlay.remove(); resolve(true) })
+        overlay.querySelector(`#${id}-cancel`).addEventListener('click', () => { overlay.remove(); resolve(false) })
+    })
+}
+
+function _mostrarModalNombreNoReconocido(nombreRaw, ref) {
+    const id   = 'modal-nombre-no-reconocido'
+    const prev = document.getElementById(id)
+    if (prev) prev.remove()
+
+    const overlay = document.createElement('div')
+    overlay.id = id
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;font-family:system-ui,sans-serif'
+    overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:12px">⚠️ Producto no reconocido — ${ref}</div>
+            <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:20px">
+                El pedido incluye un producto que no está configurado en el sistema:<br>
+                <strong>${nombreRaw}</strong><br><br>
+                La solicitud se ha guardado sin servicio asignado. Revísala manualmente en el bloque de solicitudes.
+            </div>
+            <button style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Entendido</button>
+        </div>`
+    document.body.appendChild(overlay)
+    overlay.querySelector('button').addEventListener('click', () => overlay.remove())
+}
+
+// Registra pedidos nuevos de sfcom en reservation_requests.
+// Sistema de dos capas: el nombre (sfcom_service_name) es el contrato;
+// los IDs son verificación. Tres casos posibles al registrar.
 async function registrarPedidosSfcom(pedidos) {
     if (!pedidos?.length) return
 
-    // Leer los source ya registrados para no duplicar
     const { data: existentes } = await supabase
         .from('reservation_requests')
         .select('source')
         .not('source', 'is', null)
 
     const sourcesRegistrados = new Set((existentes ?? []).map(r => r.source))
-
     const nuevos = pedidos.filter(p => !sourcesRegistrados.has(p.sfcom_order_ref))
     if (!nuevos.length) return
 
+    const nombresConocidos = [...new Set(
+        disponibilidad.filter(d => d.sfcom_service_name).map(d => d.sfcom_service_name)
+    )]
+
     for (const pedido of nuevos) {
+        if ((pedido.productos?.length ?? 0) > 1) {
+            _mostrarModalAvisoSolicitud(
+                `El pedido <strong>${pedido.sfcom_order_ref}</strong> contiene ${pedido.productos.length} productos — ` +
+                `solo se procesa el primero automáticamente. Los demás requieren revisión manual.`
+            )
+        }
         const li = pedido.productos?.[0]
         if (!li) continue
 
-        // Buscar en disponibilidad para guardar product_id y variation_id
-        const filaAvail = disponibilidad.find(d =>
-            d.sfcom_product_id   == li.product_id &&
+        // 1. Extraer nombre canónico del producto (primary lookup key)
+        const nombreExtraido = extraerNombreProducto(li.nombre, nombresConocidos)
+
+        // 2. Buscar por nombre (primary)
+        const filaByName = nombreExtraido
+            ? disponibilidad.find(d => d.sfcom_service_name === nombreExtraido)
+            : null
+
+        // 3. Buscar por IDs (verification)
+        const filaById = disponibilidad.find(d =>
+            d.sfcom_product_id == li.product_id &&
             (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
         )
 
-        const slots         = li.cantidad ?? 1
-        const totalBruto    = parseFloat(pedido.total ?? 0)
+        // 4. Tres casos
+        let serviceId   = null
+        let levelToSave = nombreExtraido || li.nombre
+
+        if (filaByName && (!filaById || filaById.id === filaByName.id)) {
+            // Caso 1: nombre encontrado, IDs consistentes
+            serviceId = filaByName.service_id
+
+        } else if (filaByName && filaById && filaById.id !== filaByName.id) {
+            // Caso 2: nombre encontrado pero IDs apuntan a otra fila → IDs cambiaron en sfcom
+            const actualizar = await _mostrarModalIDsCambiados(
+                filaByName.sfcom_service_name,
+                filaById.sfcom_product_id, filaById.sfcom_variation_id,
+                li.product_id, li.variation_id
+            )
+            if (actualizar) {
+                await supabase.from('sfcom_listings')
+                    .update({ sfcom_product_id: li.product_id, sfcom_variation_id: li.variation_id || null })
+                    .eq('availability_id', filaByName.id)
+                // Actualizar en memoria local para coherencia del resto de la sesión
+                const local = disponibilidad.find(d => d.id === filaByName.id)
+                if (local) {
+                    local.sfcom_product_id   = li.product_id
+                    local.sfcom_variation_id = li.variation_id || null
+                }
+            }
+            serviceId = filaByName.service_id
+
+        } else if (!filaByName && filaById) {
+            // Caso 3: IDs apuntan a una fila pero el nombre no se reconoce
+            _mostrarModalNombreNoReconocido(li.nombre, pedido.sfcom_order_ref)
+            levelToSave = li.nombre  // guardar nombre raw para revisión manual
+        }
+        // Caso 4 (ninguno encontrado): serviceId=null, levelToSave=li.nombre raw
+
+        const slots           = li.cantidad ?? 1
+        const totalBruto      = parseFloat(pedido.total ?? 0)
         const precioSlotBruto = slots > 0 ? totalBruto / slots : totalBruto
 
-        // day: intentar extraer el número de día de julio del nombre de la variación
-        const diaMatch = (li.nombre || li.parent_name || '').match(/(\d{1,2})\s+de\s+julio/i)
-        const dia      = diaMatch ? parseInt(diaMatch[1]) : null
-
-        // address: concatenar ciudad y país
-        const address = pedido.cliente?.direccion || null
-
         await supabase.from('reservation_requests').insert({
-            client_name:    pedido.cliente.nombre || 'Sin nombre',
-            client_email:   pedido.cliente.email  || null,
-            client_phone:   pedido.cliente.telefono || null,
-            client_address: address,
+            client_name:    pedido.cliente.nombre    || 'Sin nombre',
+            client_email:   pedido.cliente.email     || null,
+            client_phone:   pedido.cliente.telefono  || null,
+            client_address: pedido.cliente.direccion || null,
             slots,
-            day:            dia,
-            level:          li.parent_name || li.nombre || null,
+            day:            extraerDia(li.nombre),
+            level:          levelToSave,
+            service_id:     serviceId,
             comments:       pedido.cliente.comentarios || null,
             price_per_slot: precioSlotBruto,
             source:         pedido.sfcom_order_ref,
