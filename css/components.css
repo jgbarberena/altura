@@ -270,8 +270,10 @@ header.dark .hamburger {
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 
-    /* opcional: si quieres el mismo “respiro” que en FAQ */
-    margin-bottom: 30px;
+    padding-left: clamp(16px, 5vw, 40px);
+    padding-right: clamp(16px, 5vw, 40px);
+
+    margin-bottom: calc(-1 * var(--sticky-height));
 }
 
 /* El <ul> hace el papel de .faq-nav interno */
@@ -282,7 +284,7 @@ header.dark .hamburger {
     justify-content: space-between;
 
     margin: 0;
-    padding: 10px 5px;
+    padding: 10px 0;
     list-style: none;
 }
 

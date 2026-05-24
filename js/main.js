@@ -937,13 +937,16 @@ const _SD_WHATSAPP = '34625638977'
 const _SD_EMAIL    = 'paula@experienciasanfermin.com'
 const _SD_ASUNTO   = 'Solicitud experiencia San Fermín'
 
-// Día fijo por evento (para pre-seleccionar y deshabilitar el selector)
+// Día fijo por evento (para pre-seleccionar y ocultar el selector)
 const _SD_DIA_FIJO = {
     'chupinazo':   '6',
     'procesion':   '7',
     'gigantes':    '14',
     'pobre-de-mi': '14'
 }
+
+// Eventos sin concepto de día: el selector se oculta sin asignar valor
+const _SD_SIN_DIA = ['toko']
 
 // Detecta la palabra clave del evento dentro del slug.
 // Se usa solo para saber si hay día fijo — no para inferir service_id.
@@ -953,6 +956,7 @@ function _sdDetectarEvento(slug) {
     if (partes.indexOf('procesion') !== -1) return 'procesion'
     if (partes.indexOf('gigantes')  !== -1) return 'gigantes'
     if (partes.indexOf('pobre')     !== -1) return 'pobre-de-mi'
+    if (partes.indexOf('toko')      !== -1) return 'toko'
     return null  // encierro y cualquier otro: sin día fijo
 }
 
@@ -1024,6 +1028,8 @@ function initSolicitudDialog(root) {
 
         if (eventoBase && _SD_DIA_FIJO[eventoBase]) {
             selectDia.value = _SD_DIA_FIJO[eventoBase]
+            selectDia.classList.add('solicitud-campo-oculto')
+        } else if (eventoBase && _SD_SIN_DIA.indexOf(eventoBase) !== -1) {
             selectDia.classList.add('solicitud-campo-oculto')
         } else {
             selectDia.classList.remove('solicitud-campo-oculto')

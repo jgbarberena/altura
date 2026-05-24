@@ -73,7 +73,7 @@
 @media (min-width: 769px) {
 
     .articulo-page {
-        padding-top: calc(var(--header-height) + 60px);
+        max-width: var(--width-mid);
     }
 
     .guia-articulo h1 {

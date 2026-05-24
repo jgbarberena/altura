@@ -182,11 +182,19 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 ### Secciones
 
 - `.section` — padding horizontal y vertical fluido
-- `.section--first` — primera sección, compensa el header fijo
-- `.section--first--fullscreen` — hero pantalla completa
-- `.section--inner` — secciones internas con padding estándar
-- `.section--inner--sticky` — cuando hay sticky nav
-- `.section--inner--flush` — sin padding-top
+- `.section--first` — **primera sección de cualquier página**, compensa el header fijo. En desktop: `calc(var(--header-height) + clamp(20px, 3vw, 50px))`. Usar `section--inner` en la primera sección es un error: provoca doble padding con el `<main>`.
+- `.section--first--fullscreen` — hero pantalla completa (home, experiencias, empresa, momenticos, toko)
+- `.section--inner` — secciones internas, nunca la primera
+- `.section--inner--sticky` — sección que sigue a un sticky nav; `padding-top: var(--sticky-height)` compensa el nav cuando está fijo
+- `.section--inner--flush` — sin padding-top (CTAs, sección autora en artículos)
+
+**Regla crítica:** la primera sección de cada página usa siempre `section--first` o `section--first--fullscreen`, nunca `section--inner`. Los `<main>` con clase propia (`articulo-page`, `guias-page`) no deben tener `padding-top` en desktop: la compensación del header la gestiona `section--first` dentro.
+
+**Sticky nav:** tiene `margin-bottom: calc(-1 * var(--sticky-height))` para que desde el primer render se solape visualmente con el `padding-top` de la primera sección sticky, igualando el aspecto inicial con el aspecto en uso. El `padding-left/right` del nav coincide con el de `.section` para que los links queden alineados con el contenido.
+
+### Scroll snap
+
+Activo solo en mobile (`scroll-snap-type: y proximity` en `html`). En desktop está desactivado explícitamente (`scroll-snap-type: none` en media query ≥769px): el inertia scrolling del trackpad de Mac es incompatible con él y genera una experiencia incómoda. No reactivar en desktop salvo que haya una solución JS robusta que controle el threshold. En mobile funciona correctamente con los paddings actuales de `section--first` e `section--inner`.
 
 ### Overlay universal
 
@@ -409,11 +417,13 @@ Módulo ES6. Importa de `supabase.js`, `utils.js`, `factura.js`, `propuesta.js`,
 
 El panel tiene **6 bloques** que se muestran/ocultan según el estado:
 
-**Bloque 0 — Solicitudes pendientes:** Lee `reservation_requests` con `status='nueva'`. Las solicitudes de sfcom (`source` con formato `WEB\d+_\d+`) se muestran primero en rojo y sin botón "Descartar". Las solicitudes web se muestran en naranja con botón "Descartar". Click en fila carga nombre, email, teléfono, dirección, plazas, día y comentarios en el formulario. Para solicitudes sfcom, intenta inferir servicio y proveedor desde `sfcom_listings.sfcom_service_name` (vía `availability_with_sfcom`) con `_inferirDesdeSfcom`, y precarga el precio neto (precio bruto / 1.15). Para solicitudes web, infiere solo el servicio desde el slug (`_inferirServiceId`). El admin confirma o corrige siempre. Botón "Procesado" → status `atendida`. Nunca cambia status al hacer click en la fila.
+**Bloque 0 — Solicitudes pendientes:** Lee `reservation_requests` con `status='nueva'`. Las solicitudes de sfcom (`source` con formato `WEB\d+_\d+`) se muestran primero en rojo y sin botón "Descartar". Las solicitudes web se muestran en naranja con botón "Descartar". Click en fila invoca `cargarDesdeSolicitud`, que primero llama a `limpiarCamposCliente()` para limpiar cualquier cliente/reserva que hubiera cargado antes; luego carga nombre, email, teléfono, dirección, plazas, día y comentarios en el formulario. Para solicitudes sfcom, intenta inferir servicio y proveedor desde `sfcom_listings.sfcom_service_name` (vía `availability_with_sfcom`) con `_inferirDesdeSfcom`, y precarga el precio neto (precio bruto / 1.15). Para solicitudes web, infiere solo el servicio desde el slug (`_inferirServiceId`). El admin confirma o corrige siempre. Botón "Procesado" → status `atendida`. Nunca cambia status al hacer click en la fila.
 
 **Bloque 1 — Cliente:** Campo `ID_CLIENTE` con autocomplete en tiempo real contra `clients`. Si el ID coincide exactamente con un cliente existente, carga sus datos y activa el guardado automático por campo (`change` → `supabase.update`). Si es un ID nuevo, muestra "Cliente nuevo". Los datos del cliente nunca se guardan manualmente; el guardado es automático en cuanto cambia cualquier campo de un cliente existente.
 
 **Bloque 2 — Reserva:** Selector de servicio, selector de proveedor (se habilita y filtra al seleccionar servicio), número de plazas, precio por plaza, total calculado (plazas × precio, nunca editable directamente), estado (`Confirmada`/`Pendiente`) y comentarios. Los IDs de reserva tienen formato `R0001`, `R0002`… (R + 4 dígitos, correlativo). Antes de guardar una reserva nueva llama a `checkAvailabilityBeforeSave` de `sfcom.js` para verificar que el stock en sfcom es coherente con la operación. Al guardar en modo edición, si cambia el proveedor o servicio, sincroniza el stock de sfcom tanto para el par original como para el par nuevo. Permite editar una reserva existente seleccionándola desde Bloque 4.
+
+**Disponibilidad al editar — exclusión de la reserva activa:** `getPlazasInfo(proveedorId, servicioId, excluirId = null)` calcula plazas libres excluyendo la reserva con `id === excluirId`. Cuando el formulario está en modo edición (`reservaEditandoId !== null`), todas las llamadas de UI (dropdowns, mapa de disponibilidad, cajitas de proveedor) pasan `reservaEditandoId` para que la reserva en curso no se cuente contra la capacidad de su propio proveedor — de lo contrario un proveedor completo aparecería sin disponibilidad aunque las plazas que ocupa son exactamente las que se están editando. La verificación antes de guardar una reserva **nueva** no pasa `excluirId` (no hay reserva preexistente que excluir).
 
 **Bloque 3 — Disponibilidad:** Se activa al seleccionar servicio. Mapa visual de columnas por proveedor con sus reservas actuales y estado de disponibilidad para el número de plazas introducido (verde/amarillo/rojo). Click en columna de proveedor con plazas insuficientes abre panel de reorganización.
 
@@ -577,7 +587,17 @@ Script clásico (no módulo). Contiene todas las funciones `init*` de los compon
 
 ### 8.2 solicitudDialog.html — Dialog de solicitud reutilizable
 
-Componente de solicitud que se activa desde cualquier botón con `data-solicitud` en la página. Campos: nombre, email, teléfono, personas, día, comentarios. Escribe en `reservation_requests`. Si falla el guardado en Supabase, ofrece fallback por WhatsApp o email.
+Componente de solicitud que se activa desde cualquier botón con `data-solicitud="slug"` en la página. Campos: nombre, email, teléfono, personas, día, comentarios. Escribe en `reservation_requests` con `level = slug`. Si falla el guardado en Supabase, ofrece fallback por WhatsApp o email.
+
+**Para activar el dialog en una página, son necesarios tres elementos:**
+1. `<div id="solicitud-dialog-placeholder"></div>` en el HTML (el cargador de `include.js` lo detecta)
+2. CDN de Supabase antes de los demás scripts: `<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>`
+3. `<script src="../js/supabase-global.js"></script>` (ruta relativa según profundidad de la página)
+
+**Comportamiento del selector de día** (configurado en `main.js`):
+- `_SD_DIA_FIJO`: eventos con día predeterminado — selector oculto con valor fijo (`chupinazo→6`, `procesion→7`, `gigantes→14`, `pobre-de-mi→14`).
+- `_SD_SIN_DIA`: productos o servicios donde el día no aplica — selector oculto sin valor. Actualmente: `['toko']`. Para añadir una nueva categoría sin día: incluirla en `_SD_SIN_DIA` y añadir su keyword en `_sdDetectarEvento`.
+- Por defecto (encierro, personalizadas…): selector visible.
 
 ### 8.3 supabase-global.js — Cliente Supabase público
 
@@ -593,11 +613,23 @@ Script clásico. Crea `window.supabasePublic` con `persistSession: false` (no ma
 
 ### 8.5 programa-san-fermin.js — Mapa interactivo
 
-Mapa Leaflet con todos los eventos y localizaciones de San Fermín. Filtros por día y categoría. Panel lateral con detalle del evento seleccionado. Los datos están hardcodeados en el archivo (LOCATIONS + EVENTS). Tipos de evento: `diario`, `unico`, `variado`. Localizaciones: `point` o `route` (con polyline).
+Mapa Leaflet con todos los eventos y localizaciones de San Fermín. Filtros por día y hora. Los datos están hardcodeados en el archivo (`LOCS` + `EVENTS`). Tipos de evento: `diario`, `unico`, `variado`. Localizaciones: `point`, `route` (polyline) o `area` (polígono).
+
+**Panel lateral:** siempre muestra una lista de todos los eventos del día/filtro activo. El click en el mapa o en un ítem de la lista expande ese ítem (acordeón); el resto queda colapsado pero visible. Estado gestionado por `currentByLoc` (snapshot de `byLoc` al final de `renderAll()`), `currentExpandedLoc` y `panelIsListMode`. `showPanelList(locId)` reconstruye el HTML del panel completo; debe llamarse después de cualquier cambio de estado. `clearPanel()` solo se usa cuando no hay eventos visibles.
+
+**Slider de hora:** rango -1..17 mapeado a `null` (Todo el día) y horas 6–23 (`selHour = value + 6`). Las horas 0–5 son muertas y están eliminadas del slider. Se auto-posiciona en la hora actual al cargar.
+
+**Capas Leaflet:** las áreas usan un pane personalizado `areaPane` (z-index 350) para renderizar siempre por debajo de las rutas (z-index 400 por defecto) y de los marcadores.
+
+**Patrón crítico — click en panel:** el handler del panel debe tener `e.stopPropagation()` como primera línea. Sin él, `showPanelList()` reemplaza `panel.innerHTML` completo, el elemento clicado queda desconectado del DOM, y el listener de `document` recibe el evento con `panel.contains(detachedElement) === false`, llamando a `showPanelList(null)` y colapsando el ítem recién expandido.
+
+**Convención de fechas del día 6:** el 6 de julio las fiestas empiezan con el Chupinazo a las 12:00. Los eventos recurrentes diarios (Barracas, Casetas Regionales, Corralillos del Gas) usan `F7_14`, no `F6_14`. Solo los eventos que ocurren explícitamente el día 6 (Chupinazo, Vísperas, Dianas, etc.) llevan `'2026-07-06'` en sus `fechas`.
 
 ### 8.6 guias-rotar-destacados.js — Rotación de guías
 
 Lee el JSON embebido en `<script id="guias-data" type="application/json">` (generado por `generate-index.ps1`) y aplica selección ponderada para rotar qué guías aparecen en los destacados en cada carga. Pesos: `fixed` > `high` > `medium` > `low`.
+
+Las cards de destacados no tienen botón; la card entera es clicable mediante un `<a class="guia-link">` con `position:absolute; inset:0`. El overlay cubre el 40% inferior de la card. Estructura: `<article class="card guia-destacada">` + `<a class="guia-link">` + `<picture>` + `<div class="card-overlay">` → `<h2>` + `<div class="card-overlay-body"><p>`.
 
 ---
 
@@ -646,6 +678,32 @@ Se ejecuta dentro de `guias/`. Lee todos los `.html` de guías, extrae metadatos
          data-feature="fixed|high|medium|low"
          data-topics="encierro,balcones,...">
 ```
+
+### generate-faqHTML.ps1
+
+Se ejecuta dentro de `faq/`. Lee `faq-data.json` y genera `faq/index.html` inyectando las secciones en el placeholder `{{SECTIONS}}` del template. La estructura estática (hero, sticky nav, placeholders) viene del template; el contenido de las preguntas viene exclusivamente del JSON.
+
+**Campos del JSON:**
+```json
+{ "id": "exp-1", "category": "Experiencias", "question": "...", "answer": "..." }
+```
+
+### Orden correcto de regeneración
+
+Siempre en este orden:
+1. `guias/generate-index.ps1` (desde `guias/`) y/o `faq/generate-faqHTML.ps1` (desde `faq/`) — pueden ejecutarse en paralelo
+2. `GenerateFolderAutoSEO.ps1` (desde la raíz) — siempre después; los templates tienen canonicals que apuntan a `index-template.html` y el script los corrige
+
+**Qué editar según el tipo de cambio:**
+
+| Cambio | Dónde editar |
+|---|---|
+| Contenido FAQ (preguntas/respuestas) | `faq/faq-data.json` → regenerar faq |
+| Estructura estática del FAQ (hero, secciones, etc.) | `faq/index-template.html` → regenerar faq |
+| Estructura de las cards de guías | `<template>` tags en `guias/index-template.html` → regenerar guías |
+| Estructura estática de guías/index (hero, CTA, etc.) | `guias/index-template.html` → regenerar guías |
+| Metadatos de una guía (título, descripción, imagen) | El artículo `.html` directamente → regenerar guías |
+| CSS o marcado de páginas de artículo individuales | Directamente en el archivo, sin regenerar |
 
 ---
 
@@ -1004,4 +1062,5 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 - No asumir que entiendo una herramienta nueva sin explicar antes qué es y cómo funciona.
 - No proponer soluciones que funcionen solo para un caso particular sin pensar en la arquitectura general: antes de implementar algo, valorar si es coherente con el resto del sistema.
 - No editar el bloque AUTO-SEO directamente. Siempre editar los elementos fuente y ejecutar el script.
+- No editar `guias/index.html` ni `faq/index.html` directamente. Son archivos generados; editar las fuentes correspondientes (template o JSON) y regenerar con el script, luego correr el SEO.
 - No poner lógica de negocio en la BD (triggers, funciones PostgreSQL) salvo que haya una razón de peso. La lógica está en el JS.

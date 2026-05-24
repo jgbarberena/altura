@@ -339,7 +339,7 @@ html {
     }
 
     .section--first {
-        padding-top: clamp(60px, 8vw, 120px);
+        padding-top: calc(var(--header-height) + clamp(20px, 3vw, 50px));
     }
 }
 

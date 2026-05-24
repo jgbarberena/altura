@@ -96,6 +96,7 @@ body.login-page {
     z-index: 100;
 }
 .topbar-title { font-size: 15px; font-weight: 500; }
+.topbar-home { text-decoration: none; color: var(--accent); }
 .hamburger {
     background: none; border: none; cursor: pointer;
     display: flex; flex-direction: column; gap: 5px; padding: 4px;

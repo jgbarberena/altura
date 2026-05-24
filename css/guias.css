@@ -93,7 +93,7 @@
 @media (min-width: 769px) {
 
     .guias-page {
-        padding: calc(var(--header-height) + 30px) 0 80px;
+        padding: 0 0 80px;
     }
 
     .section {

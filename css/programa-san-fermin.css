@@ -43,12 +43,9 @@
     width: 100%;
 }
 
-/* Forzamos el tamaño del H1 para que no se hereden restricciones del grid */
 .header-grid .text-title {
     display: block;
     width: 100%;
-    /* Si el clamp falla, esto asegura el tamaño que buscas */
-    font-size: var(--text-section) !important; 
     order: 1;
 }
 
@@ -71,8 +68,8 @@
 /* --- VISTA DESKTOP (desde 800px) --- */
 
 @media (min-width: 769px) {
-    .articulo-page--wide {
-        padding-top: calc(var(--header-height) + 60px);
+    .header-grid .text-title {
+        font-size: var(--text-display);
     }
 
     .header-grid {
@@ -582,4 +579,19 @@
 
 .sfp-item-body .sfp-card {
     min-height: unset;
+}
+
+.sfp-group-header {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.28);
+    padding: 10px 12px 4px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.sfp-group-header:first-child {
+    border-top: none;
 }

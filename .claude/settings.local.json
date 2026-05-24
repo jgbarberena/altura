@@ -24,7 +24,10 @@
       "Bash(node -e \"const norm = s => s.toLowerCase\\(\\).normalize\\('NFD'\\).replace\\(/[̀-ͯ]/g, ''\\).trim\\(\\); console.log\\(norm\\('Balcón Estafeta - Viernes 10 de Julio 2026'\\)\\)\")",
       "Bash(node -e ' *)",
       "Bash(python3 -c ' *)",
-      "Bash(git -C \"d:/Projects/Web/Altura\" log --oneline -10)"
+      "Bash(git -C \"d:/Projects/Web/Altura\" log --oneline -10)",
+      "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\\\\guias\"; powershell -File \".\\\\generate-index.ps1\")",
+      "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\\\\faq\"; powershell -File \".\\\\generate-faqHTML.ps1\")",
+      "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\"; powershell -File \".\\\\GenerateFolderAutoSEO.ps1\")"
     ]
   }
 }

@@ -354,7 +354,7 @@ const EVENTS = [
     titulo:'Barracas — Recinto Ferial Parque de la Runa',
     descripcion:'La feria de atracciones de San Fermín en el Parque de la Runa (Rochapea). Casi un centenar de atracciones: noria, autos de choque, montaña rusa, tómbolas y puestos de comida. Abiertas prácticamente las 24 horas durante todas las fiestas.',
     horaInicio:'11:00', horaFin:'04:00',
-    fechas: F6_14,
+    fechas: F7_14,
     tipo:'diario',
     confirmado:true,
   },
@@ -363,7 +363,7 @@ const EVENTS = [
     titulo:'Corralillos del Gas — visita a los toros',
     descripcion:'Visita a los toros que correrán al día siguiente, en los Corrales del Gas. Una perspectiva completamente diferente del encierro. Entrada: 4 € (gratis menores de 12 acompañados). Disponible hasta el 11 de julio.',
     horaInicio:'11:00', horaFin:'13:15',
-    fechas:['2026-07-06','2026-07-07','2026-07-08','2026-07-09','2026-07-10','2026-07-11'],
+    fechas:['2026-07-07','2026-07-08','2026-07-09','2026-07-10','2026-07-11'],
     tipo:'diario',
     confirmado:true,
   },
@@ -372,7 +372,7 @@ const EVENTS = [
     titulo:'Corralillos del Gas — visita (tarde)',
     descripcion:'Turno de tarde de la visita a los toros en los Corrales del Gas. Entrada: 4 € (gratis menores de 12 acompañados).',
     horaInicio:'16:30', horaFin:'20:30',
-    fechas:['2026-07-06','2026-07-07','2026-07-08','2026-07-09','2026-07-10','2026-07-11'],
+    fechas:['2026-07-07','2026-07-08','2026-07-09','2026-07-10','2026-07-11'],
     tipo:'diario',
     confirmado:true,
   },
@@ -388,9 +388,9 @@ const EVENTS = [
   {
     id:'casetas', location:'casetas', cat:'cultura',
     titulo:'Casetas Regionales',
-    descripcion:'Casetas de las distintas comarcas y regiones, con gastronomía y tradiciones propias. Del 6 al 14. Programa y horario pendientes de confirmar.',
+    descripcion:'Casetas de las distintas comarcas y regiones, con gastronomía y tradiciones propias. Del 7 al 14. Programa y horario pendientes de confirmar.',
     horaInicio:'11:00', horaFin:'02:00',
-    fechas: F6_14,
+    fechas: F7_14,
     tipo:'diario',
     confirmado:false,
   },
@@ -419,6 +419,7 @@ function initMapaSanFermin() {
   function clearPanel() {
     if (!panel || !panelEmpty) return;
     currentExpandedLoc = null;
+    panelIsListMode = false;
     panel.innerHTML = '';
     panel.appendChild(panelEmpty);
     panel.classList.remove('panel-open');
@@ -464,7 +465,11 @@ function initMapaSanFermin() {
 
   function showPanelList(expandedLocId) {
     if (!panel) return;
+
+    // Si el loc expandido ya no existe en el filtro actual, colapsar todo
+    if (expandedLocId && !currentByLoc[expandedLocId]) expandedLocId = null;
     currentExpandedLoc = expandedLocId;
+    panelIsListMode = true;
 
     function minStartTime(locData) {
       return Math.min(...locData.events.map(({ event }) => toMin(event.horaInicio)));
@@ -473,11 +478,21 @@ function initMapaSanFermin() {
     const entries = Object.entries(currentByLoc);
     const active   = entries.filter(([, d]) =>  d.isActive).sort(([, a], [, b]) => minStartTime(a) - minStartTime(b));
     const inactive = entries.filter(([, d]) => !d.isActive).sort(([, a], [, b]) => minStartTime(a) - minStartTime(b));
-    const ordered  = [...active, ...inactive];
 
-    if (!ordered.length) { clearPanel(); return; }
+    if (!active.length && !inactive.length) { clearPanel(); return; }
 
-    const listHtml = ordered.map(([locId, locData]) => buildItemHTML(locId, locData, expandedLocId)).join('');
+    const hasGroups = selHour !== null && active.length > 0 && inactive.length > 0;
+
+    let listHtml = '';
+    if (active.length) {
+      if (hasGroups) listHtml += `<div class="sfp-group-header">Ahora</div>`;
+      listHtml += active.map(([locId, locData]) => buildItemHTML(locId, locData, expandedLocId)).join('');
+    }
+    if (inactive.length) {
+      if (hasGroups) listHtml += `<div class="sfp-group-header">Más tarde</div>`;
+      listHtml += inactive.map(([locId, locData]) => buildItemHTML(locId, locData, expandedLocId)).join('');
+    }
+
     panel.innerHTML = `<div class="sfp-event-list">${listHtml}</div>`;
     panel.classList.add('panel-open');
 
@@ -490,6 +505,7 @@ function initMapaSanFermin() {
   // Listener de delegación del panel (una sola vez)
   if (panel) {
     panel.addEventListener('click', e => {
+      e.stopPropagation(); // evita que document listener colapce tras innerHTML replacement
       if (e.target.closest('a')) return;
       const closeBtn = e.target.closest('.sfp-item-close');
       const header   = e.target.closest('.sfp-item-header');
@@ -505,10 +521,10 @@ function initMapaSanFermin() {
     });
   }
 
-  // Cerrar panel al hacer click fuera del mapa y del panel
+  // Click fuera: colapsar item expandido pero mantener lista
   document.addEventListener('click', e => {
     if (panel && !panel.contains(e.target) && !mapEl.contains(e.target)) {
-      clearPanel();
+      if (panelIsListMode) showPanelList(null);
     }
   });
 
@@ -527,8 +543,8 @@ function initMapaSanFermin() {
     subdomains:'abcd', maxZoom:19,
   }).addTo(map);
 
-  // Cerrar panel al mover el mapa
-  map.on('movestart', () => clearPanel());
+  // Al mover el mapa: colapsar item expandido pero mantener lista
+  map.on('movestart', () => showPanelList(null));
 
   // Estado
   let selDay  = 'all';
@@ -607,6 +623,7 @@ function initMapaSanFermin() {
   const layers = {};
   let currentByLoc = {};
   let currentExpandedLoc = null;
+  let panelIsListMode = false;
 
   function renderAll() {
     const wS = selHour !== null ? selHour * 60 : 0;
@@ -726,8 +743,16 @@ function initMapaSanFermin() {
     }
   }
 
-  if (daySelect)  daySelect.addEventListener('change',  ()=>{ selDay=daySelect.value; clearPanel(); renderAll(); });
-  if (hourSlider) hourSlider.addEventListener('input',   ()=>{ updateLabel(); clearPanel(); renderAll(); });
+  if (daySelect) daySelect.addEventListener('change', () => {
+    selDay = daySelect.value;
+    renderAll();
+    showPanelList(null);
+  });
+  if (hourSlider) hourSlider.addEventListener('input', () => {
+    updateLabel();
+    renderAll();
+    showPanelList(currentExpandedLoc);
+  });
 
   // Auto-posicionar en hora actual si estamos en fiestas
   const now = new Date();
@@ -740,6 +765,7 @@ function initMapaSanFermin() {
   }
 
   renderAll();
+  showPanelList(null);
   setTimeout(()=>map.invalidateSize(),300);
 }
 
