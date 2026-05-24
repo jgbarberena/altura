@@ -767,10 +767,8 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 - `Pobre de Mí` (prod 142): situación sin aclarar.
 - `Despedida Gigantes` (prod 147, agrupado con hijos 215/216): pendiente gestión de stock agrupado.
 
-### 12.3 Solicitudes de formulario de contacto general — **Pendiente**
-**Problema:** Las solicitudes del formulario de contacto general de la web todavía no se escriben en `reservation_requests`.
-
-**Acción pendiente:** Conectar el formulario de contacto general a la tabla `reservation_requests` (igual que hace el `solicitudDialog`).
+### 12.3 Solicitudes de formulario de contacto general — **Resuelto (decisión de diseño)**
+**Situación:** El formulario de contacto general no obliga a introducir email ni teléfono (para minimizar fricción). Sus CTAs son WhatsApp y mailto, por lo que el contacto llega directamente al dispositivo del admin. Sin email ni teléfono garantizados, guardar en `reservation_requests` no añade valor — el contacto hay que gestionarlo manualmente de todos modos. No se implementa.
 
 ### 12.4 SEO — Indexación y errores GSC — **Pendiente revisión**
 **Acción pendiente:** Repasar estado de indexación y errores en Google Search Console.
@@ -778,10 +776,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 ### 12.5 Inferencia de proveedor en solicitudes web — **Resuelto**
 **Situación:** Implementado en `cargarDesdeSolicitud`: tras inferir el servicio desde el slug, se buscan los proveedores con ese `service_id` en `disponibilidad`. Si solo hay uno, se auto-selecciona. Si hay varios, el admin elige manualmente.
 
-### 12.6 Ampliar faq-answers con más contenido — **Mejora SEO pendiente**
-**Situación:** Las respuestas FAQ en la mayoría de páginas usan solo el primer `<p>` como `faq-answer`. En muchos casos tiene sentido incluir más párrafos o bloques dentro del mismo `faq-item` para enriquecer el schema FAQPage.
+### 12.6 Ampliar faq-answers con más contenido — **Resuelto**
+**Situación:** Revisadas las 19 páginas con `faq-item`. Se añadió la clase `faq-answer` a 84 párrafos adicionales dentro de bloques `faq-item` en las páginas de experiencias y guías. El markup es ahora semánticamente correcto (todos los párrafos de respuesta están marcados explícitamente).
 
-**Acción pendiente:** Revisar página a página y ampliar `faq-answer` (o marcar más `<p>` dentro del faq-item) donde el contenido adicional aporte valor como respuesta.
+**Nota sobre el script SEO:** `Build-FAQ-Schema` en `GenerateFolderAutoSEO.ps1` no toma solo el primer `<p>` — toma `block.Substring(firstFaqAnswerIndex)`, es decir, todo el HTML desde el primer elemento `faq-answer` hasta el final del bloque, y luego le quita las etiquetas. El schema FAQPage ya incluía el texto completo de todos los párrafos extra antes de este fix. Los cambios mejoran la coherencia semántica del HTML sin alterar el output del schema.
 
 ### 12.9 Mejora de micro-story y background image — **Mejora UX pendiente**
 **Situación:** Las secciones con micro-story (textos breves de apoyo narrativo) y las imágenes de fondo tienen margen de mejora visual y de contenido. No hay un criterio uniforme de cuándo usar una u otra, ni se han optimizado todos los casos.

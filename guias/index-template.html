@@ -58,6 +58,7 @@
     <!-- ================== TEMPLATES (NO SE RENDERIZAN) ================== -->
     <template id="tpl-destacado">
       <article class="card guia-destacada">
+        <a href="{{PAGE_URL}}" class="guia-link" aria-label="{{TITLE}}"></a>
         <picture>
           <source media="(max-width: 768px)" srcset="{{IMAGE_MOBILE}}">
           <source media="(min-width: 769px)" srcset="{{IMAGE_DESKTOP}}">
@@ -65,8 +66,9 @@
         </picture>
         <div class="card-overlay">
           <h2>{{TITLE}}</h2>
-          <p>{{RESUMEN}}</p>
-          <a href="{{PAGE_URL}}" class="btn btn-primary btn-mini">Leer guía</a>
+          <div class="card-overlay-body">
+            <p>{{RESUMEN}}</p>
+          </div>
         </div>
       </article>
     </template>

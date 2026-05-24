@@ -22,7 +22,9 @@
       "Bash(curl -s -H 'X-Paula-Key: pK9#mX2$vL7@nQ4&wR8!hT3%yU6^zA1*' https://tienda.sanfermin.com/sf-api-paula.php?endpoint=products/133/variations)",
       "Bash(curl -s -H 'X-Paula-Key: pK9#mX2$vL7@nQ4&wR8!hT3%yU6^zA1*' https://tienda.sanfermin.com/sf-api-paula.php?endpoint=products/894/variations)",
       "Bash(node -e \"const norm = s => s.toLowerCase\\(\\).normalize\\('NFD'\\).replace\\(/[̀-ͯ]/g, ''\\).trim\\(\\); console.log\\(norm\\('Balcón Estafeta - Viernes 10 de Julio 2026'\\)\\)\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(git -C \"d:/Projects/Web/Altura\" log --oneline -10)"
     ]
   }
 }

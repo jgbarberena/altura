@@ -28,6 +28,23 @@
     height: 500px;
 }
 
+.guia-destacada .card-overlay {
+    height: 40%;
+}
+
+.guia-destacada .card-overlay h2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.guia-destacada a.guia-link {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+}
+
 /* =========================
    LISTADO
 ========================= */

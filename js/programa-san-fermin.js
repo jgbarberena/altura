@@ -416,18 +416,93 @@ function initMapaSanFermin() {
   const panel      = document.getElementById('mapa-sf-panel');
   const panelEmpty = document.getElementById('mapa-sf-panel-empty');
 
-  function showPanel(html) {
-    if (!panel) return;
-    panel.innerHTML = html;
-    // Mobile: abrir drawer
-    panel.classList.add('panel-open');
-  }
-
   function clearPanel() {
     if (!panel || !panelEmpty) return;
+    currentExpandedLoc = null;
     panel.innerHTML = '';
     panel.appendChild(panelEmpty);
     panel.classList.remove('panel-open');
+  }
+
+  function buildItemHTML(locId, locData, expandedLocId) {
+    const { isActive, events } = locData;
+    const loc = LOCS[locId];
+    if (!loc) return '';
+    const cat = loc.cat;
+    const isExpanded = locId === expandedLocId;
+
+    const page = events.reduce((p, { event }) => p || EVENT_PAGES[event.id], null);
+    const firstEvent = events[0]?.event;
+    const displayTime = firstEvent?.horaInicio || '';
+
+    const thumbHtml = page?.img
+      ? `<img src="${page.img}" alt="" loading="lazy">`
+      : `<span style="font-size:18px">${CAT[cat].emoji}</span>`;
+    const thumbBg = page?.img ? '' : `style="background:${CAT[cat].color}33"`;
+
+    const closeBtn = isExpanded
+      ? `<button class="sfp-item-close" aria-label="Cerrar">×</button>` : '';
+
+    const bodyHtml = isExpanded
+      ? `<div class="sfp-item-body">${buildTooltipHTML(loc, events)}</div>` : '';
+
+    const stateClass = isActive ? 'sfp-item--active' : 'sfp-item--inactive';
+    const expandedClass = isExpanded ? ' sfp-item--expanded' : '';
+
+    return `<div class="sfp-item ${stateClass}${expandedClass}">
+      <div class="sfp-item-header" data-loc="${locId}">
+        <div class="sfp-item-thumb" ${thumbBg}>${thumbHtml}</div>
+        <div class="sfp-item-meta">
+          <div class="sfp-item-title">${loc.nombre}</div>
+          <div class="sfp-item-time">${displayTime}</div>
+        </div>
+        ${closeBtn}
+      </div>
+      ${bodyHtml}
+    </div>`;
+  }
+
+  function showPanelList(expandedLocId) {
+    if (!panel) return;
+    currentExpandedLoc = expandedLocId;
+
+    function minStartTime(locData) {
+      return Math.min(...locData.events.map(({ event }) => toMin(event.horaInicio)));
+    }
+
+    const entries = Object.entries(currentByLoc);
+    const active   = entries.filter(([, d]) =>  d.isActive).sort(([, a], [, b]) => minStartTime(a) - minStartTime(b));
+    const inactive = entries.filter(([, d]) => !d.isActive).sort(([, a], [, b]) => minStartTime(a) - minStartTime(b));
+    const ordered  = [...active, ...inactive];
+
+    if (!ordered.length) { clearPanel(); return; }
+
+    const listHtml = ordered.map(([locId, locData]) => buildItemHTML(locId, locData, expandedLocId)).join('');
+    panel.innerHTML = `<div class="sfp-event-list">${listHtml}</div>`;
+    panel.classList.add('panel-open');
+
+    if (expandedLocId) {
+      const el = panel.querySelector('.sfp-item--expanded');
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  // Listener de delegación del panel (una sola vez)
+  if (panel) {
+    panel.addEventListener('click', e => {
+      if (e.target.closest('a')) return;
+      const closeBtn = e.target.closest('.sfp-item-close');
+      const header   = e.target.closest('.sfp-item-header');
+      if (closeBtn) {
+        e.stopPropagation();
+        showPanelList(null);
+        return;
+      }
+      if (header) {
+        const locId = header.dataset.loc;
+        showPanelList(locId === currentExpandedLoc ? null : locId);
+      }
+    });
   }
 
   // Cerrar panel al hacer click fuera del mapa y del panel
@@ -443,6 +518,9 @@ function initMapaSanFermin() {
     zoomControl:true,
     scrollWheelZoom:false,
   });
+
+  // Áreas por debajo de rutas (overlayPane=400) y de markers (markerPane=600)
+  map.createPane('areaPane').style.zIndex = 350;
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
     attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
@@ -527,6 +605,8 @@ function initMapaSanFermin() {
 
   // Capas activas
   const layers = {};
+  let currentByLoc = {};
+  let currentExpandedLoc = null;
 
   function renderAll() {
     const wS = selHour !== null ? selHour * 60 : 0;
@@ -552,6 +632,9 @@ function initMapaSanFermin() {
       byLoc[locId].events.push({event, diasActivos:diasFiltrados});
     });
 
+    // Actualizar datos del panel
+    currentByLoc = byLoc;
+
     // Limpiar capas
     Object.values(layers).forEach(({marker,poly}) => {
       if (marker) map.removeLayer(marker);
@@ -564,10 +647,9 @@ function initMapaSanFermin() {
       const loc = LOCS[locId]; if (!loc) return;
       const cat = loc.cat;
       const color = isActive ? CAT[cat].color : '#bbb';
-      const popHtml = buildTooltipHTML(loc, events);
 
       const onMarkerClick = () => {
-        showPanel(popHtml);
+        showPanelList(locId);
       };
 
       if (loc.tipo === 'route') {
@@ -580,6 +662,7 @@ function initMapaSanFermin() {
 
         const poly = isArea
           ? L.polygon(loc.polyline, {
+              pane:'areaPane',
               color, fillColor:color, fillOpacity,
               weight:baseWeight, opacity:baseOpacity, interactive:isActive,
             }).addTo(map)
@@ -637,9 +720,9 @@ function initMapaSanFermin() {
     const v = parseInt(hourSlider.value);
     if (v === -1) { hourLabel.textContent='Todo el día'; selHour=null; }
     else {
-      selHour = v;
-      const e = (v+VENTANA)%24;
-      hourLabel.textContent=`${String(v).padStart(2,'0')}:00 – ${String(e).padStart(2,'0')}:00`;
+      selHour = v + 6;
+      const e = (selHour + VENTANA) % 24;
+      hourLabel.textContent=`${String(selHour).padStart(2,'0')}:00 – ${String(e).padStart(2,'0')}:00`;
     }
   }
 
@@ -651,7 +734,7 @@ function initMapaSanFermin() {
   if (now.getFullYear()===2026 && now.getMonth()===6 && now.getDate()>=5 && now.getDate()<=14) {
     const ds=`2026-07-${String(now.getDate()).padStart(2,'0')}`;
     if (daySelect)  { daySelect.value=ds; selDay=ds; }
-    if (hourSlider) { hourSlider.value=now.getHours(); updateLabel(); }
+    if (hourSlider) { hourSlider.value = now.getHours() >= 6 ? now.getHours() - 6 : -1; updateLabel(); }
   } else {
     if (hourSlider) { hourSlider.value=-1; updateLabel(); }
   }

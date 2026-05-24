@@ -66,6 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // 5. Renderizar destacados
     destacadosCards.innerHTML = picks.map(g => `
         <article class="card guia-destacada">
+            <a href="${resolvePage(g.Url)}" class="guia-link" aria-label="${g.Title}"></a>
             <picture>
                 <source media="(max-width: 768px)" srcset="${resolveAsset(g.ImgMobile)}">
                 <source media="(min-width: 769px)" srcset="${resolveAsset(g.ImgDesktop)}">
@@ -73,8 +74,9 @@ document.addEventListener("DOMContentLoaded", () => {
             </picture>
             <div class="card-overlay">
                 <h2>${g.Title}</h2>
-                <p>${g.Resumen}</p>
-                <a href="${resolvePage(g.Url)}" class="btn btn-primary btn-mini">Leer guía</a>
+                <div class="card-overlay-body">
+                    <p>${g.Resumen}</p>
+                </div>
             </div>
         </article>
     `).join("");

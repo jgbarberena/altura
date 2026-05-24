@@ -477,3 +477,109 @@
         overflow-y: auto;
     }
 }
+
+/* =====================================================
+   LISTA DE EVENTOS EN EL PANEL
+===================================================== */
+.sfp-event-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.sfp-item {
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    transition: background 0.12s;
+}
+
+.sfp-item--inactive {
+    opacity: 0.38;
+}
+
+.sfp-item--expanded {
+    background: rgba(255,255,255,0.04);
+}
+
+.sfp-item-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sfp-item-header:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.sfp-item-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.1);
+}
+
+.sfp-item-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.sfp-item-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.sfp-item-title {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.sfp-item--inactive .sfp-item-title {
+    color: rgba(255,255,255,0.75);
+}
+
+.sfp-item-time {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    color: #e87070;
+    margin-top: 3px;
+}
+
+.sfp-item--inactive .sfp-item-time {
+    color: rgba(232,112,112,0.55);
+}
+
+.sfp-item-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.35);
+    font-size: 20px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.sfp-item-close:hover {
+    color: #fff;
+}
+
+.sfp-item-body .sfp-card {
+    min-height: unset;
+}
