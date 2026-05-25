@@ -61,7 +61,10 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     }
     if (body) opts.body = JSON.stringify(body)
 
-    const res = await fetch(url, opts)
+    const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 12000)
+    )
+    const res = await Promise.race([fetch(url, opts), timeout])
     if (!res.ok) {
         const text = await res.text().catch(() => '')
         throw new Error(`HTTP ${res.status} — ${text.slice(0, 200)}`)
@@ -76,6 +79,14 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
 function buildStockEndpoint(productId, variationId) {
     if (variationId) return `products/${productId}/variations/${variationId}`
     return `products/${productId}`
+}
+
+// La API de sf-api-paula.php siempre envuelve la respuesta en un array,
+// incluso para endpoints de un único recurso. Esta función desenvuelve
+// el primer elemento para que los callers puedan leer campos directamente.
+async function apiFetchSingle(endpoint) {
+    const result = await apiFetch(endpoint)
+    return Array.isArray(result) ? (result[0] ?? {}) : (result ?? {})
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -132,7 +143,6 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
 
     try {
         await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
-        console.info(`[sfcom] Stock actualizado: ${avail.sfcom_service_name} → ${nuevoStock} (${sfcomVendidas} sfcom + ${todasOcupadas - sfcomVendidas} propias de ${avail.sfcom_slots_listed} listadas / ${avail.total_slots} totales)`)
         return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas }
     } catch (e) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
@@ -234,7 +244,7 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
     let stockSfcom
     try {
         const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-        const item     = await apiFetch(endpoint)
+        const item     = await apiFetchSingle(endpoint)
         stockSfcom     = item.stock_quantity ?? null
     } catch (e) {
         console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido. No se verifica disponibilidad sfcom. ${e.message}`)
@@ -314,7 +324,7 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
     let stockActual = null
     try {
         const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-        const item     = await apiFetch(endpoint)
+        const item     = await apiFetchSingle(endpoint)
         stockActual    = item.stock_quantity ?? null
     } catch (e) {
         console.warn(`[sfcom] No se pudo leer stock actual de ${avail.sfcom_service_name}: ${e.message}`)
@@ -595,7 +605,7 @@ export async function verificarCoherencia(supabase) {
         ok:     true,
         errores: [],
         avisos:  [],
-        sfcom: { verificado: false, discrepancias: [], error: null }
+        sfcom: { verificado: false, discrepancias: [], idsMismatch: [], error: null }
     }
 
     // ── Carga en paralelo ───────────────────────────────────────────
@@ -609,10 +619,10 @@ export async function verificarCoherencia(supabase) {
     ] = await Promise.all([
         supabase.from('reservations').select('id, client_id, provider_id, service_id, status, slots, sfcom_order_ref'),
         supabase.from('availability_with_sfcom').select('*'),
-        supabase.from('clients').select('id'),
+        supabase.from('clients').select('id, name'),
         supabase.from('providers').select('id'),
         supabase.from('services').select('id'),
-        supabase.from('reservation_requests').select('id, source, client_name').eq('status', 'nueva')
+        supabase.from('reservation_requests').select('id, source, client_name, service_id, slots, level, day').eq('status', 'nueva')
     ])
 
     if (eRes || eAvail || eClients || eProviders || eServices || eSol) {
@@ -623,6 +633,7 @@ export async function verificarCoherencia(supabase) {
 
     // ── Sets para lookup rápido ─────────────────────────────────────
     const clienteIds   = new Set((clients     ?? []).map(c => c.id))
+    const clientsMap   = Object.fromEntries((clients ?? []).map(c => [c.id, c.name ?? c.id]))
     const proveedorIds = new Set((providers   ?? []).map(p => p.id))
     const servicioIds  = new Set((services    ?? []).map(s => s.id))
     const availKeys    = new Set((availability ?? []).map(a => `${a.provider_id}|${a.service_id}`))
@@ -684,40 +695,21 @@ export async function verificarCoherencia(supabase) {
     if (mappedAvails.length === 0) {
         resultado.sfcom.verificado = true
     } else {
+        // GETs en paralelo — todos los pares se consultan simultáneamente.
+        const sfcomChecks = await Promise.allSettled(
+            mappedAvails.map(avail =>
+                apiFetchSingle(buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id))
+            )
+        )
+
         let sfcomFallo = false
-        for (const avail of mappedAvails) {
-            try {
-                const endpoint  = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-                const item      = await apiFetch(endpoint)
-                const stockReal = item.stock_quantity ?? null
+        for (let i = 0; i < sfcomChecks.length; i++) {
+            const avail   = mappedAvails[i]
+            const settled = sfcomChecks[i]
 
-                if (stockReal === null) continue
-
-                const resParProp = (reservas ?? []).filter(r =>
-                    r.provider_id === avail.provider_id &&
-                    r.service_id  === avail.service_id  &&
-                    r.status      !== 'Cancelada'
-                )
-                const sfcomVendidas  = resParProp.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
-                const todasOcupadas  = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
-                const stockEsperado  = Math.max(0, Math.min(
-                    avail.sfcom_slots_listed - sfcomVendidas,
-                    avail.total_slots        - todasOcupadas
-                ))
-
-                if (stockReal !== stockEsperado) {
-                    resultado.sfcom.discrepancias.push({
-                        servicio:     avail.sfcom_service_name,
-                        providerId:   avail.provider_id,
-                        serviceId:    avail.service_id,
-                        stockSfcom:   stockReal,
-                        stockEsperado,
-                        diferencia:   stockReal - stockEsperado  // positivo → sfcom tiene MÁS stock del esperado
-                    })
-                }
-            } catch (e) {
-                console.warn(`[verificacion] GET sfcom fallido para ${avail.sfcom_service_name}: ${e.message}`)
-                if (e.message.includes('404') && avail.sfcom_status === 'deactivation_pending') {
+            if (settled.status === 'rejected') {
+                const e = settled.reason
+                if (e.message?.includes('404') && avail.sfcom_status === 'deactivation_pending') {
                     resultado.avisos.push(
                         `${avail.sfcom_service_name} (${avail.provider_id}): producto ya retirado de sfcom ` +
                         `— puedes confirmar la baja en proveedores.html`
@@ -728,11 +720,104 @@ export async function verificarCoherencia(supabase) {
                 }
                 continue
             }
+
+            const item            = settled.value
+            const stockReal       = item.stock_quantity ?? null
+            const variacionNombre = avail.sfcom_variation_id ? (item.name ?? null) : null
+
+            // Para encierros: verificar que la variación almacenada corresponde al día del servicio.
+            const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
+            const serviceDay      = serviceDayMatch ? parseInt(serviceDayMatch[1]) : null
+            const varDay          = avail.sfcom_variation_id ? extraerDia(item.name ?? '') : null
+            if (serviceDay !== null && varDay !== null && serviceDay !== varDay) {
+                resultado.sfcom.idsMismatch.push({
+                    servicio:          avail.sfcom_service_name,
+                    variacionNombre:   item.name ?? null,
+                    dayStored:         varDay,
+                    dayExpected:       serviceDay,
+                    providerId:        avail.provider_id,
+                    serviceId:         avail.service_id,
+                    availId:           avail.id,
+                    storedVariationId: avail.sfcom_variation_id,
+                    storedProductId:   avail.sfcom_product_id
+                })
+                continue  // la comparación de stock sería engañosa; la saltamos
+            }
+
+            if (stockReal === null) continue  // producto sin gestión de stock en sfcom
+
+            const resParProp    = (reservas ?? []).filter(r =>
+                r.provider_id === avail.provider_id &&
+                r.service_id  === avail.service_id  &&
+                r.status      !== 'Cancelada'
+            )
+            const sfcomVendidas = resParProp.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+            const todasOcupadas = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
+            const stockEsperado = Math.max(0, Math.min(
+                avail.sfcom_slots_listed - sfcomVendidas,
+                avail.total_slots        - todasOcupadas
+            ))
+
+            if (stockReal !== stockEsperado) {
+                const diferencia   = stockReal - stockEsperado
+                const gap          = stockEsperado - stockReal
+
+                // Solicitudes sfcom pendientes que pueden explicar la diferencia cuando sfcom muestra menos.
+                // Matching por service_id (primario) o por nombre+día (fallback para productos multi-día).
+                const sfcomPendPar = diferencia < 0
+                    ? (solicitudes ?? []).filter(s => {
+                          if (!s.source || !/^WEB\d+_\d+$/.test(s.source)) return false
+                          if (s.service_id === avail.service_id) return true
+                          if (s.level && avail.sfcom_service_name) {
+                              const levelMatch =
+                                  s.level === avail.sfcom_service_name ||
+                                  s.level.startsWith(avail.sfcom_service_name + ' ')
+                              if (levelMatch) {
+                                  const solDay = typeof s.day === 'number' ? s.day : null
+                                  const m      = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
+                                  const svcDay = m ? parseInt(m[1]) : null
+                                  if (svcDay === null) return true
+                                  if (solDay !== null) return solDay === svcDay
+                              }
+                          }
+                          return false
+                      })
+                    : []
+                const pendingSlots   = sfcomPendPar.reduce((sum, s) => sum + (s.slots ?? 0), 0)
+                const pendingExplains = diferencia < 0 && gap > 0 && pendingSlots >= gap
+
+                resultado.sfcom.discrepancias.push({
+                    servicio:           avail.sfcom_service_name,
+                    variacionNombre,
+                    providerId:         avail.provider_id,
+                    serviceId:          avail.service_id,
+                    sfcom_slots_listed: avail.sfcom_slots_listed,
+                    total_slots:        avail.total_slots,
+                    sfcomVendidas,
+                    todasOcupadas,
+                    stockSfcom:         stockReal,
+                    stockEsperado,
+                    diferencia,
+                    reservasPar:        resParProp.map(r => ({
+                        id:         r.id,
+                        clientName: clientsMap[r.client_id] ?? r.client_id,
+                        slots:      r.slots ?? 0,
+                        sfcomRef:   r.sfcom_order_ref ?? null
+                    })),
+                    pendingRequests: sfcomPendPar.map(s => ({
+                        id:         s.id,
+                        source:     s.source,
+                        slots:      s.slots ?? 0,
+                        clientName: s.client_name
+                    })),
+                    pendingExplains
+                })
+            }
         }
         if (!sfcomFallo) resultado.sfcom.verificado = true
     }
 
-    resultado.ok = resultado.errores.length === 0
+    resultado.ok = resultado.errores.length === 0 && resultado.sfcom.idsMismatch.length === 0
     return resultado
 }
 
@@ -1122,7 +1207,7 @@ export async function verificarBajaSfcom(productId, variationId) {
     if (!productId) return { ok: false, error: 'Sin product_id' }
     try {
         const endpoint = buildStockEndpoint(productId, variationId)
-        const item     = await apiFetch(endpoint)
+        const item     = await apiFetchSingle(endpoint)
         const stock    = item.stock_quantity ?? null
         if (stock === 0 || stock === null) return { ok: true, gone: true, stock }
         return { ok: true, gone: false, stock }

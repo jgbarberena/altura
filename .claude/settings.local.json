@@ -27,7 +27,11 @@
       "Bash(git -C \"d:/Projects/Web/Altura\" log --oneline -10)",
       "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\\\\guias\"; powershell -File \".\\\\generate-index.ps1\")",
       "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\\\\faq\"; powershell -File \".\\\\generate-faqHTML.ps1\")",
-      "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\"; powershell -File \".\\\\GenerateFolderAutoSEO.ps1\")"
+      "PowerShell(Set-Location \"d:\\\\Projects\\\\Web\\\\Altura\"; powershell -File \".\\\\GenerateFolderAutoSEO.ps1\")",
+      "Bash(Select-String -Path \"d:\\\\Projects\\\\Web\\\\Altura\\\\CLAUDE.md\" -Pattern \"^## 20\\\\.\")",
+      "Bash(Select-Object -First 1)",
+      "Bash(powershell -ExecutionPolicy Bypass -File .\\\\deploy.ps1 -Message \"mejoras verificacion sfcom: modal, pendingExplains, paralelo, timeout\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"mejoras verificacion sfcom: modal, pendingExplains, paralelo, timeout\")"
     ]
   }
 }

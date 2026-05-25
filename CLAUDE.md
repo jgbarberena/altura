@@ -76,7 +76,8 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │   ├── disponibilidad.js             ← badges de disponibilidad en cards; consulta service_availability en Supabase (script clásico)
 │   ├── guias-rotar-destacados.js     ← rota guías destacadas con lógica ponderada (lee JSON embebido)
 │   ├── momenticos-cargar-testimonios.js ← carga testimonios desde JSON
-│   └── programa-san-fermin.js        ← mapa interactivo de eventos de San Fermín (Leaflet)
+│   ├── programa-san-fermin.js        ← mapa interactivo de eventos de San Fermín (Leaflet); usado en la guía principal
+│   └── programa-san-fermin-embed.js  ← versión standalone del mapa para iframe; URLs absolutas, links con target="_blank"
 ├── components/
 │   ├── header.html
 │   ├── footer.html
@@ -125,6 +126,7 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
     ├── generate-index.ps1            ← script PowerShell que genera guias/index.html
     ├── index-template.html           ← plantilla para generate-index.ps1
     ├── index.html                    ← generado automáticamente por el script
+    ├── programa-san-fermin-embed.html ← embed standalone del mapa (sin header/footer, para iframe)
     └── [artículo].html
 ```
 
@@ -433,7 +435,7 @@ El panel tiene **6 bloques** que se muestran/ocultan según el estado:
 
 **Sincronización con sfcom:** Todas las operaciones que cambian el número de reservas activas de un par (proveedor, servicio) llaman a `syncStockToSfcom` de `sfcom.js` tras persistir en Supabase. Esto incluye: añadir reserva, editar reserva, cambiar estado de reservas seleccionadas, eliminar reservas, y confirmar reorganización. Si una operación afecta a varios pares, los pares se deduplicatan y se hace exactamente una llamada PUT por par único. La reorganización de reservas también sincroniza los pares de origen y destino de cada cambio.
 
-**Verificación de coherencia:** Al cargar la página, `verificarCoherencia` de `sfcom.js` se ejecuta automáticamente. Si todo está correcto muestra un toast verde fugaz; si hay errores o discrepancias con sfcom, abre un modal con el detalle. El botón "🔍 Verificar datos" del sidebar ejecuta la misma verificación en modo manual, abriendo siempre el modal (con resumen OK o con errores).
+**Verificación de coherencia:** Al cargar la página, `ejecutarVerificacion(false)` (modo automático) muestra un toast "🔍 Verificando coherencia…" (gris oscuro, centrado arriba, mismo estilo que el toast de éxito verde) mientras corre. Si `verificarCoherencia` detecta `idsMismatch` (variaciones sfcom con IDs almacenados que no corresponden al día del service_id), se abre primero `mostrarModalPreCorreccion` con la lista de inconsistencias y dos opciones: "🔧 Corregir y reverificar" (llama a `verificarConfirmarSfcom` por cada mismatch y vuelve a correr la verificación completa) o "Continuar sin corregir" (pasa `{ sinBotonCorregir: true }` al modal principal para evitar el bucle infinito de reverificación). Después, o si no hay mismatch, se muestra `mostrarModalVerificacion` si hay problemas o si el modo es manual. El modal tiene cuatro estados visuales: rojo (errores de BD: FK rotas, sobrereservas); naranja (discrepancias reales con sfcom no explicadas por pedidos pendientes, con botón "🔄 Sincronizar" por tarjeta y "Sincronizar todos" global); azul (discrepancias donde el gap negativo está completamente explicado por solicitudes sfcom pendientes de procesar — no se muestra botón sync porque sfcom está correcto y el pendiente somos nosotros); verde (todo OK). El botón "🔍 Verificar datos" del sidebar ejecuta `ejecutarVerificacion(true)` (modo manual), que siempre abre el modal aunque todo esté correcto.
 
 **Inferencia de service_id desde solicitudes web:**
 ```js
@@ -519,6 +521,10 @@ Módulo ES6. Gestiona toda la comunicación con la tienda WooCommerce de sfcom a
 **API:** `https://tienda.sanfermin.com/wp-content/plugins/sf-api-paula/sf-api-paula.php`  
 Cabecera de autenticación: `X-Paula-Key`. Endpoints disponibles: `GET/PUT products/{id}` y `GET/PUT products/{id}/variations/{variation_id}`. Solo se envía `stock_quantity` en los PUT.
 
+**Respuestas de la API — array wrapping:** `sf-api-paula.php` envuelve TODAS las respuestas en un array. La función interna `apiFetchSingle` desenvuelve automáticamente (`Array.isArray(result) ? (result[0] ?? {}) : (result ?? {})`). Nunca leer campos directamente desde el resultado de `apiFetch` cuando se espera un objeto único — siempre usar `apiFetchSingle`.
+
+**Timeout de red:** `apiFetch` implementa un timeout de 12 segundos mediante `Promise.race([fetch(...), timeoutPromise])`. Necesario porque `verificarCoherencia` usa `Promise.allSettled` que espera a TODOS los promises; sin timeout, un fetch que cuelgue bloquea toda la verificación indefinidamente.
+
 **Fórmula de stock:**
 ```
 nuevoStock = Math.max(0, Math.min(
@@ -532,6 +538,8 @@ El primer término limita lo que sfcom puede vender por lo que sfcom ya vendió 
 
 **Comisión sfcom:** sfcom cobra el 15% de los pedidos que gestiona. El precio neto que recibimos es `precio_bruto / 1.15`. Esta constante aparece en `formulario.js` al precargar el precio desde solicitudes sfcom (`_inferirDesdeSfcom`). No se aplica a los PUTs de stock (que solo envían `stock_quantity`).
 
+**"Nombre como contrato" — alcance exacto:** Esta frase aplica ÚNICAMENTE a la búsqueda de entradas en `sfcom_listings` al registrar pedidos sfcom entrantes (`registrarPedidosSfcom`): se busca la fila por `sfcom_service_name` y los IDs almacenados actúan solo como verificación secundaria. Para todo lo demás — PUTs de stock, GETs de verificación, flujo de activación/baja — los IDs almacenados en `sfcom_product_id` y `sfcom_variation_id` son la fuente de verdad para construir la URL del endpoint. Los IDs nunca se infieren por nombre en tiempo de ejecución.
+
 **Flujo de activación en sfcom:** `null` → click "Solicitar a SFcom" → `'pending'` (correo a Hilario) → Hilario activa el producto → click "Confirmar" → GET de verificación → `'confirmed'` + sync inicial de stock. Solo cuando `sfcom_status === 'confirmed'` se ejecutan PUTs de stock automáticos.
 
 **Flujo de baja en sfcom:** `'confirmed'` → click "Dar de baja" → `'deactivation_pending'` (correo a Hilario) → Hilario retira el producto → click "Confirmar baja" → GET de verificación (stock debe ser 0 o producto inexistente) → DELETE en `sfcom_listings` → `null`. Mientras `sfcom_status` no sea `null`, el servicio no se puede eliminar de Supabase.
@@ -544,15 +552,17 @@ El primer término limita lo que sfcom puede vender por lo que sfcom ya vendió 
 
 `checkSfcomOrders(supabase)` — Llama a `GET orders?status=completed&...` de sf-api-paula.php para detectar pedidos nuevos. El endpoint `orders` está activo. Si encuentra pedidos sin `source` correspondiente en `reservation_requests`, los devuelve como `nuevos`. `registrarPedidosSfcom` los inserta en `reservation_requests` usando el sistema de dos capas (nombre como contrato, IDs como verificación). Llamada al cargar `formulario.html`.
 
-`verificarCoherencia(supabase)` — Lee en paralelo reservations, `availability_with_sfcom`, clients, providers, services y reservation_requests (status='nueva'). Verifica: integridad FK en reservas, reservas activas sin fila de availability, sobrereservas (count activas > total_slots). También hace GET a sfcom para cada fila con sfcom_product_id y compara stock real contra el esperado por la fórmula — discrepancia positiva (sfcom muestra más del esperado) es más grave que negativa. Continúa verificando todos los pares aunque uno falle (no rompe el bucle). Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], error } }`.
+`verificarCoherencia(supabase)` — Lee en paralelo reservations, `availability_with_sfcom`, clients, providers, services y reservation_requests (status='nueva', seleccionando `id, source, client_name, service_id, slots, level, day`). Verifica: integridad FK en reservas, reservas activas sin fila de availability, sobrereservas (count activas > total_slots). Para pares con `sfcom_status === 'confirmed'`, hace GET a sfcom en paralelo (`Promise.allSettled`) y compara stock real contra `computeExpectedStock`. Detecta además si el `sfcom_variation_id` almacenado no coincide con el día esperado según `service_id` — estos casos van al array `idsMismatch`. Las discrepancias con stock negativo que están completamente explicadas por solicitudes sfcom pendientes de procesar llevan `pendingExplains: true` en el objeto de discrepancia. Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], idsMismatch[], error } }`. `ok = errores.length === 0 && sfcom.idsMismatch.length === 0` — las discrepancias `pendingExplains` no afectan a `ok`. Continúa verificando todos los pares aunque uno falle (no rompe el bucle).
 
-`verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)` — Busca el nombre propuesto en sfcom y confirma la entrada. Si hay coincidencia, hace UPSERT en `sfcom_listings` con `availability_id = dispId`, `sfcom_product_id`, `sfcom_variation_id` y `sfcom_status: 'confirmed'`. Si no hay coincidencia exacta, muestra el modal picker.
+`computeExpectedStock(avail, reservas)` — Función interna que aplica la fórmula de stock para un par. Guarda contra `sfcom_slots_listed === null` (devuelve `null`, sin sync ni verificación). Usada por `verificarCoherencia` y `syncStockToSfcom`.
+
+`verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)` — Busca el nombre propuesto en sfcom y confirma la entrada. Si hay coincidencia exacta, hace UPSERT en `sfcom_listings` con `availability_id = dispId`, `sfcom_product_id`, `sfcom_variation_id` y `sfcom_status: 'confirmed'`. Si no hay coincidencia exacta, muestra el modal picker. También se usa desde `formulario.js` en el flujo de pre-corrección de `idsMismatch` para reasignar IDs incorrectos sin intervención manual del admin.
 
 `verificarBajaSfcom(productId, variationId)` — GET a sfcom para comprobar que el producto ya no está activo (stock 0 o error 404). Usado en el flujo de baja antes de confirmarla y hacer DELETE en `sfcom_listings`.
 
 `mostrarModalConfirmacionSfcom(cambios)` — Modal consultivo (devuelve `Promise<boolean>`). Muestra los PUTs planeados antes de ejecutarlos: par proveedor/servicio, stock actual, stock nuevo. Botones "Confirmar" (resolve true) y "Cancelar" (resolve false). Se llama desde `formulario.js` y `proveedores.js` antes de llamar a `syncStockToSfcom`. Si el admin cancela, no se ejecuta ningún PUT ni ningún guardado en Supabase.
 
-**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError` (fallo de PUT, incluye correo a Hilario), `mostrarModalConfirmacionSfcom` (pre-save consultivo, exportado), `mostrarModalCorreoBajaSfcom` (correo a Hilario para solicitar baja), `mostrarModalAvisoOrders` (orders endpoint no disponible). El toast y el modal de verificación están en `formulario.js` (consumen el resultado de `verificarCoherencia`). El antiguo `mostrarModalExito` ha sido eliminado; el éxito de un PUT es silencioso.
+**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError` (fallo de PUT, incluye correo a Hilario), `mostrarModalConfirmacionSfcom` (pre-save consultivo, exportado), `mostrarModalCorreoBajaSfcom` (correo a Hilario para solicitar baja), `mostrarModalAvisoOrders` (orders endpoint no disponible). Los modales de verificación (`mostrarModalVerificacion`, `mostrarModalPreCorreccion`) y el toast de carga están en `formulario.js`, que consume el resultado de `verificarCoherencia`. El antiguo `mostrarModalExito` ha sido eliminado; el éxito de un PUT es silencioso.
 
 ### 7.8 tablas.js — Vista de tablas
 
@@ -624,6 +634,18 @@ Mapa Leaflet con todos los eventos y localizaciones de San Fermín. Filtros por 
 **Patrón crítico — click en panel:** el handler del panel debe tener `e.stopPropagation()` como primera línea. Sin él, `showPanelList()` reemplaza `panel.innerHTML` completo, el elemento clicado queda desconectado del DOM, y el listener de `document` recibe el evento con `panel.contains(detachedElement) === false`, llamando a `showPanelList(null)` y colapsando el ítem recién expandido.
 
 **Convención de fechas del día 6:** el 6 de julio las fiestas empiezan con el Chupinazo a las 12:00. Los eventos recurrentes diarios (Barracas, Casetas Regionales, Corralillos del Gas) usan `F7_14`, no `F6_14`. Solo los eventos que ocurren explícitamente el día 6 (Chupinazo, Vísperas, Dianas, etc.) llevan `'2026-07-06'` en sus `fechas`.
+
+**Embed del mapa (`guias/programa-san-fermin-embed.html` + `js/programa-san-fermin-embed.js`):**
+
+La guía `guias/programa-san-fermin.html` ya no renderiza el mapa directamente. En su lugar incluye un `<iframe src="programa-san-fermin-embed.html">` (mismo directorio) dentro de un `.mapa-sf-iframe-wrapper`. El embed es una página completamente standalone — no usa `include.js`, no tiene header ni footer, no depende de `BASE_URL`.
+
+El archivo JS del embed (`programa-san-fermin-embed.js`) es una copia de `programa-san-fermin.js` con dos diferencias únicas:
+- `EVENT_PAGES`: todos los `href` e `img` usan URLs absolutas a `https://www.experienciasanfermin.com/...` en lugar de rutas relativas (`../experiencias/...`, `../img/cards/...`), para que funcionen cuando el embed se carga desde dominios externos.
+- El enlace generado en `buildTooltipHTML` lleva `target="_blank" rel="noopener"` para que abra en nueva pestaña desde webs externas.
+
+El HTML del embed tiene los estilos en un `<style>` inline con un bloque `:root` que define las variables CSS del sistema (`--font-sans`, `--color-accent`, `--color-body`, `--color-heading`, `--color-subtle`, `--text-small`) — necesario porque `style.css` no se carga. El layout usa `body { display: flex; flex-direction: column }` y `.mapa-sf-wrapper { flex: 1; display: flex; flex-direction: column }` con `.mapa-sf-body { flex: 1; grid-template-rows: 1fr }` para que el mapa ocupe todo el espacio disponible sin alturas hardcodeadas en vh. El wrapper no tiene `margin`, `border-radius` ni `box-shadow` (esos estilos quedan en el wrapper del iframe en la guía principal). Un banner `.embed-attribution` fixed en la parte inferior incluye el enlace de atribución.
+
+Si se actualiza el mapa (nuevos eventos, corrección de datos, etc.), hay que editar **ambos archivos JS** (`programa-san-fermin.js` y `programa-san-fermin-embed.js`) para mantenerlos sincronizados. La única diferencia entre ellos es `EVENT_PAGES` y el `target="_blank"` del link.
 
 ### 8.6 guias-rotar-destacados.js — Rotación de guías
 
@@ -719,7 +741,7 @@ POBRE_DE_MI
 
 ---
 
-## 10b. Catálogo de productos sfcom (tienda.sanfermin.com) — verificado 2026-05-23
+## 10b. Catálogo de productos sfcom (tienda.sanfermin.com) — verificado 2026-05-25
 
 API: `https://tienda.sanfermin.com/sf-api-paula.php` · Auth: `X-Paula-Key`
 
@@ -727,10 +749,11 @@ API: `https://tienda.sanfermin.com/sf-api-paula.php` · Auth: `X-Paula-Key`
 
 | ID sfcom | Nombre en sfcom | Servicio Supabase | Stock actual | Notas |
 |---|---|---|---|---|
+| 131 | Balcón Chupinazo Día 6 julio Plaza Ayuntamiento | CHUPINAZO_6 | — | Proveedor ANGEL; añadido por Hilario may 2026 |
 | 138 | Balcón Chupinazo 6 Julio (Plaza del Castillo) | CHUPINAZO_6 | 12 | |
 | 140 | Barrera Encierro (Cuesta Santo Domingo) | ENCIERRO_? | null | Sin stock gestionado |
 | 142 | Pobre de Mí 14 Julio | POBRE_DE_MI | 9 | |
-| 145 | Procesión San Fermín 7 Julio | PROCESION_7 | 12 | |
+| 145 | Procesión San Fermín 7 Julio | PROCESION_7 | 12 | Ver nota stock |
 | 215 | Entrada Adulto Gigantes | DESPEDIDA_GIGANTES_14 | 10 | Hijo del agrupado 147 |
 | 216 | Entrada Niño Gigantes | DESPEDIDA_GIGANTES_14 | 10 | Hijo del agrupado 147 |
 
@@ -743,6 +766,10 @@ API: `https://tienda.sanfermin.com/sf-api-paula.php` · Auth: `X-Paula-Key`
 El producto agrupado 147 no tiene stock propio (`null`). El stock real está en los hijos 215 y 216. Para sincronizar DESPEDIDA_GIGANTES_14 hay que hacer PUT a 215 y a 216 por separado.
 
 ### Productos variables (con variaciones por día)
+
+**124 — Balcón Ayuntamiento Encierro** (variable, proveedor ASUN)
+
+6 variaciones (IDs 281–286). Añadido por Hilario en mayo 2026. Verificar mapeo día → ID variación con `GET products/124` en la API o consultando `sfcom_listings` en Supabase.
 
 **133 — Balcón Estafeta** (variable)
 
@@ -784,7 +811,10 @@ El producto agrupado 147 no tiene stock propio (`null`). El stock real está en 
     status:       'completed',       // 'completed', 'cancelled', 'processing', etc.
     date_created: '2026-05-21T13:14:55',
     total:        '300.00',          // string
-    // + billing, line_items, customer_note (estructura WooCommerce estándar, pendiente verificar)
+    billing:      { first_name, last_name, email, phone, address_1, address_2, city, country },
+    line_items:   [{ name, product_id, variation_id, quantity, total }]
+    // li.name contiene el nombre completo de la variación: "Balcón Estafeta - Viernes 10 de Julio 2026"
+    // No existe parent_name; extraerNombreProducto hace prefix-scan sobre li.name
 }
 ```
 
@@ -794,9 +824,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 
 ### Notas importantes sobre el catálogo
 
-- Los nombres de variación siguen el patrón `"Día de Semana DD de Mes YYYY"`. La inferencia por día en `_inferirProductoEnSfcom` busca el número del día en el nombre de la variación.
+- Los nombres de variación siguen el patrón `"Día de Semana DD de Mes YYYY"`. La inferencia por día en `extraerDia` busca el número del día en el nombre de la variación (li.name del pedido, o nombre de variación del GET de producto).
 - Producto 140 (Barrera Encierro) tiene `stock_quantity: null` → WooCommerce no gestiona su stock o está configurado como "no gestionar stock". No sincronizar hasta aclarar.
-- Producto 147 (Despedida Gigantes) es `grouped` → su stock es `null`; solo se pueden hacer PUT a los hijos 215 y 216.
+- Producto 147 (Despedida Gigantes) es `grouped` → su stock es `null`; solo se pueden hacer PUT a los hijos 215 y 216. Nunca configurar `sfcom_product_id = 147` en `sfcom_listings`; usar 215 o 216 según corresponda.
+- Producto 145 (Procesión): verificar si stock refleja el estado real después de sincronización — había discrepancia detectada en mayo 2026.
 - La temporada activa es 2026 (julio). Los IDs de variación cambiarán cuando se creen los productos de 2027.
 
 ---
@@ -811,8 +842,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 
 ## 12. Deudas técnicas pendientes
 
-### 12.1 API sf-api-paula.php — **Activa y operativa**
-**Situación:** La API `sf-api-paula.php` (acceso directo, clave `X-Paula-Key`) está activa. CORS resuelto. Endpoints confirmados: `products`, `products/{id}/variations`, `orders`. El formato exacto de respuesta de `orders` está pendiente de verificar (ver 12.14).
+### 12.1 API sf-api-paula.php — **Activa; CORS pendiente en Live Server**
+**Situación:** La API `sf-api-paula.php` (acceso directo, clave `X-Paula-Key`) está activa. Endpoints confirmados: `products`, `products/{id}/variations`, `orders`. El formato de respuesta de `orders` está verificado (ver 12.14).
+
+**CORS:** Funciona desde producción (`https://experienciasanfermin.com`). Desde Live Server (`http://127.0.0.1:5500`) está ROTO (error `No 'Access-Control-Allow-Origin' header`) — Hilario necesita re-añadir este origen a la configuración CORS del plugin. No es un bug de nuestro código; no hay nada que hacer en el JS. Pendiente solo de acción de Hilario. Mientras dure, todas las llamadas a sfcom desde Live Server fallarán silenciosamente (timeout de 12s) y la verificación de coherencia reportará "No se pudo verificar sfcom".
 
 ### 12.2 Disponibilidad en sfcom — **Pendiente diseño**
 **Problema:** Los productos de sfcom (WooCommerce) no tienen disponibilidad real sincronizada con Supabase.
@@ -855,12 +888,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 ### 12.12 Campos sfcom — **Implementados en sfcom_listings**
 **Situación:** Los campos sfcom (`sfcom_status`, `sfcom_product_id`, `sfcom_variation_id`, `sfcom_service_name`, `sfcom_slots_listed`) están en la tabla `sfcom_listings`, separada de `availability`. El JS los lee vía la vista `availability_with_sfcom` y los escribe directamente en `sfcom_listings`.
 
-### 12.13 GET de productos sfcom con latencia alta (N+1 sin caché) — **Deuda técnica**
-**Situación:** `getSfcomProducts()` hace un GET inicial para listar todos los productos y luego un GET por cada producto que tiene variaciones (N+1). En verificarCoherencia, si hay muchos pares con sfcom activo, el tiempo de carga puede ser notable. No hay caché entre llamadas.
+### 12.13 GETs sfcom en verificarCoherencia — **Parcialmente resuelto**
+**Situación:** `verificarCoherencia` ahora usa `Promise.allSettled` para hacer todos los GETs de stock sfcom en paralelo (uno por par con `sfcom_status === 'confirmed'`). La latencia total es la del GET más lento, no la suma de todos. El timeout de 12s garantiza que ningún fetch cuelgue indefinidamente.
 
-**Impacto:** Latencia visible en verificarCoherencia cuando hay múltiples pares sfcom. Actualmente aceptable por volumen bajo.
-
-**Acción pendiente:** Si el volumen crece, implementar caché en memoria con TTL corto (ej. 60s) dentro de la sesión de admin.
+**Pendiente:** No hay caché entre llamadas dentro de la misma sesión. Si el volumen de pares confirmados crece significativamente, implementar caché en memoria con TTL corto (ej. 60s). Actualmente irrelevante con el volumen actual (~20 pares).
 
 ### 12.14 `checkSfcomOrders` — estructura verificada, inferencia de nombre y día implementada — **Resuelto**
 **Situación:** Estructura confirmada por GET real: `{id, number, status, date_created, total, billing: {first_name, last_name, email, phone, address_1, address_2, city, country}, line_items: [{name, product_id, variation_id, quantity, total}]}`. No existe `parent_name` — el campo `li.name` contiene el nombre completo de la variación (ej: `"Balcón Estafeta - Viernes 10 de Julio 2026"`).
@@ -891,6 +922,15 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 **Situación:** Dos casos de configuración incorrecta en `sfcom_listings` pueden provocar efectos no deseados: (a) si una fila se linkea con `sfcom_product_id=147` (el producto agrupado Despedida Gigantes) en lugar de sus hijos 215 o 216, el PUT de stock no tendrá efecto (WooCommerce no gestiona stock del padre agrupado); (b) si se linkea el producto 140 (Barrera Encierro, `stock_quantity: null`) como `confirmed`, el PUT activaría la gestión de stock en WooCommerce con efecto lateral no deseado.
 
 **Acción:** No es un bug de código sino de configuración de datos. Reglas a respetar: el producto 147 nunca debe ser `sfcom_product_id` (usar 215 o 216 según corresponda); el producto 140 no debe activarse como `confirmed` hasta aclarar su modelo de gestión de stock.
+
+### 12.23 Modal de verificación sfcom — **Resuelto**
+**Situación:** El modal de verificación fue rediseñado completamente. Ahora cada tarjeta de discrepancia muestra: nombre del servicio sfcom y variación, provider_id, service_id, grid de plazas (totales / listadas en sfcom / reservadas por sfcom / reservadas propias / stock esperado / stock real). Las discrepancias reales tienen botón "🔄 Sincronizar" individual (arriba derecha) y hay un "Sincronizar todos" global solo para las reales. Las discrepancias explicadas por pedidos sfcom pendientes de procesar se muestran en sección azul separada sin botón de sincronización. Los idsMismatch (IDs de variación incorrectos) activan un modal previo de corrección antes de mostrar los resultados. El flujo no bloquea al admin: siempre puede elegir "Continuar sin corregir" desde el modal de pre-corrección.
+
+### 12.24 `idsMismatch` — detección y corrección de IDs de variación erróneos — **Resuelto**
+**Situación:** `verificarCoherencia` compara el día extraído del nombre de la variación obtenida del GET con el día esperado según el `service_id` (`ENCIERRO_N` → día N). Si no coinciden, el par va a `sfcom.idsMismatch`. En `formulario.js`, `mostrarModalPreCorreccion` muestra estos casos antes del modal principal, con la opción de llamar automáticamente a `verificarConfirmarSfcom` por cada mismatch para reasignar los IDs correctos y reverificar. Si el admin elige "Continuar sin corregir", se pasa `{ sinBotonCorregir: true }` al modal principal para no ofrecer la corrección de nuevo (evita bucle infinito).
+
+### 12.25 `pendingExplains` — discrepancias sfcom explicadas por pedidos pendientes — **Resuelto**
+**Situación:** Cuando sfcom muestra más stock del esperado (diferencia negativa desde nuestro punto de vista) y ese gap está completamente cubierto por solicitudes sfcom con `status='nueva'` pendientes de procesar, la discrepancia no es un error — es el estado esperado. `verificarCoherencia` detecta esto buscando solicitudes que coincidan con el par (por `service_id` directo, o fallback por `level`+`day`). Esas discrepancias llevan `pendingExplains: true`, no cuentan para `resultado.ok` y no tienen botón de sincronización en el modal. El "Sincronizar todos" las ignora explícitamente.
 
 ---
 
@@ -1038,9 +1078,9 @@ Si algo es complejo de implementar y el beneficio es estético, se deja para des
 <!-- Google Analytics (carga dinámica, solo con consentimiento) -->
 <!-- gtag.js — gestionado por analytics.js -->
 
-<!-- Leaflet (solo en programa-san-fermin) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet (solo en programa-san-fermin-embed.html; ya no se carga en la guía principal) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 ```
 
 **Panel de administración:**
@@ -1052,6 +1092,37 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 ```
+
+---
+
+## 21. Flujo de deploy
+
+El script `deploy.ps1` (en la raíz del proyecto) automatiza el ciclo completo: regenera índices + SEO + sitemap → git commit/push → FTP de los archivos cambiados.
+
+**Ejecución desde terminal:**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Message "descripción breve"
+```
+
+Para uso diario sin tener que escribir el bypass: ejecutar una sola vez en el terminal:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+Después basta con `.\deploy.ps1 -Message "..."`.
+
+**Opciones:**
+- `-SkipScripts` — no regenera índices/SEO/sitemap (solo commit + FTP)
+- `-SkipFtp` — solo hace commit/push, sin subir por FTP
+- `-SkipGit` — solo FTP, sin commit
+
+**Claude puede ejecutar el deploy directamente.** Cuando Javier pida "haz el deploy", "sube los cambios" o similar, Claude debe:
+1. Revisar qué se ha modificado en la conversación.
+2. Redactar un mensaje de commit breve y descriptivo en español (máx. 60 caracteres).
+3. Ejecutar mediante la herramienta Bash:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Message "<mensaje>"
+   ```
+4. Reportar el resultado (archivos subidos, errores si los hay).
 
 ---
 

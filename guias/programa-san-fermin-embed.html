@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa interactivo San Fermín 2026</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* Reset mínimo */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* Variables del sistema de diseño */
+        :root {
+            --font-sans: 'Inter', sans-serif;
+            --text-small: 13px;
+            --color-body: #444;
+            --color-heading: #222;
+            --color-accent: #b30000;
+            --color-subtle: #777;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: var(--font-sans);
+            font-size: 14px;
+        }
+
+        /* Layout fullscreen: wrapper ocupa todo el viewport */
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* =====================================================
+           WRAPPER EXTERIOR DEL MAPA — embed override
+        ===================================================== */
+        .mapa-sf-wrapper {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            margin: 0;
+            border-radius: 0;
+            box-shadow: none;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* =====================================================
+           CONTROLES (barra superior del mapa)
+        ===================================================== */
+        .mapa-sf-controls {
+            background: #fff;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            padding: 12px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            border-radius: 0;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .mapa-sf-controls label {
+            font-family: var(--font-sans);
+            font-size: var(--text-small);
+            font-weight: 500;
+            color: var(--color-body);
+            white-space: nowrap;
+        }
+
+        #sf-day-select {
+            font-family: var(--font-sans);
+            font-size: var(--text-small);
+            border: 1px solid rgba(0,0,0,0.15);
+            border-radius: 6px;
+            padding: 5px 10px;
+            color: var(--color-heading);
+            background: #fafafa;
+            cursor: pointer;
+        }
+
+        .mapa-sf-hour-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        #sf-hour-slider {
+            flex: 1;
+            accent-color: var(--color-accent);
+            cursor: pointer;
+        }
+
+        #sf-hour-label {
+            font-family: var(--font-sans);
+            font-size: var(--text-small);
+            font-weight: 600;
+            color: var(--color-accent);
+            min-width: 140px;
+        }
+
+        /* =====================================================
+           GRID: MAPA + PANEL LATERAL
+           flex: 1 + min-height: 0 para que ocupe el espacio restante
+        ===================================================== */
+        .mapa-sf-body {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            grid-template-rows: 1fr;
+            flex: 1;
+            min-height: 0;
+        }
+
+        #mapa-sf {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            display: block;
+        }
+
+        /* =====================================================
+           PANEL LATERAL
+        ===================================================== */
+        .mapa-sf-panel {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            background: rgba(18,12,12,0.92);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid rgba(255,255,255,0.08);
+            box-sizing: border-box;
+        }
+
+        /* Estado vacío del panel */
+        .mapa-sf-panel-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            padding: 24px 16px;
+            text-align: center;
+            color: rgba(255,255,255,0.25);
+            font-family: var(--font-sans);
+            font-size: 12px;
+            gap: 12px;
+            line-height: 1.5;
+            user-select: none;
+        }
+
+        .mapa-sf-panel-empty-icon {
+            font-size: 32px;
+            opacity: 0.35;
+        }
+
+        /* =====================================================
+           LEYENDA (barra inferior del mapa)
+        ===================================================== */
+        .mapa-sf-leyenda {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            color: var(--color-subtle);
+            background: #fafafa;
+            border-top: 1px solid rgba(0,0,0,0.06);
+            padding: 8px 20px;
+            line-height: 1.7;
+            border-radius: 0;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        /* =====================================================
+           CARD DE DETALLE (dentro del panel)
+        ===================================================== */
+        .sfp-card {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            color: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+        }
+
+        .sfp-img {
+            width: 100%;
+            height: 130px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .sfp-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            opacity: 0.85;
+        }
+
+        .sfp-body {
+            padding: 14px 16px 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .sfp-loc {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.35);
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .sfp-ev {
+            margin-bottom: 12px;
+        }
+
+        .sfp-ev + .sfp-ev {
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.07);
+        }
+
+        .sfp-etit {
+            font-weight: 600;
+            color: #fff;
+            font-size: 13px;
+            line-height: 1.35;
+            margin-bottom: 4px;
+        }
+
+        .sfp-edesc {
+            font-size: 11.5px;
+            color: rgba(255,255,255,0.48);
+            line-height: 1.5;
+            margin-bottom: 6px;
+        }
+
+        .sfp-pend {
+            font-size: 10px;
+            color: #e0a020;
+            font-style: italic;
+        }
+
+        .sfp-dia {
+            font-size: 12px;
+            color: rgba(255,255,255,0.65);
+            margin-top: 3px;
+            line-height: 1.5;
+        }
+
+        .sfp-hora {
+            font-weight: 700;
+            color: #e87070;
+            font-size: 12px;
+        }
+
+        .sfp-link {
+            display: inline-block;
+            margin-top: 12px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #e87070;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(232,112,112,0.35);
+            transition: color .2s, border-color .2s;
+        }
+
+        .sfp-link:hover {
+            color: #fff;
+            border-bottom-color: rgba(255,255,255,0.5);
+        }
+
+        /* =====================================================
+           LISTA DE EVENTOS EN EL PANEL
+        ===================================================== */
+        .sfp-event-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sfp-item {
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            transition: background 0.12s;
+        }
+
+        .sfp-item--inactive {
+            opacity: 0.38;
+        }
+
+        .sfp-item--expanded {
+            background: rgba(255,255,255,0.04);
+        }
+
+        .sfp-item-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .sfp-item-header:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .sfp-item-thumb {
+            width: 44px;
+            height: 44px;
+            border-radius: 4px;
+            overflow: hidden;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .sfp-item-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .sfp-item-meta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .sfp-item-title {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .sfp-item--inactive .sfp-item-title {
+            color: rgba(255,255,255,0.75);
+        }
+
+        .sfp-item-time {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 700;
+            color: #e87070;
+            margin-top: 3px;
+        }
+
+        .sfp-item--inactive .sfp-item-time {
+            color: rgba(232,112,112,0.55);
+        }
+
+        .sfp-item-close {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.35);
+            font-size: 20px;
+            line-height: 1;
+            padding: 0 2px;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: color 0.15s;
+        }
+
+        .sfp-item-close:hover {
+            color: #fff;
+        }
+
+        .sfp-item-body .sfp-card {
+            min-height: unset;
+        }
+
+        .sfp-group-header {
+            font-family: var(--font-sans);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.28);
+            padding: 10px 12px 4px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .sfp-group-header:first-child {
+            border-top: none;
+        }
+
+        /* =====================================================
+           MOBILE
+        ===================================================== */
+        @media (max-width: 768px) {
+            .mapa-sf-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .mapa-sf-hour-group {
+                min-width: 0;
+                width: 100%;
+            }
+
+            .mapa-sf-body {
+                grid-template-columns: 1fr;
+                position: relative;
+            }
+
+            #mapa-sf {
+                height: 100%;
+                min-height: 280px;
+            }
+
+            /* En mobile el panel se superpone sobre el mapa desde abajo */
+            .mapa-sf-panel {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: auto;
+                min-height: 0;
+                max-height: 0;
+                overflow: hidden;
+                border-left: none;
+                border-top: none;
+                background: rgba(18,12,12,0.88);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                z-index: 1000;
+                transition: max-height 0.35s ease;
+                border-radius: 0;
+            }
+
+            .mapa-sf-panel.panel-open {
+                max-height: 55vh;
+                overflow-y: auto;
+            }
+        }
+
+        /* =====================================================
+           BANNER DE ATRIBUCIÓN
+        ===================================================== */
+        .embed-attribution {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            text-align: center;
+            padding: 3px 12px;
+            font-family: var(--font-sans);
+            font-size: 11px;
+            color: #888;
+            z-index: 2000;
+            line-height: 1.6;
+        }
+
+        .embed-attribution a {
+            color: var(--color-accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .embed-attribution a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="mapa-sf-wrapper">
+        <div class="mapa-sf-controls">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <label for="sf-day-select">Día:</label>
+                <select id="sf-day-select">
+                    <option value="all">Todos los días</option>
+                    <option value="2026-07-05">Dom 5 jul — Novillada</option>
+                    <option value="2026-07-06">Lun 6 jul — Chupinazo</option>
+                    <option value="2026-07-07">Mar 7 jul — Día grande · Procesión</option>
+                    <option value="2026-07-08">Mié 8 jul</option>
+                    <option value="2026-07-09">Jue 9 jul</option>
+                    <option value="2026-07-10">Vie 10 jul</option>
+                    <option value="2026-07-11">Sáb 11 jul</option>
+                    <option value="2026-07-12">Dom 12 jul</option>
+                    <option value="2026-07-13">Lun 13 jul</option>
+                    <option value="2026-07-14">Mar 14 jul — Último día · Pobre de Mí</option>
+                </select>
+            </div>
+            <div class="mapa-sf-hour-group">
+                <label for="sf-hour-slider">Hora:</label>
+                <input type="range" id="sf-hour-slider" min="-1" max="17" value="-1" step="1">
+                <span id="sf-hour-label">Todo el día</span>
+            </div>
+        </div>
+
+        <div class="mapa-sf-body">
+            <div id="mapa-sf"></div>
+            <div class="mapa-sf-panel" id="mapa-sf-panel">
+                <div class="mapa-sf-panel-empty" id="mapa-sf-panel-empty">
+                    <span class="mapa-sf-panel-empty-icon">📍</span>
+                    <span>Haz click en un punto del mapa para ver los detalles</span>
+                </div>
+            </div>
+        </div>
+
+        <p class="mapa-sf-leyenda">
+            <span style="color:#c0392b">🐂 Toros</span> &nbsp;·&nbsp;
+            <span style="color:#7d3c98">⭐ Eventos únicos</span> &nbsp;·&nbsp;
+            <span style="color:#c07000">🎭 Tradición callejera</span> &nbsp;·&nbsp;
+            <span style="color:#2471a3">🎵 Conciertos</span> &nbsp;·&nbsp;
+            <span style="color:#1e8449">🎪 Ocio y cultura</span> &nbsp;·&nbsp;
+            <span style="color:#d4ac0d">✨ Fuegos</span>
+            &nbsp;&nbsp;— Gris: activo ese día, fuera de la franja horaria.
+        </p>
+    </div>
+
+    <div class="embed-attribution">
+        Programa interactivo por <a href="https://www.experienciasanfermin.com/guias/programa-san-fermin.html" target="_blank" rel="noopener">experienciasanfermin.com</a>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="../js/programa-san-fermin-embed.js"></script>
+</body>
+</html>

@@ -595,3 +595,27 @@
 .sfp-group-header:first-child {
     border-top: none;
 }
+
+/* =====================================================
+   IFRAME DEL EMBED (en guias/programa-san-fermin.html)
+===================================================== */
+.mapa-sf-iframe-wrapper {
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 32px 0 0;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.13);
+}
+
+.mapa-sf-iframe-wrapper iframe {
+    width: 100%;
+    height: 600px;
+    border: none;
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .mapa-sf-iframe-wrapper iframe {
+        height: 500px;
+    }
+}

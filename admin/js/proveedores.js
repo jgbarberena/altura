@@ -1781,7 +1781,13 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
     }
 
     await persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)
-    for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
+
+    if (pairsSync.length > 0) {
+        const sfcomOkMultiple = await confirmarStockSfcom(pairsSync)
+        if (sfcomOkMultiple) {
+            for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
+        }
+    }
 
     // Correo a Hilario si hay solicitudes sfcom pendientes
     const sfcomSolicitados = multipleRows.filter(r => r.sfcomListar && r.active)
