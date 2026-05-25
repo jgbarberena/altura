@@ -2399,7 +2399,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
                     no pudo${resultado.sfcom.fallos.length !== 1 ? 'ieron' : ''} verificarse
                     (timeout / CORS)
                 </div>
-                ${filasFallos}
+                <div style="max-height:120px;overflow-y:auto">${filasFallos}</div>
             </div>`
     }
 
@@ -2606,7 +2606,7 @@ async function ejecutarVerificacion(modoManual = false) {
     const discRepReal   = (resultado.sfcom.discrepancias ?? []).filter(d => !d.pendingExplains)
     const hayPendientes = (resultado.sfcom.discrepancias ?? []).some(d => d.pendingExplains)
     const hayFallos     = (resultado.sfcom.fallos?.length ?? 0) > 0
-    const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0 || hayFallos
+    const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0
 
     if (modoManual || hayProblema || hayPendientes) {
         mostrarModalVerificacion(resultado)
