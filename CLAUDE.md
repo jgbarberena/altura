@@ -932,6 +932,30 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 ### 12.25 `pendingExplains` — discrepancias sfcom explicadas por pedidos pendientes — **Resuelto**
 **Situación:** Cuando sfcom muestra más stock del esperado (diferencia negativa desde nuestro punto de vista) y ese gap está completamente cubierto por solicitudes sfcom con `status='nueva'` pendientes de procesar, la discrepancia no es un error — es el estado esperado. `verificarCoherencia` detecta esto buscando solicitudes que coincidan con el par (por `service_id` directo, o fallback por `level`+`day`). Esas discrepancias llevan `pendingExplains: true`, no cuentan para `resultado.ok` y no tienen botón de sincronización en el modal. El "Sincronizar todos" las ignora explícitamente.
 
+### 12.26 Reservas sfcom en gestión de reservas — deshabilitar facturación — **Decidido: no implementar**
+**Situación:** Cuando sfcom vende, ellos facturan directamente al cliente final. Las reservas que originan esas ventas (las que tienen `sfcom_order_ref IS NOT NULL`) no deberían generar cobros al cliente ni aparecer en propuestas o facturas propias. Sería más correcto desactivar visualmente los bloques de cobros y propuesta en formulario.html cuando el cliente solo tiene reservas sfcom.
+
+**Por qué se ha decidido no implementar:** El caso sencillo (cliente exclusivamente sfcom) es fácil, pero en cuanto un mismo cliente tuviera una mezcla de reservas sfcom y reservas directas, habría que: (a) excluir las reservas sfcom del cálculo automático del hito final en `persistirCobrosCliente`; (b) excluirlas de las propuestas comerciales generadas por `propuesta.js`; (c) mostrarlas igualmente en la tabla de reservas del cliente con algún marcador visual. El coste de coordinar esos tres puntos es alto y el beneficio es cosmético para el volumen actual del proyecto (el admin sabe perfectamente qué reserva es de sfcom y cuál no). **Se ha optado por no implementarlo.**
+
+**Cómo implementarlo si en el futuro se decide:** Añadir un parámetro opcional `excluirSfcom = false` a `persistirCobrosCliente` en `utils.js` que filtre las reservas con `sfcom_order_ref IS NOT NULL` antes de calcular el hito final. Hacer lo mismo en `propuesta.js` al construir la lista de reservas a incluir. En formulario.html, detectar si el cliente tiene al menos una reserva no-sfcom; si no la tiene, desactivar los botones de cobro y propuesta con un tooltip explicativo.
+
+### 12.27 Facturación a sfcom como canal — **Pendiente, arquitectura definida**
+**Situación:** Cuando sfcom gestiona una venta, cobra al cliente final directamente y luego nos liquida la parte que nos corresponde (el `price_per_slot` que guardamos en `reservations`, ya descontada la comisión del 15%). No hay actualmente ningún mecanismo para generar facturas a sfcom ni gestionar el calendario de cobros a ese canal.
+
+**Arquitectura decidida para cuando se implemente:**
+
+1. Crear una fila en la tabla `clients` con `id = 'SFCOM'` y `name = 'Canal sfcom'` (sin más datos). Es la forma más limpia de reutilizar toda la infraestructura existente de cobros y facturación sin duplicar lógica.
+
+2. Los hitos de cobro a sfcom van en la tabla `charges` con `client_id = 'SFCOM'`, exactamente igual que cualquier otro cliente. `persistirCobrosCliente(supabase, 'SFCOM', reservasSfcom)` funciona sin ningún cambio; `reservasSfcom` son las reservas con `sfcom_order_ref IS NOT NULL` y `status != 'Cancelada'`. El hito final se autocalcula igual que siempre: `SUM(total_amount)` de esas reservas menos la suma de los hitos no-finales ya registrados.
+
+3. La generación de facturas reutiliza `factura.js` sin cambios. El emisor es Paula, el receptor es sfcom.
+
+4. El único cambio en código existente: añadir `id !== 'SFCOM'` en el filtro del autocomplete de `inputClientId` en `formulario.js` para que el cliente artificial no aparezca en las sugerencias.
+
+5. El bloque de cobros en `admin/sfcom.html` sería el mismo HTML que el bloque 5 de `formulario.html`, cargando el cliente 'SFCOM' y sus reservas sfcom activas. No requiere módulo nuevo: importa `persistirCobrosCliente` de `utils.js` y `initFacturacion` de `factura.js`.
+
+**Decisión pendiente antes de implementar:** Clarificar qué ocurre con los hitos ya emitidos si una reserva sfcom se cancela a posteriori. La lógica actual recalcula el hito final pero no toca hitos ya facturados — habría que decidir si eso es correcto en el contexto de liquidaciones con sfcom o si se necesita algún ajuste manual.
+
 ---
 
 ## 13. Decisiones de arquitectura tomadas

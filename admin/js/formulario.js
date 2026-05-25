@@ -2458,7 +2458,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
     document.body.appendChild(overlay)
     document.getElementById('btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
 
-    if (tieneDiscrepancias) {
+    if (resultado.sfcom.verificado && tieneDiscrepancias) {
         document.getElementById('btn-actualizar-stock-sfcom').addEventListener('click', async function () {
             this.disabled = true
             this.textContent = 'Actualizando…'
