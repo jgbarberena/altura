@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canal sfcom — Vive San Fermín</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <a href="../index.html" class="topbar-title topbar-home">Vive San Fermín</a>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" class="sidebar-logo">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Panel de gestión</p>
+            </div>
+            <nav>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="formulario.html">📝 Gestión de Reservas</a>
+                <a href="proveedores.html">🏠 Gestión de Proveedores</a>
+                <a href="tablas.html">📊 Tablas</a>
+                <a href="sfcom.html" class="active">🛒 Canal sfcom</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn btn-secondary" id="btnVerificarDatos" style="width:100%;margin-bottom:8px;font-size:13px">🔍 Comprobar stock / corregir</button>
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+
+            <!-- BLOQUE KPIs -->
+            <div class="bloque" id="bloque-kpis">
+                <h2>🛒 Canal sfcom — Resumen de ventas</h2>
+                <div class="kpi-grid kpi-grid--wide">
+                    <div class="kpi">
+                        <span class="kpi-label">Reservas sfcom activas</span>
+                        <span class="kpi-valor ok" id="kpi-reservas-sfcom">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Facturación bruta</span>
+                        <span class="kpi-valor ok" id="kpi-bruto">—</span>
+                        <span style="font-size:10px;color:var(--subtle);margin-top:2px;display:block">precio que paga el cliente en sfcom</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Comisión sfcom (15%)</span>
+                        <span class="kpi-valor error" id="kpi-comision">—</span>
+                    </div>
+                    <div class="kpi kpi--destacado">
+                        <span class="kpi-label">Importe neto</span>
+                        <span class="kpi-valor" id="kpi-neto">—</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-label">Ticket medio (bruto)</span>
+                        <span class="kpi-valor" id="kpi-ticket">—</span>
+                        <span style="font-size:10px;color:var(--subtle);margin-top:2px;display:block">por reserva sfcom</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLOQUE SOLICITUDES PENDIENTES SFCOM -->
+            <div class="bloque" id="bloque-solicitudes-sfcom" style="display:none">
+                <h2>🔔 Solicitudes sfcom pendientes de procesar</h2>
+                <p class="bloque-desc">Pedidos recibidos de sfcom que aún no se han registrado como reserva.</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Referencia</th>
+                                <th>Cliente</th>
+                                <th>Servicio</th>
+                                <th>Plazas</th>
+                                <th>Precio bruto/plaza</th>
+                                <th>Total bruto</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-solicitudes-sfcom"></tbody>
+                    </table>
+                </div>
+                <p style="margin-top:8px;font-size:12px;color:var(--subtle)">
+                    Para registrar: ve a <a href="formulario.html" style="color:var(--accent)">Gestión de Reservas</a> y procesa las solicitudes pendientes.
+                </p>
+            </div>
+
+            <!-- BLOQUE RESERVAS SFCOM REGISTRADAS -->
+            <div class="bloque" id="bloque-reservas-sfcom">
+                <h2>📋 Reservas registradas vía sfcom</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Referencia sfcom</th>
+                                <th>Cliente</th>
+                                <th>Servicio</th>
+                                <th>Proveedor</th>
+                                <th>Plazas</th>
+                                <th>Precio neto/plaza</th>
+                                <th>Total neto</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-reservas-sfcom">
+                            <tr><td colspan="8" style="text-align:center;color:var(--subtle)">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- BLOQUE LISTINGS SFCOM -->
+            <div class="bloque" id="bloque-listings">
+                <h2>🏪 Publicaciones en sfcom</h2>
+                <p class="bloque-desc">Estado de cada par proveedor/servicio publicado o en trámite en tienda.sanfermin.com.</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Producto sfcom</th>
+                                <th>Servicio</th>
+                                <th>Proveedor</th>
+                                <th>Estado</th>
+                                <th>Plazas listadas</th>
+                                <th>Reservadas sfcom</th>
+                                <th>Reservadas propias</th>
+                                <th>Stock esperado</th>
+                                <th>Stock real</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-listings">
+                            <tr><td colspan="9" style="text-align:center;color:var(--subtle)">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="txt-sfcom-fetch-status" style="margin-top:8px;font-size:12px;color:var(--subtle);min-height:18px"></div>
+                <button class="btn btn-secondary" id="btnActualizarSfcom" style="margin-top:8px;font-size:13px">🔄 Actualizar stock sfcom</button>
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module" src="js/sfcom-panel.js"></script>
+</body>
+</html>
