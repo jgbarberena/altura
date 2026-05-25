@@ -2441,7 +2441,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
             </div>
             ${secciones}
             <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:4px;flex-wrap:wrap">
-                ${tieneDiscrepancias ? `
+                ${(resultado.sfcom.verificado && tieneDiscrepancias) ? `
                 <button id="btn-actualizar-stock-sfcom"
                     style="background:#92400e;color:#fff;border:none;border-radius:6px;
                            padding:8px 16px;font-size:13px;cursor:pointer;white-space:nowrap">
@@ -2551,20 +2551,18 @@ function mostrarModalPreCorreccion(mismatches) {
 }
 
 async function ejecutarVerificacion(modoManual = false) {
-    if (!modoManual) {
-        document.getElementById('toast-verificando')?.remove()
-        const t = document.createElement('div')
-        t.id = 'toast-verificando'
-        t.style.cssText = [
-            'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
-            'background:#374151', 'color:#fff', 'border-radius:8px', 'padding:10px 22px',
-            'font-size:14px', 'font-family:system-ui,sans-serif', 'font-weight:500',
-            'box-shadow:0 4px 20px rgba(0,0,0,0.2)', 'z-index:9999',
-            'white-space:nowrap', 'pointer-events:none'
-        ].join(';')
-        t.textContent = '🔍 Verificando coherencia…'
-        document.body.appendChild(t)
-    }
+    document.getElementById('toast-verificando')?.remove()
+    const t = document.createElement('div')
+    t.id = 'toast-verificando'
+    t.style.cssText = [
+        'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
+        'background:#374151', 'color:#fff', 'border-radius:8px', 'padding:10px 22px',
+        'font-size:14px', 'font-family:system-ui,sans-serif', 'font-weight:500',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.2)', 'z-index:9999',
+        'white-space:nowrap', 'pointer-events:none'
+    ].join(';')
+    t.textContent = '🔍 Verificando coherencia…'
+    document.body.appendChild(t)
 
     let resultado
     try {
