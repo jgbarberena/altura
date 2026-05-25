@@ -33,7 +33,11 @@
       "Bash(powershell -ExecutionPolicy Bypass -File .\\\\deploy.ps1 -Message \"mejoras verificacion sfcom: modal, pendingExplains, paralelo, timeout\")",
       "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"mejoras verificacion sfcom: modal, pendingExplains, paralelo, timeout\")",
       "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"mejoras estilos varias paginas\" -SkipScripts)",
-      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"fix null addEventListener btn-actualizar-stock-sfcom\" -SkipScripts)"
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"fix null addEventListener btn-actualizar-stock-sfcom\" -SkipScripts)",
+      "Bash(Select-String -Path \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\formulario.js\" -Pattern \"_placeholder_eliminado|function mostrarModalPreCorreccion|async function ejecutarVerificacion\")",
+      "Bash(Select-Object LineNumber, Line)",
+      "Bash(git checkout *)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"verificacion sfcom parcial: mostrar discrepancias aunque haya fallos\" -SkipScripts)"
     ]
   }
 }

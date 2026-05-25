@@ -605,7 +605,7 @@ export async function verificarCoherencia(supabase) {
         ok:     true,
         errores: [],
         avisos:  [],
-        sfcom: { verificado: false, discrepancias: [], idsMismatch: [], error: null }
+        sfcom: { verificado: false, discrepancias: [], idsMismatch: [], fallos: [], error: null }
     }
 
     // ── Carga en paralelo ───────────────────────────────────────────
@@ -715,7 +715,13 @@ export async function verificarCoherencia(supabase) {
                         `— puedes confirmar la baja en proveedores.html`
                     )
                 } else {
-                    sfcomFallo            = true
+                    sfcomFallo = true
+                    resultado.sfcom.fallos.push({
+                        servicio:   avail.sfcom_service_name ?? `${avail.provider_id}/${avail.service_id}`,
+                        providerId: avail.provider_id,
+                        serviceId:  avail.service_id,
+                        error:      e.message
+                    })
                     resultado.sfcom.error = e.message
                 }
                 continue

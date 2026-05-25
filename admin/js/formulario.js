@@ -2157,7 +2157,8 @@ function mostrarModalVerificacion(resultado, opts = {}) {
     const tieneDiscrepancias          = discrepanciasReales.length > 0
     const tieneDiscrepanciasPendientes = discrepanciasPendientes.length > 0
     const tieneIdsMismatch            = (resultado.sfcom.idsMismatch?.length ?? 0) > 0
-    const hayProblema                 = tieneErrores || tieneDiscrepancias || tieneIdsMismatch
+    const tieneFallos                 = (resultado.sfcom.fallos?.length ?? 0) > 0
+    const hayProblema                 = tieneErrores || tieneDiscrepancias || tieneIdsMismatch || tieneFallos
 
     let secciones = ''
 
@@ -2269,7 +2270,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
                 </div>`
     }
 
-    if (resultado.sfcom.verificado && tieneDiscrepancias) {
+    if (tieneDiscrepancias) {
         const cartas = discrepanciasReales.map(d => {
             const esGrave    = d.diferencia > 0
             const bgCard     = esGrave ? '#fff7ed' : '#fffbeb'
@@ -2325,7 +2326,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
             </div>`
     }
 
-    if (resultado.sfcom.verificado && tieneDiscrepanciasPendientes) {
+    if (tieneDiscrepanciasPendientes) {
         const cartasPend = discrepanciasPendientes.map(d => {
             const titulo = d.variacionNombre ? `${d.servicio} — ${d.variacionNombre}` : d.servicio
             const n      = d.pendingRequests?.length ?? 0
@@ -2377,17 +2378,28 @@ function mostrarModalVerificacion(resultado, opts = {}) {
             </div>`
     }
 
-    if (resultado.sfcom.verificado && !tieneDiscrepancias && !tieneDiscrepanciasPendientes) {
+    if (!tieneDiscrepancias && !tieneDiscrepanciasPendientes && !tieneFallos) {
         secciones += `
             <div style="font-size:13px;color:#166534;display:flex;align-items:center;gap:6px;
                         padding:8px 0;border-top:1px solid #f3f4f6">
                 <span>✅</span> Stock en sfcom verificado y correcto
             </div>`
-    } else if (!resultado.sfcom.verificado) {
+    }
+
+    if (tieneFallos) {
+        const filasFallos = (resultado.sfcom.fallos ?? []).map(f => `
+            <div style="font-size:12px;color:#374151;padding:2px 0">
+                <span style="color:#6b7280">${f.servicio}</span>
+                <span style="color:#9ca3af;margin-left:4px">· ${f.providerId} · ${f.serviceId}</span>
+            </div>`).join('')
         secciones += `
-            <div style="font-size:13px;color:#6b7280;padding:8px;background:#f9fafb;border-radius:6px;
-                        border:1px solid #e5e7eb">
-                ⚠️ No se pudo verificar sfcom${resultado.sfcom.error ? ` — ${resultado.sfcom.error}` : ''}
+            <div style="padding:10px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb">
+                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">
+                    ⚠️ ${resultado.sfcom.fallos.length} par${resultado.sfcom.fallos.length !== 1 ? 'es' : ''}
+                    no pudo${resultado.sfcom.fallos.length !== 1 ? 'ieron' : ''} verificarse
+                    (timeout / CORS)
+                </div>
+                ${filasFallos}
             </div>`
     }
 
@@ -2410,16 +2422,21 @@ function mostrarModalVerificacion(resultado, opts = {}) {
             ? '#92400e'
             : tieneDiscrepanciasPendientes
                 ? '#1d4ed8'
-                : '#166534'
+                : tieneFallos
+                    ? '#92400e'
+                    : '#166534'
     const iconoTitulo = tieneErrores || tieneIdsMismatch ? '❌'
         : tieneDiscrepancias                             ? '⚠️'
         : tieneDiscrepanciasPendientes                   ? 'ℹ️'
+        : tieneFallos                                    ? '⚠️'
         : '✅'
-    const textoTitulo = hayProblema
+    const textoTitulo = (tieneErrores || tieneIdsMismatch || tieneDiscrepancias)
         ? 'Inconsistencias detectadas'
         : tieneDiscrepanciasPendientes
             ? 'Pedidos sfcom pendientes de incorporar'
-            : 'Verificación de datos'
+            : tieneFallos
+                ? 'Verificación parcial de sfcom'
+                : 'Verificación de datos'
     const colorBtn    = hayProblema ? '#f3f4f6' : '#166534'
     const colorBtnTxt = hayProblema ? '#374151' : '#fff'
     const bordeBtn    = hayProblema ? '1px solid #d1d5db' : 'none'
@@ -2441,7 +2458,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
             </div>
             ${secciones}
             <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:4px;flex-wrap:wrap">
-                ${(resultado.sfcom.verificado && tieneDiscrepancias) ? `
+                ${tieneDiscrepancias ? `
                 <button id="btn-actualizar-stock-sfcom"
                     style="background:#92400e;color:#fff;border:none;border-radius:6px;
                            padding:8px 16px;font-size:13px;cursor:pointer;white-space:nowrap">
@@ -2458,7 +2475,7 @@ function mostrarModalVerificacion(resultado, opts = {}) {
     document.body.appendChild(overlay)
     document.getElementById('btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
 
-    if (resultado.sfcom.verificado && tieneDiscrepancias) {
+    if (tieneDiscrepancias) {
         document.getElementById('btn-actualizar-stock-sfcom').addEventListener('click', async function () {
             this.disabled = true
             this.textContent = 'Actualizando…'
@@ -2588,7 +2605,8 @@ async function ejecutarVerificacion(modoManual = false) {
 
     const discRepReal   = (resultado.sfcom.discrepancias ?? []).filter(d => !d.pendingExplains)
     const hayPendientes = (resultado.sfcom.discrepancias ?? []).some(d => d.pendingExplains)
-    const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0
+    const hayFallos     = (resultado.sfcom.fallos?.length ?? 0) > 0
+    const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0 || hayFallos
 
     if (modoManual || hayProblema || hayPendientes) {
         mostrarModalVerificacion(resultado)
