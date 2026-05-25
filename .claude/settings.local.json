@@ -38,7 +38,8 @@
       "Bash(Select-Object LineNumber, Line)",
       "Bash(git checkout *)",
       "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"verificacion sfcom parcial: mostrar discrepancias aunque haya fallos\" -SkipScripts)",
-      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"verificacion auto: toast si solo fallos, scroll en lista de pares\" -SkipScripts)"
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"verificacion auto: toast si solo fallos, scroll en lista de pares\" -SkipScripts)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"actualiza CLAUDE.md: verificacion parcial sfcom y fallos[]\" -SkipScripts -SkipFtp)"
     ]
   }
 }
