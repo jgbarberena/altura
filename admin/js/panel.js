@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt } from './utils.js'
+import { initSidebar, fmt, sortArr, renderThead } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -94,24 +94,6 @@ function calcularAlertas() {
     bloqueAlertas.style.display =
         (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
         || solicitudesSfcom.length > 0 || solicitudesWeb.length > 0) ? 'block' : 'none'
-}
-
-// ===== SORT HELPERS =====
-
-function sortArr(arr, col, dir, getKey) {
-    if (col === null) return arr
-    return [...arr].sort((a, b) => {
-        const cmp = String(getKey(a, col) ?? '').localeCompare(String(getKey(b, col) ?? ''), 'es', { numeric: true })
-        return dir === 'asc' ? cmp : -cmp
-    })
-}
-
-function renderThead(thead, columnas, sortCol, sortDir, onClick) {
-    thead.innerHTML = '<tr>' + columnas.map((label, i) => {
-        const activa = sortCol === i
-        return `<th style="cursor:pointer;user-select:none">${label} <span style="font-size:10px;opacity:${activa ? 1 : 0.4}">${activa ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`
-    }).join('') + '</tr>'
-    thead.querySelectorAll('th').forEach((th, i) => th.addEventListener('click', () => onClick(i)))
 }
 
 // ===== BLOQUE 1: CALENDARIO =====

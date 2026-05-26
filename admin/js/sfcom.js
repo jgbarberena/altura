@@ -3,6 +3,8 @@
 // Flujo A (lectura):  sfcom → detectar pedidos nuevos → avisar al panel
 // Flujo B (escritura): reserva guardada en Supabase → actualizar stock en sfcom
 
+import { crearModal } from './modal.js'
+
 // ─── Utilidades de extracción: nombres y días ────────────────────────────────
 
 // Extrae el nombre de producto sfcom de un nombre de variación WooCommerce completo.
@@ -333,6 +335,19 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
     return { servicio: avail.sfcom_service_name, providerId, serviceId, stockActual, nuevoStock }
 }
 
+// Computa el stock esperado para cada par y muestra el modal consultivo pre-save.
+// pares: [{ providerId, serviceId, sfcomDelta?, allDelta? }]
+// Devuelve true si el admin confirma o si ningún par tiene sfcom activo.
+export async function confirmarStockSfcom(supabase, pares) {
+    const cambios = []
+    for (const { providerId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
+        const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta, allDelta })
+        if (cambio) cambios.push(cambio)
+    }
+    if (cambios.length === 0) return true
+    return mostrarModalConfirmacionSfcom(cambios)
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // mostrarModalConfirmacionSfcom (exportado)
 // Modal consultivo pre-save: muestra los cambios de stock previstos en sfcom
@@ -343,16 +358,7 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
 
 export function mostrarModalConfirmacionSfcom(cambios) {
     return new Promise(resolve => {
-        const existente = document.getElementById('sfcom-modal-confirmacion')
-        if (existente) existente.remove()
-
-        const overlay = document.createElement('div')
-        overlay.id = 'sfcom-modal-confirmacion'
-        overlay.style.cssText = [
-            'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-            'display:flex', 'align-items:center', 'justify-content:center',
-            'z-index:10000', 'padding:16px'
-        ].join(';')
+        const { overlay, panel } = crearModal('sfcom-modal-confirmacion')
 
         const filas = cambios.map(c => `
             <tr style="border-top:1px solid #f3f4f6">
@@ -362,49 +368,31 @@ export function mostrarModalConfirmacionSfcom(cambios) {
             </tr>`
         ).join('')
 
-        overlay.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:28px;max-width:560px;width:100%;
-                        box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                        display:flex;flex-direction:column;gap:18px">
-                <div style="display:flex;align-items:flex-start;gap:12px">
-                    <span style="font-size:22px;line-height:1">🔄</span>
-                    <div>
-                        <div style="font-size:15px;font-weight:600;margin-bottom:4px">
-                            Actualizar disponibilidad en sfcom
-                        </div>
-                        <div style="font-size:13px;color:#555;line-height:1.5">
-                            Se guardarán los cambios en el sistema y se actualizará el stock en sfcom.
-                            Cancela si no quieres ejecutar esta actualización.
-                        </div>
-                    </div>
+        panel.innerHTML = `
+            <div class="modal-header">
+                <span class="modal-header-icon">🔄</span>
+                <div>
+                    <div class="modal-header-title">Actualizar disponibilidad en sfcom</div>
+                    <div class="modal-header-desc">Se guardarán los cambios en el sistema y se actualizará el stock en sfcom. Cancela si no quieres ejecutar esta actualización.</div>
                 </div>
-                <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
-                    <thead>
-                        <tr style="background:#f9fafb">
-                            <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:left;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Servicio</th>
-                            <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Stock actual</th>
-                            <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Nuevo stock</th>
-                        </tr>
-                    </thead>
-                    <tbody>${filas}</tbody>
-                </table>
-                <div style="display:flex;gap:10px;justify-content:flex-end">
-                    <button id="sfcom-conf-cancelar"
-                        style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                               padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280">
-                        Cancelar
-                    </button>
-                    <button id="sfcom-conf-aceptar"
-                        style="background:#166534;color:#fff;border:none;border-radius:6px;
-                               padding:8px 20px;font-size:13px;cursor:pointer">
-                        Confirmar y guardar
-                    </button>
-                </div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+                <thead>
+                    <tr style="background:#f9fafb">
+                        <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:left;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Servicio</th>
+                        <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Stock actual</th>
+                        <th style="padding:7px 10px;font-size:11px;color:#6b7280;text-align:center;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Nuevo stock</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>
+            <div class="modal-actions">
+                <button id="sfcom-conf-cancelar" class="btn btn-secondary">Cancelar</button>
+                <button id="sfcom-conf-aceptar" class="btn btn-primary">Confirmar y guardar</button>
             </div>`
 
-        document.body.appendChild(overlay)
-        document.getElementById('sfcom-conf-cancelar').addEventListener('click', () => { overlay.remove(); resolve(false) })
-        document.getElementById('sfcom-conf-aceptar').addEventListener('click', () => { overlay.remove(); resolve(true) })
+        panel.querySelector('#sfcom-conf-cancelar').addEventListener('click', () => { overlay.remove(); resolve(false) })
+        panel.querySelector('#sfcom-conf-aceptar').addEventListener('click', () => { overlay.remove(); resolve(true) })
     })
 }
 
@@ -416,9 +404,6 @@ export function mostrarModalConfirmacionSfcom(cambios) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoStock, putError }) {
-    const existente = document.getElementById('sfcom-modal-error')
-    if (existente) existente.remove()
-
     const endpointCompleto = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
     const subject          = `Disponibilidad "${servicio}" — revisión pendiente`
 
@@ -439,88 +424,46 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
         `Paula`
     ].join('\n')
 
-    const overlay = document.createElement('div')
-    overlay.id = 'sfcom-modal-error'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10000', 'padding:16px'
-    ].join(';')
+    const { overlay, panel } = crearModal('sfcom-modal-error', { wide: true, scroll: true })
 
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:640px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    max-height:90vh;display:flex;flex-direction:column;gap:18px">
-
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <span style="font-size:22px;line-height:1">⚠️</span>
-                <div>
-                    <div style="font-size:15px;font-weight:600;color:#991b1b;margin-bottom:4px">
-                        No se pudo actualizar la disponibilidad en sfcom
-                    </div>
-                    <div style="font-size:13px;color:#555;line-height:1.5">
-                        La reserva se ha guardado correctamente en tu sistema, pero ha habido un
-                        problema al actualizar el stock en sfcom. Revísalo manualmente o contacta
-                        con Hilario.
-                    </div>
-                </div>
+    panel.innerHTML = `
+        <div class="modal-header">
+            <span class="modal-header-icon">⚠️</span>
+            <div>
+                <div class="modal-header-title" style="color:#991b1b">No se pudo actualizar la disponibilidad en sfcom</div>
+                <div class="modal-header-desc">La reserva se ha guardado correctamente en tu sistema, pero ha habido un problema al actualizar el stock en sfcom. Revísalo manualmente o contacta con Hilario.</div>
             </div>
-
-            <div style="background:#f3f4f6;border-radius:8px;padding:12px;font-size:12px;
-                        font-family:monospace;color:#374151;line-height:1.7">
-                <div><strong>Servicio:</strong> ${servicio}</div>
-                <div><strong>Endpoint:</strong> ${endpointCompleto}</div>
-                <div><strong>Nuevo stock:</strong> ${nuevoStock} plaza(s)</div>
-                <div><strong>Error:</strong> ${putError}</div>
-            </div>
-
-            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px">
-                <div style="font-size:11px;color:#6b7280;margin-bottom:8px;text-transform:uppercase;
-                            letter-spacing:.06em;font-weight:500">
-                    Texto del correo para Hilario
-                </div>
-                <textarea id="sfcom-email-texto"
-                    style="width:100%;height:200px;font-size:12px;font-family:monospace;
-                           border:none;background:transparent;resize:vertical;color:#1f2937;
-                           outline:none;line-height:1.65;box-sizing:border-box"
-                    readonly>${cuerpoCorreo}</textarea>
-            </div>
-
-            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-                <button id="sfcom-btn-copiar"
-                    style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;color:#374151;
-                           white-space:nowrap">
-                    📋 Copiar texto
-                </button>
-                <a id="sfcom-btn-mailto"
-                    href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
-                    style="background:#1d4ed8;color:#fff;border-radius:6px;padding:8px 16px;
-                           font-size:13px;text-decoration:none;display:inline-flex;
-                           align-items:center;gap:6px;white-space:nowrap">
-                    ✉️ Abrir en correo
-                </a>
-                <button id="sfcom-btn-cerrar"
-                    style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280;
-                           white-space:nowrap">
-                    Cerrar
-                </button>
-            </div>
+        </div>
+        <div class="modal-code">
+            <div><strong>Servicio:</strong> ${servicio}</div>
+            <div><strong>Endpoint:</strong> ${endpointCompleto}</div>
+            <div><strong>Nuevo stock:</strong> ${nuevoStock} plaza(s)</div>
+            <div><strong>Error:</strong> ${putError}</div>
+        </div>
+        <div class="modal-email-block">
+            <div class="modal-email-label">Texto del correo para Hilario</div>
+            <textarea id="sfcom-email-texto" class="modal-email-textarea" readonly>${cuerpoCorreo}</textarea>
+        </div>
+        <div class="modal-actions">
+            <button id="sfcom-btn-copiar" class="btn btn-secondary">📋 Copiar texto</button>
+            <a id="sfcom-btn-mailto" class="btn btn-primary"
+                href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
+                style="text-decoration:none">
+                ✉️ Abrir en correo
+            </a>
+            <button id="sfcom-btn-cerrar" class="btn btn-secondary">Cerrar</button>
         </div>`
 
-    document.body.appendChild(overlay)
-
-    document.getElementById('sfcom-btn-copiar').addEventListener('click', () => {
-        const ta  = document.getElementById('sfcom-email-texto')
-        const btn = document.getElementById('sfcom-btn-copiar')
+    panel.querySelector('#sfcom-btn-copiar').addEventListener('click', () => {
+        const ta  = panel.querySelector('#sfcom-email-texto')
+        const btn = panel.querySelector('#sfcom-btn-copiar')
         ta.select()
         document.execCommand('copy')
         btn.textContent = '✅ Copiado'
         setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
     })
 
-    document.getElementById('sfcom-btn-cerrar').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#sfcom-btn-cerrar').addEventListener('click', () => overlay.remove())
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -533,51 +476,23 @@ function mostrarModalAvisoOrders() {
     if (sessionStorage.getItem('sfcom-orders-warned')) return
     sessionStorage.setItem('sfcom-orders-warned', '1')
 
-    const existente = document.getElementById('sfcom-modal-aviso')
-    if (existente) existente.remove()
+    const { overlay, panel } = crearModal('sfcom-modal-aviso', { narrow: true })
 
-    const overlay = document.createElement('div')
-    overlay.id = 'sfcom-modal-aviso'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10000', 'padding:16px'
-    ].join(';')
-
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    display:flex;flex-direction:column;gap:18px">
-
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <span style="font-size:22px;line-height:1">⚠️</span>
-                <div>
-                    <div style="font-size:15px;font-weight:600;color:#92400e;margin-bottom:4px">
-                        No se pudieron cargar los pedidos de sfcom
-                    </div>
-                    <div style="font-size:13px;color:#555;line-height:1.5">
-                        No ha sido posible conectar con sfcom para comprobar si hay pedidos nuevos.
-                        Consulta el panel manualmente:<br><br>
-                        <a href="https://tienda.sanfermin.com/dashboard.html" target="_blank"
-                           style="color:#1d4ed8;text-decoration:underline">
-                            Panel de Métricas — San Fermín
-                        </a>
-                    </div>
+    panel.innerHTML = `
+        <div class="modal-header">
+            <span class="modal-header-icon">⚠️</span>
+            <div>
+                <div class="modal-header-title" style="color:#92400e">No se pudieron cargar los pedidos de sfcom</div>
+                <div class="modal-header-desc">No ha sido posible conectar con sfcom para comprobar si hay pedidos nuevos. Consulta el panel manualmente:<br><br>
+                    <a href="https://tienda.sanfermin.com/dashboard.html" target="_blank" style="color:#1d4ed8;text-decoration:underline">Panel de Métricas — San Fermín</a>
                 </div>
             </div>
-
-            <div style="display:flex;justify-content:flex-end">
-                <button id="sfcom-btn-aviso-aceptar"
-                    style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 20px;font-size:13px;cursor:pointer;color:#374151;
-                           white-space:nowrap">
-                    Aceptar
-                </button>
-            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="sfcom-btn-aviso-aceptar" class="btn btn-secondary">Aceptar</button>
         </div>`
 
-    document.body.appendChild(overlay)
-    document.getElementById('sfcom-btn-aviso-aceptar').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#sfcom-btn-aviso-aceptar').addEventListener('click', () => overlay.remove())
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -695,20 +610,15 @@ export async function verificarCoherencia(supabase) {
     if (mappedAvails.length === 0) {
         resultado.sfcom.verificado = true
     } else {
-        // GETs en paralelo — todos los pares se consultan simultáneamente.
-        const sfcomChecks = await Promise.allSettled(
-            mappedAvails.map(avail =>
-                apiFetchSingle(buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id))
-            )
-        )
-
+        // GETs secuenciales — de uno en uno para no saturar el pool PHP de sfcom.
+        // Para en el primer fallo real (timeout, HTTP error) y reporta los pares
+        // verificados hasta ese momento. El 404 en deactivation_pending no es fallo.
         let sfcomFallo = false
-        for (let i = 0; i < sfcomChecks.length; i++) {
-            const avail   = mappedAvails[i]
-            const settled = sfcomChecks[i]
-
-            if (settled.status === 'rejected') {
-                const e = settled.reason
+        for (const avail of mappedAvails) {
+            let item
+            try {
+                item = await apiFetchSingle(buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id))
+            } catch (e) {
                 if (e.message?.includes('404') && avail.sfcom_status === 'deactivation_pending') {
                     resultado.avisos.push(
                         `${avail.sfcom_service_name} (${avail.provider_id}): producto ya retirado de sfcom ` +
@@ -723,11 +633,11 @@ export async function verificarCoherencia(supabase) {
                         error:      e.message
                     })
                     resultado.sfcom.error = e.message
+                    break
                 }
                 continue
             }
 
-            const item            = settled.value
             const stockReal       = item.stock_quantity ?? null
             const variacionNombre = avail.sfcom_variation_id ? (item.name ?? null) : null
 
@@ -982,66 +892,38 @@ export async function editarNombreSfcom(nombreActual, serviceId, excludeNames = 
 // ────────────────────────────────────────────────────────────────────────────
 
 function mostrarModalPickerNombre(nombreActual, opciones, excludeNames, callback) {
-    const existente = document.getElementById('sfcom-modal-picker')
-    if (existente) existente.remove()
+    const { overlay, panel } = crearModal('sfcom-modal-picker')
+    overlay.style.zIndex = '10001'
 
-    const overlay = document.createElement('div')
-    overlay.id = 'sfcom-modal-picker'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10001', 'padding:16px'
-    ].join(';')
-
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:560px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    display:flex;flex-direction:column;gap:18px">
-            <div>
-                <div style="font-size:15px;font-weight:600;margin-bottom:6px">Seleccionar producto en sfcom</div>
-                <div style="font-size:13px;color:#555;line-height:1.5">
-                    Escoge el producto de WooCommerce que corresponde a este servicio.
-                    Para servicios de encierro con variaciones, la variación del día se selecciona automáticamente.
-                </div>
+    panel.innerHTML = `
+        <div>
+            <div class="modal-header-title">Seleccionar producto en sfcom</div>
+            <div class="modal-header-desc" style="margin-top:6px">Escoge el producto de WooCommerce que corresponde a este servicio. Para servicios de encierro con variaciones, la variación del día se selecciona automáticamente.</div>
+        </div>
+        <div style="position:relative">
+            <input id="sfcom-picker-input" type="text"
+                value="${nombreActual ?? ''}"
+                placeholder="Escribe o selecciona…"
+                autocomplete="off"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+            <div id="sfcom-picker-lista" style="position:absolute;left:0;right:0;top:100%;z-index:10;
+                 background:#fff;border:1px solid #d1d5db;border-top:none;border-radius:0 0 6px 6px;
+                 max-height:220px;overflow-y:auto;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.1)">
             </div>
-            <div style="position:relative">
-                <input id="sfcom-picker-input" type="text"
-                    value="${nombreActual ?? ''}"
-                    placeholder="Escribe o selecciona…"
-                    autocomplete="off"
-                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;
-                           font-size:13px;box-sizing:border-box">
-                <div id="sfcom-picker-lista" style="position:absolute;left:0;right:0;top:100%;z-index:10;
-                     background:#fff;border:1px solid #d1d5db;border-top:none;border-radius:0 0 6px 6px;
-                     max-height:220px;overflow-y:auto;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.1)">
-                </div>
-            </div>
-            <div id="sfcom-picker-aviso" style="display:none;font-size:12px;color:#92400e;
-                 background:#fef3c7;border-radius:6px;padding:8px 12px">
-                ⚠️ Este nombre no existe en la lista actual de sfcom. Puedes guardarlo de todas formas
-                si Hilario ya lo ha creado o lo va a crear con exactamente ese nombre.
-            </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end">
-                <button id="sfcom-picker-cancelar"
-                    style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280">
-                    Cancelar
-                </button>
-                <button id="sfcom-picker-confirmar"
-                    style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;
-                           padding:8px 20px;font-size:13px;cursor:pointer">
-                    Confirmar
-                </button>
-            </div>
+        </div>
+        <div id="sfcom-picker-aviso" style="display:none;font-size:12px;color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 12px">
+            ⚠️ Este nombre no existe en la lista actual de sfcom. Puedes guardarlo de todas formas si Hilario ya lo ha creado o lo va a crear con exactamente ese nombre.
+        </div>
+        <div class="modal-actions">
+            <button id="sfcom-picker-cancelar" class="btn btn-secondary">Cancelar</button>
+            <button id="sfcom-picker-confirmar" class="btn btn-primary">Confirmar</button>
         </div>`
 
-    document.body.appendChild(overlay)
-
-    const input    = document.getElementById('sfcom-picker-input')
-    const lista    = document.getElementById('sfcom-picker-lista')
-    const aviso    = document.getElementById('sfcom-picker-aviso')
-    const btnConf  = document.getElementById('sfcom-picker-confirmar')
-    const btnCanc  = document.getElementById('sfcom-picker-cancelar')
+    const input    = panel.querySelector('#sfcom-picker-input')
+    const lista    = panel.querySelector('#sfcom-picker-lista')
+    const aviso    = panel.querySelector('#sfcom-picker-aviso')
+    const btnConf  = panel.querySelector('#sfcom-picker-confirmar')
+    const btnCanc  = panel.querySelector('#sfcom-picker-cancelar')
 
     const opcionesFiltradas = opciones.filter(o => !excludeNames.includes(o.product_name))
 
@@ -1128,9 +1010,6 @@ function mostrarModalPickerNombre(nombreActual, opciones, excludeNames, callback
 // ────────────────────────────────────────────────────────────────────────────
 
 export function mostrarModalCorreoCancelacionSfcom(nombreProducto, proveedor) {
-    const existente = document.getElementById('sfcom-modal-correo-cancelacion')
-    if (existente) existente.remove()
-
     const subject = `Cancelar alta en sfcom — ${nombreProducto}`
     const cuerpoCorreo = [
         `Hola Hilario,`,
@@ -1146,60 +1025,33 @@ export function mostrarModalCorreoCancelacionSfcom(nombreProducto, proveedor) {
         `Paula`
     ].join('\n')
 
-    const overlay = document.createElement('div')
-    overlay.id = 'sfcom-modal-correo-cancelacion'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10000', 'padding:16px'
-    ].join(';')
+    const { overlay, panel } = crearModal('sfcom-modal-correo-cancelacion', { wide: true, scroll: true })
 
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:640px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    max-height:90vh;display:flex;flex-direction:column;gap:18px">
-            <div>
-                <div style="font-size:15px;font-weight:600;margin-bottom:4px">Correo para Hilario — cancelación de solicitud sfcom</div>
-                <div style="font-size:13px;color:#555">Copia el texto o ábrelo directamente en tu cliente de correo.</div>
-            </div>
-            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px">
-                <textarea id="sfcom-correo-cancel-texto"
-                    style="width:100%;height:180px;font-size:12px;font-family:monospace;
-                           border:none;background:transparent;resize:vertical;color:#1f2937;
-                           outline:none;line-height:1.65;box-sizing:border-box"
-                    readonly>${cuerpoCorreo}</textarea>
-            </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-                <button id="sfcom-cancel-copiar"
-                    style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;color:#374151;white-space:nowrap">
-                    📋 Copiar texto
-                </button>
-                <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
-                    style="background:#1d4ed8;color:#fff;border-radius:6px;padding:8px 16px;
-                           font-size:13px;text-decoration:none;display:inline-flex;
-                           align-items:center;gap:6px;white-space:nowrap">
-                    ✉️ Abrir en correo
-                </a>
-                <button id="sfcom-cancel-cerrar"
-                    style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280;white-space:nowrap">
-                    Cerrar
-                </button>
-            </div>
+    panel.innerHTML = `
+        <div>
+            <div class="modal-header-title">Correo para Hilario — cancelación de solicitud sfcom</div>
+            <div class="modal-header-desc" style="margin-top:4px">Copia el texto o ábrelo directamente en tu cliente de correo.</div>
+        </div>
+        <div class="modal-email-block">
+            <textarea id="sfcom-correo-cancel-texto" class="modal-email-textarea" style="height:180px" readonly>${cuerpoCorreo}</textarea>
+        </div>
+        <div class="modal-actions">
+            <button id="sfcom-cancel-copiar" class="btn btn-secondary">📋 Copiar texto</button>
+            <a class="btn btn-primary" style="text-decoration:none"
+                href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}">
+                ✉️ Abrir en correo
+            </a>
+            <button id="sfcom-cancel-cerrar" class="btn btn-secondary">Cerrar</button>
         </div>`
 
-    document.body.appendChild(overlay)
-
-    document.getElementById('sfcom-cancel-copiar').addEventListener('click', () => {
-        const ta  = document.getElementById('sfcom-correo-cancel-texto')
-        const btn = document.getElementById('sfcom-cancel-copiar')
-        ta.select()
-        document.execCommand('copy')
+    panel.querySelector('#sfcom-cancel-copiar').addEventListener('click', () => {
+        const ta  = panel.querySelector('#sfcom-correo-cancel-texto')
+        const btn = panel.querySelector('#sfcom-cancel-copiar')
+        ta.select(); document.execCommand('copy')
         btn.textContent = '✅ Copiado'
         setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
     })
-    document.getElementById('sfcom-cancel-cerrar').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#sfcom-cancel-cerrar').addEventListener('click', () => overlay.remove())
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1251,65 +1103,35 @@ export function mostrarModalCorreoBajaSfcom(nombreProducto, proveedor) {
             `Paula`
         ].join('\n')
 
-        const overlay = document.createElement('div')
-        overlay.id = 'sfcom-modal-correo-baja'
-        overlay.style.cssText = [
-            'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-            'display:flex', 'align-items:center', 'justify-content:center',
-            'z-index:10000', 'padding:16px'
-        ].join(';')
+        const { overlay, panel } = crearModal('sfcom-modal-correo-baja', { wide: true, scroll: true })
 
-        overlay.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:28px;max-width:640px;width:100%;
-                        box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                        max-height:90vh;display:flex;flex-direction:column;gap:18px">
-                <div>
-                    <div style="font-size:15px;font-weight:600;margin-bottom:4px">Correo para Hilario — solicitar baja en sfcom</div>
-                    <div style="font-size:13px;color:#555">Envía este correo a Hilario para que retire el producto de la venta.</div>
-                </div>
-                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px">
-                    <textarea id="sfcom-correo-baja-texto"
-                        style="width:100%;height:200px;font-size:12px;font-family:monospace;
-                               border:none;background:transparent;resize:vertical;color:#1f2937;
-                               outline:none;line-height:1.65;box-sizing:border-box"
-                        readonly>${cuerpoCorreo}</textarea>
-                </div>
-                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-                    <button id="sfcom-baja-copiar"
-                        style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
-                               padding:8px 16px;font-size:13px;cursor:pointer;color:#374151;white-space:nowrap">
-                        📋 Copiar texto
-                    </button>
-                    <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
-                        style="background:#1d4ed8;color:#fff;border-radius:6px;padding:8px 16px;
-                               font-size:13px;text-decoration:none;display:inline-flex;
-                               align-items:center;gap:6px;white-space:nowrap">
-                        ✉️ Abrir en correo
-                    </a>
-                    <button id="sfcom-baja-cancelar"
-                        style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                               padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280;white-space:nowrap">
-                        Cancelar
-                    </button>
-                    <button id="sfcom-baja-ok"
-                        style="background:#991b1b;color:#fff;border:none;border-radius:6px;
-                               padding:8px 20px;font-size:13px;cursor:pointer;white-space:nowrap">
-                        Correo enviado — solicitar baja
-                    </button>
-                </div>
+        panel.innerHTML = `
+            <div>
+                <div class="modal-header-title">Correo para Hilario — solicitar baja en sfcom</div>
+                <div class="modal-header-desc" style="margin-top:4px">Envía este correo a Hilario para que retire el producto de la venta.</div>
+            </div>
+            <div class="modal-email-block">
+                <textarea id="sfcom-correo-baja-texto" class="modal-email-textarea" readonly>${cuerpoCorreo}</textarea>
+            </div>
+            <div class="modal-actions">
+                <button id="sfcom-baja-copiar" class="btn btn-secondary">📋 Copiar texto</button>
+                <a class="btn btn-primary" style="text-decoration:none"
+                    href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}">
+                    ✉️ Abrir en correo
+                </a>
+                <button id="sfcom-baja-cancelar" class="btn btn-secondary">Cancelar</button>
+                <button id="sfcom-baja-ok" class="btn btn-danger">Correo enviado — solicitar baja</button>
             </div>`
 
-        document.body.appendChild(overlay)
-        document.getElementById('sfcom-baja-copiar').addEventListener('click', () => {
-            const ta  = document.getElementById('sfcom-correo-baja-texto')
-            const btn = document.getElementById('sfcom-baja-copiar')
-            ta.select()
-            document.execCommand('copy')
+        panel.querySelector('#sfcom-baja-copiar').addEventListener('click', () => {
+            const ta  = panel.querySelector('#sfcom-correo-baja-texto')
+            const btn = panel.querySelector('#sfcom-baja-copiar')
+            ta.select(); document.execCommand('copy')
             btn.textContent = '✅ Copiado'
             setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
         })
-        document.getElementById('sfcom-baja-cancelar').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
-        document.getElementById('sfcom-baja-ok').addEventListener('click',       () => { overlay.remove(); resolve('ok')     })
+        panel.querySelector('#sfcom-baja-cancelar').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
+        panel.querySelector('#sfcom-baja-ok').addEventListener('click',       () => { overlay.remove(); resolve('ok')     })
     })
 }
 
@@ -1348,76 +1170,41 @@ export function mostrarModalCorreoHilario(nombreProducto, variaciones, proveedor
         `Paula`
     ].join('\n')
 
-    const overlay = document.createElement('div')
-    overlay.id = 'sfcom-modal-correo-hilario'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10000', 'padding:16px'
-    ].join(';')
+    const { overlay, panel } = crearModal('sfcom-modal-correo-hilario', { wide: true, scroll: true })
 
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:640px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    max-height:90vh;display:flex;flex-direction:column;gap:18px">
-            <div>
-                <div style="font-size:15px;font-weight:600;margin-bottom:4px">Correo para Hilario — solicitud de alta en sfcom</div>
-                <div style="font-size:13px;color:#555">Copia el texto o ábrelo directamente en tu cliente de correo.</div>
-            </div>
-            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px">
-                <textarea id="sfcom-correo-texto"
-                    style="width:100%;height:240px;font-size:12px;font-family:monospace;
-                           border:none;background:transparent;resize:vertical;color:#1f2937;
-                           outline:none;line-height:1.65;box-sizing:border-box"
-                    readonly>${cuerpoCorreo}</textarea>
-            </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-                <button id="sfcom-correo-copiar"
-                    style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;color:#374151;white-space:nowrap">
-                    📋 Copiar texto
-                </button>
-                <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
-                    style="background:#1d4ed8;color:#fff;border-radius:6px;padding:8px 16px;
-                           font-size:13px;text-decoration:none;display:inline-flex;
-                           align-items:center;gap:6px;white-space:nowrap">
-                    ✉️ Abrir en correo
-                </a>
-                ${opciones.withOkCancel
-                    ? `<button id="sfcom-correo-cancelar"
-                            style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                                   padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280;white-space:nowrap">
-                            Cancelar
-                        </button>
-                        <button id="sfcom-correo-ok"
-                            style="background:#166534;color:#fff;border:none;border-radius:6px;
-                                   padding:8px 20px;font-size:13px;cursor:pointer;white-space:nowrap">
-                            OK
-                        </button>`
-                    : `<button id="sfcom-correo-cerrar"
-                            style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                                   padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280;white-space:nowrap">
-                            Cerrar
-                        </button>`}
-            </div>
+    panel.innerHTML = `
+        <div>
+            <div class="modal-header-title">Correo para Hilario — solicitud de alta en sfcom</div>
+            <div class="modal-header-desc" style="margin-top:4px">Copia el texto o ábrelo directamente en tu cliente de correo.</div>
+        </div>
+        <div class="modal-email-block">
+            <textarea id="sfcom-correo-texto" class="modal-email-textarea" style="height:240px" readonly>${cuerpoCorreo}</textarea>
+        </div>
+        <div class="modal-actions">
+            <button id="sfcom-correo-copiar" class="btn btn-secondary">📋 Copiar texto</button>
+            <a class="btn btn-primary" style="text-decoration:none"
+                href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}">
+                ✉️ Abrir en correo
+            </a>
+            ${opciones.withOkCancel
+                ? `<button id="sfcom-correo-cancelar" class="btn btn-secondary">Cancelar</button>
+                   <button id="sfcom-correo-ok" class="btn btn-primary">OK</button>`
+                : `<button id="sfcom-correo-cerrar" class="btn btn-secondary">Cerrar</button>`}
         </div>`
 
-    document.body.appendChild(overlay)
-
-    document.getElementById('sfcom-correo-copiar').addEventListener('click', () => {
-        const ta  = document.getElementById('sfcom-correo-texto')
-        const btn = document.getElementById('sfcom-correo-copiar')
-        ta.select()
-        document.execCommand('copy')
+    panel.querySelector('#sfcom-correo-copiar').addEventListener('click', () => {
+        const ta  = panel.querySelector('#sfcom-correo-texto')
+        const btn = panel.querySelector('#sfcom-correo-copiar')
+        ta.select(); document.execCommand('copy')
         btn.textContent = '✅ Copiado'
         setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
     })
 
     if (opciones.withOkCancel) {
-        document.getElementById('sfcom-correo-cancelar').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
-        document.getElementById('sfcom-correo-ok').addEventListener('click',       () => { overlay.remove(); resolve('ok')     })
+        panel.querySelector('#sfcom-correo-cancelar').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
+        panel.querySelector('#sfcom-correo-ok').addEventListener('click',       () => { overlay.remove(); resolve('ok')     })
     } else {
-        document.getElementById('sfcom-correo-cerrar').addEventListener('click',   () => { overlay.remove(); resolve('closed') })
+        panel.querySelector('#sfcom-correo-cerrar').addEventListener('click',   () => { overlay.remove(); resolve('closed') })
     }
     }) // end Promise
 }

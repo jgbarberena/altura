@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor } from './utils.js'
-import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave } from './utils.js'
+import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -22,18 +22,6 @@ let ultimoCampoActivo    = 'precio'
 
 const hoy = new Date().toISOString().split('T')[0]
 
-// pares: [{providerId, serviceId}]
-// Computa el stock esperado (sin deltas — solo muestra el estado actual post-guardado) y
-// muestra el modal consultivo. Devuelve true si el admin confirma, false si cancela.
-async function confirmarStockSfcom(pares) {
-    const cambios = []
-    for (const { providerId, serviceId } of pares) {
-        const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta: 0, allDelta: 0 })
-        if (cambio) cambios.push(cambio)
-    }
-    if (cambios.length === 0) return true
-    return mostrarModalConfirmacionSfcom(cambios)
-}
 
 // ===== REFERENCIAS DOM =====
 const inputProveedorId       = document.getElementById('inputProveedorId')
@@ -98,7 +86,7 @@ document.getElementById('btnConfirmarSfcom').addEventListener('click', async () 
         sfcomEstadoLocal = 'confirmed'
         actualizarSeccionSfcom(todaDisponibilidad.find(d => d.id === servicioEditandoId))
         // Sincronización inicial: stock puede estar en estado desconocido en sfcom.
-        const sfcomOk = await confirmarStockSfcom([{ providerId: proveedorActual.id, serviceId }])
+        const sfcomOk = await confirmarStockSfcom(supabase, [{ providerId: proveedorActual.id, serviceId }])
         if (sfcomOk) await syncStockToSfcom(supabase, proveedorActual.id, serviceId)
     } else if (result?.notInList && result?.name) {
         sfcomNombreProducto.value    = result.name
@@ -321,15 +309,8 @@ function limpiarCamposProveedor() {
 
 const camposProveedor = [inputNombre, inputDireccion, inputProveedorComments]
 const camposProvDB    = ['name', 'address', 'comments']
-camposProveedor.forEach((input, i) => {
-    input.addEventListener('change', async () => {
-        if (!proveedorActual) return
-        await supabase.from('providers')
-            .update({ [camposProvDB[i]]: input.value.trim() || null })
-            .eq('id', proveedorActual.id)
-        proveedorActual[camposProvDB[i]] = input.value.trim() || null
-        mostrarGuardado()
-    })
+initAutoSave(supabase, camposProveedor, camposProvDB, 'providers', () => proveedorActual, {
+    onSaved: mostrarGuardado
 })
 
 selectFormaPago.addEventListener('change', async () => {
@@ -790,7 +771,7 @@ btnGuardarServicio.addEventListener('click', async () => {
             .map(id => todaDisponibilidad.find(d => d.id === id))
             .filter(Boolean)
             .map(d => ({ providerId: d.provider_id, serviceId: d.service_id }))
-        const sfcomOkMulti = await confirmarStockSfcom(paresMulti)
+        const sfcomOkMulti = await confirmarStockSfcom(supabase, paresMulti)
         if (!sfcomOkMulti) return
 
         for (const dispId of serviciosEditandoIds) {
@@ -866,7 +847,7 @@ btnGuardarServicio.addEventListener('click', async () => {
     )
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
-    const sfcomOkSingle = await confirmarStockSfcom([{ providerId: proveedorActual.id, serviceId: servicioId }])
+    const sfcomOkSingle = await confirmarStockSfcom(supabase, [{ providerId: proveedorActual.id, serviceId: servicioId }])
     if (!sfcomOkSingle) return
 
     if (servicioEditandoId) {
@@ -1783,7 +1764,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
     await persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)
 
     if (pairsSync.length > 0) {
-        const sfcomOkMultiple = await confirmarStockSfcom(pairsSync)
+        const sfcomOkMultiple = await confirmarStockSfcom(supabase, pairsSync)
         if (sfcomOkMultiple) {
             for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
         }

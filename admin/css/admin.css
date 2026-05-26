@@ -1067,6 +1067,111 @@ dialog::backdrop {
     color: var(--accent);
 }
 
+/* =========================
+   MODALES JS (overlay + panel)
+========================= */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 16px;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.modal-panel {
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 560px;
+    width: 100%;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.modal-panel--wide   { max-width: 640px; }
+.modal-panel--narrow { max-width: 480px; }
+.modal-panel--scroll { max-height: 90vh; overflow-y: auto; }
+
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.modal-header-icon  { font-size: 22px; line-height: 1; flex-shrink: 0; }
+
+.modal-header-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.modal-header-desc {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.modal-code {
+    background: #f3f4f6;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 12px;
+    font-family: monospace;
+    color: #374151;
+    line-height: 1.7;
+}
+
+.modal-email-block {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.modal-email-label {
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-weight: 500;
+}
+
+.modal-email-textarea {
+    width: 100%;
+    height: 200px;
+    font-size: 12px;
+    font-family: monospace;
+    border: none;
+    background: transparent;
+    resize: vertical;
+    color: #1f2937;
+    outline: none;
+    line-height: 1.65;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    .modal-panel { padding: 20px; }
+}
+
 /* campo editable dentro de la propuesta */
 .prop-editable {
     border-bottom: 1px dashed #e0b0b0;

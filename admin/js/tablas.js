@@ -1,23 +1,12 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
+import { fmt, initSidebar } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
-
-// Hamburger
-const sidebar     = document.getElementById('sidebar')
-const overlayMenu = document.getElementById('overlayMenu')
-document.getElementById('hamburger').addEventListener('click', () => {
-    sidebar.classList.toggle('open')
-    overlayMenu.classList.toggle('open')
-})
-overlayMenu.addEventListener('click', () => {
-    sidebar.classList.remove('open')
-    overlayMenu.classList.remove('open')
-})
+initSidebar()
 
 const hoy = new Date().toISOString().split('T')[0]
-const fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
 // ===== DEFINICIÓN DE TABLAS =====
 // Cada tabla define: query supabase, columnas con label, campo, clase opcional y formato

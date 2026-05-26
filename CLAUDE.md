@@ -459,6 +459,9 @@ Exporta:
 - `normalizar(str)` — mayúsculas + sin acentos (para búsquedas)
 - `normalizarId(str)` — espacios→guiones bajos + mayúsculas
 - `buscarConPrioridad(lista, texto, campos)` — búsqueda con 4 prioridades: empieza por id > campo2 > campo3 > contiene
+- `sortArr(arr, col, dir, getKey)` — ordena un array por columna con comparación locale `'es'` y soporte numérico. Devuelve copia nueva; no muta.
+- `renderThead(thead, columnas, sortCol, sortDir, onClick)` — reconstruye el `<thead>` con flechas de orden activo; registra `click` en cada `<th>`.
+- `initAutoSave(supabase, campos, camposDB, tabla, getEntity, { onSaved, onError })` — registra `change` en cada input del array `campos`; hace `supabase.update({ [camposDB[i]]: value || null })` sobre `tabla` usando `entity.id`, actualiza el campo en el objeto local, llama a `onSaved()` en éxito u `onError(err)` en fallo (por defecto `console.error`). Solo actúa si `getEntity()` devuelve un objeto truthy. Pensado para inputs de texto; selects y checkboxes requieren listeners propios.
 - `persistirCobrosCliente(supabase, clienteId, todasReservas)` — recalcula y persiste el cobro final en `charges`. Si el hito ya tiene `invoice_number`, no lo sobreescribe; crea un hito de ajuste y alerta al usuario.
 - `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` — recalcula y persiste el pago final en `payments`. Distingue modelo `capacity` (paga por plazas totales) y `consumption` (paga por plazas realmente reservadas).
 
@@ -562,11 +565,32 @@ El primer término limita lo que sfcom puede vender por lo que sfcom ya vendió 
 
 `mostrarModalConfirmacionSfcom(cambios)` — Modal consultivo (devuelve `Promise<boolean>`). Muestra los PUTs planeados antes de ejecutarlos: par proveedor/servicio, stock actual, stock nuevo. Botones "Confirmar" (resolve true) y "Cancelar" (resolve false). Se llama desde `formulario.js` y `proveedores.js` antes de llamar a `syncStockToSfcom`. Si el admin cancela, no se ejecuta ningún PUT ni ningún guardado en Supabase.
 
-**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError` (fallo de PUT, incluye correo a Hilario), `mostrarModalConfirmacionSfcom` (pre-save consultivo, exportado), `mostrarModalCorreoBajaSfcom` (correo a Hilario para solicitar baja), `mostrarModalAvisoOrders` (orders endpoint no disponible). Los modales de verificación (`mostrarModalVerificacion`, `mostrarModalPreCorreccion`) y el toast de carga están en `formulario.js`, que consume el resultado de `verificarCoherencia`. El antiguo `mostrarModalExito` ha sido eliminado; el éxito de un PUT es silencioso.
+**Sistema de modales:** El módulo tiene modales propios (overlay + panel centrado) independientes del DOM externo: `mostrarModalError` (fallo de PUT, incluye correo a Hilario), `mostrarModalConfirmacionSfcom` (pre-save consultivo, exportado), `mostrarModalCorreoBajaSfcom` (correo a Hilario para solicitar baja), `mostrarModalAvisoOrders` (orders endpoint no disponible). Todos estos modales usan `crearModal` de `modal.js`. Los modales de verificación (`mostrarModalVerificacion`, `mostrarModalPreCorreccion`) y el toast están en `verificacion.js` (ver 7.10). El antiguo `mostrarModalExito` ha sido eliminado; el éxito de un PUT es silencioso.
 
 ### 7.8 tablas.js — Vista de tablas
 
 Módulo ES6. Vista de solo lectura de todas las tablas: `reservations`, `charges`, `payments`, `availability`, `clients`, `providers`, `services`, `reservation_requests`. Selector de tabla, búsqueda en tiempo real, formateo de columnas con lambdas.
+
+### 7.9 modal.js — Helper de modales
+
+Módulo ES6. Exporta `crearModal(id, { wide, narrow, scroll })`. Crea el overlay (`.modal-overlay`) y el panel (`.modal-panel`) con las variantes de ancho/scroll, los añade al `document.body` y devuelve `{ overlay, panel }`. El caller rellena `panel.innerHTML` y registra los event listeners con `panel.querySelector()` (nunca `document.getElementById()` — el overlay podría no ser único en el DOM). Si ya existe un elemento con ese `id`, lo elimina antes de crear uno nuevo. Todos los modales del admin pasan por esta función; no queda ninguna construcción manual de overlay con `style.cssText`.
+
+**Tamaños:** `.modal-panel` por defecto = 560px; `--wide` = 640px; `--narrow` = 480px. `--scroll` activa `max-height: 90vh; overflow-y: auto`.
+
+**Clases de botones:** `.btn`, `.btn-primary` (rojo/accent), `.btn-secondary` (borde gris), `.btn-danger` (borde rojo). Los `<a>` usados como botón añaden `style="text-decoration:none"`.
+
+### 7.10 verificacion.js — UI de verificación de coherencia
+
+Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js` y `crearModal` de `modal.js`. Exporta:
+- `mostrarToast(mensaje, color)` — toast fijo en la parte superior durante ~3.5s. Color por defecto verde (`#166534`); naranja para avisos parciales.
+- `mostrarModalVerificacion(resultado, supabase, onReverify, opts)` — modal completo de resultados de verificación. Cuatro estados visuales (rojo/naranja/azul/verde). Botón "Sincronizar todos" solo para discrepancias reales; botones individuales por tarjeta. `onReverify` es el callback que re-ejecuta la verificación tras sincronizar. `opts.sinBotonCorregir` evita el bucle infinito de corrección.
+- `mostrarModalPreCorreccion(mismatches)` — modal previo cuando hay `idsMismatch`. Devuelve `Promise<'corregir'|'continuar'>`.
+
+Estos modales se usaban antes en `formulario.js`; se extrajeron a `verificacion.js` para poder reutilizarlos también desde `sfcom-panel.js`.
+
+### 7.11 sfcom-panel.js — Panel dedicado de sfcom
+
+Módulo ES6. Panel de solo-lectura centrado en la actividad de sfcom: KPIs, solicitudes pendientes, reservas con `sfcom_order_ref`, y listings activos con su stock. Reutiliza `verificarCoherencia`, `mostrarModalVerificacion` y `mostrarModalPreCorreccion` de `verificacion.js`. No escribe en BD; solo consume datos.
 
 ### 7.9 auth.js
 
@@ -1159,3 +1183,44 @@ Después basta con `.\deploy.ps1 -Message "..."`.
 - No editar el bloque AUTO-SEO directamente. Siempre editar los elementos fuente y ejecutar el script.
 - No editar `guias/index.html` ni `faq/index.html` directamente. Son archivos generados; editar las fuentes correspondientes (template o JSON) y regenerar con el script, luego correr el SEO.
 - No poner lógica de negocio en la BD (triggers, funciones PostgreSQL) salvo que haya una razón de peso. La lógica está en el JS.
+
+---
+
+## 22. Refactor del admin JS — contexto y estado
+
+### Qué se hizo y por qué
+
+El admin tenía duplicación significativa: cada módulo construía sus propios overlays de modal con `style.cssText`, y `sortArr`/`renderThead` estaban copiadas en `panel.js` sin exportar. El refactor elimina esa duplicación de forma gradual: add → verificar comportamiento idéntico → delete.
+
+**Regla de proceso:** nunca borrar código local hasta haber verificado que la versión nueva funciona. Si es necesario coexistir durante la verificación, importar con alias (`import { foo as fooShared }`) para que el módulo siga cargando sin error de redeclaración.
+
+### Lo que está hecho (mayo 2026)
+
+**`utils.js`** — añadidos exports: `sortArr`, `renderThead`, `initAutoSave`. Eliminados de `panel.js` los locales correspondientes.
+
+**`modal.js`** — nuevo archivo. `crearModal(id, opts)` es la única forma de crear modales en el admin. No queda ninguna construcción manual de overlay.
+
+**`verificacion.js`** — nuevo archivo. `mostrarModalVerificacion`, `mostrarModalPreCorreccion` y `mostrarToast` extraídos de `formulario.js` para poder reutilizarlos desde `sfcom-panel.js`.
+
+**Modales migrados a `crearModal`:**
+- `sfcom.js` — 7 modales (error PUT, confirmación sfcom, correo a Hilario, aviso orders, picker de verificación, correo cancelación, correo baja)
+- `formulario.js` — 3 modales de solicitudes sfcom (_mostrarModalAvisoSolicitud, _mostrarModalIDsCambiados, _mostrarModalNombreNoReconocido)
+- `verificacion.js` — 2 modales (mostrarModalVerificacion, mostrarModalPreCorreccion)
+
+**`formulario.js`** — eliminadas las copias locales de `fmt`, `fechaCobroDefault`, `confirmarStockSfcom`, `descargarFactura`/`descargarPropuesta` (unificadas en `descargarArchivoStorage`). Import actualizado.
+
+**`proveedores.js`** — import actualizado; `confirmarStockSfcom` viene de `sfcom.js`.
+
+**`tablas.js`** — import actualizado; `fmt` e `initSidebar` vienen de `utils.js`.
+
+### Lo que queda pendiente
+
+**Phase 4** (no empezar hasta decidir con Javier): dividir `formulario.js` (~2150 líneas) en módulos más pequeños. Candidatos: `solicitudes.js` (bloque 0 + registrarPedidosSfcom), `reorganizar.js` (panel de reorganización), `cobros.js` (bloque 5 + persistirCobros).
+
+### Trampas técnicas aprendidas
+
+**PowerShell 5.1 no tocar archivos JS.** `Get-Content | Set-Content` lee UTF-8 como Windows-1252 y corrompe todos los caracteres multibyte (emojis, tildes, em-dashes) aunque se pase `-Encoding utf8` (añade BOM además). Fix si ocurre: `git restore <archivo>` y rehacer el cambio con la herramienta Edit.
+
+**ES6 modules redeclaración = SyntaxError silencioso.** Si un import trae `foo` y en el mismo archivo hay `const foo` o `function foo`, el módulo no carga y falla en silencio (sin error visible en la UI). Fix: borrar la declaración local en el mismo Edit que añade el nombre al import — nunca en pasos separados.
+
+**`panel.querySelector()` no `document.getElementById()` tras `crearModal`.** Aunque `crearModal` añade el overlay al body con un `id` único, `document.getElementById` puede devolver un overlay anterior si no se limpió bien. `panel.querySelector('#mi-btn')` es siempre seguro y no depende de la unicidad global del DOM.

@@ -1,32 +1,17 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
-import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
+import { crearModal } from './modal.js'
 
 await requireAuth()
 initFacturacion(supabase)
 document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
 
-// ─── Helper: modal consultivo de stock sfcom pre-save ────────────────────────
-// pares: [{ providerId, serviceId, sfcomDelta, allDelta }]
-// sfcomDelta: plazas de reservas sfcom (sfcom_order_ref NOT NULL) que cambian
-// allDelta:   plazas totales que cambian (sfcom + propias)
-// Calcula el stock esperado para cada par con sfcom confirmado y muestra un
-// modal consultivo. Devuelve true si el admin confirma o si ningún par tiene
-// sfcom activo. Devuelve false si el admin cancela (abortar operación).
-async function confirmarStockSfcom(pares) {
-    const cambios = []
-    for (const { providerId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
-        const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta, allDelta })
-        if (cambio) cambios.push(cambio)
-    }
-    if (cambios.length === 0) return true
-    return mostrarModalConfirmacionSfcom(cambios)
-}
 
 // ===== DATOS GLOBALES =====
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
@@ -43,7 +28,6 @@ let solicitudSfcomRef  = null   // sfcom_order_ref de la solicitud activa (null 
 let hitosClienteTemp   = []
 let _cargandoSolicitud = false
 const hoy             = new Date().toISOString().split('T')[0]
-const fmt             = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
 // ===== REFERENCIAS DOM =====
 const inputId      = document.getElementById('inputClientId')
@@ -189,25 +173,16 @@ function limpiarFormularioReserva() {
 
 const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputAddress, inputNif, inputComments]
 const camposDB      = ['name', 'company', 'phone', 'email', 'address', 'nif', 'comments']
-camposCliente.forEach((input, i) => {
-    input.addEventListener('change', async () => {
-        if (!clienteActual) return
-        const { error } = await supabase
-            .from('clients')
-            .update({ [camposDB[i]]: input.value.trim() || null })
-            .eq('id', clienteActual.id)
-        if (error) {
-            statusDiv.textContent = '❌ Error: ' + error.message
-            statusDiv.style.color = 'var(--accent)'
-        } else {
-            clienteActual[camposDB[i]] = input.value.trim() || null
-            statusDiv.textContent = '✅ Guardado'
-            statusDiv.style.color = 'var(--accent-ok)'
-            setTimeout(() => {
-                statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente'
-            }, 2000)
-        }
-    })
+initAutoSave(supabase, camposCliente, camposDB, 'clients', () => clienteActual, {
+    onSaved: () => {
+        statusDiv.textContent = '✅ Guardado'
+        statusDiv.style.color = 'var(--accent-ok)'
+        setTimeout(() => { statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente' }, 2000)
+    },
+    onError: err => {
+        statusDiv.textContent = '❌ Error: ' + err.message
+        statusDiv.style.color = 'var(--accent)'
+    }
 })
 
 // Guarda un cliente nuevo en la BBDD sin necesidad de añadir una reserva
@@ -566,7 +541,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             return { ...p, sfcomDelta, allDelta }
         })
         if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
             if (!sfcomOk) return
         }
     } else {
@@ -581,7 +556,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             return { ...p, sfcomDelta, allDelta }
         })
         if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
             if (!sfcomOk) return
         }
     }
@@ -618,7 +593,7 @@ async function eliminarSeleccionadas() {
         return { ...p, sfcomDelta, allDelta }
     })
     if (pairsParaModal.length > 0) {
-        const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+        const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
         if (!sfcomOk) return
     }
 
@@ -732,7 +707,7 @@ btnAnadir.addEventListener('click', async () => {
             if (allDelta !== 0) pairsParaModal.push({ providerId: proveedorId, serviceId: servicioId, sfcomDelta, allDelta })
         }
         if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(pairsParaModal)
+            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
             if (!sfcomOk) return
         }
 
@@ -775,7 +750,7 @@ btnAnadir.addEventListener('click', async () => {
             if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
         }
 
-        const sfcomOk = await confirmarStockSfcom([{
+        const sfcomOk = await confirmarStockSfcom(supabase, [{
             providerId: proveedorId, serviceId: servicioId,
             sfcomDelta: solicitudSfcomRef ? plazas : 0,
             allDelta:   plazas
@@ -926,15 +901,6 @@ window.seleccionarProveedorDesdeCajita = function(proveedorId) {
 
 // ===== BLOQUE 5: COBROS AL CLIENTE =====
 
-// Fecha por defecto para el cobro final: 6 de julio del anio en curso
-// o del siguiente si ya hemos pasado el 15 de julio
-function fechaCobroDefault() {
-    const hoy  = new Date()
-    const anio = hoy.getMonth() < 6 || (hoy.getMonth() === 6 && hoy.getDate() < 15)
-        ? hoy.getFullYear()
-        : hoy.getFullYear() + 1
-    return `${anio}-07-06`
-}
 
 function calcularTotalCobrarCliente(clienteId) {
     return todasReservas
@@ -1563,7 +1529,7 @@ window.confirmarReorganizacion = async function() {
     })
     const sfcomPairsReorg = [...sfcomDeltasMap.values()].filter(p => p.allDelta !== 0 || p.sfcomDelta !== 0)
     if (sfcomPairsReorg.length > 0) {
-        const sfcomOk = await confirmarStockSfcom(sfcomPairsReorg)
+        const sfcomOk = await confirmarStockSfcom(supabase, sfcomPairsReorg)
         if (!sfcomOk) return
     }
 
@@ -1886,28 +1852,17 @@ async function cargarDesdeSolicitud(data) {
 // ─── Modales de solicitud sfcom ───────────────────────────────────────────────
 
 function _mostrarModalAvisoSolicitud(mensaje) {
-    const id   = 'modal-aviso-solicitud'
-    const prev = document.getElementById(id)
-    if (prev) prev.remove()
-
-    const overlay = document.createElement('div')
-    overlay.id = id
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;font-family:system-ui,sans-serif'
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-            <div style="font-size:14px;color:#374151;line-height:1.6;margin-bottom:20px">${mensaje}</div>
-            <button style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Entendido</button>
+    const { overlay, panel } = crearModal('modal-aviso-solicitud', { narrow: true })
+    panel.innerHTML = `
+        <div class="modal-header-desc">${mensaje}</div>
+        <div class="modal-actions">
+            <button id="modal-aviso-solicitud-ok" class="btn btn-primary">Entendido</button>
         </div>`
-    document.body.appendChild(overlay)
-    overlay.querySelector('button').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#modal-aviso-solicitud-ok').addEventListener('click', () => overlay.remove())
 }
 
 function _mostrarModalIDsCambiados(nombre, idProdAnterior, idVarAnterior, idProdNuevo, idVarNuevo) {
     return new Promise(resolve => {
-        const id   = 'modal-ids-cambiados'
-        const prev = document.getElementById(id)
-        if (prev) prev.remove()
-
         const subject      = `sfcom — cambio de IDs detectado: ${nombre}`
         const cuerpoCorreo = [
             `Hola Hilario,`,
@@ -1921,53 +1876,43 @@ function _mostrarModalIDsCambiados(nombre, idProdAnterior, idVarAnterior, idProd
             `Gracias`
         ].join('\n')
 
-        const overlay = document.createElement('div')
-        overlay.id = id
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;font-family:system-ui,sans-serif'
-        overlay.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:540px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-                <div style="font-size:14px;font-weight:700;color:#92400e;margin-bottom:12px">⚠️ IDs de sfcom cambiados — ${nombre}</div>
-                <div style="font-size:13px;color:#374151;line-height:1.8;margin-bottom:20px">
+        const { overlay, panel } = crearModal('modal-ids-cambiados', { narrow: true })
+        panel.innerHTML = `
+            <div class="modal-header">
+                <div class="modal-header-title">⚠️ IDs de sfcom cambiados — ${nombre}</div>
+                <div class="modal-header-desc">
                     Se detectaron nuevos IDs para este producto en sfcom. Puede que Hilario lo haya recreado.<br>
                     <strong>Anteriores:</strong> product_id ${idProdAnterior} / variation_id ${idVarAnterior || '—'}<br>
                     <strong>Nuevos:</strong> product_id ${idProdNuevo} / variation_id ${idVarNuevo || '—'}<br><br>
                     ¿Actualizar los IDs en la base de datos?
                 </div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-                    <button id="${id}-ok" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Actualizar IDs</button>
-                    <button id="${id}-cancel" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Mantener anteriores</button>
-                    <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
-                       style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;padding:8px 16px;font-size:13px;text-decoration:none">
-                        📧 Notificar a Hilario
-                    </a>
-                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="modal-ids-cambiados-ok" class="btn btn-primary">Actualizar IDs</button>
+                <button id="modal-ids-cambiados-cancel" class="btn btn-secondary">Mantener anteriores</button>
+                <a href="mailto:hilario@goviwebs.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cuerpoCorreo)}"
+                   class="btn btn-secondary" style="text-decoration:none">📧 Notificar a Hilario</a>
             </div>`
-        document.body.appendChild(overlay)
-        overlay.querySelector(`#${id}-ok`).addEventListener('click', () => { overlay.remove(); resolve(true) })
-        overlay.querySelector(`#${id}-cancel`).addEventListener('click', () => { overlay.remove(); resolve(false) })
+        panel.querySelector('#modal-ids-cambiados-ok').addEventListener('click', () => { overlay.remove(); resolve(true) })
+        panel.querySelector('#modal-ids-cambiados-cancel').addEventListener('click', () => { overlay.remove(); resolve(false) })
     })
 }
 
 function _mostrarModalNombreNoReconocido(nombreRaw, ref) {
-    const id   = 'modal-nombre-no-reconocido'
-    const prev = document.getElementById(id)
-    if (prev) prev.remove()
-
-    const overlay = document.createElement('div')
-    overlay.id = id
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;font-family:system-ui,sans-serif'
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-            <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:12px">⚠️ Producto no reconocido — ${ref}</div>
-            <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:20px">
+    const { overlay, panel } = crearModal('modal-nombre-no-reconocido', { narrow: true })
+    panel.innerHTML = `
+        <div class="modal-header">
+            <div class="modal-header-title">⚠️ Producto no reconocido — ${ref}</div>
+            <div class="modal-header-desc">
                 El pedido incluye un producto que no está configurado en el sistema:<br>
                 <strong>${nombreRaw}</strong><br><br>
                 La solicitud se ha guardado sin servicio asignado. Revísala manualmente en el bloque de solicitudes.
             </div>
-            <button style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;cursor:pointer">Entendido</button>
+        </div>
+        <div class="modal-actions">
+            <button id="modal-nombre-no-reconocido-ok" class="btn btn-primary">Entendido</button>
         </div>`
-    document.body.appendChild(overlay)
-    overlay.querySelector('button').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#modal-nombre-no-reconocido-ok').addEventListener('click', () => overlay.remove())
 }
 
 // Registra pedidos nuevos de sfcom en reservation_requests.

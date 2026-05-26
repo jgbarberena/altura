@@ -43,7 +43,16 @@
       "Bash(head -n 2126 \"d:/Projects/Web/Altura/admin/js/formulario.js\")",
       "Bash(tail -n +2571 \"d:/Projects/Web/Altura/admin/js/formulario.js\")",
       "Bash(powershell -ExecutionPolicy Bypass -File .\\\\deploy.ps1 -Message \"panel canal sfcom: nueva pagina con KPIs, reservas, listings y verificacion de stock\" -SkipScripts)",
-      "PowerShell(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"panel canal sfcom: nueva pagina con KPIs, reservas, listings y verificacion de stock\" -SkipScripts)"
+      "PowerShell(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"panel canal sfcom: nueva pagina con KPIs, reservas, listings y verificacion de stock\" -SkipScripts)",
+      "PowerShell(\\(Get-Content \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\formulario.js\"\\) -replace 'confirmarStockSfcom\\\\\\(supabase,\\(\\\\S\\)', 'confirmarStockSfcom\\(supabase, $1' | Set-Content \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\formulario.js\" -Encoding utf8)",
+      "PowerShell(\\(Get-Content \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\proveedores.js\"\\) -replace 'confirmarStockSfcom\\\\\\(\\(\\\\[\\)', 'confirmarStockSfcom\\(supabase, $1' -replace 'confirmarStockSfcom\\\\\\(\\([a-zA-Z]\\)', 'confirmarStockSfcom\\(supabase, $1' | Set-Content \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\proveedores.js\" -Encoding utf8)",
+      "PowerShell(\\(Get-Content \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\proveedores.js\"\\) -replace 'confirmarStockSfcom\\\\\\(supabase, supabase,', 'confirmarStockSfcom\\(supabase,' | Set-Content \"d:\\\\Projects\\\\Web\\\\Altura\\\\admin\\\\js\\\\proveedores.js\" -Encoding utf8)",
+      "Bash(git -C \"d:\\\\Projects\\\\Web\\\\Altura\" status --short admin/js/)",
+      "Bash(git -C \"d:\\\\Projects\\\\Web\\\\Altura\" status --short -- admin/js/verificacion.js)",
+      "Bash(git -C \"d:\\\\Projects\\\\Web\\\\Altura\" diff admin/js/formulario.js)",
+      "Bash(git -C \"d:\\\\Projects\\\\Web\\\\Altura\" restore admin/js/formulario.js admin/js/proveedores.js)",
+      "Bash(powershell -ExecutionPolicy Bypass -File .\\\\deploy.ps1 -Message \"sfcom: verificacion secuencial para no saturar pool PHP de sfcom\" -SkipScripts)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: verificacion secuencial para no saturar pool PHP de sfcom\" -SkipScripts)"
     ]
   }
 }

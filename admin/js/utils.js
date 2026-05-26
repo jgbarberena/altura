@@ -47,6 +47,48 @@ export function normalizarId(str) {
     return str.trim().toUpperCase().replace(/\s+/g, '_')
 }
 
+// Ordena un array por columna índice y dirección; getKey(item, colIdx) → valor comparable
+export function sortArr(arr, col, dir, getKey) {
+    if (col === null) return arr
+    return [...arr].sort((a, b) => {
+        const cmp = String(getKey(a, col) ?? '').localeCompare(String(getKey(b, col) ?? ''), 'es', { numeric: true })
+        return dir === 'asc' ? cmp : -cmp
+    })
+}
+
+// Renderiza un thead con iconos de sort clicables
+export function renderThead(thead, columnas, sortCol, sortDir, onClick) {
+    thead.innerHTML = '<tr>' + columnas.map((label, i) => {
+        const activa = sortCol === i
+        return `<th style="cursor:pointer;user-select:none">${label} <span style="font-size:10px;opacity:${activa ? 1 : 0.4}">${activa ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`
+    }).join('') + '</tr>'
+    thead.querySelectorAll('th').forEach((th, i) => th.addEventListener('click', () => onClick(i)))
+}
+
+// Registra guardado automático en Supabase para un array de inputs de texto.
+// campos: array de input elements; camposDB: array de nombres de columna (mismo orden).
+// getEntity(): devuelve el objeto en memoria (con .id). Si devuelve falsy, no hace nada.
+// Actualiza el objeto local tras guardar. onSaved/onError son callbacks opcionales.
+export function initAutoSave(supabase, campos, camposDB, tabla, getEntity, { onSaved, onError } = {}) {
+    campos.forEach((input, i) => {
+        input.addEventListener('change', async () => {
+            const entity = getEntity()
+            if (!entity) return
+            const { error } = await supabase
+                .from(tabla)
+                .update({ [camposDB[i]]: input.value.trim() || null })
+                .eq('id', entity.id)
+            if (error) {
+                if (onError) onError(error)
+                else console.error(`[initAutoSave] ${tabla}.${camposDB[i]}:`, error)
+                return
+            }
+            entity[camposDB[i]] = input.value.trim() || null
+            onSaved?.()
+        })
+    })
+}
+
 // Busca en una lista con prioridades:
 // 1. Empieza por id, 2. Empieza por campo2, 3. Empieza por campo3, 4. Contiene en cualquier campo
 // lista: array de objetos, campos: [campoId, campo2, campo3]

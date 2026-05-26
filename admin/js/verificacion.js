@@ -4,6 +4,7 @@
 // formulario.js y sfcom-panel.js sin duplicar código.
 
 import { syncStockToSfcom } from './sfcom.js'
+import { crearModal } from './modal.js'
 
 // ─── Toast genérico ──────────────────────────────────────────────────────────
 
@@ -325,42 +326,26 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
     const colorBtnTxt = hayProblema ? '#374151' : '#fff'
     const bordeBtn    = hayProblema ? '1px solid #d1d5db' : 'none'
 
-    const overlay = document.createElement('div')
-    overlay.id = 'modal-verificacion'
-    overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'z-index:10000', 'padding:16px'
-    ].join(';')
-
-    overlay.innerHTML = `
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:600px;width:100%;
-                    box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                    display:flex;flex-direction:column;gap:16px;max-height:90vh;overflow-y:auto">
-            <div style="font-size:16px;font-weight:600;color:${colorTitulo}">
-                ${iconoTitulo} ${textoTitulo}
-            </div>
-            ${secciones}
-            <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:4px;flex-wrap:wrap">
-                ${tieneDiscrepancias ? `
-                <button id="btn-actualizar-stock-sfcom"
-                    style="background:#92400e;color:#fff;border:none;border-radius:6px;
-                           padding:8px 16px;font-size:13px;cursor:pointer;white-space:nowrap">
-                    🔄 Sincronizar todos
-                </button>` : ''}
-                <button id="btn-verificacion-cerrar"
-                    style="background:${colorBtn};color:${colorBtnTxt};border:${bordeBtn};
-                           border-radius:6px;padding:8px 24px;font-size:13px;cursor:pointer">
-                    ${hayProblema ? 'Cerrar' : 'OK'}
-                </button>
-            </div>
+    const { overlay, panel } = crearModal('modal-verificacion', { wide: true, scroll: true })
+    panel.innerHTML = `
+        <div style="font-size:16px;font-weight:600;color:${colorTitulo}">
+            ${iconoTitulo} ${textoTitulo}
+        </div>
+        ${secciones}
+        <div class="modal-actions">
+            ${tieneDiscrepancias ? `
+            <button id="btn-actualizar-stock-sfcom" class="btn btn-danger" style="white-space:nowrap">
+                🔄 Sincronizar todos
+            </button>` : ''}
+            <button id="btn-verificacion-cerrar" class="${hayProblema ? 'btn btn-secondary' : 'btn btn-primary'}">
+                ${hayProblema ? 'Cerrar' : 'OK'}
+            </button>
         </div>`
 
-    document.body.appendChild(overlay)
-    document.getElementById('btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
 
     if (tieneDiscrepancias) {
-        document.getElementById('btn-actualizar-stock-sfcom').addEventListener('click', async function () {
+        panel.querySelector('#btn-actualizar-stock-sfcom').addEventListener('click', async function () {
             this.disabled = true
             this.textContent = 'Actualizando…'
             for (const d of discrepanciasReales) {
@@ -398,57 +383,35 @@ export function mostrarModalPreCorreccion(mismatches) {
             </div>`
         ).join('')
 
-        const overlay = document.createElement('div')
-        overlay.id = 'modal-pre-correccion'
-        overlay.style.cssText = [
-            'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-            'display:flex', 'align-items:center', 'justify-content:center',
-            'z-index:10000', 'padding:16px'
-        ].join(';')
-
-        overlay.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:100%;
-                        box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;
-                        display:flex;flex-direction:column;gap:16px">
-                <div style="display:flex;align-items:flex-start;gap:12px">
-                    <span style="font-size:22px;line-height:1">⚠️</span>
-                    <div>
-                        <div style="font-size:15px;font-weight:600;color:#991b1b;margin-bottom:4px">
-                            IDs de variación incorrectos
-                        </div>
-                        <div style="font-size:13px;color:#555;line-height:1.5">
-                            Se ${mismatches.length === 1 ? 'ha detectado' : 'han detectado'}
-                            ${mismatches.length} par${mismatches.length !== 1 ? 'es' : ''} con
-                            una variación de sfcom asignada incorrectamente.
-                            ¿Deseas corregirlos antes de ver los resultados de la verificación?
-                        </div>
+        const { overlay, panel } = crearModal('modal-pre-correccion')
+        panel.innerHTML = `
+            <div class="modal-header">
+                <span class="modal-header-icon">⚠️</span>
+                <div>
+                    <div class="modal-header-title" style="color:#991b1b">IDs de variación incorrectos</div>
+                    <div class="modal-header-desc">
+                        Se ${mismatches.length === 1 ? 'ha detectado' : 'han detectado'}
+                        ${mismatches.length} par${mismatches.length !== 1 ? 'es' : ''} con
+                        una variación de sfcom asignada incorrectamente.
+                        ¿Deseas corregirlos antes de ver los resultados de la verificación?
                     </div>
                 </div>
-                <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;
-                            padding:10px 12px;display:flex;flex-direction:column;gap:4px">
-                    ${lista}
-                </div>
-                <div style="font-size:12px;color:#6b7280;background:#f9fafb;border-radius:6px;padding:8px 10px;line-height:1.5">
-                    Si corriges, el sistema busca el producto correcto en sfcom por nombre y actualiza los IDs automáticamente,
-                    luego re-ejecuta la verificación completa.
-                    Si continúas sin corregir, la comparación de stock de esos pares se omitirá en los resultados.
-                </div>
-                <div style="display:flex;gap:10px;justify-content:flex-end">
-                    <button id="btn-precorr-continuar"
-                        style="background:transparent;border:1px solid #d1d5db;border-radius:6px;
-                               padding:8px 16px;font-size:13px;cursor:pointer;color:#6b7280">
-                        Continuar sin corregir
-                    </button>
-                    <button id="btn-precorr-corregir"
-                        style="background:#991b1b;color:#fff;border:none;border-radius:6px;
-                               padding:8px 20px;font-size:13px;cursor:pointer">
-                        🔧 Corregir y reverificar
-                    </button>
-                </div>
+            </div>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;
+                        padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+                ${lista}
+            </div>
+            <div style="font-size:12px;color:#6b7280;background:#f9fafb;border-radius:6px;padding:8px 10px;line-height:1.5">
+                Si corriges, el sistema busca el producto correcto en sfcom por nombre y actualiza los IDs automáticamente,
+                luego re-ejecuta la verificación completa.
+                Si continúas sin corregir, la comparación de stock de esos pares se omitirá en los resultados.
+            </div>
+            <div class="modal-actions">
+                <button id="btn-precorr-continuar" class="btn btn-secondary">Continuar sin corregir</button>
+                <button id="btn-precorr-corregir" class="btn btn-danger">🔧 Corregir y reverificar</button>
             </div>`
 
-        document.body.appendChild(overlay)
-        document.getElementById('btn-precorr-continuar').addEventListener('click', () => { overlay.remove(); resolve('continuar') })
-        document.getElementById('btn-precorr-corregir').addEventListener('click',  () => { overlay.remove(); resolve('corregir')  })
+        panel.querySelector('#btn-precorr-continuar').addEventListener('click', () => { overlay.remove(); resolve('continuar') })
+        panel.querySelector('#btn-precorr-corregir').addEventListener('click',  () => { overlay.remove(); resolve('corregir')  })
     })
 }
