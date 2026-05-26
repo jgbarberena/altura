@@ -528,10 +528,12 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             .map(r => [`${r.provider_id}|${r.service_id}`, { proveedorId: r.provider_id, servicioId: r.service_id }])
     ).values()]
 
-    // Modal consultivo cuando el cambio altera el conteo de reservas activas en sfcom
+    // Modal consultivo cuando el cambio altera el conteo de reservas activas en sfcom.
+    // pairsConCambio recoge solo los pares con delta real — Pendiente↔Confirmada no aparece.
+    let pairsConCambio = []
     if (nuevoEstado === 'Cancelada') {
         // Cancelar reservas activas → stock sube (deltas negativos de plazas activas)
-        const pairsParaModal = [...new Map(
+        pairsConCambio = [...new Map(
             todasReservas.filter(r => ids.includes(r.id) && r.status !== 'Cancelada')
                 .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
         ).values()].map(p => {
@@ -540,13 +542,13 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
-        if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
+        if (pairsConCambio.length > 0) {
+            const sfcomOk = await confirmarStockSfcom(supabase, pairsConCambio)
             if (!sfcomOk) return
         }
     } else {
         // Reactivar reservas canceladas → stock baja (deltas positivos de plazas que vuelven a ser activas)
-        const pairsParaModal = [...new Map(
+        pairsConCambio = [...new Map(
             todasReservas.filter(r => ids.includes(r.id) && r.status === 'Cancelada')
                 .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
         ).values()].map(p => {
@@ -555,8 +557,8 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             const sfcomDelta  = reactivadas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
-        if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
+        if (pairsConCambio.length > 0) {
+            const sfcomOk = await confirmarStockSfcom(supabase, pairsConCambio)
             if (!sfcomOk) return
         }
     }
@@ -567,9 +569,11 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
+        const pairsConCambioSet = new Set(pairsConCambio.map(p => `${p.providerId}|${p.serviceId}`))
         for (const { proveedorId, servicioId } of afectadas) {
             await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-            await syncStockToSfcom(supabase, proveedorId, servicioId)
+            if (pairsConCambioSet.has(`${proveedorId}|${servicioId}`))
+                await syncStockToSfcom(supabase, proveedorId, servicioId)
         }
         cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
@@ -711,6 +715,14 @@ btnAnadir.addEventListener('click', async () => {
             if (!sfcomOk) return
         }
 
+        for (const p of pairsParaModal) {
+            if (p.allDelta <= 0) continue
+            const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
+            if (sfcomResult.sfcomCheck && sfcomResult.warning) {
+                if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
+            }
+        }
+
         const { error } = await supabase.from('reservations').update({
             service_id: servicioId, provider_id: proveedorId,
             slots: plazas, price_per_slot: precio, status: estado, comments
@@ -725,11 +737,8 @@ btnAnadir.addEventListener('click', async () => {
         if (proveedorIdAnterior !== undefined && proveedorIdAnterior !== proveedorId) {
             await persistirPagosProveedor(supabase, proveedorIdAnterior, todasReservas, disponibilidad)
         }
-        await syncStockToSfcom(supabase, proveedorId, servicioId)
-        if (proveedorIdAnterior !== undefined &&
-            (proveedorIdAnterior !== proveedorId || servicioIdAnterior !== servicioId)) {
-            await syncStockToSfcom(supabase, proveedorIdAnterior, servicioIdAnterior)
-        }
+        for (const p of pairsParaModal)
+            await syncStockToSfcom(supabase, p.providerId, p.serviceId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()

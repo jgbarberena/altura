@@ -50,6 +50,17 @@ export function extraerDia(texto) {
 const API_URL = 'https://tienda.sanfermin.com/sf-api-paula.php'
 const API_KEY = 'pK9#mX2$vL7@nQ4&wR8!hT3%yU6^zA1*'
 
+// Cache de stock sfcom en memoria. Se puebla en verificarCoherencia y se actualiza en cada PUT.
+// Se invalida al recargar la página (módulo en memoria). Los PUTs mantienen la coherencia entre
+// operaciones; verificarCoherencia refresca el estado completo en cada carga del panel.
+const _stockCache  = new Map()
+const _cacheKey    = (productId, variationId) => `${productId}:${variationId ?? ''}`
+const _cacheSet    = (productId, variationId, stock) => _stockCache.set(_cacheKey(productId, variationId), stock)
+const _cacheGet    = (productId, variationId) => {
+    const key = _cacheKey(productId, variationId)
+    return _stockCache.has(key) ? _stockCache.get(key) : undefined  // undefined = no cacheado; null = cacheado como null
+}
+
 // ─── Utilidad interna: llamada a la API ──────────────────────────────────────
 
 async function apiFetch(endpoint, method = 'GET', body = null) {
@@ -145,6 +156,7 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
 
     try {
         await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
+        _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, nuevoStock)
         return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas }
     } catch (e) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
@@ -244,13 +256,19 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
     }
 
     let stockSfcom
-    try {
-        const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-        const item     = await apiFetchSingle(endpoint)
-        stockSfcom     = item.stock_quantity ?? null
-    } catch (e) {
-        console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido. No se verifica disponibilidad sfcom. ${e.message}`)
-        return { ok: true, sfcomCheck: false, warning: e.message }
+    const _cached1 = _cacheGet(avail.sfcom_product_id, avail.sfcom_variation_id)
+    if (_cached1 !== undefined) {
+        stockSfcom = _cached1
+    } else {
+        try {
+            const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
+            const item     = await apiFetchSingle(endpoint)
+            stockSfcom     = item.stock_quantity ?? null
+            _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockSfcom)
+        } catch (e) {
+            console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido. No se verifica disponibilidad sfcom. ${e.message}`)
+            return { ok: true, sfcomCheck: false, warning: e.message }
+        }
     }
 
     if (stockSfcom === null) return { ok: true, sfcomCheck: false }
@@ -324,12 +342,18 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
     ))
 
     let stockActual = null
-    try {
-        const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-        const item     = await apiFetchSingle(endpoint)
-        stockActual    = item.stock_quantity ?? null
-    } catch (e) {
-        console.warn(`[sfcom] No se pudo leer stock actual de ${avail.sfcom_service_name}: ${e.message}`)
+    const _cached2 = _cacheGet(avail.sfcom_product_id, avail.sfcom_variation_id)
+    if (_cached2 !== undefined) {
+        stockActual = _cached2
+    } else {
+        try {
+            const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
+            const item     = await apiFetchSingle(endpoint)
+            stockActual    = item.stock_quantity ?? null
+            _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockActual)
+        } catch (e) {
+            console.warn(`[sfcom] No se pudo leer stock actual de ${avail.sfcom_service_name}: ${e.message}`)
+        }
     }
 
     return { servicio: avail.sfcom_service_name, providerId, serviceId, stockActual, nuevoStock }
@@ -610,45 +634,86 @@ export async function verificarCoherencia(supabase) {
     if (mappedAvails.length === 0) {
         resultado.sfcom.verificado = true
     } else {
-        // GETs secuenciales — de uno en uno para no saturar el pool PHP de sfcom.
-        // Para en el primer fallo real (timeout, HTTP error) y reporta los pares
-        // verificados hasta ese momento. El 404 en deactivation_pending no es fallo.
-        let sfcomFallo = false
-        for (const avail of mappedAvails) {
-            let item
+        // ── Fase 1: batch GETs ─────────────────────────────────────────────────
+        // Productos simples: un solo GET con include=id1,id2,...
+        // Productos variables: un GET de variaciones por producto único
+        // Máximo ~5 llamadas en lugar de ~20, sin saturar el pool PHP de sfcom.
+        const simpleIds     = [...new Set(mappedAvails.filter(a => !a.sfcom_variation_id).map(a => a.sfcom_product_id))]
+        const varProductIds = [...new Set(mappedAvails.filter(a =>  a.sfcom_variation_id).map(a => a.sfcom_product_id))]
+        const simpleMap     = new Map()   // product_id   → { stock_quantity, name }
+        const varMap        = new Map()   // variation_id → { stock_quantity, name }
+
+        if (simpleIds.length > 0) {
             try {
-                item = await apiFetchSingle(buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id))
+                const items = await apiFetch(`products?include=${simpleIds.join(',')}&per_page=100`)
+                for (const item of (Array.isArray(items) ? items : [])) {
+                    simpleMap.set(item.id, { stock_quantity: item.stock_quantity ?? null, name: item.name ?? null })
+                    _cacheSet(item.id, null, item.stock_quantity ?? null)
+                }
             } catch (e) {
-                if (e.message?.includes('404') && avail.sfcom_status === 'deactivation_pending') {
-                    resultado.avisos.push(
-                        `${avail.sfcom_service_name} (${avail.provider_id}): producto ya retirado de sfcom ` +
-                        `— puedes confirmar la baja en proveedores.html`
-                    )
-                } else {
-                    sfcomFallo = true
+                for (const avail of mappedAvails.filter(a => !a.sfcom_variation_id)) {
                     resultado.sfcom.fallos.push({
                         servicio:   avail.sfcom_service_name ?? `${avail.provider_id}/${avail.service_id}`,
                         providerId: avail.provider_id,
                         serviceId:  avail.service_id,
                         error:      e.message
                     })
-                    resultado.sfcom.error = e.message
-                    break
+                }
+                if (!resultado.sfcom.error) resultado.sfcom.error = e.message
+            }
+        }
+
+        for (const productId of varProductIds) {
+            try {
+                const items = await apiFetch(`products/${productId}/variations?per_page=100`)
+                for (const item of (Array.isArray(items) ? items : [])) {
+                    varMap.set(item.id, { stock_quantity: item.stock_quantity ?? null, name: item.name ?? null })
+                    _cacheSet(productId, item.id, item.stock_quantity ?? null)
+                }
+            } catch (e) {
+                for (const avail of mappedAvails.filter(a => a.sfcom_product_id === productId)) {
+                    resultado.sfcom.fallos.push({
+                        servicio:   avail.sfcom_service_name ?? `${avail.provider_id}/${avail.service_id}`,
+                        providerId: avail.provider_id,
+                        serviceId:  avail.service_id,
+                        error:      e.message
+                    })
+                }
+                if (!resultado.sfcom.error) resultado.sfcom.error = e.message
+            }
+        }
+
+        // ── Fase 2: procesar pares desde los mapas en memoria ──────────────────
+        for (const avail of mappedAvails) {
+            const itemData = avail.sfcom_variation_id
+                ? varMap.get(avail.sfcom_variation_id)
+                : simpleMap.get(avail.sfcom_product_id)
+
+            if (itemData === undefined) {
+                // No está en el mapa: su batch falló (ya en fallos) o el producto no existe en sfcom
+                const yaEnFallos = resultado.sfcom.fallos.some(
+                    f => f.providerId === avail.provider_id && f.serviceId === avail.service_id
+                )
+                if (!yaEnFallos && avail.sfcom_status === 'deactivation_pending') {
+                    resultado.avisos.push(
+                        `${avail.sfcom_service_name} (${avail.provider_id}): producto ya retirado de sfcom ` +
+                        `— puedes confirmar la baja en proveedores.html`
+                    )
                 }
                 continue
             }
 
-            const stockReal       = item.stock_quantity ?? null
-            const variacionNombre = avail.sfcom_variation_id ? (item.name ?? null) : null
+            const stockReal       = itemData.stock_quantity
+            const variacionNombre = avail.sfcom_variation_id ? (itemData.name ?? null) : null
 
             // Para encierros: verificar que la variación almacenada corresponde al día del servicio.
             const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
             const serviceDay      = serviceDayMatch ? parseInt(serviceDayMatch[1]) : null
-            const varDay          = avail.sfcom_variation_id ? extraerDia(item.name ?? '') : null
+            const varDay          = avail.sfcom_variation_id ? extraerDia(itemData.name ?? '') : null
             if (serviceDay !== null && varDay !== null && serviceDay !== varDay) {
                 resultado.sfcom.idsMismatch.push({
                     servicio:          avail.sfcom_service_name,
-                    variacionNombre:   item.name ?? null,
+                    variacionNombre:   itemData.name ?? null,
                     dayStored:         varDay,
                     dayExpected:       serviceDay,
                     providerId:        avail.provider_id,
@@ -699,7 +764,7 @@ export async function verificarCoherencia(supabase) {
                           return false
                       })
                     : []
-                const pendingSlots   = sfcomPendPar.reduce((sum, s) => sum + (s.slots ?? 0), 0)
+                const pendingSlots    = sfcomPendPar.reduce((sum, s) => sum + (s.slots ?? 0), 0)
                 const pendingExplains = diferencia < 0 && gap > 0 && pendingSlots >= gap
 
                 resultado.sfcom.discrepancias.push({
@@ -730,7 +795,8 @@ export async function verificarCoherencia(supabase) {
                 })
             }
         }
-        if (!sfcomFallo) resultado.sfcom.verificado = true
+
+        resultado.sfcom.verificado = resultado.sfcom.fallos.length === 0
     }
 
     resultado.ok = resultado.errores.length === 0 && resultado.sfcom.idsMismatch.length === 0
