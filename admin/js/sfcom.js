@@ -256,19 +256,13 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
     }
 
     let stockSfcom
-    const _cached1 = _cacheGet(avail.sfcom_product_id, avail.sfcom_variation_id)
-    if (_cached1 !== undefined) {
-        stockSfcom = _cached1
-    } else {
-        try {
-            const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
-            const item     = await apiFetchSingle(endpoint)
-            stockSfcom     = item.stock_quantity ?? null
-            _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockSfcom)
-        } catch (e) {
-            console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido. No se verifica disponibilidad sfcom. ${e.message}`)
-            return { ok: true, sfcomCheck: false, warning: e.message }
-        }
+    try {
+        const endpoint = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
+        const item     = await apiFetchSingle(endpoint)
+        stockSfcom     = item.stock_quantity ?? null
+    } catch (e) {
+        console.warn(`[sfcom] checkAvailabilityBeforeSave: GET fallido. No se verifica disponibilidad sfcom. ${e.message}`)
+        return { ok: true, sfcomCheck: false, warning: e.message }
     }
 
     if (stockSfcom === null) return { ok: true, sfcomCheck: false }

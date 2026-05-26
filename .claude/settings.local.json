@@ -53,7 +53,8 @@
       "Bash(git -C \"d:\\\\Projects\\\\Web\\\\Altura\" restore admin/js/formulario.js admin/js/proveedores.js)",
       "Bash(powershell -ExecutionPolicy Bypass -File .\\\\deploy.ps1 -Message \"sfcom: verificacion secuencial para no saturar pool PHP de sfcom\" -SkipScripts)",
       "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: verificacion secuencial para no saturar pool PHP de sfcom\" -SkipScripts)",
-      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: batch GETs, cache en memoria, checkAvailability en edicion, skip sync sin cambio\" -SkipScripts)"
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: batch GETs, cache en memoria, checkAvailability en edicion, skip sync sin cambio\" -SkipScripts)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: checkAvailabilityBeforeSave siempre hace GET fresco, sin cache\" -SkipScripts)"
     ]
   }
 }
