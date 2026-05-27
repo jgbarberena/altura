@@ -2145,7 +2145,7 @@ async function ejecutarVerificacion(modoManual = false) {
 
     let resultado
     try {
-        resultado = await verificarCoherencia(supabase)
+        resultado = await verificarCoherencia(supabase, { checkVariationNames: modoManual })
     } finally {
         toastEl?.remove()
     }
@@ -2157,7 +2157,7 @@ async function ejecutarVerificacion(modoManual = false) {
             for (const m of resultado.sfcom.idsMismatch) {
                 await verificarConfirmarSfcom(supabase, m.availId, m.servicio, m.serviceId)
             }
-            const resultadoCorregido = await verificarCoherencia(supabase)
+            const resultadoCorregido = await verificarCoherencia(supabase, { checkVariationNames: true })
             mostrarModalVerificacion(resultadoCorregido, supabase, () => ejecutarVerificacion(true))
         } else {
             mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true), { sinBotonCorregir: true })

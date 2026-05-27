@@ -521,12 +521,19 @@ Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js`. Gestiona:
 
 Módulo ES6. Gestiona toda la comunicación con la tienda WooCommerce de sfcom a través de `sf-api-paula.php` (API directa de Hilario). No tiene estado propio; cada función recibe `supabase` como argumento.
 
-**API:** `https://tienda.sanfermin.com/wp-content/plugins/sf-api-paula/sf-api-paula.php`  
-Cabecera de autenticación: `X-Paula-Key`. Endpoints disponibles: `GET/PUT products/{id}` y `GET/PUT products/{id}/variations/{variation_id}`. Solo se envía `stock_quantity` en los PUT.
+**API:** `https://tienda.sanfermin.com/sf-api-paula.php` (URL simplificada, mayo 2026)  
+Cabecera de autenticación: `X-Paula-Key`.
 
-**Respuestas de la API — array wrapping:** `sf-api-paula.php` envuelve TODAS las respuestas en un array. La función interna `apiFetchSingle` desenvuelve automáticamente (`Array.isArray(result) ? (result[0] ?? {}) : (result ?? {})`). Nunca leer campos directamente desde el resultado de `apiFetch` cuando se espera un objeto único — siempre usar `apiFetchSingle`.
+**Endpoints:**
+- `GET stock-all` → `{ updated_at, count, stock: { "id": qty, ... } }`. Devuelve todo el stock de la tienda (productos simples + variaciones) en una sola llamada. Sin límite de uso, no toca WooCommerce directamente. **Usar siempre para leer stock.** Las claves son los IDs como string; para variaciones se usa el `variation_id`, para productos simples el `product_id`.
+- `PUT products/{id}` / `PUT products/{id}/variations/{variation_id}` → modifica stock. Solo se permite `stock_quantity` en el body. Rate limit: 20 req/min, máx 2 simultáneas. Usar solo al guardar una reserva.
+- `GET products`, `GET products/{id}/variations` → endpoints clásicos con rate limit. Usar solo cuando se necesiten nombres (picker de confirmación en proveedores.js, detección de idsMismatch en verificación manual).
 
-**Timeout de red:** `apiFetch` implementa un timeout de 12 segundos mediante `Promise.race([fetch(...), timeoutPromise])`. Necesario porque `verificarCoherencia` usa `Promise.allSettled` que espera a TODOS los promises; sin timeout, un fetch que cuelgue bloquea toda la verificación indefinidamente.
+**`apiFetchStockAll()`:** función interna que llama a `stock-all` y devuelve directamente el objeto `stock`. Usada por `verificarCoherencia`, `checkAvailabilityBeforeSave`, `computeExpectedStock` y `verificarBajaSfcom`. No usa caché — siempre fresco salvo en `computeExpectedStock` donde la caché tiene precedencia (es cosmética).
+
+**`apiFetchSingle` eliminada** (mayo 2026): ya no se usa tras la migración a `stock-all`. Los endpoints clásicos que devuelven arrays se iteran directamente con `Array.isArray(items) ? items : []`.
+
+**Timeout de red:** `apiFetch` implementa un timeout de 12 segundos mediante `Promise.race([fetch(...), timeoutPromise])`. Necesario para que un fetch colgado no bloquee la verificación.
 
 **Fórmula de stock:**
 ```
@@ -950,8 +957,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 ### 12.23 Modal de verificación sfcom — **Resuelto**
 **Situación:** El modal de verificación fue rediseñado completamente. Ahora cada tarjeta de discrepancia muestra: nombre del servicio sfcom y variación, provider_id, service_id, grid de plazas (totales / listadas en sfcom / reservadas por sfcom / reservadas propias / stock esperado / stock real). Las discrepancias reales tienen botón "🔄 Sincronizar" individual (arriba derecha) y hay un "Sincronizar todos" global solo para las reales. Las discrepancias explicadas por pedidos sfcom pendientes de procesar se muestran en sección azul separada sin botón de sincronización. Los idsMismatch (IDs de variación incorrectos) activan un modal previo de corrección antes de mostrar los resultados. El flujo no bloquea al admin: siempre puede elegir "Continuar sin corregir" desde el modal de pre-corrección.
 
-### 12.24 `idsMismatch` — detección y corrección de IDs de variación erróneos — **Resuelto**
-**Situación:** `verificarCoherencia` compara el día extraído del nombre de la variación obtenida del GET con el día esperado según el `service_id` (`ENCIERRO_N` → día N). Si no coinciden, el par va a `sfcom.idsMismatch`. En `formulario.js`, `mostrarModalPreCorreccion` muestra estos casos antes del modal principal, con la opción de llamar automáticamente a `verificarConfirmarSfcom` por cada mismatch para reasignar los IDs correctos y reverificar. Si el admin elige "Continuar sin corregir", se pasa `{ sinBotonCorregir: true }` al modal principal para no ofrecer la corrección de nuevo (evita bucle infinito).
+### 12.24 `idsMismatch` — detección y corrección de IDs de variación erróneos — **Resuelto (solo en verificación manual)**
+**Situación:** `verificarCoherencia` compara el día extraído del nombre de la variación con el día esperado según el `service_id` (`ENCIERRO_N` → día N). Si no coinciden, el par va a `sfcom.idsMismatch`. En `formulario.js`, `mostrarModalPreCorreccion` muestra estos casos antes del modal principal, con la opción de llamar automáticamente a `verificarConfirmarSfcom` por cada mismatch para reasignar los IDs correctos y reverificar. Si el admin elige "Continuar sin corregir", se pasa `{ sinBotonCorregir: true }` al modal principal para no ofrecer la corrección de nuevo (evita bucle infinito).
+
+**Limitación tras migración a stock-all (mayo 2026):** `stock-all` no devuelve nombres de variación, solo stocks. La detección de `idsMismatch` requiere `GET products/{id}/variations` para obtener los nombres. Este GET tiene rate limit, por lo que solo se ejecuta cuando `checkVariationNames = true`, que se pasa únicamente en verificación manual (botón "Verificar datos" y `sfcom-panel.js`). La verificación automática al cargar la página no detecta `idsMismatch`.
 
 ### 12.25 `pendingExplains` — discrepancias sfcom explicadas por pedidos pendientes — **Resuelto**
 **Situación:** Cuando sfcom muestra más stock del esperado (diferencia negativa desde nuestro punto de vista) y ese gap está completamente cubierto por solicitudes sfcom con `status='nueva'` pendientes de procesar, la discrepancia no es un error — es el estado esperado. `verificarCoherencia` detecta esto buscando solicitudes que coincidan con el par (por `service_id` directo, o fallback por `level`+`day`). Esas discrepancias llevan `pendingExplains: true`, no cuentan para `resultado.ok` y no tienen botón de sincronización en el modal. El "Sincronizar todos" las ignora explícitamente.
