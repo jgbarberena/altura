@@ -557,6 +557,13 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             const sfcomDelta  = reactivadas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
+        for (const p of pairsConCambio) {
+            if (p.allDelta <= 0) continue
+            const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
+            if (sfcomResult.sfcomCheck && sfcomResult.warning) {
+                if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
+            }
+        }
         if (pairsConCambio.length > 0) {
             const sfcomOk = await confirmarStockSfcom(supabase, pairsConCambio)
             if (!sfcomOk) return
@@ -710,17 +717,17 @@ btnAnadir.addEventListener('click', async () => {
             const sfcomDelta = esSfcomRes ? allDelta : 0
             if (allDelta !== 0) pairsParaModal.push({ providerId: proveedorId, serviceId: servicioId, sfcomDelta, allDelta })
         }
-        if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
-            if (!sfcomOk) return
-        }
-
         for (const p of pairsParaModal) {
             if (p.allDelta <= 0) continue
             const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
             if (sfcomResult.sfcomCheck && sfcomResult.warning) {
                 if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
             }
+        }
+
+        if (pairsParaModal.length > 0) {
+            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
+            if (!sfcomOk) return
         }
 
         const { error } = await supabase.from('reservations').update({
@@ -1537,6 +1544,13 @@ window.confirmarReorganizacion = async function() {
         sfcomDeltasMap.set(newKey, dest)
     })
     const sfcomPairsReorg = [...sfcomDeltasMap.values()].filter(p => p.allDelta !== 0 || p.sfcomDelta !== 0)
+    for (const p of sfcomPairsReorg) {
+        if (p.allDelta <= 0) continue
+        const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
+        if (sfcomResult.sfcomCheck && sfcomResult.warning) {
+            if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
+        }
+    }
     if (sfcomPairsReorg.length > 0) {
         const sfcomOk = await confirmarStockSfcom(supabase, sfcomPairsReorg)
         if (!sfcomOk) return
