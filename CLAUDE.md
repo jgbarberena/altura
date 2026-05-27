@@ -912,10 +912,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 ### 12.12 Campos sfcom — **Implementados en sfcom_listings**
 **Situación:** Los campos sfcom (`sfcom_status`, `sfcom_product_id`, `sfcom_variation_id`, `sfcom_service_name`, `sfcom_slots_listed`) están en la tabla `sfcom_listings`, separada de `availability`. El JS los lee vía la vista `availability_with_sfcom` y los escribe directamente en `sfcom_listings`.
 
-### 12.13 GETs sfcom en verificarCoherencia — **Parcialmente resuelto**
-**Situación:** `verificarCoherencia` ahora usa `Promise.allSettled` para hacer todos los GETs de stock sfcom en paralelo (uno por par con `sfcom_status === 'confirmed'`). La latencia total es la del GET más lento, no la suma de todos. El timeout de 12s garantiza que ningún fetch cuelgue indefinidamente.
+### 12.13 GETs sfcom en verificarCoherencia — **Resuelto**
+**Situación:** `verificarCoherencia` usa batch GETs secuenciales: un único GET `products?include=id1,id2,...&per_page=100` para todos los productos simples, y un GET `products/{id}/variations?per_page=100` por cada producto variable (bucle `for...of`). Con ~20 pares activos → ~5 llamadas en lugar de ~20. Los resultados se guardan en el módulo-level `_stockCache` (Map) para reutilizarlos en `computeExpectedStock` durante la misma sesión. `checkAvailabilityBeforeSave` siempre hace GET fresco (es la verificación de seguridad justo antes de guardar). Los PUTs de `syncStockToSfcom` actualizan la caché tras cada escritura exitosa.
 
-**Pendiente:** No hay caché entre llamadas dentro de la misma sesión. Si el volumen de pares confirmados crece significativamente, implementar caché en memoria con TTL corto (ej. 60s). Actualmente irrelevante con el volumen actual (~20 pares).
+**Deuda técnica de payload:** cada llamada envía/recibe todos los campos del producto aunque solo se necesite `stock_quantity`. Optimizar selectivamente cuando el volumen justifique el esfuerzo.
 
 ### 12.14 `checkSfcomOrders` — estructura verificada, inferencia de nombre y día implementada — **Resuelto**
 **Situación:** Estructura confirmada por GET real: `{id, number, status, date_created, total, billing: {first_name, last_name, email, phone, address_1, address_2, city, country}, line_items: [{name, product_id, variation_id, quantity, total}]}`. No existe `parent_name` — el campo `li.name` contiene el nombre completo de la variación (ej: `"Balcón Estafeta - Viernes 10 de Julio 2026"`).
@@ -979,6 +979,44 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 5. El bloque de cobros en `admin/sfcom.html` sería el mismo HTML que el bloque 5 de `formulario.html`, cargando el cliente 'SFCOM' y sus reservas sfcom activas. No requiere módulo nuevo: importa `persistirCobrosCliente` de `utils.js` y `initFacturacion` de `factura.js`.
 
 **Decisión pendiente antes de implementar:** Clarificar qué ocurre con los hitos ya emitidos si una reserva sfcom se cancela a posteriori. La lógica actual recalcula el hito final pero no toca hitos ya facturados — habría que decidir si eso es correcto en el contexto de liquidaciones con sfcom o si se necesita algún ajuste manual.
+
+### 12.29 `togglePagoProvCobrado` no persistía en Supabase — **Resuelto**
+`proveedores.js` solo modificaba `hitosProvTemp` en memoria. Añadida función `persistirHitosProveedor(proveedorId)` con upsert inteligente (sin DELETE destructivo): actualiza hitos existentes por `id`, inserta nuevos, borra los eliminados comparando con `todosPayments`. Se llama automáticamente desde `togglePagoProvCobrado`, `eliminarHitoProv`, `cambiarFechaPagoFinal` y el handler de añadir nuevo hito. El `btnGuardarPagos` ahora también usa esta función. Los cobros de clientes (`toggleCobroCliente` en `formulario.js`) ya persistían correctamente antes.
+
+### 12.30 Botón "Añadir reserva" desactivado al cargar solicitud — **Resuelto**
+`cargarDesdeSolicitud()` rellenaba campos programáticamente sin disparar eventos `input`/`change`. Añadido `setTimeout(() => actualizarBtnAnadir(), 200)` al final.
+
+### 12.31 Indicador visual de guardado en `formulario.js` — **Resuelto**
+Añadida función `setGuardando(on)` que deshabilita `btnAnadir` y cambia su texto a "Guardando…". El handler está envuelto en `try/finally` para garantizar que `setGuardando(false)` se llama siempre.
+
+### 12.32 Cambio de servicio al editar reserva — **Resuelto**
+Modal `_preguntarCambioServicio` al cambiar `selectServicio` con `reservaEditandoId !== null`: "Cambiar servicio" / "Nueva reserva" / "Cancelar". Si cancela, revierte el selector. Si elige nueva reserva, limpia el formulario y precarga el servicio.
+
+### 12.33 Factura a nombre de empresa — **Resuelto**
+`factura.js` usa ahora `_cliente.company ?? _cliente.name ?? _cliente.id` en todos los puntos donde aparece el nombre del receptor.
+
+### 12.34 Cobros/pagos del panel de control clicables — **Resuelto**
+Click en cobro pendiente → `formulario.html?cliente=CLIENT_ID`; click en pago pendiente → `proveedores.html?proveedor=PROVIDER_ID`. Implementado en `panel.js` (atributo `onclick` en cada `<tr>`). `formulario.js` y `proveedores.js` leen el parámetro URL al final del módulo y llaman a `cargarCliente`/`cargarProveedor` si el ID existe en los datos en memoria.
+
+### 12.35 Editar/borrar estados y entidades — **Pendiente diseño**
+Sin mecanismo para anular facturas, borrar clientes/proveedores con cascada. Se implementará en `tablas.js` con verificación de FK.
+
+### 12.36 Colorear clientes por estado en tablas de proveedor/panel — **Pendiente**
+Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no llevan coloración de estado (Confirmada/Pendiente), a diferencia de las cajitas del mapa de disponibilidad de `formulario.js`.
+
+### 12.37 Detección automática de pedidos sfcom vía Supabase Edge Function — **Pendiente diseño**
+**Situación actual:** `checkSfcomOrders` se llama al cargar `formulario.html`. Si el admin no abre el panel, los pedidos nuevos de sfcom no se detectan hasta que lo haga. La notificación al admin (trigger `notificar-solicitud` en `reservation_requests`) tampoco se dispara hasta ese momento.
+
+**Propuesta:** Mover el polling de pedidos sfcom a una Supabase Edge Function con ejecución programada (cron). La función correría cada N minutos de forma autónoma: llamaría a `GET orders?status=completed&after=<última_ejecución>` de `sf-api-paula.php`, y por cada pedido nuevo insertaría la fila correspondiente en `reservation_requests`. El trigger existente se encargaría de la notificación al admin automáticamente, sin necesidad de que nadie tenga el panel abierto.
+
+**Ventajas:** Detección en tiempo real independiente de si el admin tiene el panel abierto. Reduce la carga al cargar `formulario.html` (ya no hace el GET de orders en el arranque). El trigger de notificación funciona en cuanto llega el pedido.
+
+**Consideraciones antes de implementar:**
+- La Edge Function necesita acceso a `sf-api-paula.php` desde los servidores de Supabase (actualmente CORS solo está abierto para `experienciasanfermin.com`; habría que abrir el origen de Supabase o usar un secreto de server-side sin restricción CORS).
+- Hilario tendría que confirmar que no hay problema con llamadas periódicas desde un servidor fijo (IP estática de Supabase) en lugar del navegador del admin.
+- La lógica de `registrarPedidosSfcom` (sistema de dos capas: nombre como contrato, IDs como verificación) tendría que replicarse en la Edge Function, que está en Deno/TypeScript, no en el JS del panel.
+- El campo `sfcom-orders-warned` de `sessionStorage` (aviso de un solo modal por sesión) pierde sentido si la detección es automática; `checkSfcomOrders` en `formulario.js` podría simplificarse o eliminarse.
+- Mientras la Edge Function no esté activa, `checkSfcomOrders` en `formulario.js` sigue siendo la red de seguridad y no debe eliminarse.
 
 ---
 
@@ -1207,15 +1245,37 @@ El admin tenía duplicación significativa: cada módulo construía sus propios 
 - `formulario.js` — 3 modales de solicitudes sfcom (_mostrarModalAvisoSolicitud, _mostrarModalIDsCambiados, _mostrarModalNombreNoReconocido)
 - `verificacion.js` — 2 modales (mostrarModalVerificacion, mostrarModalPreCorreccion)
 
-**`formulario.js`** — eliminadas las copias locales de `fmt`, `fechaCobroDefault`, `confirmarStockSfcom`, `descargarFactura`/`descargarPropuesta` (unificadas en `descargarArchivoStorage`). Import actualizado.
+**`formulario.js`** — eliminadas las copias locales de `fmt`, `fechaCobroDefault`, `confirmarStockSfcom`, `descargarFactura`/`descargarPropuesta` (unificadas en `descargarArchivoStorage`). Autosave loop reemplazado por `initAutoSave`. Toast inline de verificación reemplazado por `mostrarToast`. Import actualizado.
 
-**`proveedores.js`** — import actualizado; `confirmarStockSfcom` viene de `sfcom.js`.
+**`proveedores.js`** — import actualizado; `confirmarStockSfcom` viene de `sfcom.js`. Autosave loop reemplazado por `initAutoSave`.
 
 **`tablas.js`** — import actualizado; `fmt` e `initSidebar` vienen de `utils.js`.
 
+**`verificacion.js`** — `mostrarToast` devuelve ahora el elemento DOM para que el caller pueda eliminarlo antes del timeout automático (necesario para el toast de "verificando" que debe desaparecer en cuanto termina la operación, no tras 3.5s).
+
+**`sfcom-panel.js`** — toast inline de verificación reemplazado por `mostrarToast`.
+
 ### Lo que queda pendiente
 
-**Phase 4** (no empezar hasta decidir con Javier): dividir `formulario.js` (~2150 líneas) en módulos más pequeños. Candidatos: `solicitudes.js` (bloque 0 + registrarPedidosSfcom), `reorganizar.js` (panel de reorganización), `cobros.js` (bloque 5 + persistirCobros).
+**Phase 4** (pendiente de decisión): dividir `formulario.js` (~2150 líneas) en módulos más pequeños. Candidatos: `solicitudes.js` (bloque 0 + `registrarPedidosSfcom`), `reorganizar.js` (panel de reorganización, `abrirPanelReorganizar`/`confirmarReorg`), `cobros.js` (bloque 5 + `persistirHitosCliente`/`cargarCobrosCliente`). Ver sección de análisis de Phase 4 más abajo.
+
+### Análisis de Phase 4 — dividir formulario.js
+
+**Qué es Phase 4:** `formulario.js` tiene ~2150 líneas. A diferencia de las fases anteriores (que eliminaban código duplicado), Phase 4 solo busca dividir un archivo grande en archivos más pequeños para que sea más fácil de mantener. No hay duplicación que eliminar — es pura reorganización.
+
+**Por qué el archivo es tan grande:** `formulario.js` implementa los 6 bloques de la página `formulario.html`. Los bloques son lógicamente independientes (solicitudes pendientes, datos del cliente, formulario de reserva, mapa de disponibilidad, tabla de reservas, cobros), pero todos comparten el mismo estado en memoria: `todasReservas`, `disponibilidad`, `clienteActual`, `reservasCliente`, etc. Ese estado compartido es lo que hace que todo esté en un mismo archivo.
+
+**Los tres trozos que se podrían extraer:**
+
+`solicitudes.js` (~300 líneas) — Todo lo relacionado con el **Bloque 0** (tabla de solicitudes pendientes de la web y de sfcom). Incluye `cargarBloque0`, `cargarDesdeSolicitud` (lógica de prerellenar el formulario al hacer click en una solicitud), `registrarPedidosSfcom`, y los tres modales de solicitudes sfcom (`_mostrarModalAvisoSolicitud`, `_mostrarModalIDsCambiados`, `_mostrarModalNombreNoReconocido`).
+
+`reorganizar.js` (~200 líneas) — Todo el **panel de reorganización de reservas** que aparece cuando un proveedor no tiene plazas suficientes. Incluye `abrirPanelReorganizar`, `renderPanelReorganizar`, `confirmarReorg`, y las variables de estado `reorgContexto`, `reorgCambios`, `reorgFilas`. Es el candidato más limpio: su estado es local al panel y no se mezcla con el resto.
+
+`cobros.js` (~300 líneas) — Todo el **Bloque 5** (hitos de cobro al cliente). Incluye `cargarCobrosCliente`, `persistirHitosCliente`, `renderCobrosCliente`, y las funciones que se llaman desde botones inline (`toggleCobroCliente`, `eliminarCobroCliente`, `cambiarFechaCobroFinal`).
+
+**Por qué no se ha hecho todavía:** los tres trozos necesitan leer y modificar variables que viven en `formulario.js` (`todasReservas`, `clienteActual`, `hitosClienteTemp`, etc.). Si los sacas a archivos separados, esas variables dejan de ser accesibles — habría que pasarlas como parámetros en cada llamada, o crear un objeto de estado compartido que todos importan. Ambas opciones añaden código de fontanería que actualmente no existe, y para un proyecto de este tamaño el coste supera al beneficio.
+
+**Cuándo hacerlo:** si en algún momento resulta difícil localizar o modificar el código de cobros porque hay que desplazarse por 2000 líneas de código que no tienen nada que ver, entonces vale la pena. El primer candidato sería `reorganizar.js` porque su estado es más local. Por ahora no hay ninguna razón práctica para hacerlo.
 
 ### Trampas técnicas aprendidas
 

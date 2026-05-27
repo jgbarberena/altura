@@ -27,6 +27,8 @@ export function mostrarToast(mensaje, color = '#166534') {
 
     setTimeout(() => { toast.style.opacity = '0' }, 3500)
     setTimeout(() => { toast.remove() }, 4200)
+
+    return toast
 }
 
 // ─── Modal de resultados de verificación ─────────────────────────────────────

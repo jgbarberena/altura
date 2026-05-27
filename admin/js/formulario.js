@@ -213,7 +213,36 @@ window.guardarClienteNuevo = async function(e) {
 
 // ===== BLOQUE 2: RESERVA =====
 
-selectServicio.addEventListener('change', () => {
+function _preguntarCambioServicio(reservaId, servicioNuevo, servicioActual) {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-cambio-servicio', { narrow: true })
+        panel.innerHTML = `
+            <div class="modal-header-desc">
+                Estás editando <strong>${reservaId}</strong> (servicio: <strong>${servicioActual}</strong>).<br><br>
+                ¿Quieres cambiar el servicio de esta reserva a <strong>${servicioNuevo}</strong>,
+                o descartar la edición y crear una reserva nueva?
+            </div>
+            <div class="modal-actions">
+                <button id="mcs-cambiar"  class="btn btn-primary">Cambiar servicio</button>
+                <button id="mcs-nueva"    class="btn btn-secondary">Nueva reserva</button>
+                <button id="mcs-cancelar" class="btn btn-secondary">Cancelar</button>
+            </div>`
+        panel.querySelector('#mcs-cambiar').addEventListener('click',  () => { overlay.remove(); resolve('cambiar') })
+        panel.querySelector('#mcs-nueva').addEventListener('click',    () => { overlay.remove(); resolve('nueva') })
+        panel.querySelector('#mcs-cancelar').addEventListener('click', () => { overlay.remove(); resolve(null) })
+    })
+}
+
+selectServicio.addEventListener('change', async () => {
+    if (reservaEditandoId) {
+        const reservaActual = todasReservas.find(r => r.id === reservaEditandoId)
+        if (reservaActual && selectServicio.value !== reservaActual.service_id) {
+            const servicioNuevo = selectServicio.value
+            const decision      = await _preguntarCambioServicio(reservaEditandoId, servicioNuevo, reservaActual.service_id)
+            if (decision === null) { selectServicio.value = reservaActual.service_id; return }
+            if (decision === 'nueva') { limpiarFormularioReserva(); selectServicio.value = servicioNuevo }
+        }
+    }
     actualizarProveedores()
     actualizarBtnAnadir()
     actualizarBloque3()
@@ -676,6 +705,18 @@ document.getElementById('btnGenerarPropuesta').addEventListener('click', () => {
 
 // ===== AÑADIR / GUARDAR RESERVA =====
 
+function setGuardando(on) {
+    if (on) {
+        btnAnadir.disabled              = true
+        btnAnadir.dataset.textoOriginal = btnAnadir.textContent
+        btnAnadir.textContent           = 'Guardando…'
+    } else {
+        btnAnadir.textContent = btnAnadir.dataset.textoOriginal ?? 'Añadir reserva'
+        delete btnAnadir.dataset.textoOriginal
+        actualizarBtnAnadir()
+    }
+}
+
 btnAnadir.addEventListener('click', async () => {
     const clienteId   = inputId.value.trim().toUpperCase()
     const servicioId  = selectServicio.value
@@ -687,6 +728,9 @@ btnAnadir.addEventListener('click', async () => {
 
     if (plazas < 0) { alert('El número de plazas no puede ser negativo.'); return }
     if (plazas === 0) { if (!confirm('¿Crear una reserva con 0 plazas?')) return }
+
+    setGuardando(true)
+    try {
 
     if (reservaEditandoId) {
         const reservaOriginal     = todasReservas.find(r => r.id === reservaEditandoId)
@@ -815,6 +859,9 @@ btnAnadir.addEventListener('click', async () => {
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
+    }
+    } finally {
+        setGuardando(false)
     }
 })
 
@@ -1869,6 +1916,7 @@ async function cargarDesdeSolicitud(data) {
     }
 
     _cargandoSolicitud = false
+    setTimeout(() => actualizarBtnAnadir(), 200)
     document.getElementById('bloque-cliente').scrollIntoView({ behavior: 'smooth' })
 }
 
@@ -2093,24 +2141,13 @@ checkSfcomOrders(supabase, 90).then(resultado => {
 }).catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
 
 async function ejecutarVerificacion(modoManual = false) {
-    document.getElementById('toast-verificando')?.remove()
-    const t = document.createElement('div')
-    t.id = 'toast-verificando'
-    t.style.cssText = [
-        'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
-        'background:#374151', 'color:#fff', 'border-radius:8px', 'padding:10px 22px',
-        'font-size:14px', 'font-family:system-ui,sans-serif', 'font-weight:500',
-        'box-shadow:0 4px 20px rgba(0,0,0,0.2)', 'z-index:9999',
-        'white-space:nowrap', 'pointer-events:none'
-    ].join(';')
-    t.textContent = '🔍 Verificando coherencia…'
-    document.body.appendChild(t)
+    const toastEl = mostrarToast('🔍 Verificando coherencia…', '#374151')
 
     let resultado
     try {
         resultado = await verificarCoherencia(supabase)
     } finally {
-        document.getElementById('toast-verificando')?.remove()
+        toastEl?.remove()
     }
     const hayMismatch = (resultado.sfcom.idsMismatch?.length ?? 0) > 0
 
@@ -2148,4 +2185,11 @@ document.getElementById('btnVerificarDatos').addEventListener('click', () => {
 
 // Verificar coherencia de datos al cargar
 ejecutarVerificacion(false).catch(e => console.error('[verificacion] Error al inicio:', e.message))
+
+// Precarga de cliente desde parámetro URL (ej: panel.html → formulario.html?cliente=GARCIA_PEDRO)
+const _clienteParam = new URLSearchParams(location.search).get('cliente')
+if (_clienteParam) {
+    const _clientePreload = todosClientes.find(c => c.id === _clienteParam.toUpperCase())
+    if (_clientePreload) { inputId.value = _clientePreload.id; cargarCliente(_clientePreload) }
+}
 

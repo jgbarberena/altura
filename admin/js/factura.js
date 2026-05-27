@@ -160,7 +160,7 @@ function buildFacturaHTML() {
                 <div class="factura-party">
                     <div class="factura-party-label">Cliente</div>
                     <div class="factura-party-name factura-editable" contenteditable="true"
-                        data-field="name">${_cliente.name ?? _cliente.id}</div>
+                        data-field="name">${_cliente.company ?? _cliente.name ?? _cliente.id}</div>
                     <div class="factura-party-detail">
                         NIF/CIF: <span class="factura-editable" contenteditable="true"
                             data-field="nif">${_cliente.nif ?? '— introducir NIF —'}</span><br>
@@ -331,7 +331,7 @@ async function emitirFactura() {
     const updates = {}
     if (nifEdit  && nifEdit  !== _cliente.nif    && !nifEdit.includes('—'))  updates.nif     = nifEdit
     if (addrEdit && addrEdit !== _cliente.address && !addrEdit.includes('—')) updates.address = addrEdit
-    if (nameEdit && nameEdit !== (_cliente.name ?? _cliente.id))              updates.name    = nameEdit
+    if (nameEdit && nameEdit !== (_cliente.company ?? _cliente.name ?? _cliente.id)) updates.name = nameEdit
 
     if (Object.keys(updates).length > 0) {
         const { error } = await _supabase.from('clients').update(updates).eq('id', _cliente.id)
@@ -385,7 +385,7 @@ async function generarPDF() {
     const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
     const nifCli   = preview.querySelector('[data-field="nif"]')?.textContent?.trim()     || _cliente.nif     || ''
     const addrCli  = preview.querySelector('[data-field="address"]')?.textContent?.trim() || _cliente.address || ''
-    const nameCli  = preview.querySelector('[data-field="name"]')?.textContent?.trim()    || _cliente.name    || _cliente.id
+    const nameCli  = preview.querySelector('[data-field="name"]')?.textContent?.trim()    || _cliente.company || _cliente.name || _cliente.id
     const fechaTxt = preview.querySelector('.factura-meta .factura-editable')?.textContent?.trim() || new Date().toLocaleDateString('es-ES')
 
     const base       = parseFloat(_hitoActual.amount)
@@ -709,7 +709,7 @@ async function generarPDF() {
     dibujarPie()
 
     // ── Guardar ───────────────────────────────────────────────────────────────
-    const nombreArchivo = `${_numFacturaSig.replace('/', '-')}_${(_cliente.name ?? _cliente.id).replace(/\s+/g, '_')}.pdf`
+    const nombreArchivo = `${_numFacturaSig.replace('/', '-')}_${(_cliente.company ?? _cliente.name ?? _cliente.id).replace(/\s+/g, '_')}.pdf`
     doc.save(nombreArchivo)
     return { blob: doc.output('blob'), nombreArchivo }
 }
@@ -736,7 +736,7 @@ function abrirMailto() {
     const base       = parseFloat(_hitoActual.amount)
     const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
     const email      = _cliente.email ?? ''
-    const nombre     = _cliente.name  ?? _cliente.id
+    const nombre     = _cliente.company ?? _cliente.name ?? _cliente.id
     const asunto     = encodeURIComponent(FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')))
     const cuerpo     = encodeURIComponent(FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)))
     window.open(`mailto:${email}?subject=${asunto}&body=${cuerpo}`, '_blank')

@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave } from './utils.js'
+import { mostrarToast } from './verificacion.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
 
 await requireAuth()
@@ -1209,6 +1210,37 @@ function actualizarResumenCoste(proveedorId, costTotal, prepagos, pagoFinal) {
         `${fmt(pagoFinal)}</strong>`
 }
 
+async function persistirHitosProveedor(proveedorId) {
+    const idsEnMemoria = hitosProvTemp.filter(h => h.id).map(h => h.id)
+    const pagosEnBD    = todosPayments.filter(p => p.provider_id === proveedorId).map(p => p.id)
+
+    for (const id of pagosEnBD.filter(id => !idsEnMemoria.includes(id))) {
+        const { error } = await supabase.from('payments').delete().eq('id', id)
+        if (error) throw new Error(error.message)
+    }
+
+    for (const h of hitosProvTemp) {
+        const payload = {
+            provider_id: proveedorId,
+            amount:      parseFloat(h.amount),
+            due_date:    h.due_date ?? null,
+            paid:        h.paid ?? false,
+            paid_date:   h.paid_date ?? null,
+            comments:    h.comments ?? null
+        }
+        if (h.id) {
+            const { error } = await supabase.from('payments').update(payload).eq('id', h.id)
+            if (error) throw new Error(error.message)
+        } else {
+            const { data, error } = await supabase.from('payments').insert(payload).select().single()
+            if (error) throw new Error(error.message)
+            h.id = data.id
+        }
+    }
+
+    todosPayments = (await supabase.from('payments').select('*')).data
+}
+
 async function cargarPagosProveedor(proveedorId) {
     const { data } = await supabase
         .from('payments').select('*').eq('provider_id', proveedorId).order('due_date')
@@ -1253,10 +1285,19 @@ function renderHitosProveedor() {
     `).join('')
 }
 
-window.cambiarFechaPagoFinal = function(idx, valor) { hitosProvTemp[idx].due_date = valor || null }
+window.cambiarFechaPagoFinal = async function(idx, valor) {
+    hitosProvTemp[idx].due_date = valor || null
+    try {
+        await persistirHitosProveedor(proveedorActual.id)
+    } catch (err) {
+        console.error('Error al guardar fecha de pago:', err.message)
+    }
+}
 
-window.togglePagoProvCobrado = function(idx) {
-    const h = hitosProvTemp[idx]
+window.togglePagoProvCobrado = async function(idx) {
+    const h        = hitosProvTemp[idx]
+    const prevPaid = h.paid
+    const prevDate = h.paid_date
     if (!h.paid) {
         const fecha = prompt('Fecha de pago (dejar vacío para hoy):', hoy)
         if (fecha === null) return
@@ -1265,11 +1306,26 @@ window.togglePagoProvCobrado = function(idx) {
         h.paid = false; h.paid_date = null
     }
     renderHitosProveedor()
+    try {
+        await persistirHitosProveedor(proveedorActual.id)
+        mostrarToast(h.paid ? '✅ Pago registrado' : 'Pago marcado como pendiente')
+    } catch (err) {
+        h.paid = prevPaid; h.paid_date = prevDate
+        renderHitosProveedor()
+        alert('Error al guardar: ' + err.message)
+    }
 }
 
-window.eliminarHitoProv = function(idx) {
+window.eliminarHitoProv = async function(idx) {
     hitosProvTemp.splice(idx, 1)
-    if (proveedorActual) recalcularPagoFinalProveedor(proveedorActual.id)
+    if (proveedorActual) {
+        await recalcularPagoFinalProveedor(proveedorActual.id)
+        try {
+            await persistirHitosProveedor(proveedorActual.id)
+        } catch (err) {
+            console.error('Error al eliminar hito de pago:', err.message)
+        }
+    }
 }
 
 document.getElementById('btnNuevoPagoProveedor').addEventListener('click', () => {
@@ -1282,7 +1338,7 @@ document.getElementById('btnCancelarPagoProveedor').addEventListener('click', ()
     document.getElementById('btnNuevoPagoProveedor').style.display     = 'inline-block'
 })
 
-document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () => {
+document.getElementById('btnGuardarPagoProveedor').addEventListener('click', async () => {
     const concepto = document.getElementById('pagoProvConcepto').value.trim() || 'Prepago'
     const importe  = parseFloat(document.getElementById('pagoProvImporte').value)
     const fecha    = document.getElementById('pagoProvFecha').value || null
@@ -1299,24 +1355,25 @@ document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () 
     document.getElementById('pagoProvPagado').value   = 'false'
     document.getElementById('form-nuevo-pago-proveedor').style.display = 'none'
     document.getElementById('btnNuevoPagoProveedor').style.display     = 'inline-block'
-    if (proveedorActual) recalcularPagoFinalProveedor(proveedorActual.id)
+    if (proveedorActual) {
+        await recalcularPagoFinalProveedor(proveedorActual.id)
+        try {
+            await persistirHitosProveedor(proveedorActual.id)
+            mostrarToast('✅ Pago añadido')
+        } catch (err) {
+            console.error('Error al guardar nuevo pago:', err.message)
+        }
+    }
 })
 
 document.getElementById('btnGuardarPagos').addEventListener('click', async () => {
     if (!proveedorActual) return
-    await supabase.from('payments').delete().eq('provider_id', proveedorActual.id)
-    for (const h of hitosProvTemp) {
-        await supabase.from('payments').insert({
-            provider_id: proveedorActual.id,
-            amount:      parseFloat(h.amount),
-            due_date:    h.due_date,
-            paid:        h.paid,
-            paid_date:   h.paid_date ?? null,
-            comments:    h.comments
-        })
+    try {
+        await persistirHitosProveedor(proveedorActual.id)
+        mostrarToast('✅ Pagos guardados')
+    } catch (err) {
+        alert('Error al guardar pagos: ' + err.message)
     }
-    todosPayments = (await supabase.from('payments').select('*')).data
-    alert('✅ Pagos guardados correctamente')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1810,3 +1867,10 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
     cargarPagosProveedor(proveedorId)
     document.getElementById('btnAbrirMultiple').style.display = 'inline-block'
 })
+
+// Precarga de proveedor desde parámetro URL (ej: panel.html → proveedores.html?proveedor=BALCON_1)
+const _proveedorParam = new URLSearchParams(location.search).get('proveedor')
+if (_proveedorParam) {
+    const _proveedorPreload = todosProveedores.find(p => p.id === _proveedorParam.toUpperCase())
+    if (_proveedorPreload) { inputProveedorId.value = _proveedorPreload.id; cargarProveedor(_proveedorPreload) }
+}

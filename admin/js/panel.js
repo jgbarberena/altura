@@ -138,7 +138,7 @@ function renderPagosProximos() {
             const dias    = diasDesdeHoy(p.due_date)
             const vencido = dias < 0
             const clase   = vencido ? 'error' : dias <= 7 ? 'warn' : ''
-            return `<tr>
+            return `<tr style="cursor:pointer" onclick="location.href='proveedores.html?proveedor=${p.provider_id}'">
                 <td>${p.provider_id}</td>
                 <td>${p.comments ?? '—'}</td>
                 <td class="${clase}">${p.due_date ?? '—'}${vencido ? ' ⚠️' : ''}</td>
@@ -162,7 +162,7 @@ function renderCobrosProximos() {
             const dias    = diasDesdeHoy(c.due_date)
             const vencido = dias < 0
             const clase   = vencido ? 'error' : dias <= 7 ? 'warn' : ''
-            return `<tr>
+            return `<tr style="cursor:pointer" onclick="location.href='formulario.html?cliente=${c.client_id}'">
                 <td>${c.client_id}</td>
                 <td>${c.comments ?? '—'}</td>
                 <td class="${clase}">${c.due_date ?? '—'}${vencido ? ' ⚠️' : ''}</td>

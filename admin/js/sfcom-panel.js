@@ -214,24 +214,13 @@ function actualizarColumnaStockReal() {
 // ─── Verificación (misma lógica que formulario.js) ───────────────────────────
 
 async function ejecutarVerificacion(modoManual = false) {
-    document.getElementById('toast-verificando')?.remove()
-    const t = document.createElement('div')
-    t.id = 'toast-verificando'
-    t.style.cssText = [
-        'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
-        'background:#374151', 'color:#fff', 'border-radius:8px', 'padding:10px 22px',
-        'font-size:14px', 'font-family:system-ui,sans-serif', 'font-weight:500',
-        'box-shadow:0 4px 20px rgba(0,0,0,0.2)', 'z-index:9999',
-        'white-space:nowrap', 'pointer-events:none'
-    ].join(';')
-    t.textContent = '🔍 Verificando coherencia…'
-    document.body.appendChild(t)
+    const toastEl = mostrarToast('🔍 Verificando coherencia…', '#374151')
 
     let resultado
     try {
         resultado = await verificarCoherencia(supabase)
     } finally {
-        document.getElementById('toast-verificando')?.remove()
+        toastEl?.remove()
     }
 
     // Actualizar columna de stock real con los datos de la verificación
