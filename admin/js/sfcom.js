@@ -4,6 +4,7 @@
 // Flujo B (escritura): reserva guardada en Supabase → actualizar stock en sfcom
 
 import { crearModal } from './modal.js'
+import { supabase   } from './supabase.js'
 
 // ─── Utilidades de extracción: nombres y días ────────────────────────────────
 
@@ -63,27 +64,60 @@ const _cacheGet    = (productId, variationId) => {
 
 // ─── Utilidad interna: llamada a la API ──────────────────────────────────────
 
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const url = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
-    const opts = {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Paula-Key':  API_KEY
-        }
-    }
-    if (body) opts.body = JSON.stringify(body)
+//async function apiFetch(endpoint, method = 'GET', body = null) {
+//    const url = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
+//    const opts = {
+//        method,
+//        headers: {
+//            'Content-Type': 'application/json',
+//            'X-Paula-Key':  API_KEY
+//        }
+//    }
+//    if (body) opts.body = JSON.stringify(body)
+//
+//    const timeout = new Promise((_, reject) =>
+//        setTimeout(() => reject(new Error('timeout')), 12000)
+//    )
+//    const res = await Promise.race([fetch(url, opts), timeout])
+//    if (!res.ok) {
+//        const text = await res.text().catch(() => '')
+//        throw new Error(`HTTP ${res.status} — ${text.slice(0, 200)}`)
+//    }
+//    return res.json()
+//}
 
-    const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 12000)
-    )
-    const res = await Promise.race([fetch(url, opts), timeout])
-    if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new Error(`HTTP ${res.status} — ${text.slice(0, 200)}`)
+// NEW VERSION USING SUPABASE EDGE FUNCTION AS BRIDGE TO AVOID CORS ISSUES
+async function apiFetch(endpoint, method = 'GET', body = null) {
+    // 1. Mapeamos el endpoint/método a la "action" que espera la Edge Function
+    let action = 'get_orders'; // Acción por defecto
+    
+    if (method === 'PUT') {
+        action = 'update_stock';
+    } else if (endpoint === 'stock-all') {
+        action = 'get_stock_all';
     }
-    return res.json()
+
+    // 2. Invocamos la función en Supabase pasándole exactamente lo que necesita
+    const { data, error } = await supabase.functions.invoke('sfcom-bridge', {
+        body: { 
+            action: action,
+            endpoint: endpoint, // El bridge usará esto para saber si es producto o variación
+            method: method,
+            payload: body       // Aquí va el { stock_quantity: N }
+        }
+    });
+
+    if (error) {
+        console.error(`[sfcom] Error en Edge Function (${action}):`, error);
+        throw new Error(`Error en el puente: ${error.message}`);
+    }
+
+    // 3. Devolvemos la respuesta (la Edge Function ya devuelve el JSON de Paula)
+    return data;
 }
+
+
+
 
 // ─── Utilidad interna: construir endpoint de stock ───────────────────────────
 // Si tiene variation_id → products/{product_id}/variations/{variation_id}
@@ -155,7 +189,14 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
     const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
     try {
-        await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
+        //await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
+        // NUEVA VERSION USANDO SUPABASE COMO BRIDGE:
+        await apiFetch(endpoint, 'PUT', { 
+            stock_quantity: nuevoStock,
+            productId: avail.sfcom_product_id,
+            variationId: avail.sfcom_variation_id 
+        })
+
         _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, nuevoStock)
         return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas }
     } catch (e) {
@@ -188,9 +229,14 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
 export async function checkSfcomOrders(supabase, diasAtras = 90) {
     let sfcomOrders
     try {
-        const after = new Date()
-        after.setDate(after.getDate() - diasAtras)
-        sfcomOrders = await apiFetch(`orders?status=completed&after=${encodeURIComponent(after.toISOString())}&per_page=100`)
+        //const after = new Date()
+        //after.setDate(after.getDate() - diasAtras)
+        //sfcomOrders = await apiFetch(`orders?status=completed&after=${encodeURIComponent(after.toISOString())}&per_page=100`)
+
+        const response = await apiFetch('orders')        
+        // Aseguramos que tratamos con un array
+        sfcomOrders = Array.isArray(response) ? response : (response?.data || [])
+
     } catch (e) {
         console.warn(`[sfcom] checkSfcomOrders: GET fallido. ${e.message}`)
         mostrarModalAvisoOrders()
@@ -207,7 +253,16 @@ export async function checkSfcomOrders(supabase, diasAtras = 90) {
     const refsRegistradas = new Set((reservasConRef ?? []).map(r => r.sfcom_order_ref))
 
     const nuevos = sfcomOrders
-        .filter(order => !refsRegistradas.has(`${order.number}_${order.id}`))
+        .filter(order => {
+            // 1. Comprobamos si ya lo tenemos registrado
+            const yaExiste = refsRegistradas.has(`${order.number}_${order.id}`);
+            
+            // 2. Comprobamos el estado (WooCommerce suele usar 'completed')
+            // Si el estado NO es 'completed', lo descartamos (false)
+            const esCompletado = order.status === 'completed';
+            
+            return !yaExiste && esCompletado;
+        })
         .map(order => ({
             sfcom_order_ref: `${order.number}_${order.id}`,
             sfcom_id:        order.id,
