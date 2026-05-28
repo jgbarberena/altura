@@ -521,19 +521,22 @@ Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js`. Gestiona:
 
 Módulo ES6. Gestiona toda la comunicación con la tienda WooCommerce de sfcom a través de `sf-api-paula.php` (API directa de Hilario). No tiene estado propio; cada función recibe `supabase` como argumento.
 
-**API:** `https://tienda.sanfermin.com/sf-api-paula.php` (URL simplificada, mayo 2026)  
-Cabecera de autenticación: `X-Paula-Key`.
+**Arquitectura de red — Edge Function bridge:** Todo el tráfico a `sf-api-paula.php` pasa por la Supabase Edge Function `sfcom-bridge` (`supabase/functions/sfcom-bridge/index.ts`). El JS llama a `supabase.functions.invoke('sfcom-bridge', { body: { endpoint, method, payload } })` y la Edge Function reenvía la petición a `sf-api-paula.php` server-to-server usando la clave API almacenada como secreto de Supabase (`SFCOM_API_KEY`). Esto resuelve el CORS: el navegador habla con Supabase (mismo origen que el cliente JS admin), y Supabase habla con sf-api-paula.php sin restricciones CORS. La clave `X-Paula-Key` nunca aparece en el código JS del cliente. La Edge Function implementa un timeout de 12 segundos (`AbortSignal.timeout(12000)`) y devuelve 504 si sf-api-paula.php no responde.
+
+**API:** `https://tienda.sanfermin.com/sf-api-paula.php`  
+Auth: secreto `SFCOM_API_KEY` en Supabase — no en el código JS del cliente.
 
 **Endpoints:**
 - `GET stock-all` → `{ updated_at, count, stock: { "id": qty, ... } }`. Devuelve todo el stock de la tienda (productos simples + variaciones) en una sola llamada. Sin límite de uso, no toca WooCommerce directamente. **Usar siempre para leer stock.** Las claves son los IDs como string; para variaciones se usa el `variation_id`, para productos simples el `product_id`.
 - `PUT products/{id}` / `PUT products/{id}/variations/{variation_id}` → modifica stock. Solo se permite `stock_quantity` en el body. Rate limit: 20 req/min, máx 2 simultáneas. Usar solo al guardar una reserva.
 - `GET products`, `GET products/{id}/variations` → endpoints clásicos con rate limit. Usar solo cuando se necesiten nombres (picker de confirmación en proveedores.js, detección de idsMismatch en verificación manual).
+- `GET orders` → lista de pedidos. Acepta parámetros: `status`, `after`, `per_page`. Activo y confirmado por Hilario.
 
-**`apiFetchStockAll()`:** función interna que llama a `stock-all` y devuelve directamente el objeto `stock`. Usada por `verificarCoherencia`, `checkAvailabilityBeforeSave`, `computeExpectedStock` y `verificarBajaSfcom`. No usa caché — siempre fresco salvo en `computeExpectedStock` donde la caché tiene precedencia (es cosmética).
+**`apiFetch(endpoint, method, body)`:** función interna. Proxy transparente — llama a la Edge Function con `{ endpoint, method, payload: body }` y devuelve la respuesta tal cual. Cualquier error del puente (incluyendo timeout 504) lanza un `Error` que los callers capturan con `try/catch`.
+
+**`apiFetchStockAll()`:** función interna que llama a `apiFetch('stock-all')` y devuelve directamente el objeto `stock`. Usada por `verificarCoherencia`, `checkAvailabilityBeforeSave`, `computeExpectedStock` y `verificarBajaSfcom`. No usa caché — siempre fresco salvo en `computeExpectedStock` donde la caché tiene precedencia (es cosmética).
 
 **`apiFetchSingle` eliminada** (mayo 2026): ya no se usa tras la migración a `stock-all`. Los endpoints clásicos que devuelven arrays se iteran directamente con `Array.isArray(items) ? items : []`.
-
-**Timeout de red:** `apiFetch` implementa un timeout de 12 segundos mediante `Promise.race([fetch(...), timeoutPromise])`. Necesario para que un fetch colgado no bloquee la verificación.
 
 **Fórmula de stock:**
 ```
@@ -873,10 +876,10 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 
 ## 12. Deudas técnicas pendientes
 
-### 12.1 API sf-api-paula.php — **Activa; CORS pendiente en Live Server**
-**Situación:** La API `sf-api-paula.php` (acceso directo, clave `X-Paula-Key`) está activa. Endpoints confirmados: `products`, `products/{id}/variations`, `orders`. El formato de respuesta de `orders` está verificado (ver 12.14).
+### 12.1 API sf-api-paula.php — **Activa; CORS resuelto vía Edge Function**
+**Situación:** La API `sf-api-paula.php` (clave `X-Paula-Key`) está activa. Endpoints confirmados: `stock-all`, `products`, `products/{id}/variations`, `orders`, `products/{id}` (PUT), `products/{id}/variations/{var_id}` (PUT). El formato de respuesta de `orders` está verificado (ver 12.14).
 
-**CORS:** Funciona desde producción (`https://experienciasanfermin.com`). Desde Live Server (`http://127.0.0.1:5500`) está ROTO (error `No 'Access-Control-Allow-Origin' header`) — Hilario necesita re-añadir este origen a la configuración CORS del plugin. No es un bug de nuestro código; no hay nada que hacer en el JS. Pendiente solo de acción de Hilario. Mientras dure, todas las llamadas a sfcom desde Live Server fallarán silenciosamente (timeout de 12s) y la verificación de coherencia reportará "No se pudo verificar sfcom".
+**CORS:** Resuelto en mayo 2026. Todo el tráfico a sf-api-paula.php pasa ahora por la Supabase Edge Function `sfcom-bridge`, que llama server-to-server sin restricciones CORS. El JS nunca hace fetch directo a `tienda.sanfermin.com`. Funciona desde cualquier origen (producción, Live Server, local) sin cambios en la configuración de Hilario.
 
 ### 12.2 Disponibilidad en sfcom — **Pendiente diseño**
 **Problema:** Los productos de sfcom (WooCommerce) no tienen disponibilidad real sincronizada con Supabase.
@@ -1013,7 +1016,7 @@ Sin mecanismo para anular facturas, borrar clientes/proveedores con cascada. Se 
 ### 12.36 Colorear clientes por estado en tablas de proveedor/panel — **Pendiente**
 Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no llevan coloración de estado (Confirmada/Pendiente), a diferencia de las cajitas del mapa de disponibilidad de `formulario.js`.
 
-### 12.37 Detección automática de pedidos sfcom vía Supabase Edge Function — **Pendiente diseño**
+### 12.37 Detección automática de pedidos sfcom vía Edge Function cron — **Pendiente diseño**
 **Situación actual:** `checkSfcomOrders` se llama al cargar `formulario.html`. Si el admin no abre el panel, los pedidos nuevos de sfcom no se detectan hasta que lo haga. La notificación al admin (trigger `notificar-solicitud` en `reservation_requests`) tampoco se dispara hasta ese momento.
 
 **Propuesta:** Mover el polling de pedidos sfcom a una Supabase Edge Function con ejecución programada (cron). La función correría cada N minutos de forma autónoma: llamaría a `GET orders?status=completed&after=<última_ejecución>` de `sf-api-paula.php`, y por cada pedido nuevo insertaría la fila correspondiente en `reservation_requests`. El trigger existente se encargaría de la notificación al admin automáticamente, sin necesidad de que nadie tenga el panel abierto.
@@ -1021,11 +1024,11 @@ Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no 
 **Ventajas:** Detección en tiempo real independiente de si el admin tiene el panel abierto. Reduce la carga al cargar `formulario.html` (ya no hace el GET de orders en el arranque). El trigger de notificación funciona en cuanto llega el pedido.
 
 **Consideraciones antes de implementar:**
-- La Edge Function necesita acceso a `sf-api-paula.php` desde los servidores de Supabase (actualmente CORS solo está abierto para `experienciasanfermin.com`; habría que abrir el origen de Supabase o usar un secreto de server-side sin restricción CORS).
+- El acceso a `sf-api-paula.php` desde Supabase ya está resuelto — `sfcom-bridge` llama server-to-server con la clave en un secreto de Supabase. La función cron puede reutilizar el mismo patrón o llamar directamente a sf-api-paula.php (sin CORS al ser server-to-server).
 - Hilario tendría que confirmar que no hay problema con llamadas periódicas desde un servidor fijo (IP estática de Supabase) en lugar del navegador del admin.
 - La lógica de `registrarPedidosSfcom` (sistema de dos capas: nombre como contrato, IDs como verificación) tendría que replicarse en la Edge Function, que está en Deno/TypeScript, no en el JS del panel.
 - El campo `sfcom-orders-warned` de `sessionStorage` (aviso de un solo modal por sesión) pierde sentido si la detección es automática; `checkSfcomOrders` en `formulario.js` podría simplificarse o eliminarse.
-- Mientras la Edge Function no esté activa, `checkSfcomOrders` en `formulario.js` sigue siendo la red de seguridad y no debe eliminarse.
+- Mientras la Edge Function cron no esté activa, `checkSfcomOrders` en `formulario.js` sigue siendo la red de seguridad y no debe eliminarse.
 
 ---
 
@@ -1063,6 +1066,11 @@ El hito final en `payments` se identifica por `comments === 'Pago final'` (no po
 
 ### 13.11 Panel de reorganización de reservas
 Cuando un admin hace click en un proveedor sin plazas suficientes desde el mapa de disponibilidad, se abre un panel de reorganización que permite reubicar reservas existentes a otros proveedores con disponibilidad.
+
+### 13.13 Edge Function `sfcom-bridge` como proxy transparente (mayo 2026)
+El JS del admin nunca llama directamente a `sf-api-paula.php` desde el navegador (el fetch directo estaba bloqueado por CORS). Toda la comunicación pasa por la Supabase Edge Function `sfcom-bridge`, que actúa como proxy transparente: recibe `{ endpoint, method, payload }` del cliente JS vía `supabase.functions.invoke`, reenvía la petición a sf-api-paula.php server-to-server con la clave API almacenada como secreto de Supabase (`SFCOM_API_KEY`), y devuelve la respuesta tal cual.
+
+El diseño es intencionalmente de proxy genérico (no de router de acciones): cualquier endpoint que sf-api-paula.php añada en el futuro funciona sin tocar la Edge Function. La clave API nunca aparece en el código JS del cliente. La función está en `supabase/functions/sfcom-bridge/index.ts` y se despliega con `supabase functions deploy sfcom-bridge`.
 
 ### 13.12 Datos sfcom separados de availability en tabla propia (sfcom_listings)
 Los campos de publicación en sfcom (`sfcom_status`, `sfcom_product_id`, `sfcom_variation_id`, `sfcom_service_name`, `sfcom_slots_listed`, `sfcom_public_price`) están en una tabla propia `sfcom_listings` con FK a `availability.id`, en lugar de como columnas de `availability`. Razón: son conceptos distintos — `availability` describe la capacidad física de un proveedor en un servicio; `sfcom_listings` describe cómo esa capacidad está publicada en WooCommerce. La separación permite que evolucionen de forma independiente y garantiza que un par proveedor/servicio tenga como máximo una entrada sfcom (UNIQUE en `availability_id`). Para las lecturas del panel, la vista `availability_with_sfcom` reconstruye el JOIN de forma transparente.

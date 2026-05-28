@@ -49,7 +49,6 @@ export function extraerDia(texto) {
 }
 
 const API_URL = 'https://tienda.sanfermin.com/sf-api-paula.php'
-const API_KEY = 'pK9#mX2$vL7@nQ4&wR8!hT3%yU6^zA1*'
 
 // Cache de stock sfcom en memoria. Se puebla en verificarCoherencia y se actualiza en cada PUT.
 // Se invalida al recargar la página (módulo en memoria). Los PUTs mantienen la coherencia entre
@@ -63,61 +62,20 @@ const _cacheGet    = (productId, variationId) => {
 }
 
 // ─── Utilidad interna: llamada a la API ──────────────────────────────────────
+// Proxy transparente vía Supabase Edge Function (sfcom-bridge) para evitar CORS.
+// La Edge Function reenvía el endpoint, método y payload a sf-api-paula.php
+// server-to-server, con la clave API almacenada como secreto de Supabase.
 
-//async function apiFetch(endpoint, method = 'GET', body = null) {
-//    const url = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
-//    const opts = {
-//        method,
-//        headers: {
-//            'Content-Type': 'application/json',
-//            'X-Paula-Key':  API_KEY
-//        }
-//    }
-//    if (body) opts.body = JSON.stringify(body)
-//
-//    const timeout = new Promise((_, reject) =>
-//        setTimeout(() => reject(new Error('timeout')), 12000)
-//    )
-//    const res = await Promise.race([fetch(url, opts), timeout])
-//    if (!res.ok) {
-//        const text = await res.text().catch(() => '')
-//        throw new Error(`HTTP ${res.status} — ${text.slice(0, 200)}`)
-//    }
-//    return res.json()
-//}
-
-// NEW VERSION USING SUPABASE EDGE FUNCTION AS BRIDGE TO AVOID CORS ISSUES
 async function apiFetch(endpoint, method = 'GET', body = null) {
-    // 1. Mapeamos el endpoint/método a la "action" que espera la Edge Function
-    let action = 'get_orders'; // Acción por defecto
-    
-    if (method === 'PUT') {
-        action = 'update_stock';
-    } else if (endpoint === 'stock-all') {
-        action = 'get_stock_all';
-    }
-
-    // 2. Invocamos la función en Supabase pasándole exactamente lo que necesita
     const { data, error } = await supabase.functions.invoke('sfcom-bridge', {
-        body: { 
-            action: action,
-            endpoint: endpoint, // El bridge usará esto para saber si es producto o variación
-            method: method,
-            payload: body       // Aquí va el { stock_quantity: N }
-        }
-    });
-
+        body: { endpoint, method, payload: body }
+    })
     if (error) {
-        console.error(`[sfcom] Error en Edge Function (${action}):`, error);
-        throw new Error(`Error en el puente: ${error.message}`);
+        console.error(`[sfcom] Bridge error (${method} ${endpoint}):`, error)
+        throw new Error(error.message)
     }
-
-    // 3. Devolvemos la respuesta (la Edge Function ya devuelve el JSON de Paula)
-    return data;
+    return data
 }
-
-
-
 
 // ─── Utilidad interna: construir endpoint de stock ───────────────────────────
 // Si tiene variation_id → products/{product_id}/variations/{variation_id}
@@ -189,13 +147,7 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
     const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
     try {
-        //await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
-        // NUEVA VERSION USANDO SUPABASE COMO BRIDGE:
-        await apiFetch(endpoint, 'PUT', { 
-            stock_quantity: nuevoStock,
-            productId: avail.sfcom_product_id,
-            variationId: avail.sfcom_variation_id 
-        })
+        await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
 
         _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, nuevoStock)
         return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas }
@@ -226,15 +178,10 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
 // funciona.
 // ────────────────────────────────────────────────────────────────────────────
 
-export async function checkSfcomOrders(supabase, diasAtras = 90) {
+export async function checkSfcomOrders(supabase) {
     let sfcomOrders
     try {
-        //const after = new Date()
-        //after.setDate(after.getDate() - diasAtras)
-        //sfcomOrders = await apiFetch(`orders?status=completed&after=${encodeURIComponent(after.toISOString())}&per_page=100`)
-
-        const response = await apiFetch('orders')        
-        // Aseguramos que tratamos con un array
+        const response = await apiFetch('orders')
         sfcomOrders = Array.isArray(response) ? response : (response?.data || [])
 
     } catch (e) {
