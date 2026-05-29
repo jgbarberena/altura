@@ -358,14 +358,15 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
 
 // Computa el stock esperado para cada par y muestra el modal consultivo pre-save.
 // pares: [{ providerId, serviceId, sfcomDelta?, allDelta? }]
-// Devuelve true si el admin confirma o si ningún par tiene sfcom activo.
+// Devuelve 'sync' (guardar + PUT a sfcom), 'save' (solo guardar) o 'cancel' (abortar).
+// Devuelve 'sync' directamente si ningún par tiene sfcom activo (sin modal).
 export async function confirmarStockSfcom(supabase, pares) {
     const cambios = []
     for (const { providerId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
         const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta, allDelta })
         if (cambio) cambios.push(cambio)
     }
-    if (cambios.length === 0) return true
+    if (cambios.length === 0) return 'sync'
     return mostrarModalConfirmacionSfcom(cambios)
 }
 
@@ -394,7 +395,7 @@ export function mostrarModalConfirmacionSfcom(cambios) {
                 <span class="modal-header-icon">🔄</span>
                 <div>
                     <div class="modal-header-title">Actualizar disponibilidad en sfcom</div>
-                    <div class="modal-header-desc">Se guardarán los cambios en el sistema y se actualizará el stock en sfcom. Cancela si no quieres ejecutar esta actualización.</div>
+                    <div class="modal-header-desc">Los cambios se guardarán en el sistema. Decide si también quieres actualizar el stock en sfcom ahora.</div>
                 </div>
             </div>
             <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
@@ -408,12 +409,14 @@ export function mostrarModalConfirmacionSfcom(cambios) {
                 <tbody>${filas}</tbody>
             </table>
             <div class="modal-actions">
-                <button id="sfcom-conf-cancelar" class="btn btn-secondary">Cancelar</button>
-                <button id="sfcom-conf-aceptar" class="btn btn-primary">Confirmar y guardar</button>
+                <button id="sfcom-conf-cancelar-todo" class="btn btn-danger">Cancelar todo</button>
+                <button id="sfcom-conf-solo-guardar" class="btn btn-secondary">Solo guardar</button>
+                <button id="sfcom-conf-aceptar" class="btn btn-primary">Guardar y actualizar sfcom</button>
             </div>`
 
-        panel.querySelector('#sfcom-conf-cancelar').addEventListener('click', () => { overlay.remove(); resolve(false) })
-        panel.querySelector('#sfcom-conf-aceptar').addEventListener('click', () => { overlay.remove(); resolve(true) })
+        panel.querySelector('#sfcom-conf-cancelar-todo').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
+        panel.querySelector('#sfcom-conf-solo-guardar').addEventListener('click', () => { overlay.remove(); resolve('save') })
+        panel.querySelector('#sfcom-conf-aceptar').addEventListener('click', () => { overlay.remove(); resolve('sync') })
     })
 }
 

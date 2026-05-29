@@ -88,7 +88,7 @@ document.getElementById('btnConfirmarSfcom').addEventListener('click', async () 
         actualizarSeccionSfcom(todaDisponibilidad.find(d => d.id === servicioEditandoId))
         // Sincronización inicial: stock puede estar en estado desconocido en sfcom.
         const sfcomOk = await confirmarStockSfcom(supabase, [{ providerId: proveedorActual.id, serviceId }])
-        if (sfcomOk) await syncStockToSfcom(supabase, proveedorActual.id, serviceId)
+        if (sfcomOk === 'sync') await syncStockToSfcom(supabase, proveedorActual.id, serviceId)
     } else if (result?.notInList && result?.name) {
         sfcomNombreProducto.value    = result.name
         if (disp) disp.sfcom_service_name = result.name
@@ -773,7 +773,7 @@ btnGuardarServicio.addEventListener('click', async () => {
             .filter(Boolean)
             .map(d => ({ providerId: d.provider_id, serviceId: d.service_id }))
         const sfcomOkMulti = await confirmarStockSfcom(supabase, paresMulti)
-        if (!sfcomOkMulti) return
+        if (sfcomOkMulti === 'cancel') return
 
         for (const dispId of serviciosEditandoIds) {
             const dispActual = todaDisponibilidad.find(d => d.id === dispId)
@@ -792,7 +792,7 @@ btnGuardarServicio.addEventListener('click', async () => {
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
         for (const { providerId, serviceId } of paresMulti) {
-            await syncStockToSfcom(supabase, providerId, serviceId)
+            if (sfcomOkMulti === 'sync') await syncStockToSfcom(supabase, providerId, serviceId)
         }
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorActual.id)
@@ -849,7 +849,7 @@ btnGuardarServicio.addEventListener('click', async () => {
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
     const sfcomOkSingle = await confirmarStockSfcom(supabase, [{ providerId: proveedorActual.id, serviceId: servicioId }])
-    if (!sfcomOkSingle) return
+    if (sfcomOkSingle === 'cancel') return
 
     if (servicioEditandoId) {
         const availPayload = {
@@ -915,7 +915,7 @@ btnGuardarServicio.addEventListener('click', async () => {
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
-    await syncStockToSfcom(supabase, proveedorActual.id, servicioId)
+    if (sfcomOkSingle === 'sync') await syncStockToSfcom(supabase, proveedorActual.id, servicioId)
 
     limpiarFormularioServicio()
     cargarServiciosProveedor(proveedorActual.id)
@@ -1822,7 +1822,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
 
     if (pairsSync.length > 0) {
         const sfcomOkMultiple = await confirmarStockSfcom(supabase, pairsSync)
-        if (sfcomOkMultiple) {
+        if (sfcomOkMultiple === 'sync') {
             for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
         }
     }

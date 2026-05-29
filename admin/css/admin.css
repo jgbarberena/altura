@@ -1068,18 +1068,29 @@ dialog::backdrop {
 }
 
 /* =========================
-   MODALES JS (overlay + panel)
+   MODALES JS (dialog nativo + panel)
 ========================= */
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.55);
+dialog.modal-dialog-overlay {
+    border: none;
+    border-radius: 0;
+    padding: 16px;
+    margin: 0;
+    max-width: none;
+    max-height: none;
+    width: 100vw;
+    height: 100vh;
+    background: transparent;
+    box-shadow: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10000;
-    padding: 16px;
+    overflow: hidden;
+    box-sizing: border-box;
     font-family: 'Inter', system-ui, sans-serif;
+}
+
+dialog.modal-dialog-overlay::backdrop {
+    background: rgba(0,0,0,0.55);
 }
 
 .modal-panel {

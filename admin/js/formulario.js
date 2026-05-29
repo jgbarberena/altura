@@ -560,6 +560,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
     // Modal consultivo cuando el cambio altera el conteo de reservas activas en sfcom.
     // pairsConCambio recoge solo los pares con delta real — Pendiente↔Confirmada no aparece.
     let pairsConCambio = []
+    let sfcomResultEstado = 'sync'
     if (nuevoEstado === 'Cancelada') {
         // Cancelar reservas activas → stock sube (deltas negativos de plazas activas)
         pairsConCambio = [...new Map(
@@ -572,8 +573,8 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             return { ...p, sfcomDelta, allDelta }
         })
         if (pairsConCambio.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(supabase, pairsConCambio)
-            if (!sfcomOk) return
+            sfcomResultEstado = await confirmarStockSfcom(supabase, pairsConCambio)
+            if (sfcomResultEstado === 'cancel') return
         }
     } else {
         // Reactivar reservas canceladas → stock baja (deltas positivos de plazas que vuelven a ser activas)
@@ -594,8 +595,8 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             }
         }
         if (pairsConCambio.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(supabase, pairsConCambio)
-            if (!sfcomOk) return
+            sfcomResultEstado = await confirmarStockSfcom(supabase, pairsConCambio)
+            if (sfcomResultEstado === 'cancel') return
         }
     }
 
@@ -608,7 +609,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         const pairsConCambioSet = new Set(pairsConCambio.map(p => `${p.providerId}|${p.serviceId}`))
         for (const { proveedorId, servicioId } of afectadas) {
             await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-            if (pairsConCambioSet.has(`${proveedorId}|${servicioId}`))
+            if (pairsConCambioSet.has(`${proveedorId}|${servicioId}`) && sfcomResultEstado === 'sync')
                 await syncStockToSfcom(supabase, proveedorId, servicioId)
         }
         cargarReservasCliente(clienteActual.id)
@@ -632,9 +633,10 @@ async function eliminarSeleccionadas() {
         const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
         return { ...p, sfcomDelta, allDelta }
     })
+    let sfcomResultElim = 'sync'
     if (pairsParaModal.length > 0) {
-        const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
-        if (!sfcomOk) return
+        sfcomResultElim = await confirmarStockSfcom(supabase, pairsParaModal)
+        if (sfcomResultElim === 'cancel') return
     }
 
     const afectadas = [...todasReservas
@@ -672,7 +674,7 @@ async function eliminarSeleccionadas() {
 
     for (const { proveedorId, servicioId, cancelada } of afectadas) {
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-        if (!cancelada) await syncStockToSfcom(supabase, proveedorId, servicioId)
+        if (!cancelada && sfcomResultElim === 'sync') await syncStockToSfcom(supabase, proveedorId, servicioId)
     }
 
     limpiarFormularioReserva()
@@ -769,9 +771,10 @@ btnAnadir.addEventListener('click', async () => {
             }
         }
 
+        let sfcomResultEdit = 'sync'
         if (pairsParaModal.length > 0) {
-            const sfcomOk = await confirmarStockSfcom(supabase, pairsParaModal)
-            if (!sfcomOk) return
+            sfcomResultEdit = await confirmarStockSfcom(supabase, pairsParaModal)
+            if (sfcomResultEdit === 'cancel') return
         }
 
         const { error } = await supabase.from('reservations').update({
@@ -789,7 +792,7 @@ btnAnadir.addEventListener('click', async () => {
             await persistirPagosProveedor(supabase, proveedorIdAnterior, todasReservas, disponibilidad)
         }
         for (const p of pairsParaModal)
-            await syncStockToSfcom(supabase, p.providerId, p.serviceId)
+            if (sfcomResultEdit === 'sync') await syncStockToSfcom(supabase, p.providerId, p.serviceId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -810,12 +813,12 @@ btnAnadir.addEventListener('click', async () => {
             if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
         }
 
-        const sfcomOk = await confirmarStockSfcom(supabase, [{
+        const sfcomResultNuevo = await confirmarStockSfcom(supabase, [{
             providerId: proveedorId, serviceId: servicioId,
             sfcomDelta: solicitudSfcomRef ? plazas : 0,
             allDelta:   plazas
         }])
-        if (!sfcomOk) return
+        if (sfcomResultNuevo === 'cancel') return
 
         if (!clienteActual) {
             const nombre = inputName.value.trim()
@@ -855,7 +858,7 @@ btnAnadir.addEventListener('click', async () => {
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-        await syncStockToSfcom(supabase, proveedorId, servicioId)
+        if (sfcomResultNuevo === 'sync') await syncStockToSfcom(supabase, proveedorId, servicioId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -1598,9 +1601,10 @@ window.confirmarReorganizacion = async function() {
             if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
         }
     }
+    let sfcomResultReorg = 'sync'
     if (sfcomPairsReorg.length > 0) {
-        const sfcomOk = await confirmarStockSfcom(supabase, sfcomPairsReorg)
-        if (!sfcomOk) return
+        sfcomResultReorg = await confirmarStockSfcom(supabase, sfcomPairsReorg)
+        if (sfcomResultReorg === 'cancel') return
     }
 
     const aplicados = []
@@ -1657,7 +1661,7 @@ window.confirmarReorganizacion = async function() {
     })
     for (const par of sfcomPares) {
         const [provId, svcId] = par.split('|')
-        await syncStockToSfcom(supabase, provId, svcId)
+        if (sfcomResultReorg === 'sync') await syncStockToSfcom(supabase, provId, svcId)
     }
 
     cerrarPanelReorganizar()
@@ -2131,14 +2135,22 @@ document.getElementById('btnConfirmarReorg').addEventListener('click', confirmar
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
 
-// Comprobar pedidos nuevos en sfcom al iniciar.
-// El endpoint «orders» puede no estar disponible en sf-api-paula.php — si no lo está,
-// se mostrará el modal de aviso y el retorno tendrá ok:false. Ver deuda técnica 12.1.
-checkSfcomOrders(supabase, 90).then(resultado => {
-    if (resultado.ok && resultado.nuevos?.length) {
-        registrarPedidosSfcom(resultado.nuevos)
-    }
-}).catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
+// Comprobar pedidos nuevos en sfcom y luego verificar coherencia.
+// El orden es importante: los pedidos registrados por checkSfcomOrders influyen
+// en pendingExplains de verificarCoherencia (solicitudes sfcom pendientes que
+// explican discrepancias de stock). Si se ejecutaran en paralelo, la verificación
+// podría reportar discrepancias reales que en realidad están explicadas por pedidos
+// que aún no se habían registrado.
+checkSfcomOrders(supabase, 90)
+    .then(async resultado => {
+        if (resultado.ok && resultado.nuevos?.length) {
+            await registrarPedidosSfcom(resultado.nuevos)
+        }
+    })
+    .catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
+    .finally(() => {
+        ejecutarVerificacion(false).catch(e => console.error('[verificacion] Error al inicio:', e.message))
+    })
 
 async function ejecutarVerificacion(modoManual = false) {
     const toastEl = mostrarToast('🔍 Verificando coherencia…', '#374151')
@@ -2182,9 +2194,6 @@ async function ejecutarVerificacion(modoManual = false) {
 document.getElementById('btnVerificarDatos').addEventListener('click', () => {
     ejecutarVerificacion(true).catch(e => console.error('[verificacion] Error:', e.message))
 })
-
-// Verificar coherencia de datos al cargar
-ejecutarVerificacion(false).catch(e => console.error('[verificacion] Error al inicio:', e.message))
 
 // Precarga de cliente desde parámetro URL (ej: panel.html → formulario.html?cliente=GARCIA_PEDRO)
 const _clienteParam = new URLSearchParams(location.search).get('cliente')

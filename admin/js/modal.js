@@ -1,14 +1,15 @@
 // modal.js — helper para construir modales JS con clases CSS de admin.css
 // Uso: const { overlay, panel } = crearModal('mi-id', { wide, narrow, scroll })
 // El caller rellena panel.innerHTML y gestiona los event listeners.
+// overlay es un <dialog> nativo (top layer); overlay.remove() o overlay.close() lo cierran.
 
 export function crearModal(id, { wide = false, narrow = false, scroll = false } = {}) {
     const prev = document.getElementById(id)
     if (prev) prev.remove()
 
-    const overlay = document.createElement('div')
-    overlay.id = id
-    overlay.className = 'modal-overlay'
+    const dialog = document.createElement('dialog')
+    dialog.id = id
+    dialog.className = 'modal-dialog-overlay'
 
     const panel = document.createElement('div')
     panel.className = 'modal-panel'
@@ -16,8 +17,10 @@ export function crearModal(id, { wide = false, narrow = false, scroll = false } 
     if (narrow) panel.classList.add('modal-panel--narrow')
     if (scroll) panel.classList.add('modal-panel--scroll')
 
-    overlay.appendChild(panel)
-    document.body.appendChild(overlay)
+    dialog.appendChild(panel)
+    document.body.appendChild(dialog)
+    dialog.addEventListener('close', () => dialog.remove())
+    dialog.showModal()
 
-    return { overlay, panel }
+    return { overlay: dialog, panel }
 }
