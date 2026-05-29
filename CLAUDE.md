@@ -252,11 +252,11 @@ Hay dos clientes Supabase:
 |---|---|---|
 | id | text PK | Ej: `ENCIERRO_7`, `CHUPINAZO_6` |
 | day | integer | Día de julio |
-| event_type | text | |
+| event_type | text | **Pendiente eliminar de Supabase** — no se usa en ningún módulo JS |
 | description | text | |
 | comments | text | |
 | start_time | text | Hora de inicio (ej: `'08:00'`) |
-| image_url | text | URL de imagen representativa |
+| image_url | text | URL absoluta de imagen representativa (ej: `https://www.experienciasanfermin.com/img/cards/...`). Los registros existentes con rutas relativas deben migrarse con: `UPDATE services SET image_url = 'https://www.experienciasanfermin.com/' \|\| image_url WHERE image_url IS NOT NULL AND image_url NOT LIKE 'http%'` |
 
 **`availability`** — Disponibilidad por proveedor y servicio
 | Campo | Tipo | Notas |
@@ -509,11 +509,17 @@ Bloques:
 
 ### 7.6 proveedores.js — Gestión de proveedores
 
-Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js`. Gestiona:
+Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js` y `crearModal` de `modal.js`. Gestiona:
 - CRUD de proveedores con autocomplete (igual que clientes en formulario.js)
 - Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability` y `sfcom_listings`. Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
 - Hitos de pago al proveedor: gestión de `payments` con modelo `capacity`/`consumption`/`fixed`
 - Guardado automático por campo para proveedores existentes
+
+**Bloque 2 — campos de servicio extendidos:** además de plazas/precio/modelo, el formulario expone `day` (selector 6–14), `start_time` (hora inicio) e `image_url` (URL absoluta). Al seleccionar un servicio existente se cargan estos campos desde `todosServicios`. Al guardar un servicio nuevo se insertan en `services`. En modo edición, `day` no se cambia (el ID ya lleva el sufijo `_N`); si hay discrepancia entre el sufijo del ID y el selector, se muestra un aviso. `start_time` e `image_url` sí se actualizan en modo edición vía `guardarDescripcionServicio`.
+
+**Image picker widget (`.img-picker`):** cuadro cuadrado visible siempre. Vacío: borde punteado con input de URL dentro (placeholder "URL de imagen") — escribir o pegar la URL muestra la imagen en tiempo real. Con imagen: la imagen cubre el cuadro y aparece el botón ✕ en la esquina superior derecha para borrarla. La función `_setImgPicker(url)` centraliza todos los cambios de estado del widget (input value, src, clases CSS, visibilidad del estado vacío). La misma clase se usa en el dialog del asistente (`img-picker--dialog`, ancho completo, 64px de alto).
+
+**Asistente nuevo (`dlgNuevoServicio`):** dialog nativo (`showModal()`) con max-width 560px. Permite crear servicios en lote para un rango de días. Flujo: escribir el nombre base (ej: `ENCIERRO`) → seleccionar días con chips individuales o el toggle "Diario 7–14" → la preview muestra los IDs resultantes (`ENCIERRO_7`, `ENCIERRO_8`…) con checkboxes para marcar cuáles se asignan al proveedor actual. Si el proveedor no está guardado en BD y hay servicios marcados para asignar, se muestra un modal de 3 opciones ("Crear proveedor y servicios" / "Crear solo los servicios" / "Cancelar"). Al crear: INSERT en `services` (con `day`, `start_time`, `image_url`, `description`), INSERT en `availability` para los marcados, y `persistirPagosProveedor`. El estado del dialog se limpia al abrir (`abrirAsistenteNuevo()`). Helpers internos: `_extraerDiaDeId`, `_getNuevoBase`, `_computeNuevosIds`, `_actualizarDiaChips`, `renderNuevoPreview`, `_actualizarNuevoAsignacion`.
 
 **Patrón de acceso a datos sfcom:** La carga inicial de `todaDisponibilidad` usa `from('availability_with_sfcom').select('*')` para tener los campos sfcom disponibles en memoria. Todos los writes de campos sfcom (solicitar alta, confirmar, cancelar, dar de baja, confirmar baja, editar nombre) van a `sfcom_listings` con `upsert` o `delete`, nunca a `availability`.
 
@@ -1052,12 +1058,24 @@ Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no 
 
 **Solución:** Añadido `'fixed'` como tercer valor de `billing_model` en `availability`. El campo `price_per_slot` almacena el importe fijo total. Implementado en: `utils.js` (`persistirPagosProveedor`), `proveedores.js` (UI completa: listeners, `actualizarCosteServicio`, `renderTablaServicios`, `calcularCosteTotalProveedor`, save logic, dlgMultiple), `formulario.js` (`validarPrecio` compara ingreso acumulado vs coste fijo), `panel.js` (etiqueta en detalle de proveedor), `tablas.js` (formatter). No requirió cambios en la BD.
 
-### 12.42 Mejoras UX en gestión de servicios — **Pendiente (aplazado)**
-**Situación:** El alta de múltiples servicios similares (p.ej. ENCIERRO_7 a ENCIERRO_14) requiere crearlos uno a uno. El asistente múltiple ayuda pero no tiene creación masiva por rango.
+### 12.42 Mejoras UX en gestión de servicios — **Resuelto (creación en lote)**
+**Situación:** Implementado el "Asistente nuevo" (`dlgNuevoServicio`) en `proveedores.html`/`proveedores.js`. Permite crear servicios en lote por rango de días con chips individuales o toggle "Diario 7–14". Preview en tiempo real de los IDs, checkboxes por servicio para la asignación al proveedor, y sección compartida de plazas/precio/modelo. Modal de 3 opciones si el proveedor no está guardado aún. Ver sección 7.6 para el detalle completo.
 
-**Propuestas aplazadas:**
-- Creación masiva de servicios por rango de días (ENCIERRO_7..14 en un solo paso).
+Además, el Bloque 2 (formulario individual de servicio) se extendió con los campos `day`, `start_time` e `image_url`, y se añadió el widget de imagen (`.img-picker`) — ver sección 7.6.
+
+**Pendiente (segunda propuesta, aplazada):**
 - Filtrado de servicios sin disponibilidad (o con `billing_model = 'fixed'` pero sin reservas) en los selectores y tablas del panel.
+
+### 12.43 Limpieza pendiente en BD — `event_type` e `image_url`
+**`event_type`:** La columna `event_type` de la tabla `services` no se usa en ningún módulo JS del panel ni del frontend público. Pendiente eliminarla de Supabase: **SQL Editor → `ALTER TABLE services DROP COLUMN event_type;`**
+
+**`image_url` — migración a URLs absolutas:** Los registros existentes en `services.image_url` pueden tener rutas relativas (`img/cards/...`). `propuesta.js` ya maneja ambas (prepende la base si no empieza por `http`), pero el widget del panel necesita URLs absolutas para mostrar la imagen correctamente desde `/admin/`. Migrar con:
+```sql
+UPDATE services
+SET image_url = 'https://www.experienciasanfermin.com/' || image_url
+WHERE image_url IS NOT NULL AND image_url NOT LIKE 'http%';
+```
+Verificar después con `SELECT id, image_url FROM services WHERE image_url IS NOT NULL;`
 
 ---
 

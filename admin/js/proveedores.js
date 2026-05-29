@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave } from './utils.js'
 import { mostrarToast } from './verificacion.js'
+import { crearModal } from './modal.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
 
 await requireAuth()
@@ -39,9 +40,74 @@ const inputPlazas              = document.getElementById('inputPlazas')
 const inputPrecio              = document.getElementById('inputPrecio')
 const inputServicioDescription = document.getElementById('inputServicioDescription')
 const inputServicioComments    = document.getElementById('inputServicioComments')
+const inputServicioDia         = document.getElementById('selectServicioDia')
+const inputServicioHora        = document.getElementById('inputServicioHora')
+const inputServicioImagen      = document.getElementById('inputServicioImagen')
+const imgPreviewServicio       = document.getElementById('imgPreviewServicio')
+const imgPickerServicio        = document.getElementById('imgPickerServicio')
+const imgPickerEmpty           = document.getElementById('imgPickerEmpty')
+const imgPickerClear           = document.getElementById('imgPickerClear')
 
 inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
 inputServicioComments.addEventListener('change',    guardarDescripcionServicio)
+inputServicioHora.addEventListener('change',        guardarDescripcionServicio)
+inputServicioImagen.addEventListener('change',      guardarDescripcionServicio)
+
+function _setImgPicker(url) {
+    const u = url || ''
+    inputServicioImagen.value        = u
+    imgPreviewServicio.src           = u
+    imgPreviewServicio.style.display = u ? 'block' : 'none'
+    imgPickerServicio.classList.toggle('has-image', !!u)
+    imgPickerEmpty.style.display     = u ? 'none' : 'flex'
+}
+
+inputServicioImagen.addEventListener('input', () => {
+    const u = inputServicioImagen.value.trim()
+    imgPreviewServicio.src = u
+    imgPreviewServicio.style.display = u ? 'block' : 'none'
+    imgPickerServicio.classList.toggle('has-image', !!u)
+    imgPickerEmpty.style.display = u ? 'none' : 'flex'
+})
+
+imgPickerServicio.addEventListener('click', () => {
+    if (!imgPickerServicio.classList.contains('has-image')) inputServicioImagen.focus()
+})
+
+imgPickerClear.addEventListener('click', e => {
+    e.stopPropagation()
+    _setImgPicker('')
+    inputServicioImagen.dispatchEvent(new Event('change'))
+})
+
+inputServicioDia.addEventListener('change', () => {
+    const val     = inputServicioId.value.trim().toUpperCase()
+    const warning = document.getElementById('servicio-dia-warning')
+    if (!val) return
+
+    if (servicioEditandoId) {
+        const diaId  = _extraerDiaDeId(val)
+        const diaSel = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
+        if (diaId && diaSel && diaId !== diaSel) {
+            warning.textContent  = `⚠ El ID tiene _${diaId} pero seleccionaste día ${diaSel}. El ID no se cambia en modo edición.`
+            warning.style.display = 'block'
+        } else {
+            warning.style.display = 'none'
+        }
+        return
+    }
+
+    const existe = todosServicios.find(s => s.id === val)
+    const base   = val.replace(/_(6|7|8|9|10|11|12|13|14)$/i, '')
+    const diaSel = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
+    const newId  = diaSel ? `${base}_${diaSel}` : base
+    warning.style.display = 'none'
+
+    if (!existe && newId !== val) {
+        inputServicioId.value = newId
+        inputServicioId.dispatchEvent(new Event('input'))
+    }
+})
 
 // ===== REFERENCIAS SFCOM =====
 let sfcomEstadoLocal = null
@@ -285,6 +351,7 @@ function cargarProveedor(p) {
     proveedorStatus.style.color  = 'var(--accent-ok)'
     document.getElementById('bloque-servicio').style.display = 'block'
     limpiarFormularioServicio()
+    document.getElementById('btnAsistenteNuevo').style.display = 'inline-block'
     document.getElementById('btnAbrirMultiple').style.display = 'inline-block'
     cargarServiciosProveedor(p.id)
     cargarPagosProveedor(p.id)
@@ -362,12 +429,15 @@ window.guardarServicioNuevo = async function(e) {
     e.preventDefault()
     const servicioId = inputServicioId.value.trim().toUpperCase()
     if (!servicioId) return
+    const dia  = inputServicioDia.value   ? parseInt(inputServicioDia.value) : null
+    const hora = inputServicioHora.value  || null
+    const img  = inputServicioImagen.value.trim() || null
     const desc = inputServicioDescription.value.trim() || null
     const comm = inputServicioComments.value.trim()    || null
     const { error } = await supabase.from('services')
-        .insert({ id: servicioId, description: desc, comments: comm })
+        .insert({ id: servicioId, day: dia, start_time: hora, image_url: img, description: desc, comments: comm })
     if (error) { alert('Error al guardar el servicio: ' + error.message); return }
-    todosServicios.push({ id: servicioId, description: desc, comments: comm })
+    todosServicios.push({ id: servicioId, day: dia, start_time: hora, image_url: img, description: desc, comments: comm })
     servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
     servicioDescStatus.style.color = 'var(--accent-ok)'
 }
@@ -380,12 +450,13 @@ async function guardarDescripcionServicio() {
     if (!svc) return
     const desc = inputServicioDescription.value.trim() || null
     const comm = inputServicioComments.value.trim()    || null
+    const hora = inputServicioHora.value  || null
+    const img  = inputServicioImagen.value.trim() || null
     const { error } = await supabase.from('services')
-        .update({ description: desc, comments: comm })
+        .update({ description: desc, comments: comm, start_time: hora, image_url: img })
         .eq('id', svc.id)
     if (error) { console.error('Error al guardar descripcion:', error.message); return }
-    svc.description = desc
-    svc.comments    = comm
+    Object.assign(svc, { description: desc, comments: comm, start_time: hora, image_url: img })
     todosServicios  = todosServicios.map(s => s.id === svc.id ? svc : s)
 }
 
@@ -422,17 +493,24 @@ inputServicioId.addEventListener('input', () => {
     if (exacto) {
         inputServicioDescription.value = exacto.description ?? ''
         inputServicioComments.value    = exacto.comments    ?? ''
+        inputServicioDia.value         = exacto.day         ? String(exacto.day) : ''
+        inputServicioHora.value        = exacto.start_time  ?? ''
+        _setImgPicker(exacto.image_url)
         servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
     } else {
         inputServicioDescription.value = ''
         inputServicioComments.value    = ''
+        inputServicioDia.value         = _extraerDiaDeId(val) ? String(_extraerDiaDeId(val)) : ''
+        inputServicioHora.value        = ''
+        _setImgPicker(null)
         servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
             + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
             + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
             + ' o se creará al añadir al proveedor'
         servicioDescStatus.style.color = 'var(--accent-warn)'
     }
+    document.getElementById('servicio-dia-warning').style.display = 'none'
     // Mostrar sección sfcom para nuevo servicio si no hay una fila de availability activa
     if (!servicioEditandoId && val) {
         actualizarSeccionSfcom(null, true)
@@ -467,19 +545,26 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
     // Cargar description y comments del servicio seleccionado
     const svcSel = todosServicios.find(s => s.id === div.dataset.id)
     if (svcSel) {
-        inputServicioDescription.value = svcSel.description ?? ''
-        inputServicioComments.value    = svcSel.comments    ?? ''
-        servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
-        servicioDescStatus.style.color = 'var(--accent-ok)'
+        inputServicioDescription.value   = svcSel.description ?? ''
+        inputServicioComments.value      = svcSel.comments    ?? ''
+        inputServicioDia.value           = svcSel.day         ? String(svcSel.day) : ''
+        inputServicioHora.value          = svcSel.start_time  ?? ''
+        _setImgPicker(svcSel.image_url)
+        servicioDescStatus.innerHTML     = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
+        servicioDescStatus.style.color   = 'var(--accent-ok)'
     } else {
-        inputServicioDescription.value = ''
-        inputServicioComments.value    = ''
-        servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
+        inputServicioDescription.value   = ''
+        inputServicioComments.value      = ''
+        inputServicioDia.value           = ''
+        inputServicioHora.value          = ''
+        _setImgPicker(null)
+        servicioDescStatus.innerHTML     = '✨ Servicio nuevo — '
             + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
             + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
             + ' o se creará al añadir al proveedor'
-        servicioDescStatus.style.color = 'var(--accent-warn)'
+        servicioDescStatus.style.color   = 'var(--accent-warn)'
     }
+    document.getElementById('servicio-dia-warning').style.display = 'none'
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
@@ -751,14 +836,19 @@ function limpiarFormularioServicio() {
     selectModelo.value                  = 'capacity'
     inputServicioDescription.value      = ''
     inputServicioComments.value         = ''
+    inputServicioDia.value              = ''
+    inputServicioHora.value             = ''
+    _setImgPicker(null)
     if (servicioDescStatus) servicioDescStatus.textContent = ''
+    document.getElementById('servicio-dia-warning').style.display = 'none'
     document.getElementById('inputCosteServicio').value = '—'
     document.getElementById('titulo-bloque-servicio').textContent = '➕ Añadir / Editar servicio'
     servicioStatus.textContent    = ''
     btnGuardarServicio.textContent         = 'Añadir servicio'
     btnGuardarServicio.disabled            = true
     btnCancelarServicio.style.display      = 'none'
-    document.getElementById('btnAbrirMultiple').style.display = 'none'
+    document.getElementById('btnAsistenteNuevo').style.display = proveedorActual ? 'inline-block' : 'none'
+    document.getElementById('btnAbrirMultiple').style.display  = proveedorActual ? 'inline-block' : 'none'
     document.querySelectorAll('.chk-servicio:checked').forEach(c => c.checked = false)
     sortServiciosCol = null
     sortServiciosDir = 'asc'
@@ -860,23 +950,28 @@ btnGuardarServicio.addEventListener('click', async () => {
         if (!confirm(`¿Crear servicio nuevo "${servicioId}"?`)) return
         const descSvc = inputServicioDescription.value.trim() || null
         const commSvc = inputServicioComments.value.trim()    || null
+        const diaSvc  = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
+        const horaSvc = inputServicioHora.value || null
+        const imgSvc  = inputServicioImagen.value.trim() || null
         const { error } = await supabase.from('services')
-            .insert({ id: servicioId, description: descSvc, comments: commSvc })
+            .insert({ id: servicioId, day: diaSvc, start_time: horaSvc, image_url: imgSvc, description: descSvc, comments: commSvc })
         if (error) { alert('Error al crear servicio: ' + error.message); return }
-        todosServicios.push({ id: servicioId, description: descSvc, comments: commSvc })
+        todosServicios.push({ id: servicioId, day: diaSvc, start_time: horaSvc, image_url: imgSvc, description: descSvc, comments: commSvc })
     }
 
     const descSvc = inputServicioDescription.value.trim() || null
     const commSvc = inputServicioComments.value.trim()    || null
+    const horaSvc = inputServicioHora.value || null
+    const imgSvc  = inputServicioImagen.value.trim() || null
 
-    // Actualizar description y comments en la tabla services
+    // Actualizar campos del servicio en la tabla services
     const svcId = todaDisponibilidad.find(d => d.id === servicioEditandoId)?.service_id
                   ?? servicioId
     await supabase.from('services')
-        .update({ description: descSvc, comments: commSvc })
+        .update({ description: descSvc, comments: commSvc, start_time: horaSvc, image_url: imgSvc })
         .eq('id', svcId)
     todosServicios = todosServicios.map(s =>
-        s.id === svcId ? { ...s, description: descSvc, comments: commSvc } : s
+        s.id === svcId ? { ...s, description: descSvc, comments: commSvc, start_time: horaSvc, image_url: imgSvc } : s
     )
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
@@ -1096,10 +1191,14 @@ function cargarServicioEnFormulario(dispIds) {
             inputPrecio.disabled = false
             inputCosteTotal.value = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2)
         }
-        // description y comments vienen de la tabla services, cruzada por service_id
+        // description y comentarios (+ campos extras) vienen de la tabla services
         const svc = todosServicios.find(s => s.id === disps[0].service_id)
-        inputServicioDescription.value = svc?.description ?? ''
-        inputServicioComments.value    = svc?.comments    ?? ''
+        inputServicioDescription.value   = svc?.description ?? ''
+        inputServicioComments.value      = svc?.comments    ?? ''
+        inputServicioDia.value           = svc?.day         ? String(svc.day) : ''
+        inputServicioHora.value          = svc?.start_time  ?? ''
+        _setImgPicker(svc?.image_url)
+        document.getElementById('servicio-dia-warning').style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
         actualizarSeccionSfcom(disps[0])
     } else {
@@ -1124,6 +1223,11 @@ function cargarServicioEnFormulario(dispIds) {
                 ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2) : ''
         }
 
+        inputServicioDescription.value   = ''
+        inputServicioComments.value      = ''
+        inputServicioDia.value           = ''
+        inputServicioHora.value          = ''
+        _setImgPicker(null)
         document.getElementById('titulo-bloque-servicio').textContent =
             `✏️ Editando ${disps.length} servicios`
         actualizarSeccionSfcom(null)
@@ -1133,6 +1237,7 @@ function cargarServicioEnFormulario(dispIds) {
     btnGuardarServicio.textContent    = '💾 Guardar cambios'
     btnGuardarServicio.disabled       = false
     btnCancelarServicio.style.display = 'inline-block'
+    document.getElementById('btnAsistenteNuevo').style.display = 'none'
     document.getElementById('btnAbrirMultiple').style.display = 'none'
     document.getElementById('bloque-servicio').scrollIntoView({ behavior: 'smooth' })
 }
@@ -1929,7 +2034,345 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
     limpiarFormularioServicio()
     cargarServiciosProveedor(proveedorId)
     cargarPagosProveedor(proveedorId)
+    document.getElementById('btnAsistenteNuevo').style.display = 'inline-block'
     document.getElementById('btnAbrirMultiple').style.display = 'inline-block'
+})
+
+// ===== ASISTENTE NUEVO SERVICIO =====
+
+// Extrae el día del sufijo de un ID de servicio (ENCIERRO_7 → 7, POBRE_DE_MI → null)
+function _extraerDiaDeId(id) {
+    const m = (id || '').match(/_(6|7|8|9|10|11|12|13|14)$/i)
+    return m ? parseInt(m[1]) : null
+}
+
+let nuevoDlgDias      = new Set()
+let nuevoDlgUnchecked = new Set()  // IDs explícitamente desmarcados por el usuario
+let nuevoDlgUltimoCampoAsig = 'precio'
+
+function _getNuevoBase() {
+    const raw = (document.getElementById('dlgNuevoBase')?.value ?? '').trim()
+    return normalizarId(raw).replace(/_(6|7|8|9|10|11|12|13|14)$/i, '')
+}
+
+function _computeNuevosIds() {
+    const base = _getNuevoBase()
+    if (!base) return []
+    if (nuevoDlgDias.size === 0) return [base]
+    return [...nuevoDlgDias].sort((a, b) => a - b).map(d => `${base}_${d}`)
+}
+
+function _actualizarDiaChips() {
+    const todosActivos = [7, 8, 9, 10, 11, 12, 13, 14].every(d => nuevoDlgDias.has(d))
+    document.querySelectorAll('#dlgNuevoDias .dia-chip').forEach(chip => {
+        const dia = chip.dataset.dia
+        if (dia === 'diario') chip.classList.toggle('active', todosActivos)
+        else                  chip.classList.toggle('active', nuevoDlgDias.has(parseInt(dia)))
+    })
+}
+
+function _actualizarBtnNuevo(nuevoCount) {
+    const btn = document.getElementById('btnNuevoCrear')
+    if (!btn) return
+    btn.disabled    = nuevoCount === 0
+    btn.textContent = nuevoCount <= 0  ? 'Crear servicios'
+        : nuevoCount === 1 ? 'Crear 1 servicio'
+        : `Crear ${nuevoCount} servicios`
+}
+
+function _actualizarNuevoAsignacion() {
+    const allIds      = _computeNuevosIds()
+    const provNombre  = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    const hayNuevos   = allIds.some(id => !todosServicios.find(s => s.id === id))
+    const hayChecked  = allIds.some(id => !todosServicios.find(s => s.id === id) && !nuevoDlgUnchecked.has(id))
+    const mostrar     = hayNuevos && hayChecked && !!provNombre
+    document.getElementById('nuevo-asignacion').style.display = mostrar ? 'block' : 'none'
+}
+
+function renderNuevoPreview() {
+    const preview = document.getElementById('nuevo-preview')
+    if (!preview) return
+
+    const allIds     = _computeNuevosIds()
+    const provNombre = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+
+    // Limpiar unchecked de IDs que ya no están en la lista
+    const allSet = new Set(allIds)
+    for (const id of nuevoDlgUnchecked) {
+        if (!allSet.has(id)) nuevoDlgUnchecked.delete(id)
+    }
+
+    if (allIds.length === 0) {
+        preview.innerHTML = '<p style="font-size:12px;color:var(--subtle)">Introduce un nombre base para ver la vista previa.</p>'
+        _actualizarBtnNuevo(0)
+        _actualizarNuevoAsignacion()
+        return
+    }
+
+    let nuevoCount = 0
+    let html = `<div style="font-size:12px;font-weight:600;color:var(--subtle);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Servicios</div>
+    <div style="display:flex;flex-direction:column;gap:4px">`
+
+    for (const id of allIds) {
+        const existe    = !!todosServicios.find(s => s.id === id)
+        if (!existe) nuevoCount++
+        const isChecked = !existe && !nuevoDlgUnchecked.has(id)
+
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px">
+            ${!existe && provNombre
+                ? `<input type="checkbox" class="chk-nuevo-asig" data-id="${id}" ${isChecked ? 'checked' : ''} style="flex-shrink:0;width:14px;height:14px">`
+                : `<span style="display:inline-block;width:14px;flex-shrink:0"></span>`
+            }
+            <span style="font-family:monospace;font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id}</span>
+            <span style="font-size:11px;color:${!existe ? 'var(--accent-ok)' : 'var(--subtle)'};flex-shrink:0;white-space:nowrap">
+                ${!existe ? 'nuevo' : 'ya existe'}
+            </span>
+        </div>`
+    }
+    html += '</div>'
+    preview.innerHTML = html
+
+    preview.querySelectorAll('.chk-nuevo-asig').forEach(chk => {
+        chk.addEventListener('change', () => {
+            if (chk.checked) nuevoDlgUnchecked.delete(chk.dataset.id)
+            else             nuevoDlgUnchecked.add(chk.dataset.id)
+            _actualizarNuevoAsignacion()
+        })
+    })
+
+    _actualizarBtnNuevo(nuevoCount)
+    _actualizarNuevoAsignacion()
+}
+
+function abrirAsistenteNuevo() {
+    nuevoDlgDias.clear()
+    nuevoDlgUnchecked.clear()
+    nuevoDlgUltimoCampoAsig = 'precio'
+
+    document.getElementById('dlgNuevoBase').value    = ''
+    document.getElementById('dlgNuevoHora').value    = ''
+    document.getElementById('dlgNuevoDesc').value    = ''
+    document.getElementById('dlgNuevoImg').value     = ''
+    _setDlgImgPicker(null)
+    document.getElementById('dlgNuevoPlazas').value  = ''
+    document.getElementById('dlgNuevoPrecio').value  = ''
+    document.getElementById('dlgNuevoPrecio').disabled = false
+    document.getElementById('dlgNuevoCoste').value   = ''
+    document.getElementById('dlgNuevoModelo').value  = 'capacity'
+    document.getElementById('nuevo-asignacion').style.display = 'none'
+
+    _actualizarDiaChips()
+
+    const provNombre = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    document.getElementById('nuevo-asig-prov-label').textContent = provNombre ? `[${provNombre}]` : ''
+
+    renderNuevoPreview()
+    document.getElementById('dlgNuevoServicio').showModal()
+}
+
+// Chips de día
+document.getElementById('dlgNuevoDias').addEventListener('click', e => {
+    const chip = e.target.closest('.dia-chip')
+    if (!chip) return
+    const dia = chip.dataset.dia
+
+    if (dia === 'diario') {
+        const todosActivos = [7, 8, 9, 10, 11, 12, 13, 14].every(d => nuevoDlgDias.has(d))
+        if (todosActivos) [7, 8, 9, 10, 11, 12, 13, 14].forEach(d => nuevoDlgDias.delete(d))
+        else              [7, 8, 9, 10, 11, 12, 13, 14].forEach(d => nuevoDlgDias.add(d))
+    } else {
+        const d = parseInt(dia)
+        if (nuevoDlgDias.has(d)) nuevoDlgDias.delete(d)
+        else                     nuevoDlgDias.add(d)
+    }
+
+    _actualizarDiaChips()
+    nuevoDlgUnchecked.clear()
+    renderNuevoPreview()
+})
+
+// Nombre base — convierte espacio a _ sin .trim() para que se vea mientras se escribe
+document.getElementById('dlgNuevoBase').addEventListener('input', e => {
+    const normalized = e.target.value.toUpperCase().replace(/\s/g, '_')
+    if (e.target.value !== normalized) {
+        const pos = e.target.selectionStart
+        e.target.value = normalized
+        e.target.setSelectionRange(pos, pos)
+    }
+    nuevoDlgUnchecked.clear()
+    renderNuevoPreview()
+})
+
+// Imagen preview del dialog
+function _setDlgImgPicker(url) {
+    const u    = url || ''
+    const prev  = document.getElementById('dlgNuevoImgPreview')
+    const box   = document.getElementById('dlgNuevoImgBox')
+    const empty = document.getElementById('dlgNuevoImgEmpty')
+    prev.src           = u
+    prev.style.display = u ? 'block' : 'none'
+    box.classList.toggle('has-image', !!u)
+    empty.style.display = u ? 'none' : 'flex'
+}
+document.getElementById('dlgNuevoImg').addEventListener('input', () => {
+    _setDlgImgPicker(document.getElementById('dlgNuevoImg').value.trim())
+})
+
+document.getElementById('dlgNuevoImgBox').addEventListener('click', () => {
+    if (!document.getElementById('dlgNuevoImgBox').classList.contains('has-image'))
+        document.getElementById('dlgNuevoImg').focus()
+})
+
+document.getElementById('dlgNuevoImgClear').addEventListener('click', e => {
+    e.stopPropagation()
+    _setDlgImgPicker(null)
+})
+
+// Bidireccionalidad precio/coste en asignación
+document.getElementById('dlgNuevoPlazas').addEventListener('input', () => {
+    const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
+    const r = parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
+    if (document.getElementById('dlgNuevoModelo').value !== 'fixed' && p && r)
+        document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(2)
+})
+
+document.getElementById('dlgNuevoPrecio').addEventListener('input', () => {
+    nuevoDlgUltimoCampoAsig = 'precio'
+    const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
+    const r = parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
+    if (p && r) document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(2)
+})
+
+document.getElementById('dlgNuevoCoste').addEventListener('input', () => {
+    nuevoDlgUltimoCampoAsig = 'coste'
+    const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
+    const c = parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
+    if (document.getElementById('dlgNuevoModelo').value !== 'fixed' && p > 0)
+        document.getElementById('dlgNuevoPrecio').value = (c / p).toFixed(2)
+})
+
+document.getElementById('dlgNuevoModelo').addEventListener('change', () => {
+    const m     = document.getElementById('dlgNuevoModelo').value
+    const inpR  = document.getElementById('dlgNuevoPrecio')
+    if (m === 'fixed') {
+        inpR.value    = ''
+        inpR.disabled = true
+    } else {
+        inpR.disabled = false
+        const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
+        const c = parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
+        if (p > 0 && c) inpR.value = (c / p).toFixed(2)
+    }
+})
+
+// Cerrar dialog
+document.getElementById('btnAsistenteNuevo').addEventListener('click', abrirAsistenteNuevo)
+document.getElementById('dlgNuevoCerrar').addEventListener('click', () => document.getElementById('dlgNuevoServicio').close())
+document.getElementById('btnNuevoCancelar').addEventListener('click', () => document.getElementById('dlgNuevoServicio').close())
+
+// Modal 3 botones: proveedor nuevo
+function _mostrarModalNuevoProveedor(proveedorId) {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-nuevo-proveedor', { narrow: true })
+        let resuelto = false
+        const doResolve = val => { if (!resuelto) { resuelto = true; resolve(val) } overlay.close() }
+        overlay.addEventListener('close', () => { if (!resuelto) resolve('cancel') }, { once: true })
+        panel.innerHTML = `
+            <h3 style="font-size:15px;margin-bottom:10px">Proveedor nuevo</h3>
+            <p style="font-size:13px;color:var(--subtle);margin-bottom:20px">
+                El proveedor <strong>${proveedorId}</strong> aún no está guardado en la BD.<br>
+                ¿Qué quieres hacer?
+            </p>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <button id="btnNPCrearTodo" class="btn btn-primary" style="width:100%">Crear proveedor y servicios</button>
+                <button id="btnNPSoloSvc"   class="btn btn-secondary" style="width:100%">Crear solo los servicios</button>
+                <button id="btnNPCancelar"  class="btn btn-secondary" style="width:100%">Cancelar</button>
+            </div>`
+        panel.querySelector('#btnNPCrearTodo').addEventListener('click', () => doResolve('create-all'))
+        panel.querySelector('#btnNPSoloSvc').addEventListener('click',   () => doResolve('services-only'))
+        panel.querySelector('#btnNPCancelar').addEventListener('click',  () => doResolve('cancel'))
+    })
+}
+
+// Crear servicios
+document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
+    const allIds  = _computeNuevosIds()
+    const nuevos  = allIds.filter(id => !todosServicios.find(s => s.id === id))
+    if (nuevos.length === 0) { mostrarToast('⚠ Todos los servicios ya existen', '#b45309'); return }
+
+    const provNombre  = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    const paraAsignar = nuevos.filter(id => !nuevoDlgUnchecked.has(id) && !!provNombre)
+    const modelo      = document.getElementById('dlgNuevoModelo').value
+    const plazas      = parseInt(document.getElementById('dlgNuevoPlazas').value) || 0
+    const precio      = modelo === 'fixed'
+        ? parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
+        : parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
+
+    const hora = document.getElementById('dlgNuevoHora').value || null
+    const img  = document.getElementById('dlgNuevoImg').value.trim() || null
+    const desc = document.getElementById('dlgNuevoDesc').value.trim() || null
+
+    let crearProveedor = false
+    let soloServicios  = false
+
+    if (paraAsignar.length > 0 && !proveedorActual && provNombre) {
+        const result = await _mostrarModalNuevoProveedor(provNombre)
+        if (result === 'cancel') return
+        if (result === 'services-only') soloServicios  = true
+        if (result === 'create-all')    crearProveedor = true
+    }
+
+    if (crearProveedor && provNombre) {
+        const { error } = await supabase.from('providers').insert({
+            id:       provNombre,
+            name:     inputNombre.value.trim()              || null,
+            address:  inputDireccion.value.trim()           || null,
+            comments: inputProveedorComments.value.trim()   || null
+        })
+        if (error) { alert('Error al crear proveedor: ' + error.message); return }
+        proveedorActual = { id: provNombre, name: inputNombre.value.trim() || null }
+        todosProveedores.push(proveedorActual)
+        proveedorStatus.textContent = '✅ Proveedor creado'
+        proveedorStatus.style.color = 'var(--accent-ok)'
+    }
+
+    // Crear servicios nuevos
+    const errores = []
+    for (const id of nuevos) {
+        const dia = _extraerDiaDeId(id)
+        const { error } = await supabase.from('services')
+            .insert({ id, day: dia, start_time: hora, image_url: img, description: desc, comments: null })
+        if (error) errores.push(`${id}: ${error.message}`)
+        else       todosServicios.push({ id, day: dia, start_time: hora, image_url: img, description: desc, comments: null })
+    }
+    if (errores.length > 0) alert('Errores al crear servicios:\n' + errores.join('\n'))
+
+    const creados = nuevos.filter(id => todosServicios.find(s => s.id === id))
+
+    // Crear entradas de availability para los marcados
+    if (!soloServicios && proveedorActual && creados.length > 0 && paraAsignar.length > 0) {
+        for (const id of paraAsignar.filter(id => creados.includes(id))) {
+            if (todaDisponibilidad.find(d => d.provider_id === proveedorActual.id && d.service_id === id)) continue
+            const { data: nd, error } = await supabase.from('availability').insert({
+                provider_id:    proveedorActual.id,
+                service_id:     id,
+                total_slots:    plazas,
+                price_per_slot: isNaN(precio) ? 0 : precio,
+                billing_model:  modelo
+            }).select().single()
+            if (error) console.error('Error al asignar', id, ':', error.message)
+            else       todaDisponibilidad.push({ ...nd })
+        }
+        await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
+    }
+
+    document.getElementById('dlgNuevoServicio').close()
+    limpiarFormularioServicio()
+    if (proveedorActual) {
+        cargarServiciosProveedor(proveedorActual.id)
+        cargarPagosProveedor(proveedorActual.id)
+    }
+    mostrarToast(`✅ ${creados.length} servicio${creados.length !== 1 ? 's' : ''} creado${creados.length !== 1 ? 's' : ''}`)
 })
 
 // Precarga de proveedor desde parámetro URL (ej: panel.html → proveedores.html?proveedor=BALCON_1)

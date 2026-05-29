@@ -112,15 +112,49 @@
                         <label>Coste calculado</label>
                         <input type="text" id="inputCosteServicio" disabled placeholder="—">
                     </div>
+                    <div class="form-field">
+                        <label>Día</label>
+                        <select id="selectServicioDia">
+                            <option value="">— Sin día —</option>
+                            <option value="6">6 julio</option>
+                            <option value="7">7 julio</option>
+                            <option value="8">8 julio</option>
+                            <option value="9">9 julio</option>
+                            <option value="10">10 julio</option>
+                            <option value="11">11 julio</option>
+                            <option value="12">12 julio</option>
+                            <option value="13">13 julio</option>
+                            <option value="14">14 julio</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Hora inicio</label>
+                        <input type="time" id="inputServicioHora">
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label>Descripción</label>
-                    <textarea id="inputServicioDescription" rows="2" placeholder="Descripción del servicio" style="width:100%;resize:vertical"></textarea>
+                <div class="servicio-desc-img-wrap">
+                    <div class="servicio-desc-col">
+                        <div class="form-field">
+                            <label>Descripción</label>
+                            <textarea id="inputServicioDescription" rows="2" placeholder="Descripción del servicio" style="width:100%;resize:vertical"></textarea>
+                        </div>
+                        <div class="form-field">
+                            <label>Comentarios</label>
+                            <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="width:100%;resize:vertical"></textarea>
+                        </div>
+                    </div>
+                    <div class="servicio-img-col">
+                        <label style="font-size:12px;color:var(--subtle);display:block;margin-bottom:4px">Imagen</label>
+                        <div class="img-picker" id="imgPickerServicio">
+                            <img id="imgPreviewServicio" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover">
+                            <div class="img-picker-empty" id="imgPickerEmpty">
+                                <input type="text" id="inputServicioImagen" class="img-picker-url-input" placeholder="URL de imagen">
+                            </div>
+                            <button type="button" class="img-picker-clear" id="imgPickerClear">✕</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label>Comentarios</label>
-                    <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="width:100%;resize:vertical"></textarea>
-                </div>
+                <div id="servicio-dia-warning" style="font-size:11px;color:var(--accent-warn);margin-top:4px;display:none"></div>
                 <div id="servicio-desc-status" style="grid-column: 1 / -1; font-size:12px; margin-top:-4px"></div>
                 <div id="servicio-status" style="grid-column: 1 / -1; margin-top:8px; font-size:12px;"></div>
 
@@ -178,6 +212,7 @@
                 <div class="btn-row">
                     <button class="btn btn-primary" id="btnGuardarServicio" disabled>Añadir servicio</button>
                     <button class="btn btn-secondary" id="btnCancelarServicio" style="display:none">✕ Cancelar</button>
+                    <button class="btn btn-secondary" id="btnAsistenteNuevo" style="display:none">✨ Asistente nuevo</button>
                     <button class="btn btn-secondary" id="btnAbrirMultiple" style="display:none">📋 Asistente múltiple</button>
                 </div>
             </div>
@@ -245,6 +280,103 @@
 
         </main>
     </div>
+
+    <!-- DIÁLOGO NUEVO SERVICIO -->
+    <dialog id="dlgNuevoServicio">
+        <div style="display:flex;flex-direction:column;height:100%;max-height:90vh">
+            <div style="padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+                <h2 style="font-size:16px;margin:0">✨ Nuevo servicio</h2>
+                <button type="button" id="dlgNuevoCerrar" class="btn btn-secondary" style="padding:4px 10px">✕</button>
+            </div>
+            <div style="flex:1;overflow:auto;padding:16px 24px">
+
+                <div class="form-field" style="margin-bottom:14px">
+                    <label>Servicio</label>
+                    <input type="text" id="dlgNuevoBase" placeholder="ID_SERVICIO"
+                           style="text-transform:uppercase;font-family:monospace;letter-spacing:.04em" autocomplete="off">
+                    <div style="font-size:11px;color:var(--subtle);margin-top:3px">
+                        Si seleccionas días, se crea un servicio por día: NOMBRE_7, NOMBRE_8…
+                    </div>
+                </div>
+
+                <div class="form-field" style="margin-bottom:14px">
+                    <label>Días de julio</label>
+                    <div id="dlgNuevoDias" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+                        <button type="button" class="dia-chip" data-dia="diario" style="font-weight:600">Diario 7–14</button>
+                        <button type="button" class="dia-chip" data-dia="6">6</button>
+                        <button type="button" class="dia-chip" data-dia="7">7</button>
+                        <button type="button" class="dia-chip" data-dia="8">8</button>
+                        <button type="button" class="dia-chip" data-dia="9">9</button>
+                        <button type="button" class="dia-chip" data-dia="10">10</button>
+                        <button type="button" class="dia-chip" data-dia="11">11</button>
+                        <button type="button" class="dia-chip" data-dia="12">12</button>
+                        <button type="button" class="dia-chip" data-dia="13">13</button>
+                        <button type="button" class="dia-chip" data-dia="14">14</button>
+                    </div>
+                </div>
+
+                <div class="form-grid" style="margin-bottom:12px">
+                    <div class="form-field">
+                        <label>Hora inicio</label>
+                        <input type="time" id="dlgNuevoHora">
+                    </div>
+                </div>
+
+                <div class="form-field" style="margin-bottom:12px">
+                    <label>Descripción</label>
+                    <textarea id="dlgNuevoDesc" rows="2" placeholder="Descripción del servicio" style="width:100%;resize:vertical"></textarea>
+                </div>
+
+                <div class="form-field" style="margin-bottom:14px">
+                    <label>Imagen</label>
+                    <div class="img-picker img-picker--dialog" id="dlgNuevoImgBox" style="margin-top:4px">
+                        <img id="dlgNuevoImgPreview" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover">
+                        <div class="img-picker-empty" id="dlgNuevoImgEmpty">
+                            <input type="text" id="dlgNuevoImg" class="img-picker-url-input" placeholder="URL de imagen">
+                        </div>
+                        <button type="button" class="img-picker-clear" id="dlgNuevoImgClear">✕</button>
+                    </div>
+                </div>
+
+                <!-- Preview dinámico: lista de servicios a crear con checkboxes de asignación -->
+                <div id="nuevo-preview"></div>
+
+                <!-- Campos de asignación al proveedor (show/hide) -->
+                <div id="nuevo-asignacion" style="display:none;margin-top:16px;padding:14px;background:var(--white);border-radius:6px;border:1px solid var(--border)">
+                    <div style="font-size:12px;font-weight:600;color:var(--subtle);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">
+                        Asignar a <span id="nuevo-asig-prov-label" style="color:var(--text)"></span>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label>Plazas</label>
+                            <input type="number" id="dlgNuevoPlazas" step="1" min="0" placeholder="Nº plazas">
+                        </div>
+                        <div class="form-field">
+                            <label>Precio/plaza (€)</label>
+                            <input type="number" id="dlgNuevoPrecio" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label>Coste total (€)</label>
+                            <input type="number" id="dlgNuevoCoste" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label>Modelo de pago</label>
+                            <select id="dlgNuevoModelo">
+                                <option value="capacity">Capacidad (pago total)</option>
+                                <option value="consumption">Consumo (pago por uso)</option>
+                                <option value="fixed">Cuota Fija Consumo</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div style="padding:12px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0">
+                <button type="button" id="btnNuevoCrear" class="btn btn-primary" disabled>Crear servicios</button>
+                <button type="button" id="btnNuevoCancelar" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </dialog>
 
     <!-- DIÁLOGO ASISTENTE MÚLTIPLE -->
     <dialog id="dlgMultiple">
