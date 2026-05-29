@@ -266,7 +266,7 @@ Hay dos clientes Supabase:
 | service_id | text FK→services | |
 | total_slots | integer NOT NULL | |
 | price_per_slot | decimal | Coste que se paga al proveedor por plaza |
-| billing_model | text NOT NULL | `'capacity'` o `'consumption'`; default `'capacity'` |
+| billing_model | text NOT NULL | `'capacity'`, `'consumption'` o `'fixed'`; default `'capacity'` |
 | comments | text | |
 
 **`sfcom_listings`** — Configuración de publicación en sfcom por par proveedor/servicio
@@ -463,7 +463,7 @@ Exporta:
 - `renderThead(thead, columnas, sortCol, sortDir, onClick)` — reconstruye el `<thead>` con flechas de orden activo; registra `click` en cada `<th>`.
 - `initAutoSave(supabase, campos, camposDB, tabla, getEntity, { onSaved, onError })` — registra `change` en cada input del array `campos`; hace `supabase.update({ [camposDB[i]]: value || null })` sobre `tabla` usando `entity.id`, actualiza el campo en el objeto local, llama a `onSaved()` en éxito u `onError(err)` en fallo (por defecto `console.error`). Solo actúa si `getEntity()` devuelve un objeto truthy. Pensado para inputs de texto; selects y checkboxes requieren listeners propios.
 - `persistirCobrosCliente(supabase, clienteId, todasReservas)` — recalcula y persiste el cobro final en `charges`. Si el hito ya tiene `invoice_number`, no lo sobreescribe; crea un hito de ajuste y alerta al usuario.
-- `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` — recalcula y persiste el pago final en `payments`. Distingue modelo `capacity` (paga por plazas totales) y `consumption` (paga por plazas realmente reservadas).
+- `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` — recalcula y persiste el pago final en `payments`. Distingue modelo `capacity` (paga por plazas totales), `consumption` (paga por plazas realmente reservadas) y `fixed` (paga `price_per_slot` si hay al menos una reserva activa, 0 si no).
 
 ### 7.3 factura.js — Módulo de facturación
 
@@ -512,7 +512,7 @@ Bloques:
 Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js`. Gestiona:
 - CRUD de proveedores con autocomplete (igual que clientes en formulario.js)
 - Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability` y `sfcom_listings`. Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
-- Hitos de pago al proveedor: gestión de `payments` con modelo `capacity`/`consumption`
+- Hitos de pago al proveedor: gestión de `payments` con modelo `capacity`/`consumption`/`fixed`
 - Guardado automático por campo para proveedores existentes
 
 **Patrón de acceso a datos sfcom:** La carga inicial de `todaDisponibilidad` usa `from('availability_with_sfcom').select('*')` para tener los campos sfcom disponibles en memoria. Todos los writes de campos sfcom (solicitar alta, confirmar, cancelar, dar de baja, confirmar baja, editar nombre) van a `sfcom_listings` con `upsert` o `delete`, nunca a `availability`.
@@ -872,6 +872,8 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 
 **`consumption`:** El proveedor solo cobra por plazas efectivamente reservadas. El pago final = `(suma de slots en reservas no canceladas) × price_per_slot`. Este importe se recalcula automáticamente en `payments` cada vez que cambia una reserva del proveedor.
 
+**`fixed`:** El proveedor cobra una cuota fija (guides, ponentes, etc.) independientemente del número de plazas. El campo `price_per_slot` almacena el importe fijo total del servicio. El pago final = `price_per_slot` si hay al menos una reserva activa, 0 si no. En la UI de `proveedores.js`, al seleccionar este modelo `inputPrecio` se deshabilita y borra; el admin introduce el importe fijo directamente en `inputCosteTotal`. En `formulario.js`, `validarPrecio` compara el ingreso acumulado (reservas existentes + la nueva) contra el coste fijo en lugar de hacer comparación por plaza.
+
 ---
 
 ## 12. Deudas técnicas pendientes
@@ -1029,6 +1031,33 @@ Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no 
 - La lógica de `registrarPedidosSfcom` (sistema de dos capas: nombre como contrato, IDs como verificación) tendría que replicarse en la Edge Function, que está en Deno/TypeScript, no en el JS del panel.
 - El campo `sfcom-orders-warned` de `sessionStorage` (aviso de un solo modal por sesión) pierde sentido si la detección es automática; `checkSfcomOrders` en `formulario.js` podría simplificarse o eliminarse.
 - Mientras la Edge Function cron no esté activa, `checkSfcomOrders` en `formulario.js` sigue siendo la red de seguridad y no debe eliminarse.
+
+### 12.38 Modales sfcom bloqueados en mobile — **Resuelto**
+**Situación:** Los overlays de `position: fixed; inset: 0` quedaban atrapados por contextos de apilamiento CSS (transforms, overflow, etc.) en mobile, haciendo que los modales apareciesen al pie de la página sin bloquear la UI.
+
+**Solución:** `modal.js` migrado a `<dialog>` nativo con `showModal()`. El elemento `<dialog>` se coloca en el "top layer" del navegador, por encima de cualquier contexto CSS. `dialog::backdrop` reemplaza el overlay manual. El handler `close` elimina el dialog del DOM (incluyendo cierre por tecla ESC). Todos los modales del admin pasan por `crearModal`; no queda construcción manual de overlay.
+
+### 12.39 Race condition entre `checkSfcomOrders` y `ejecutarVerificacion` — **Resuelto**
+**Situación:** Al cargar `formulario.html`, ambas funciones corrían en paralelo. `verificarCoherencia` lee `reservation_requests` para detectar solicitudes pendientes que explican discrepancias de stock (`pendingExplains`), pero si `checkSfcomOrders` aún no había insertado las filas nuevas, las discrepancias legítimas aparecían como errores.
+
+**Solución:** La verificación se encadena via `.finally()` al final de `checkSfcomOrders`. Así, `ejecutarVerificacion(false)` siempre ve el estado completo de `reservation_requests`.
+
+### 12.40 Modal consultivo sfcom — tres opciones en lugar de dos — **Resuelto**
+**Situación:** El modal que aparece antes de guardar una reserva para confirmar el PUT de stock a sfcom solo tenía "Confirmar" y "Cancelar". "Cancelar" abortaba tanto el PUT como el guardado en Supabase, cuando el admin puede querer guardar la reserva pero saltarse el PUT (por ejemplo si sfcom no está disponible temporalmente).
+
+**Solución:** `mostrarModalConfirmacionSfcom` ahora tiene tres botones: "Guardar y actualizar sfcom" (resuelve `'sync'`), "Solo guardar" (resuelve `'save'`), "Cancelar todo" (resuelve `'cancel'`). `confirmarStockSfcom` devuelve ese string en lugar de un booleano. Los 9 callers en `formulario.js` y `proveedores.js` siguen el patrón `if (result === 'cancel') return` para abortar, `if (result === 'sync') await syncStockToSfcom(...)` para el PUT.
+
+### 12.41 Modelo `billing_model = 'fixed'` — **Resuelto**
+**Situación:** Los proveedores de cuota fija (guías, ponentes) cobran un importe total independiente del número de asistentes. Los modelos `capacity` y `consumption` no cubrían este caso.
+
+**Solución:** Añadido `'fixed'` como tercer valor de `billing_model` en `availability`. El campo `price_per_slot` almacena el importe fijo total. Implementado en: `utils.js` (`persistirPagosProveedor`), `proveedores.js` (UI completa: listeners, `actualizarCosteServicio`, `renderTablaServicios`, `calcularCosteTotalProveedor`, save logic, dlgMultiple), `formulario.js` (`validarPrecio` compara ingreso acumulado vs coste fijo), `panel.js` (etiqueta en detalle de proveedor), `tablas.js` (formatter). No requirió cambios en la BD.
+
+### 12.42 Mejoras UX en gestión de servicios — **Pendiente (aplazado)**
+**Situación:** El alta de múltiples servicios similares (p.ej. ENCIERRO_7 a ENCIERRO_14) requiere crearlos uno a uno. El asistente múltiple ayuda pero no tiene creación masiva por rango.
+
+**Propuestas aplazadas:**
+- Creación masiva de servicios por rango de días (ENCIERRO_7..14 en un solo paso).
+- Filtrado de servicios sin disponibilidad (o con `billing_model = 'fixed'` pero sin reservas) en los selectores y tablas del panel.
 
 ---
 
@@ -1271,6 +1300,10 @@ El admin tenía duplicación significativa: cada módulo construía sus propios 
 **`verificacion.js`** — `mostrarToast` devuelve ahora el elemento DOM para que el caller pueda eliminarlo antes del timeout automático (necesario para el toast de "verificando" que debe desaparecer en cuanto termina la operación, no tras 3.5s).
 
 **`sfcom-panel.js`** — toast inline de verificación reemplazado por `mostrarToast`.
+
+**`modal.js`** — reescrito de overlay `<div>` a elemento `<dialog>` nativo con `showModal()`. Resuelve el problema de modales bloqueados en mobile (contextos de apilamiento CSS). `dialog::backdrop` reemplaza el overlay manual. El admin CSS actualizado con `.modal-dialog-overlay` y `::backdrop`.
+
+**`sfcom.js` — `confirmarStockSfcom`** — ahora devuelve `'sync' | 'save' | 'cancel'` (string) en lugar de `true/false`. `mostrarModalConfirmacionSfcom` tiene tres botones. Los 9 callers en `formulario.js` y `proveedores.js` usan el patrón `if (result === 'cancel') return` / `if (result === 'sync') await syncStockToSfcom(...)`. La secuencia de carga de `formulario.html` encadena `ejecutarVerificacion` vía `.finally()` tras `checkSfcomOrders` para evitar race condition en `pendingExplains`.
 
 ### Lo que queda pendiente
 
