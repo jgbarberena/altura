@@ -1024,19 +1024,8 @@ Sin mecanismo para anular facturas, borrar clientes/proveedores con cascada. Se 
 ### 12.36 Colorear clientes por estado en tablas de proveedor/panel — **Pendiente**
 Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no llevan coloración de estado (Confirmada/Pendiente), a diferencia de las cajitas del mapa de disponibilidad de `formulario.js`.
 
-### 12.37 Detección automática de pedidos sfcom vía Edge Function cron — **Pendiente diseño**
-**Situación actual:** `checkSfcomOrders` se llama al cargar `formulario.html`. Si el admin no abre el panel, los pedidos nuevos de sfcom no se detectan hasta que lo haga. La notificación al admin (trigger `notificar-solicitud` en `reservation_requests`) tampoco se dispara hasta ese momento.
-
-**Propuesta:** Mover el polling de pedidos sfcom a una Supabase Edge Function con ejecución programada (cron). La función correría cada N minutos de forma autónoma: llamaría a `GET orders?status=completed&after=<última_ejecución>` de `sf-api-paula.php`, y por cada pedido nuevo insertaría la fila correspondiente en `reservation_requests`. El trigger existente se encargaría de la notificación al admin automáticamente, sin necesidad de que nadie tenga el panel abierto.
-
-**Ventajas:** Detección en tiempo real independiente de si el admin tiene el panel abierto. Reduce la carga al cargar `formulario.html` (ya no hace el GET de orders en el arranque). El trigger de notificación funciona en cuanto llega el pedido.
-
-**Consideraciones antes de implementar:**
-- El acceso a `sf-api-paula.php` desde Supabase ya está resuelto — `sfcom-bridge` llama server-to-server con la clave en un secreto de Supabase. La función cron puede reutilizar el mismo patrón o llamar directamente a sf-api-paula.php (sin CORS al ser server-to-server).
-- Hilario tendría que confirmar que no hay problema con llamadas periódicas desde un servidor fijo (IP estática de Supabase) en lugar del navegador del admin.
-- La lógica de `registrarPedidosSfcom` (sistema de dos capas: nombre como contrato, IDs como verificación) tendría que replicarse en la Edge Function, que está en Deno/TypeScript, no en el JS del panel.
-- El campo `sfcom-orders-warned` de `sessionStorage` (aviso de un solo modal por sesión) pierde sentido si la detección es automática; `checkSfcomOrders` en `formulario.js` podría simplificarse o eliminarse.
-- Mientras la Edge Function cron no esté activa, `checkSfcomOrders` en `formulario.js` sigue siendo la red de seguridad y no debe eliminarse.
+### 12.37 Detección automática de pedidos sfcom vía Edge Function cron — **Descartado**
+**Decisión:** No se implementa. La detección al cargar `formulario.html` es suficiente para el volumen actual. El coste de replicar la lógica de `registrarPedidosSfcom` en Deno/TypeScript y coordinar con Hilario supera el beneficio. `checkSfcomOrders` en `formulario.js` permanece como único punto de detección.
 
 ### 12.38 Modales sfcom bloqueados en mobile — **Resuelto**
 **Situación:** Los overlays de `position: fixed; inset: 0` quedaban atrapados por contextos de apilamiento CSS (transforms, overflow, etc.) en mobile, haciendo que los modales apareciesen al pie de la página sin bloquear la UI.
@@ -1063,19 +1052,10 @@ Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no 
 
 Además, el Bloque 2 (formulario individual de servicio) se extendió con los campos `day`, `start_time` e `image_url`, y se añadió el widget de imagen (`.img-picker`) — ver sección 7.6.
 
-**Pendiente (segunda propuesta, aplazada):**
-- Filtrado de servicios sin disponibilidad (o con `billing_model = 'fixed'` pero sin reservas) en los selectores y tablas del panel.
+**Segunda propuesta descartada:** filtrado de servicios sin disponibilidad en selectores y tablas — no se implementa.
 
-### 12.43 Limpieza pendiente en BD — `event_type` e `image_url`
-**`event_type`:** La columna `event_type` de la tabla `services` no se usa en ningún módulo JS del panel ni del frontend público. Pendiente eliminarla de Supabase: **SQL Editor → `ALTER TABLE services DROP COLUMN event_type;`**
-
-**`image_url` — migración a URLs absolutas:** Los registros existentes en `services.image_url` pueden tener rutas relativas (`img/cards/...`). `propuesta.js` ya maneja ambas (prepende la base si no empieza por `http`), pero el widget del panel necesita URLs absolutas para mostrar la imagen correctamente desde `/admin/`. Migrar con:
-```sql
-UPDATE services
-SET image_url = 'https://www.experienciasanfermin.com/' || image_url
-WHERE image_url IS NOT NULL AND image_url NOT LIKE 'http%';
-```
-Verificar después con `SELECT id, image_url FROM services WHERE image_url IS NOT NULL;`
+### 12.43 Limpieza en BD — `event_type` e `image_url` — **Resuelto**
+`event_type` eliminada de `services` con `ALTER TABLE services DROP COLUMN event_type;`. URLs de `image_url` migradas a absolutas con `UPDATE services SET image_url = 'https://www.experienciasanfermin.com/' || image_url WHERE image_url IS NOT NULL AND image_url NOT LIKE 'http%'`. Desde mayo 2026, `image_url` almacena siempre URLs absolutas.
 
 ---
 
