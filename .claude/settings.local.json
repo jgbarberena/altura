@@ -62,7 +62,8 @@
       "Bash(powershell.exe -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"admin: favicon, panel clicable, persistir pagos, btn guardando, cambio servicio, factura empresa\")",
       "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: stock-all endpoint, 1 GET para todo el stock sin limite de uso\" -SkipScripts)",
       "Bash(dir \"d:\\\\Projects\\\\Web\\\\Altura\\\\supabase\" /s)",
-      "Bash(mkdir -p \"d:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge\")"
+      "Bash(mkdir -p \"d:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"d:\\\\Projects\\\\Web\\\\Altura\\\\deploy.ps1\" -Message \"sfcom: Edge Function bridge como proxy transparente; resuelve CORS y PUT de stock\" -SkipScripts)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"
