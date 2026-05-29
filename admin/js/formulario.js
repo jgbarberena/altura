@@ -371,6 +371,31 @@ function validarPrecio() {
     const disp = disponibilidad.find(d => d.service_id === servicioId && d.provider_id === proveedorId)
     if (!disp) return
 
+    if (disp.billing_model === 'fixed') {
+        const fixedCost = parseFloat(disp.price_per_slot) || 0
+        const plazas    = parseInt(inputPlazas.value) || 0
+        const ingresoExistente = todasReservas
+            .filter(r => r.provider_id === proveedorId &&
+                         r.service_id  === servicioId  &&
+                         r.status      !== 'Cancelada' &&
+                         (reservaEditandoId ? r.id !== reservaEditandoId : true))
+            .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+        const ingresoTotal = ingresoExistente + plazas * precio
+        if (fixedCost === 0) {
+            inputPrecio.className    = precio > 0 ? 'ok' : ''
+            precioStatus.textContent = precio > 0 ? '✅ Precio libre (coste fijo 0)' : ''
+        } else if (ingresoTotal < fixedCost) {
+            inputPrecio.className    = 'error'
+            precioStatus.style.color = 'var(--accent)'
+            precioStatus.textContent = `❌ Ingresos (${fmt(ingresoTotal)}) < coste fijo (${fmt(fixedCost)})`
+        } else {
+            inputPrecio.className    = 'ok'
+            precioStatus.style.color = 'var(--accent-ok)'
+            precioStatus.textContent = `✅ Cubre coste fijo — ingreso acumulado: ${fmt(ingresoTotal)}`
+        }
+        return
+    }
+
     const coste = parseFloat(disp.price_per_slot) || 0
     if (coste === 0) {
         inputPrecio.className    = precio > 0 ? 'ok' : ''

@@ -86,8 +86,8 @@ const TABLAS = {
             { label: 'Plazas',      campo: 'total_slots' },
             { label: '€/plaza',     campo: 'price_per_slot', fmt: v => fmt(v) },
             { label: 'Modelo',      campo: 'billing_model',
-                fmt: v => v === 'consumption' ? 'Consumo' : 'Capacidad',
-                clase: v => v === 'consumption' ? 'modelo-consumption' : 'modelo-capacity' },
+                fmt: v => v === 'fixed' ? 'Cuota fija' : v === 'consumption' ? 'Consumo' : 'Capacidad',
+                clase: v => v === 'fixed' ? 'modelo-fixed' : v === 'consumption' ? 'modelo-consumption' : 'modelo-capacity' },
             { label: 'Comentarios', campo: 'comments' },
         ]
     },

@@ -160,6 +160,13 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
     const costTotal = dispProv.reduce((total, d) => {
         if (d.billing_model === 'capacity') {
             return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneReserva = todasReservas.some(r =>
+                r.provider_id === proveedorId &&
+                r.service_id  === d.service_id &&
+                r.status      !== 'Cancelada'
+            )
+            return total + (tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0)
         } else {
             const plazasRes = todasReservas
                 .filter(r => r.provider_id === proveedorId &&

@@ -400,7 +400,7 @@ function filaProveedor(f, destacada) {
 function filaDetalleServicio(d) {
     return `<tr style="background:#fafafa">
         <td style="padding-left:24px;color:var(--subtle)">
-            ↳ ${d.id}${d.esConsumption ? ' <span style="font-size:10px;color:var(--accent-warn)">(consumo)</span>' : ''}
+            ↳ ${d.id}${d.esConsumption ? ' <span style="font-size:10px;color:var(--accent-warn)">(consumo)</span>' : ''}${d.esFixed ? ' <span style="font-size:10px;color:var(--subtle)">(cuota fija)</span>' : ''}
         </td>
         <td>${d.total}</td>
         <td class="ok">${d.confirmadas}</td>
@@ -455,8 +455,9 @@ function calcularProveedores() {
             const pctS  = d.total_slots > 0 ? Math.round((confS + pendS) / d.total_slots * 100) : 0
             const colS  = pctS >= 90 ? 'var(--accent)' : pctS >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
             const esConsumption = d.billing_model === 'consumption'
+            const esFixed       = d.billing_model === 'fixed'
             const clientesS = [...new Set(resS.map(r => r.client_id))].join(', ')
-            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, clientes: clientesS }
+            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS }
         })
 
         const clientesProv = [...new Set(reservasP.map(r => r.client_id))].join(', ')

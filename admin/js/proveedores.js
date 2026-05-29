@@ -486,37 +486,51 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
 
 inputPrecio.addEventListener('input', () => {
     ultimoCampoActivo = 'precio'
-    const plazas = parseInt(inputPlazas.value) || 0
-    const precio  = parseFloat(inputPrecio.value) || 0
-    if (plazas > 0 && precio >= 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
+    if (selectModelo.value !== 'fixed') {
+        const plazas = parseInt(inputPlazas.value) || 0
+        const precio  = parseFloat(inputPrecio.value) || 0
+        if (plazas > 0 && precio >= 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
+    }
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
 
 inputCosteTotal.addEventListener('input', () => {
     ultimoCampoActivo = 'total'
-    const plazas = parseInt(inputPlazas.value) || 0
-    const total  = parseFloat(inputCosteTotal.value) || 0
-    if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
+    if (selectModelo.value !== 'fixed') {
+        const plazas = parseInt(inputPlazas.value) || 0
+        const total  = parseFloat(inputCosteTotal.value) || 0
+        if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
+    }
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
 
 inputPlazas.addEventListener('input', () => {
     const plazas = parseInt(inputPlazas.value) || 0
-    if (ultimoCampoActivo === 'precio') {
-        const precio = parseFloat(inputPrecio.value) || 0
-        if (plazas > 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
-    } else {
-        const total = parseFloat(inputCosteTotal.value) || 0
-        if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
-        else inputPrecio.value = ''
+    if (selectModelo.value !== 'fixed') {
+        if (ultimoCampoActivo === 'precio') {
+            const precio = parseFloat(inputPrecio.value) || 0
+            if (plazas > 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
+        } else {
+            const total = parseFloat(inputCosteTotal.value) || 0
+            if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
+            else inputPrecio.value = ''
+        }
     }
     actualizarBtnServicio()
     actualizarCosteServicio()
 })
 
-selectModelo.addEventListener('change', actualizarCosteServicio)
+selectModelo.addEventListener('change', () => {
+    if (selectModelo.value === 'fixed') {
+        inputPrecio.disabled = true
+        inputPrecio.value    = ''
+    } else {
+        inputPrecio.disabled = false
+    }
+    actualizarCosteServicio()
+})
 
 function actualizarCosteServicio() {
     const plazas = parseInt(inputPlazas.value) || 0
@@ -528,6 +542,17 @@ function actualizarCosteServicio() {
     if (modelo === 'capacity') {
         coste = plazas * precio
         document.getElementById('inputCosteServicio').value = fmt(coste)
+    } else if (modelo === 'fixed') {
+        const costoFijo = parseFloat(inputCosteTotal.value) || 0
+        if (proveedorActual && servId) {
+            const tieneReserva = todasReservas.some(r =>
+                r.provider_id === proveedorActual.id &&
+                r.service_id  === servId &&
+                r.status      !== 'Cancelada'
+            )
+            coste = tieneReserva ? costoFijo : 0
+        }
+        document.getElementById('inputCosteServicio').value = fmt(coste) + ' (cuota fija)'
     } else {
         if (proveedorActual && servId) {
             const plazasRes = todasReservas
@@ -721,6 +746,7 @@ function limpiarFormularioServicio() {
     inputServicioId.disabled = false
     inputPlazas.value        = ''
     inputPrecio.value        = ''
+    inputPrecio.disabled     = false
     inputCosteTotal.value    = ''
     selectModelo.value                  = 'capacity'
     inputServicioDescription.value      = ''
@@ -743,8 +769,10 @@ function limpiarFormularioServicio() {
 btnGuardarServicio.addEventListener('click', async () => {
     const proveedorId = inputProveedorId.value.trim().toUpperCase()
     const plazas      = parseInt(inputPlazas.value)
-    const precio      = parseFloat(inputPrecio.value)
     const modelo      = selectModelo.value
+    const precio      = modelo === 'fixed'
+        ? parseFloat(inputCosteTotal.value)
+        : parseFloat(inputPrecio.value)
 
     if (plazas < 0) { alert('El número de plazas no puede ser negativo.'); return }
     if (plazas === 0) { if (!confirm('¿Quieres añadir un servicio con 0 plazas disponibles?')) return }
@@ -779,8 +807,12 @@ btnGuardarServicio.addEventListener('click', async () => {
             const dispActual = todaDisponibilidad.find(d => d.id === dispId)
             if (!dispActual) continue
             const updateData = {}
-            if (inputPlazas.value !== '' && !isNaN(plazas)) updateData.total_slots    = plazas
-            if (inputPrecio.value !== '' && !isNaN(precio)) updateData.price_per_slot = precio
+            if (inputPlazas.value !== '' && !isNaN(plazas)) updateData.total_slots = plazas
+            if (modelo === 'fixed') {
+                if (inputCosteTotal.value !== '' && !isNaN(precio)) updateData.price_per_slot = precio
+            } else {
+                if (inputPrecio.value !== '' && !isNaN(precio)) updateData.price_per_slot = precio
+            }
             updateData.billing_model = modelo
 
             const { error } = await supabase.from('availability')
@@ -960,6 +992,13 @@ function renderTablaServicios(proveedorId) {
         let coste = 0
         if (d.billing_model === 'capacity') {
             coste = (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneReserva = todasReservas.some(r =>
+                r.provider_id === proveedorId &&
+                r.service_id  === d.service_id &&
+                r.status      !== 'Cancelada'
+            )
+            coste = tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0
         } else {
             const plazasRes = todasReservas
                 .filter(r => r.provider_id === proveedorId &&
@@ -1007,6 +1046,8 @@ function renderTablaServicios(proveedorId) {
             <td>${fmt(d.price_per_slot)}</td>
             <td>${d.billing_model === 'consumption'
                 ? '<span style="color:var(--accent-warn)">Consumo</span>'
+                : d.billing_model === 'fixed'
+                ? '<span style="color:var(--subtle)">Cuota fija</span>'
                 : 'Capacidad'}</td>
             <td>${fmt(d._coste)}</td>
             <td>${d._reservadas > 0 ? d._reservadas : '—'}</td>
@@ -1045,9 +1086,16 @@ function cargarServicioEnFormulario(dispIds) {
         inputServicioId.value    = disps[0].service_id
         inputServicioId.disabled = false
         inputPlazas.value        = disps[0].total_slots
-        inputPrecio.value        = disps[0].price_per_slot
-        inputCosteTotal.value    = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2)
-        selectModelo.value             = disps[0].billing_model
+        selectModelo.value       = disps[0].billing_model
+        if (disps[0].billing_model === 'fixed') {
+            inputPrecio.value    = ''
+            inputPrecio.disabled = true
+            inputCosteTotal.value = parseFloat(disps[0].price_per_slot || 0).toFixed(2)
+        } else {
+            inputPrecio.value    = disps[0].price_per_slot
+            inputPrecio.disabled = false
+            inputCosteTotal.value = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2)
+        }
         // description y comments vienen de la tabla services, cruzada por service_id
         const svc = todosServicios.find(s => s.id === disps[0].service_id)
         inputServicioDescription.value = svc?.description ?? ''
@@ -1064,10 +1112,17 @@ function cargarServicioEnFormulario(dispIds) {
         const modeloIgual   = disps.every(d => d.billing_model  === disps[0].billing_model)
 
         inputPlazas.value     = plazasIguales ? disps[0].total_slots    : ''
-        inputPrecio.value     = precioIgual   ? disps[0].price_per_slot : ''
-        inputCosteTotal.value = (plazasIguales && precioIgual)
-            ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2) : ''
         selectModelo.value    = modeloIgual   ? disps[0].billing_model  : 'capacity'
+        if (modeloIgual && disps[0].billing_model === 'fixed') {
+            inputPrecio.value     = ''
+            inputPrecio.disabled  = true
+            inputCosteTotal.value = precioIgual ? parseFloat(disps[0].price_per_slot || 0).toFixed(2) : ''
+        } else {
+            inputPrecio.value     = precioIgual   ? disps[0].price_per_slot : ''
+            inputPrecio.disabled  = false
+            inputCosteTotal.value = (plazasIguales && precioIgual)
+                ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2) : ''
+        }
 
         document.getElementById('titulo-bloque-servicio').textContent =
             `✏️ Editando ${disps.length} servicios`
@@ -1176,6 +1231,13 @@ function calcularCosteTotalProveedor(proveedorId) {
     return dispProv.reduce((total, d) => {
         if (d.billing_model === 'capacity') {
             return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneReserva = todasReservas.some(r =>
+                r.provider_id === proveedorId &&
+                r.service_id  === d.service_id &&
+                r.status      !== 'Cancelada'
+            )
+            return total + (tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0)
         } else {
             const plazasRes = todasReservas
                 .filter(r => r.provider_id === proveedorId &&
@@ -1518,6 +1580,7 @@ function renderMultiple() {
                 <td><select class="m-modelo" data-idx="${i}" disabled>
                     <option value="capacity">Capacidad</option>
                     <option value="consumption">Consumo</option>
+                    <option value="fixed">Cuota fija</option>
                 </select></td>
             </tr>`
         } else {
@@ -1540,6 +1603,7 @@ function renderMultiple() {
                 <td><select class="m-modelo" data-idx="${i}" ${dis}>
                     <option value="capacity" ${row.billing_model === 'capacity' ? 'selected' : ''}>Capacidad</option>
                     <option value="consumption" ${row.billing_model === 'consumption' ? 'selected' : ''}>Consumo</option>
+                    <option value="fixed" ${row.billing_model === 'fixed' ? 'selected' : ''}>Cuota fija</option>
                 </select></td>
             </tr>`
         }
