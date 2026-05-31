@@ -315,6 +315,31 @@ function actualizarStockDesdeVerificacion(resultado) {
 
 // ─── Listeners ────────────────────────────────────────────────────────────────
 
+document.getElementById('btnExportListings')?.addEventListener('click', () => {
+    const { disponibilidad, reservas } = todosLosDatos
+    const listings = disponibilidad.filter(d => d.sfcom_status !== null)
+    const rows = listings.map(d => {
+        const resSfcom  = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && r.sfcom_order_ref  && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+        const resPropia = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+        const esperado  = Math.max(0, Math.min(
+            (d.sfcom_slots_listed ?? 0) - resSfcom,
+            d.total_slots - resSfcom - resPropia
+        ))
+        return { ...d, _resSfcom: resSfcom, _resPropia: resPropia, _esperado: esperado }
+    })
+    exportTable(rows, [
+        { key: 'sfcom_service_name', label: 'Producto sfcom' },
+        { key: 'service_id',         label: 'Servicio' },
+        { key: 'provider_id',        label: 'Proveedor' },
+        { key: 'sfcom_status',       label: 'Estado',
+          fmt: v => v === 'confirmed' ? 'Activo' : v === 'pending' ? 'Pendiente alta' : v === 'deactivation_pending' ? 'Pendiente baja' : v ?? '—' },
+        { key: 'sfcom_slots_listed', label: 'Plazas listadas' },
+        { key: '_resSfcom',          label: 'Reservadas sfcom' },
+        { key: '_resPropia',         label: 'Reservadas propias' },
+        { key: '_esperado',          label: 'Stock esperado' },
+    ], 'listings_sfcom.xlsx')
+})
+
 document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () => {
     const sfcom = todosLosDatos.reservas.filter(r => r.sfcom_order_ref)
     exportTable(sfcom, [
