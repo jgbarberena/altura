@@ -77,21 +77,18 @@ function loadPage(path, label, item) {
     iframe.src = path
 }
 
-iframe.addEventListener('load', () => {
+iframe.addEventListener('load', async () => {
     if (!iframe.src || iframe.src === location.href) return
+    setStatus('loading', 'Cargando JS…')
+
+    // include.js carga los componentes (header, footer, etc.) con fetch
+    // después del evento load. Esperamos a que terminen.
+    await new Promise(r => setTimeout(r, 700))
+
     try {
         const doc = iframe.contentDocument
         if (!doc || !doc.body) { setStatus('error', 'Sin acceso al documento'); return }
-
-        // Las imágenes con loading="lazy" no cargan fuera del viewport del iframe.
-        // Cambiamos a eager y reseteamos src para que el navegador las encole.
-        doc.querySelectorAll('img[loading="lazy"]').forEach(img => {
-            img.loading = 'eager'
-            const src = img.getAttribute('src')
-            if (src) { img.removeAttribute('src'); img.setAttribute('src', src) }
-        })
-
-        setStatus('ok', 'Cargado (sin JS)')
+        setStatus('ok', 'Listo')
     } catch (e) {
         setStatus('error', 'Error de acceso al iframe')
     }

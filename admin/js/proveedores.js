@@ -38,6 +38,7 @@ const servicioDescStatus     = document.getElementById('servicio-desc-status')
 const inputServicioId          = document.getElementById('inputServicioId')
 const inputPlazas              = document.getElementById('inputPlazas')
 const inputPrecio              = document.getElementById('inputPrecio')
+const inputServicioNombre      = document.getElementById('inputServicioNombre')
 const inputServicioDescription = document.getElementById('inputServicioDescription')
 const inputServicioComments    = document.getElementById('inputServicioComments')
 const inputServicioDia         = document.getElementById('selectServicioDia')
@@ -48,6 +49,7 @@ const imgPickerServicio        = document.getElementById('imgPickerServicio')
 const imgPickerEmpty           = document.getElementById('imgPickerEmpty')
 const imgPickerClear           = document.getElementById('imgPickerClear')
 
+inputServicioNombre.addEventListener('change',      guardarDescripcionServicio)
 inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
 inputServicioComments.addEventListener('change',    guardarDescripcionServicio)
 inputServicioHora.addEventListener('change',        guardarDescripcionServicio)
@@ -432,12 +434,13 @@ window.guardarServicioNuevo = async function(e) {
     const dia  = inputServicioDia.value   ? parseInt(inputServicioDia.value) : null
     const hora = inputServicioHora.value  || null
     const img  = inputServicioImagen.value.trim() || null
+    const name = inputServicioNombre.value.trim() || null
     const desc = inputServicioDescription.value.trim() || null
     const comm = inputServicioComments.value.trim()    || null
     const { error } = await supabase.from('services')
-        .insert({ id: servicioId, day: dia, start_time: hora, image_url: img, description: desc, comments: comm })
+        .insert({ id: servicioId, day: dia, start_time: hora, image_url: img, name, description: desc, comments: comm })
     if (error) { alert('Error al guardar el servicio: ' + error.message); return }
-    todosServicios.push({ id: servicioId, day: dia, start_time: hora, image_url: img, description: desc, comments: comm })
+    todosServicios.push({ id: servicioId, day: dia, start_time: hora, image_url: img, name, description: desc, comments: comm })
     servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
     servicioDescStatus.style.color = 'var(--accent-ok)'
 }
@@ -448,15 +451,16 @@ async function guardarDescripcionServicio() {
     if (!servicioId) return
     const svc = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!svc) return
+    const name = inputServicioNombre.value.trim() || null
     const desc = inputServicioDescription.value.trim() || null
     const comm = inputServicioComments.value.trim()    || null
     const hora = inputServicioHora.value  || null
     const img  = inputServicioImagen.value.trim() || null
     const { error } = await supabase.from('services')
-        .update({ description: desc, comments: comm, start_time: hora, image_url: img })
+        .update({ name, description: desc, comments: comm, start_time: hora, image_url: img })
         .eq('id', svc.id)
     if (error) { console.error('Error al guardar descripcion:', error.message); return }
-    Object.assign(svc, { description: desc, comments: comm, start_time: hora, image_url: img })
+    Object.assign(svc, { name, description: desc, comments: comm, start_time: hora, image_url: img })
     todosServicios  = todosServicios.map(s => s.id === svc.id ? svc : s)
 }
 
@@ -491,6 +495,7 @@ inputServicioId.addEventListener('input', () => {
     // Si el valor coincide exactamente con un servicio existente, cargar description y comments
     const exacto = todosServicios.find(s => s.id.toUpperCase() === val)
     if (exacto) {
+        inputServicioNombre.value      = exacto.name        ?? ''
         inputServicioDescription.value = exacto.description ?? ''
         inputServicioComments.value    = exacto.comments    ?? ''
         inputServicioDia.value         = exacto.day         ? String(exacto.day) : ''
@@ -499,6 +504,7 @@ inputServicioId.addEventListener('input', () => {
         servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
     } else {
+        inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
         inputServicioComments.value    = ''
         inputServicioDia.value         = _extraerDiaDeId(val) ? String(_extraerDiaDeId(val)) : ''
@@ -948,17 +954,19 @@ btnGuardarServicio.addEventListener('click', async () => {
     const servicioExiste = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!servicioExiste) {
         if (!confirm(`¿Crear servicio nuevo "${servicioId}"?`)) return
+        const nameSvc = inputServicioNombre.value.trim()      || null
         const descSvc = inputServicioDescription.value.trim() || null
         const commSvc = inputServicioComments.value.trim()    || null
         const diaSvc  = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
         const horaSvc = inputServicioHora.value || null
         const imgSvc  = inputServicioImagen.value.trim() || null
         const { error } = await supabase.from('services')
-            .insert({ id: servicioId, day: diaSvc, start_time: horaSvc, image_url: imgSvc, description: descSvc, comments: commSvc })
+            .insert({ id: servicioId, day: diaSvc, start_time: horaSvc, image_url: imgSvc, name: nameSvc, description: descSvc, comments: commSvc })
         if (error) { alert('Error al crear servicio: ' + error.message); return }
-        todosServicios.push({ id: servicioId, day: diaSvc, start_time: horaSvc, image_url: imgSvc, description: descSvc, comments: commSvc })
+        todosServicios.push({ id: servicioId, day: diaSvc, start_time: horaSvc, image_url: imgSvc, name: nameSvc, description: descSvc, comments: commSvc })
     }
 
+    const nameSvc = inputServicioNombre.value.trim()      || null
     const descSvc = inputServicioDescription.value.trim() || null
     const commSvc = inputServicioComments.value.trim()    || null
     const horaSvc = inputServicioHora.value || null
@@ -968,10 +976,10 @@ btnGuardarServicio.addEventListener('click', async () => {
     const svcId = todaDisponibilidad.find(d => d.id === servicioEditandoId)?.service_id
                   ?? servicioId
     await supabase.from('services')
-        .update({ description: descSvc, comments: commSvc, start_time: horaSvc, image_url: imgSvc })
+        .update({ name: nameSvc, description: descSvc, comments: commSvc, start_time: horaSvc, image_url: imgSvc })
         .eq('id', svcId)
     todosServicios = todosServicios.map(s =>
-        s.id === svcId ? { ...s, description: descSvc, comments: commSvc, start_time: horaSvc, image_url: imgSvc } : s
+        s.id === svcId ? { ...s, name: nameSvc, description: descSvc, comments: commSvc, start_time: horaSvc, image_url: imgSvc } : s
     )
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
@@ -1197,6 +1205,7 @@ function cargarServicioEnFormulario(dispIds) {
         }
         // description y comentarios (+ campos extras) vienen de la tabla services
         const svc = todosServicios.find(s => s.id === disps[0].service_id)
+        inputServicioNombre.value        = svc?.name        ?? ''
         inputServicioDescription.value   = svc?.description ?? ''
         inputServicioComments.value      = svc?.comments    ?? ''
         inputServicioDia.value           = svc?.day         ? String(svc.day) : ''
@@ -2154,6 +2163,7 @@ function abrirAsistenteNuevo() {
     nuevoDlgUltimoCampoAsig = 'precio'
 
     document.getElementById('dlgNuevoBase').value    = ''
+    document.getElementById('dlgNuevoNombre').value  = ''
     document.getElementById('dlgNuevoHora').value    = ''
     document.getElementById('dlgNuevoDesc').value    = ''
     document.getElementById('dlgNuevoImg').value     = ''
@@ -2314,6 +2324,7 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
 
     const hora = document.getElementById('dlgNuevoHora').value || null
     const img  = document.getElementById('dlgNuevoImg').value.trim() || null
+    const name = document.getElementById('dlgNuevoNombre').value.trim() || null
     const desc = document.getElementById('dlgNuevoDesc').value.trim() || null
 
     let crearProveedor = false
@@ -2345,9 +2356,9 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
     for (const id of nuevos) {
         const dia = _extraerDiaDeId(id)
         const { error } = await supabase.from('services')
-            .insert({ id, day: dia, start_time: hora, image_url: img, description: desc, comments: null })
+            .insert({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
         if (error) errores.push(`${id}: ${error.message}`)
-        else       todosServicios.push({ id, day: dia, start_time: hora, image_url: img, description: desc, comments: null })
+        else       todosServicios.push({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
     }
     if (errores.length > 0) alert('Errores al crear servicios:\n' + errores.join('\n'))
 

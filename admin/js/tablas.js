@@ -121,8 +121,10 @@ const TABLAS = {
         cols: [
             { label: 'ID',          campo: 'id' },
             { label: 'Día',         campo: 'day' },
-            { label: 'Tipo',        campo: 'event_type' },
+            { label: 'Nombre',      campo: 'name' },
             { label: 'Descripción', campo: 'description' },
+            { label: 'Hora',        campo: 'start_time' },
+            { label: 'Imagen',      campo: 'image_url' },
             { label: 'Comentarios', campo: 'comments' },
         ]
     }

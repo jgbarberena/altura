@@ -109,7 +109,7 @@ function _buildPropuestaHTML() {
 
     const filas = _reservas.map(r => {
         const svc   = _servicios.find(s => s.id === r.service_id) ?? {}
-        const label = svc.description ?? r.service_id
+        const label = svc.name ?? svc.description ?? r.service_id
         const dia   = svc.day ? `${svc.day} de julio` : '—'
         const hora  = svc.start_time ?? '—'
         const dir   = _dirProveedor(r)
@@ -241,7 +241,7 @@ function _leerEditables() {
         bannerClaim:  get('banner-claim') || 'Reserva tu experiencia',
         filas: _reservas.map(r => ({
             id:     r.id,
-            nombre: get(`svc-nombre-${r.id}`) || (_servicios.find(s => s.id === r.service_id)?.description ?? r.service_id),
+            nombre: get(`svc-nombre-${r.id}`) || (s => s?.name ?? s?.description ?? r.service_id)(_servicios.find(s => s.id === r.service_id)),
             meta:   get(`svc-meta-${r.id}`)   || '',
             dir:    get(`svc-dir-${r.id}`)    || _dirProveedor(r),
         })),

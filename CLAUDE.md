@@ -252,7 +252,7 @@ Hay dos clientes Supabase:
 |---|---|---|
 | id | text PK | Ej: `ENCIERRO_7`, `CHUPINAZO_6` |
 | day | integer | Día de julio |
-| event_type | text | **Pendiente eliminar de Supabase** — no se usa en ningún módulo JS |
+| name | text | Nombre comercial corto (ej: `"Balcón encierro"`). Se usa en propuestas como etiqueta principal (`name ?? description ?? id`) |
 | description | text | |
 | comments | text | |
 | start_time | text | Hora de inicio (ej: `'08:00'`) |
@@ -1069,7 +1069,7 @@ Además, el Bloque 2 (formulario individual de servicio) se extendió con los ca
 ### 12.44 Imagen del servicio sobredimensionada en proveedores.js — **Resuelto**
 El `.img-picker` del formulario de servicio (bloque 2 de `proveedores.html`) tiene `width: 100%; aspect-ratio: 1/1` dentro de `.servicio-img-col { width: 160px }`, resultando en un cuadrado de 160×160 px. La intención es que sea una imagen pequeña (thumbnail) a la derecha de los campos de descripción y comentarios — no un cuadrado prominent. Reducir la altura del picker (como ya hace `.img-picker--dialog { height: 64px; aspect-ratio: unset }` en el asistente) o fijar un tamaño menor, p.ej. 80×80 px.
 
-### 12.45 Campo `name` en tabla `services` para uso en propuestas — **Pendiente diseño**
+### 12.45 Campo `name` en tabla `services` para uso en propuestas — **Resuelto**
 La tabla `services` no tiene un campo `name` separado. `propuesta.js` usa `svc.description ?? r.service_id` como nombre visible del servicio en la propuesta comercial (`prop-svc-nombre`). El `description` está pensado como texto descriptivo largo (párrafo), no como nombre comercial corto. El resultado es que las propuestas muestran o bien el texto largo de descripción o bien el ID técnico (`ENCIERRO_7`), ninguno de los dos apropiado como nombre en un documento comercial.
 
 **Lo que hace falta:** añadir un campo `name text` a `services` (ej: `"Balcón encierro"`, `"Chupinazo Plaza Ayuntamiento"`). Actualizar: `proveedores.js` (Bloque 2: campo de UI + save/update), `propuesta.js` (`label = svc.name ?? svc.description ?? r.service_id`), CLAUDE.md (schema de `services`), `tablas.js` (formatter). El campo es opcional — si está vacío, el fallback sigue siendo `description ?? id`.
@@ -1117,7 +1117,7 @@ Donde `coste_proveedor` se obtiene del `price_per_slot` de `availability` para e
 **Implementado** en `renderKpis()` de `sfcom-panel.js`: cruza cada reserva sfcom activa con `todosLosDatos.disponibilidad` para calcular el coste unitario según `billing_model`. `margenNeto = totalNeto - costeSfcom`. Mostrado como nuevo KPI `kpi-margen` en `sfcom.html`.
 
 ### 12.51 Completar datos de servicios en Supabase — **Pendiente (tarea de datos)**
-Después de implementar el campo `name` en la tabla `services` (12.45), hay que rellenar los datos de todos los servicios existentes en Supabase: `name` (nombre comercial corto), `description` (texto descriptivo), `image_url` (URL absoluta de imagen representativa) y `start_time` (hora de inicio). Esta no es una tarea de código sino de contenido — se hace desde el panel de proveedores o directamente en Supabase. Hacerla después de 12.45 para que el campo `name` ya exista.
+El campo `name` ya existe en la tabla (12.45 resuelto). Hay que rellenar los datos de todos los servicios existentes en Supabase: `name` (nombre comercial corto), `description` (texto descriptivo), `image_url` (URL absoluta de imagen representativa) y `start_time` (hora de inicio). Esta no es una tarea de código sino de contenido — se hace desde el panel de proveedores o directamente en Supabase. Hacerla después de 12.45 para que el campo `name` ya exista.
 
 ---
 

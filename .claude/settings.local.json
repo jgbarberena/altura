@@ -85,7 +85,9 @@
       "Bash(pwsh deploy.ps1 -Message \"admin: chips clientes, Excel export, margen sfcom, UX mejoras\")",
       "Bash([ -f \"/Users/pauladiaz/altura/img/galeria/$f\" ])",
       "Bash(pwsh deploy.ps1 -SkipScripts -Message \"fix: defensive getElementById para botones export\")",
-      "Bash(pwsh deploy.ps1 -SkipScripts -Message \"sfcom: exportar tabla de publicaciones a Excel\")"
+      "Bash(pwsh deploy.ps1 -SkipScripts -Message \"sfcom: exportar tabla de publicaciones a Excel\")",
+      "Bash([ -f \"/Users/pauladiaz/altura/img/cards/$f\" ])",
+      "Bash(pwsh deploy.ps1 -SkipScripts -Message \"servicios: campo name en UI, propuestas y tablas\")"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"
