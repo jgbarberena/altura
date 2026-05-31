@@ -1229,16 +1229,12 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 El script `deploy.ps1` (en la raíz del proyecto) automatiza el ciclo completo: regenera índices + SEO + sitemap → git commit/push → FTP de los archivos cambiados.
 
-**Ejecución desde terminal:**
+**Ejecución desde terminal (Mac y Windows):**
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Message "descripción breve"
+pwsh deploy.ps1 -Message "descripción breve"
 ```
 
-Para uso diario sin tener que escribir el bypass: ejecutar una sola vez en el terminal:
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-Después basta con `.\deploy.ps1 -Message "..."`.
+Usar siempre `pwsh` (PowerShell 7), no `powershell` (PS5). En Mac es lo único instalado; en Windows está instalado en paralelo con PS5 y se invoca explícitamente con `pwsh`.
 
 **Opciones:**
 - `-SkipScripts` — no regenera índices/SEO/sitemap (solo commit + FTP)

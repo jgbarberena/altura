@@ -72,7 +72,9 @@
       "Bash(cmd /c \"takeown /f D:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge /r /d s\")",
       "Bash(pwsh --version)",
       "Bash(brew --version)",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "Bash(pwsh deploy.ps1 -SkipGit -Message \"ftp\")",
+      "Bash(pwsh deploy.ps1 -Message \"deploy: excluir .claude de ftp, pwsh en claude.md\")"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"

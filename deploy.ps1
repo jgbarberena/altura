@@ -46,8 +46,9 @@ $FtpCreds  = New-Object System.Net.NetworkCredential($FtpUser, $FtpPass)
 
 function Should-Ignore([string]$path) {
     $p = $path -replace '\\', '/'
-    if ($p -eq '.git' -or $p.StartsWith('.git/'))      { return $true }
-    if ($p -eq '.vscode' -or $p.StartsWith('.vscode/')) { return $true }
+    if ($p -eq '.git' -or $p.StartsWith('.git/'))        { return $true }
+    if ($p -eq '.vscode' -or $p.StartsWith('.vscode/'))  { return $true }
+    if ($p -eq '.claude' -or $p.StartsWith('.claude/'))  { return $true }
     if ($p -match '(^|/)node_modules/')                  { return $true }
     if ($p -eq 'README.md')                              { return $true }
     if ($p -eq 'CLAUDE.md')                              { return $true }
