@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar web — Vive San Fermín</title>
+    <link rel="icon" href="../img/logos/VIVESF_FAVICON.ico">
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/editar-web.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <a href="../index.html" class="topbar-title topbar-home">Vive San Fermín</a>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="formulario.html">📝 Gestión de Reservas</a>
+                <a href="proveedores.html">🏠 Gestión de Proveedores</a>
+                <a href="tablas.html">📊 Tablas</a>
+                <a href="sfcom.html">🛒 Canal sfcom</a>
+                <a href="editar-web.html" class="active">✏️ Editar web</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content editor-content">
+            <div class="editor-layout">
+
+                <!-- Selector de páginas (leído de sitemap.xml) -->
+                <div class="pages-sidebar">
+                    <div class="pages-sidebar-header">Páginas</div>
+                    <nav id="pagesNav">
+                        <p style="padding:16px;color:var(--subtle);font-size:12px">Cargando…</p>
+                    </nav>
+                </div>
+
+                <!-- Área del iframe -->
+                <div class="iframe-area">
+                    <div class="iframe-toolbar">
+                        <span class="iframe-page-label" id="pageLabel">Selecciona una página</span>
+                        <span class="iframe-status" id="iframeStatus"></span>
+                    </div>
+                    <div class="iframe-wrapper">
+                        <div class="iframe-placeholder" id="iframePlaceholder">
+                            <div class="placeholder-icon">🌐</div>
+                            <p>Selecciona una página para previsualizar</p>
+                        </div>
+                        <iframe id="editorIframe"
+                                sandbox="allow-same-origin"
+                                style="display:none"
+                                title="Vista previa de la página"></iframe>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/editar-web.js"></script>
+</body>
+</html>

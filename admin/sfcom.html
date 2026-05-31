@@ -63,6 +63,11 @@
                         <span class="kpi-label">Importe neto</span>
                         <span class="kpi-valor" id="kpi-neto">—</span>
                     </div>
+                    <div class="kpi kpi--destacado">
+                        <span class="kpi-label">Margen neto</span>
+                        <span class="kpi-valor ok" id="kpi-margen">—</span>
+                        <span style="font-size:10px;color:var(--subtle);margin-top:2px;display:block">neto − coste proveedor</span>
+                    </div>
                     <div class="kpi">
                         <span class="kpi-label">Ticket medio (bruto)</span>
                         <span class="kpi-valor" id="kpi-ticket">—</span>
@@ -98,7 +103,10 @@
 
             <!-- BLOQUE RESERVAS SFCOM REGISTRADAS -->
             <div class="bloque" id="bloque-reservas-sfcom">
-                <h2>📋 Reservas registradas vía sfcom</h2>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <h2>📋 Reservas registradas vía sfcom</h2>
+                    <button class="btn btn-secondary" id="btnExportReservasSfcom" style="font-size:12px">⬇ Excel</button>
+                </div>
                 <div class="table-wrapper">
                     <table>
                         <thead>

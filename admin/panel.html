@@ -86,7 +86,10 @@
                         <button class="tab-btn" data-tab="todos">Todos</button>
                     </div>
                     <div class="calendario-seccion">
-                        <h3>💸 Pagos a proveedores</h3>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <h3>💸 Pagos a proveedores</h3>
+                            <button class="btn btn-secondary" id="btnExportPagos" style="font-size:12px">⬇ Excel</button>
+                        </div>
                         <div class="table-wrapper">
                             <table>
                                 <thead><tr>
@@ -98,7 +101,10 @@
                         </div>
                     </div>
                     <div class="calendario-seccion" style="margin-top:16px">
-                        <h3>💰 Cobros a clientes</h3>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <h3>💰 Cobros a clientes</h3>
+                            <button class="btn btn-secondary" id="btnExportCobros" style="font-size:12px">⬇ Excel</button>
+                        </div>
                         <div class="table-wrapper">
                             <table>
                                 <thead><tr>
@@ -159,7 +165,10 @@
 
             <!-- BLOQUE 3: DISPONIBILIDAD POR EVENTO -->
             <div class="bloque" id="bloque-eventos">
-                <h2>🎉 Disponibilidad por evento</h2>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <h2>🎉 Disponibilidad por evento</h2>
+                    <button class="btn btn-secondary" id="btnExportEventos" style="font-size:12px">⬇ Excel</button>
+                </div>
                 <div class="selector-mobile">
                     <select id="selector-evento">
                         <option value="">— Todos los eventos —</option>
@@ -184,7 +193,10 @@
 
             <!-- BLOQUE 4: DISPONIBILIDAD POR PROVEEDOR -->
             <div class="bloque" id="bloque-proveedores">
-                <h2>🏠 Disponibilidad por proveedor</h2>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <h2>🏠 Disponibilidad por proveedor</h2>
+                    <button class="btn btn-secondary" id="btnExportProveedores" style="font-size:12px">⬇ Excel</button>
+                </div>
                 <div class="selector-mobile">
                     <select id="selector-proveedor">
                         <option value="">— Todos los proveedores —</option>

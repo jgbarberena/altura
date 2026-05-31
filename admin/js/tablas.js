@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar } from './utils.js'
+import { fmt, initSidebar, exportTable } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -328,3 +328,9 @@ window.aplicarFiltro = function(campo) {
     panelFiltroAbierto = null
     renderTabla()
 }
+
+document.getElementById('btnExportTabla').addEventListener('click', () => {
+    const def  = TABLAS[tablaActual]
+    const cols = def.cols.map(c => ({ key: c.campo, label: c.label, fmt: c.fmt }))
+    exportTable(datosFiltrados, cols, `${tablaActual}.csv`)
+})

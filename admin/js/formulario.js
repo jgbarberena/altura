@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
@@ -363,8 +363,13 @@ function validarPrecio() {
     const precio      = parseFloat(inputPrecio.value)
 
     if (!servicioId || !proveedorId || isNaN(precio)) {
-        precioStatus.textContent = ''
-        inputPrecio.className    = ''
+        if (servicioId && proveedorId && inputPrecio.value.trim() === '') {
+            precioStatus.textContent = 'Introduce el precio. Si es 0, indícalo explícitamente.'
+            precioStatus.style.color = 'var(--subtle)'
+        } else {
+            precioStatus.textContent = ''
+        }
+        inputPrecio.className = ''
         return
     }
 
@@ -947,8 +952,7 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
             ? `<div class="proveedor-sin-reservas">Sin reservas</div>`
             : visibles.map(r => `
                 <div class="proveedor-fila-reserva">
-                    <span class="cliente" style="color:${r.status === 'Confirmada' ? 'var(--accent-ok)' : 'var(--accent-warn)'}">${r.client_id}</span>
-                    <span class="plazas">${r.slots} pzs</span>
+                    <span class="cliente" style="color:${r.status === 'Confirmada' ? 'var(--accent-ok)' : 'var(--accent-warn)'}">${r.client_id}(${r.slots})</span>
                 </div>`).join('')
         if (resto.length > 0) {
             filasReservas += `<div class="proveedor-fila-mas">+${resto.length} más (${resto.reduce((s,r)=>s+r.slots,0)} plazas)</div>`
@@ -2218,6 +2222,21 @@ async function ejecutarVerificacion(modoManual = false) {
 
 document.getElementById('btnVerificarDatos').addEventListener('click', () => {
     ejecutarVerificacion(true).catch(e => console.error('[verificacion] Error:', e.message))
+})
+
+document.getElementById('btnExportReservasCliente').addEventListener('click', () => {
+    const id = clienteActual?.id ?? 'cliente'
+    exportTable(reservasCliente, [
+        { key: 'id',             label: 'ID reserva' },
+        { key: 'service_id',     label: 'Servicio' },
+        { key: 'provider_id',    label: 'Proveedor' },
+        { key: 'slots',          label: 'Plazas' },
+        { key: 'price_per_slot', label: '€/plaza',    fmt: v => fmt(v) },
+        { key: 'total_amount',   label: 'Total',      fmt: v => fmt(v) },
+        { key: 'status',         label: 'Estado' },
+        { key: 'comments',       label: 'Comentarios' },
+        { key: 'sfcom_order_ref',label: 'Ref. sfcom' },
+    ], `reservas_${id}.xlsx`)
 })
 
 // Precarga de cliente desde parámetro URL (ej: panel.html → formulario.html?cliente=GARCIA_PEDRO)

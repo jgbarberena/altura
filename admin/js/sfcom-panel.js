@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt } from './utils.js'
+import { initSidebar, fmt, exportTable } from './utils.js'
 import { verificarCoherencia, verificarConfirmarSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
 
@@ -71,10 +71,26 @@ function renderKpis() {
     const comision   = totalBruto - totalNeto
     const ticket     = nReservas > 0 ? totalBruto / nReservas : 0
 
+    // Coste proveedor para las reservas sfcom:
+    // capacity / consumption → price_per_slot × slots
+    // fixed → (price_per_slot / total_slots) × slots  (coste unitario aproximado)
+    const costeSfcom = sfcomActivas.reduce((s, r) => {
+        const avail = todosLosDatos.disponibilidad.find(
+            d => d.provider_id === r.provider_id && d.service_id === r.service_id
+        )
+        if (!avail) return s
+        const costeUnit = avail.billing_model === 'fixed'
+            ? parseFloat(avail.price_per_slot ?? 0) / (avail.total_slots || 1)
+            : parseFloat(avail.price_per_slot ?? 0)
+        return s + costeUnit * (r.slots ?? 0)
+    }, 0)
+    const margenNeto = totalNeto - costeSfcom
+
     document.getElementById('kpi-reservas-sfcom').textContent = nReservas
     document.getElementById('kpi-bruto').textContent          = fmt(totalBruto)
     document.getElementById('kpi-comision').textContent       = fmt(comision)
     document.getElementById('kpi-neto').textContent           = fmt(totalNeto)
+    document.getElementById('kpi-margen').textContent         = nReservas > 0 ? fmt(margenNeto) : '—'
     document.getElementById('kpi-ticket').textContent         = nReservas > 0 ? fmt(ticket) : '—'
 }
 
@@ -298,6 +314,21 @@ function actualizarStockDesdeVerificacion(resultado) {
 }
 
 // ─── Listeners ────────────────────────────────────────────────────────────────
+
+document.getElementById('btnExportReservasSfcom').addEventListener('click', () => {
+    const sfcom = todosLosDatos.reservas.filter(r => r.sfcom_order_ref)
+    exportTable(sfcom, [
+        { key: 'sfcom_order_ref', label: 'Referencia sfcom' },
+        { key: 'id',              label: 'ID reserva' },
+        { key: 'client_id',       label: 'Cliente' },
+        { key: 'service_id',      label: 'Servicio' },
+        { key: 'provider_id',     label: 'Proveedor' },
+        { key: 'slots',           label: 'Plazas' },
+        { key: 'price_per_slot',  label: 'Precio neto/plaza', fmt: v => fmt(v) },
+        { key: 'total_amount',    label: 'Total neto',        fmt: v => fmt(v) },
+        { key: 'status',          label: 'Estado' },
+    ], 'reservas_sfcom.xlsx')
+})
 
 document.getElementById('btnVerificarDatos').addEventListener('click', () => {
     ejecutarVerificacion(true).catch(e => console.error('[sfcom-panel] verificacion:', e))

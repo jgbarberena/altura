@@ -109,6 +109,45 @@ export function buscarConPrioridad(lista, texto, campos) {
     return [...grupos[0], ...grupos[1], ...grupos[2], ...grupos[3]]
 }
 
+// Genera y descarga un CSV con BOM UTF-8 (compatible con Excel en Windows y Mac).
+// columns: [{ key, label, fmt? }] donde fmt(val, row) → string para la celda.
+// Usa punto y coma como separador (Excel en español usa coma como decimal).
+// Genera y descarga un .xlsx usando SheetJS (carga dinámica bajo demanda, ~900KB, solo al primer click).
+// columns: [{ key, label, fmt? }] donde fmt(val, row) → string/número para la celda.
+export async function exportTable(rows, columns, filename) {
+    const { utils, writeFile } = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs')
+    const header = columns.map(c => c.label)
+    const data   = rows.map(r =>
+        columns.map(c => {
+            const raw = c.fmt ? c.fmt(r[c.key], r) : (r[c.key] ?? '')
+            return raw ?? ''
+        })
+    )
+    const ws = utils.aoa_to_sheet([header, ...data])
+    const wb = utils.book_new()
+    utils.book_append_sheet(wb, ws, 'Datos')
+    writeFile(wb, filename.replace(/\.csv$/, '.xlsx'))
+}
+
+// Renderiza chips de clientes con color por estado y plazas entre paréntesis.
+// Agrupa por client_id (suma slots, peor estado: si cualquier reserva es Pendiente, el chip es naranja).
+// Recibe array de reservas { client_id, slots, status }. Devuelve HTML o '—' si vacío.
+export function renderClientChips(reservas) {
+    const map = new Map()
+    for (const r of reservas) {
+        if (!map.has(r.client_id)) map.set(r.client_id, { slots: 0, status: 'Confirmada' })
+        const e = map.get(r.client_id)
+        e.slots += r.slots ?? 0
+        if (r.status === 'Pendiente') e.status = 'Pendiente'
+    }
+    if (map.size === 0) return '—'
+    return [...map.entries()]
+        .map(([id, { slots, status }]) => {
+            const color = status === 'Confirmada' ? 'var(--accent-ok)' : 'var(--accent-warn)'
+            return `<span style="color:${color};white-space:nowrap">${id}(${slots})</span>`
+        }).join(' ')
+}
+
 // Recalcula y persiste en Supabase el cobro final de un cliente
 // Llama siempre que cambie cualquier reserva del cliente
 export async function persistirCobrosCliente(supabase, clienteId, todasReservas) {

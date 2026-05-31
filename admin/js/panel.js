@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, sortArr, renderThead } from './utils.js'
+import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -277,7 +277,7 @@ function filaEvento(f, destacada) {
         <td class="warn">${f.pendientes}</td>
         <td>${f.libres}</td>
         <td>${barraOcupacion(f.pct, f.colorFill)}</td>
-        <td style="font-size:11px;color:var(--subtle)">${f.clientes || '—'}</td>
+        <td style="font-size:11px">${f.clientesHTML || '—'}</td>
     </tr>`
 }
 
@@ -290,7 +290,7 @@ function filaDetalleProveedor(d) {
         <td class="warn">${d.pendientes}</td>
         <td>${d.libres}</td>
         <td>${barraOcupacion(d.pct, d.colorFill)}</td>
-        <td style="font-size:11px;color:var(--subtle)">${d.clientes || '—'}</td>
+        <td style="font-size:11px">${d.clientesHTML || '—'}</td>
     </tr>`
 }
 
@@ -337,12 +337,14 @@ function calcularEventos() {
             const libP  = (d.total_slots ?? 0) - confP - pendP
             const pctP  = d.total_slots > 0 ? Math.round((confP + pendP) / d.total_slots * 100) : 0
             const colP  = pctP >= 90 ? 'var(--accent)' : pctP >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
-            const clientesP = [...new Set(resP.map(r => r.client_id))].join(', ')
-            return { id: d.provider_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP }
+            const clientesP    = [...new Set(resP.map(r => r.client_id))].join(', ')
+            const clientesHTMLP = renderClientChips(resP)
+            return { id: d.provider_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP }
         })
 
-        const clientesEvento = [...new Set(reservasS.map(r => r.client_id))].join(', ')
-        return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento }
+        const clientesEvento     = [...new Set(reservasS.map(r => r.client_id))].join(', ')
+        const clientesEventoHTML = renderClientChips(reservasS)
+        return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento, clientesHTML: clientesEventoHTML }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los eventos —</option>' +
@@ -393,7 +395,7 @@ function filaProveedor(f, destacada) {
         <td class="warn">${f.pendientes}</td>
         <td>${f.libres}</td>
         <td>${barraOcupacion(f.pct, f.colorFill)}</td>
-        <td style="font-size:11px;color:var(--subtle)">${f.clientes || '—'}</td>
+        <td style="font-size:11px">${f.clientesHTML || '—'}</td>
     </tr>`
 }
 
@@ -407,7 +409,7 @@ function filaDetalleServicio(d) {
         <td class="warn">${d.pendientes}</td>
         <td>${d.libres}</td>
         <td>${barraOcupacion(d.pct, d.colorFill)}</td>
-        <td style="font-size:11px;color:var(--subtle)">${d.clientes || '—'}</td>
+        <td style="font-size:11px">${d.clientesHTML || '—'}</td>
     </tr>`
 }
 
@@ -456,12 +458,14 @@ function calcularProveedores() {
             const colS  = pctS >= 90 ? 'var(--accent)' : pctS >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
             const esConsumption = d.billing_model === 'consumption'
             const esFixed       = d.billing_model === 'fixed'
-            const clientesS = [...new Set(resS.map(r => r.client_id))].join(', ')
-            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS }
+            const clientesS     = [...new Set(resS.map(r => r.client_id))].join(', ')
+            const clientesHTMLS = renderClientChips(resS)
+            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS, clientesHTML: clientesHTMLS }
         })
 
-        const clientesProv = [...new Set(reservasP.map(r => r.client_id))].join(', ')
-        return { id: p.id, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv }
+        const clientesProv     = [...new Set(reservasP.map(r => r.client_id))].join(', ')
+        const clientesProvHTML = renderClientChips(reservasP)
+        return { id: p.id, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv, clientesHTML: clientesProvHTML }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los proveedores —</option>' +
@@ -653,3 +657,49 @@ calcularEventos()
 calcularProveedores()
 calcularResumen()
 calcularCashflow()
+
+// ===== EXPORT CSV =====
+document.getElementById('btnExportPagos').addEventListener('click', () => {
+    exportTable(pagosFiltradosCache, [
+        { key: 'provider_id', label: 'Proveedor' },
+        { key: 'comments',    label: 'Concepto' },
+        { key: 'due_date',    label: 'Fecha' },
+        { key: 'amount',      label: 'Importe', fmt: v => fmt(v) },
+        { key: 'paid',        label: 'Estado',  fmt: v => v ? 'Pagado' : 'Pendiente' },
+    ], 'pagos_pendientes.xlsx')
+})
+
+document.getElementById('btnExportCobros').addEventListener('click', () => {
+    exportTable(cobrosFiltradosCache, [
+        { key: 'client_id',  label: 'Cliente' },
+        { key: 'comments',   label: 'Concepto' },
+        { key: 'due_date',   label: 'Fecha' },
+        { key: 'amount',     label: 'Importe',  fmt: v => fmt(v) },
+        { key: 'collected',  label: 'Estado',   fmt: v => v ? 'Cobrado' : 'Pendiente' },
+    ], 'cobros_pendientes.xlsx')
+})
+
+document.getElementById('btnExportEventos').addEventListener('click', () => {
+    exportTable(eventosFilas, [
+        { key: 'id',          label: 'Evento' },
+        { key: 'dia',         label: 'Día' },
+        { key: 'totalPlazas', label: 'Total' },
+        { key: 'confirmadas', label: 'Confirmadas' },
+        { key: 'pendientes',  label: 'Pendientes' },
+        { key: 'libres',      label: 'Libres' },
+        { key: 'pct',         label: 'Ocupación %' },
+        { key: 'clientes',    label: 'Clientes' },
+    ], 'eventos.xlsx')
+})
+
+document.getElementById('btnExportProveedores').addEventListener('click', () => {
+    exportTable(provFilas, [
+        { key: 'id',          label: 'Proveedor' },
+        { key: 'capacidad',   label: 'Capacidad' },
+        { key: 'confirmadas', label: 'Confirmadas' },
+        { key: 'pendientes',  label: 'Pendientes' },
+        { key: 'libres',      label: 'Libres' },
+        { key: 'pct',         label: 'Ocupación %' },
+        { key: 'clientes',    label: 'Clientes' },
+    ], 'proveedores.xlsx')
+})

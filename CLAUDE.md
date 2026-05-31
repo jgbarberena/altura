@@ -1021,8 +1021,17 @@ Click en cobro pendiente → `formulario.html?cliente=CLIENT_ID`; click en pago 
 ### 12.35 Editar/borrar estados y entidades — **Pendiente diseño**
 Sin mecanismo para anular facturas, borrar clientes/proveedores con cascada. Se implementará en `tablas.js` con verificación de FK.
 
-### 12.36 Colorear clientes por estado en tablas de proveedor/panel — **Pendiente**
-Los `client_id` listados en `panel.js` y en las reservas de `proveedores.js` no llevan coloración de estado (Confirmada/Pendiente), a diferencia de las cajitas del mapa de disponibilidad de `formulario.js`.
+### 12.36 Colorear clientes con plazas en todas las tablas — **Resuelto**
+Varios sitios del admin muestran listas de `client_id` sin color ni plazas. El requisito es mostrar `ID_CLIENTE(plazas)` en verde (`--accent-ok`) si la reserva es Confirmada o en naranja (`--accent-warn`) si es Pendiente.
+
+**Dónde aparecen client_id sin formato correcto:**
+- `panel.js` — columna "Clientes" en tabla de eventos por servicio/día y en tabla de proveedores: solo IDs separados por coma, sin color ni plazas.
+- `proveedores.js` — última columna de la tabla de servicios del proveedor: solo IDs, sin color ni plazas.
+- Las cajitas del mapa de disponibilidad en `formulario.js` (bloque 3) ya tienen color por estado pero no muestran plazas — formato actual: `ID`, correcto sería `ID(plazas)`.
+
+**Estado actual en cajitas de disponibilidad (`formulario.js` línea ~950):** ya tiene color (`r.status === 'Confirmada' ? 'var(--accent-ok)' : 'var(--accent-warn)'`) pero sin plazas.
+
+**Implementación:** función `renderClientChips(reservas)` exportada desde `utils.js`. Agrupa por `client_id` (suma slots, peor estado: si cualquier reserva es Pendiente el chip es naranja). Devuelve spans `ID(slots)` coloreados. Usada en `panel.js` (4 render functions), `proveedores.js` (tabla de servicios) y `formulario.js` (cajitas del mapa de disponibilidad). Los objetos de datos conservan `clientes` como string plano para el sort y añaden `clientesHTML` para el render.
 
 ### 12.37 Detección automática de pedidos sfcom vía Edge Function cron — **Descartado**
 **Decisión:** No se implementa. La detección al cargar `formulario.html` es suficiente para el volumen actual. El coste de replicar la lógica de `registrarPedidosSfcom` en Deno/TypeScript y coordinar con Hilario supera el beneficio. `checkSfcomOrders` en `formulario.js` permanece como único punto de detección.
@@ -1056,6 +1065,59 @@ Además, el Bloque 2 (formulario individual de servicio) se extendió con los ca
 
 ### 12.43 Limpieza en BD — `event_type` e `image_url` — **Resuelto**
 `event_type` eliminada de `services` con `ALTER TABLE services DROP COLUMN event_type;`. URLs de `image_url` migradas a absolutas con `UPDATE services SET image_url = 'https://www.experienciasanfermin.com/' || image_url WHERE image_url IS NOT NULL AND image_url NOT LIKE 'http%'`. Desde mayo 2026, `image_url` almacena siempre URLs absolutas.
+
+### 12.44 Imagen del servicio sobredimensionada en proveedores.js — **Resuelto**
+El `.img-picker` del formulario de servicio (bloque 2 de `proveedores.html`) tiene `width: 100%; aspect-ratio: 1/1` dentro de `.servicio-img-col { width: 160px }`, resultando en un cuadrado de 160×160 px. La intención es que sea una imagen pequeña (thumbnail) a la derecha de los campos de descripción y comentarios — no un cuadrado prominent. Reducir la altura del picker (como ya hace `.img-picker--dialog { height: 64px; aspect-ratio: unset }` en el asistente) o fijar un tamaño menor, p.ej. 80×80 px.
+
+### 12.45 Campo `name` en tabla `services` para uso en propuestas — **Pendiente diseño**
+La tabla `services` no tiene un campo `name` separado. `propuesta.js` usa `svc.description ?? r.service_id` como nombre visible del servicio en la propuesta comercial (`prop-svc-nombre`). El `description` está pensado como texto descriptivo largo (párrafo), no como nombre comercial corto. El resultado es que las propuestas muestran o bien el texto largo de descripción o bien el ID técnico (`ENCIERRO_7`), ninguno de los dos apropiado como nombre en un documento comercial.
+
+**Lo que hace falta:** añadir un campo `name text` a `services` (ej: `"Balcón encierro"`, `"Chupinazo Plaza Ayuntamiento"`). Actualizar: `proveedores.js` (Bloque 2: campo de UI + save/update), `propuesta.js` (`label = svc.name ?? svc.description ?? r.service_id`), CLAUDE.md (schema de `services`), `tablas.js` (formatter). El campo es opcional — si está vacío, el fallback sigue siendo `description ?? id`.
+
+### 12.46 Exportar tablas a CSV — **Resuelto**
+No existe ninguna funcionalidad de exportación. Las tablas con más valor de exportar son las del `panel.html` (cobros, pagos, eventos por día, proveedores), pero idealmente cualquier tabla del admin debería ser exportable: `formulario.html` (reservas del cliente), `proveedores.html` (servicios, pagos), `tablas.html` (vista global), y tablas de sfcom.
+
+**Implementación:** `exportTable(rows, columns, filename)` exportada desde `utils.js`. Genera `.xlsx` real usando SheetJS (carga dinámica vía `import()` al primer click — ~900KB, no penaliza arranque). `columns: [{ key, label, fmt? }]` donde `fmt(val, row)` formatea la celda. La función convierte automáticamente extensión `.csv` → `.xlsx` en el filename si se pasa. Aplicada en:
+- `tablas.js` — botón "⬇ Excel" en la cabecera; exporta `datosFiltrados` con las columnas del `TABLAS` activo.
+- `panel.js` — 4 botones: pagos pendientes, cobros pendientes, disponibilidad por evento, disponibilidad por proveedor.
+- `sfcom-panel.js` — botón en el bloque de reservas registradas vía sfcom.
+- `formulario.js` — botón en bloque de reservas del cliente (bloque 4); filename `reservas_ID.xlsx`.
+- `proveedores.js` — botón en bloque de servicios del proveedor; usa `_datosServiciosExport` (module-level, asignado al final de `renderTablaServicios`); filename `servicios_ID.xlsx`.
+
+### 12.47 Falsos positivos en verificación sfcom por TTL del endpoint `stock-all` — **Pendiente**
+**Situación:** Después de guardar una reserva y que `syncStockToSfcom` haga un PUT correcto a sfcom, al recargar `formulario.html` la verificación automática (`ejecutarVerificacion(false)`) puede mostrar una discrepancia donde el stock esperado no coincide con el de sfcom. Sin embargo, el dashboard de Hilario (que lee directo de WooCommerce) muestra el valor correcto.
+
+**Causa:** `stock-all` en `sf-api-paula.php` no toca WooCommerce directamente — trabaja contra una caché server-side con su propio TTL. Si la verificación se ejecuta antes de que expire ese TTL, `stock-all` devuelve el stock anterior al PUT. El `_stockCache` del módulo `sfcom.js` no ayuda aquí porque se vacía al recargar la página.
+
+**Impacto:** Solo cosmético — el PUT fue correcto y sfcom está actualizado. La discrepancia desaparece sola cuando el TTL expira.
+
+**Solución posible:** Preguntar a Hilario cuál es el TTL del endpoint `stock-all` para documentarlo. Alternativas: (a) mostrar un aviso adicional en el modal de verificación indicando que las discrepancias recientes pueden ser artefactos del TTL; (b) en `syncStockToSfcom`, actualizar `_stockCache` con el stock esperado calculado (en lugar del real leído de sfcom) — ya se hace en la línea 152, pero no ayuda tras recarga; (c) añadir al modal de verificación un timestamp de cuándo se ejecutó el `stock-all` para que el admin pueda juzgar si es artefacto de TTL.
+
+### 12.48 Indicador de precio requerido al añadir reserva — **Resuelto**
+**Situación:** El input de precio aparece vacío (con placeholder `0`) cuando se crea una reserva nueva. La función `actualizarBtnAnadir()` requiere que el precio sea un número explícito (`precioVal !== '' && !isNaN(parseFloat(precioVal))`) — con el campo vacío, `btnAnadir` queda deshabilitado sin ninguna explicación visual. El usuario tiene que introducir `0` explícitamente si la reserva es gratuita, lo cual es correcto (evita reservas accidentalmente a precio cero), pero el fallo es silencioso y parece que el botón está roto.
+
+**Lo que falta:** cuando el formulario está listo para guardar (cliente + servicio + proveedor + plazas rellenos) pero solo falta el precio, mostrar un indicador junto al campo de precio: "Introduce el precio. Si es 0, indícalo explícitamente." El indicador puede ser el mismo mecanismo de `validarPrecio()` (clase `error` en el input + texto en un `<small>` debajo).
+
+### 12.49 Cards de proveedores en columna en Mac (desktop) — **Resuelto**
+`minmax` reducido de 160px a 140px en `.columnas-proveedores-grid`. Eliminado `width: 160px` de `.proveedor-col.normal` (innecesario y limitante en contexto grid, reemplazado por `min-width: 0`).
+
+### 12.50 Margen neto del canal sfcom — **Resuelto**
+**Situación:** El panel de sfcom (`sfcom-panel.js`) muestra KPIs y reservas, pero no calcula el margen que obtenemos de las ventas sfcom. El dato sería útil en el bloque de resumen superior.
+
+**Fórmula:** para cada reserva con `sfcom_order_ref IS NOT NULL` y `status != 'Cancelada'`:
+```
+margen_reserva = (price_per_slot - coste_proveedor) * slots
+```
+Donde `coste_proveedor` se obtiene del `price_per_slot` de `availability` para el par `(provider_id, service_id)` de la reserva, ponderado por el `billing_model`:
+- `capacity` y `consumption`: `coste_proveedor = availability.price_per_slot`
+- `fixed`: `coste_proveedor = availability.price_per_slot / total_slots` (coste unitario aproximado)
+
+`price_per_slot` de la reserva ya es el precio neto que recibimos de sfcom (bruto ÷ 1.15, introducido al procesar la solicitud). No hay que aplicar el descuento del 15% aquí — ya está aplicado.
+
+**Implementado** en `renderKpis()` de `sfcom-panel.js`: cruza cada reserva sfcom activa con `todosLosDatos.disponibilidad` para calcular el coste unitario según `billing_model`. `margenNeto = totalNeto - costeSfcom`. Mostrado como nuevo KPI `kpi-margen` en `sfcom.html`.
+
+### 12.51 Completar datos de servicios en Supabase — **Pendiente (tarea de datos)**
+Después de implementar el campo `name` en la tabla `services` (12.45), hay que rellenar los datos de todos los servicios existentes en Supabase: `name` (nombre comercial corto), `description` (texto descriptivo), `image_url` (URL absoluta de imagen representativa) y `start_time` (hora de inicio). Esta no es una tarea de código sino de contenido — se hace desde el panel de proveedores o directamente en Supabase. Hacerla después de 12.45 para que el campo `name` ya exista.
 
 ---
 

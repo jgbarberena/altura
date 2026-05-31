@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
@@ -1061,7 +1061,8 @@ btnCancelarServicio.addEventListener('click', limpiarFormularioServicio)
 
 let sortServiciosCol   = null
 let sortServiciosDir   = 'asc'
-let serviciosProveedor = []
+let serviciosProveedor      = []
+let _datosServiciosExport   = []  // copia del último render para export
 
 async function cargarServiciosProveedor(proveedorId) {
     const dispProv = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
@@ -1108,9 +1109,12 @@ function renderTablaServicios(proveedorId) {
             r.status      !== 'Cancelada'
         )
         const plazasReservadas = reservasServicio.reduce((s, r) => s + r.slots, 0)
-        const clientes         = [...new Set(reservasServicio.map(r => r.client_id))].join('; ')
-        return { ...d, _coste: coste, _reservadas: plazasReservadas, _clientes: clientes }
+        const clientes     = [...new Set(reservasServicio.map(r => r.client_id))].join('; ')
+        const clientesHTML = renderClientChips(reservasServicio)
+        return { ...d, _coste: coste, _reservadas: plazasReservadas, _clientes: clientes, _clientesHTML: clientesHTML }
     })
+
+    _datosServiciosExport = datos
 
     if (sortServiciosCol !== null) {
         const campo = cols[sortServiciosCol].campo
@@ -1146,7 +1150,7 @@ function renderTablaServicios(proveedorId) {
                 : 'Capacidad'}</td>
             <td>${fmt(d._coste)}</td>
             <td>${d._reservadas > 0 ? d._reservadas : '—'}</td>
-            <td style="font-size:11px; color:var(--subtle)">${d._clientes || '—'}</td>
+            <td style="font-size:11px">${d._clientesHTML || '—'}</td>
         </tr>`
     ).join('')
 
@@ -2373,6 +2377,20 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
         cargarPagosProveedor(proveedorActual.id)
     }
     mostrarToast(`✅ ${creados.length} servicio${creados.length !== 1 ? 's' : ''} creado${creados.length !== 1 ? 's' : ''}`)
+})
+
+document.getElementById('btnExportServicios').addEventListener('click', () => {
+    const id = proveedorActual?.id ?? 'proveedor'
+    exportTable(_datosServiciosExport, [
+        { key: 'service_id',    label: 'Servicio' },
+        { key: 'total_slots',   label: 'Plazas' },
+        { key: 'price_per_slot',label: '€/plaza',  fmt: v => fmt(v) },
+        { key: 'billing_model', label: 'Modelo',
+          fmt: v => v === 'fixed' ? 'Cuota fija' : v === 'consumption' ? 'Consumo' : 'Capacidad' },
+        { key: '_coste',        label: 'Coste',    fmt: v => fmt(v) },
+        { key: '_reservadas',   label: 'Reservadas' },
+        { key: '_clientes',     label: 'Clientes' },
+    ], `servicios_${id}.xlsx`)
 })
 
 // Precarga de proveedor desde parámetro URL (ej: panel.html → proveedores.html?proveedor=BALCON_1)

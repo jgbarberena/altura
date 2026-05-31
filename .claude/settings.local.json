@@ -74,7 +74,15 @@
       "Bash(brew --version)",
       "Bash(git restore *)",
       "Bash(pwsh deploy.ps1 -SkipGit -Message \"ftp\")",
-      "Bash(pwsh deploy.ps1 -Message \"deploy: excluir .claude de ftp, pwsh en claude.md\")"
+      "Bash(pwsh deploy.ps1 -Message \"deploy: excluir .claude de ftp, pwsh en claude.md\")",
+      "Bash(git config *)",
+      "Bash(node --input-type=module)",
+      "Bash(node --check /Users/pauladiaz/altura/admin/js/panel.js)",
+      "Bash(node --check /Users/pauladiaz/altura/admin/js/proveedores.js)",
+      "Bash(node --check /Users/pauladiaz/altura/admin/js/formulario.js)",
+      "Read(//usr/local/bin/**)",
+      "Read(//Users/pauladiaz/.nvm/versions/**)",
+      "Bash(pwsh deploy.ps1 -Message \"admin: chips clientes, Excel export, margen sfcom, UX mejoras\")"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"
