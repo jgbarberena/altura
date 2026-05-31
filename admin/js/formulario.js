@@ -2224,7 +2224,7 @@ document.getElementById('btnVerificarDatos').addEventListener('click', () => {
     ejecutarVerificacion(true).catch(e => console.error('[verificacion] Error:', e.message))
 })
 
-document.getElementById('btnExportReservasCliente').addEventListener('click', () => {
+document.getElementById('btnExportReservasCliente')?.addEventListener('click', () => {
     const id = clienteActual?.id ?? 'cliente'
     exportTable(reservasCliente, [
         { key: 'id',             label: 'ID reserva' },

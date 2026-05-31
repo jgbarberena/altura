@@ -82,7 +82,9 @@
       "Bash(node --check /Users/pauladiaz/altura/admin/js/formulario.js)",
       "Read(//usr/local/bin/**)",
       "Read(//Users/pauladiaz/.nvm/versions/**)",
-      "Bash(pwsh deploy.ps1 -Message \"admin: chips clientes, Excel export, margen sfcom, UX mejoras\")"
+      "Bash(pwsh deploy.ps1 -Message \"admin: chips clientes, Excel export, margen sfcom, UX mejoras\")",
+      "Bash([ -f \"/Users/pauladiaz/altura/img/galeria/$f\" ])",
+      "Bash(pwsh deploy.ps1 -SkipScripts -Message \"fix: defensive getElementById para botones export\")"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"

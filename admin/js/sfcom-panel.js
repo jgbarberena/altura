@@ -315,7 +315,7 @@ function actualizarStockDesdeVerificacion(resultado) {
 
 // ─── Listeners ────────────────────────────────────────────────────────────────
 
-document.getElementById('btnExportReservasSfcom').addEventListener('click', () => {
+document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () => {
     const sfcom = todosLosDatos.reservas.filter(r => r.sfcom_order_ref)
     exportTable(sfcom, [
         { key: 'sfcom_order_ref', label: 'Referencia sfcom' },

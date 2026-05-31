@@ -329,7 +329,7 @@ window.aplicarFiltro = function(campo) {
     renderTabla()
 }
 
-document.getElementById('btnExportTabla').addEventListener('click', () => {
+document.getElementById('btnExportTabla')?.addEventListener('click', () => {
     const def  = TABLAS[tablaActual]
     const cols = def.cols.map(c => ({ key: c.campo, label: c.label, fmt: c.fmt }))
     exportTable(datosFiltrados, cols, `${tablaActual}.csv`)

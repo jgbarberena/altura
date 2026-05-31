@@ -659,7 +659,7 @@ calcularResumen()
 calcularCashflow()
 
 // ===== EXPORT CSV =====
-document.getElementById('btnExportPagos').addEventListener('click', () => {
+document.getElementById('btnExportPagos')?.addEventListener('click', () => {
     exportTable(pagosFiltradosCache, [
         { key: 'provider_id', label: 'Proveedor' },
         { key: 'comments',    label: 'Concepto' },
@@ -669,7 +669,7 @@ document.getElementById('btnExportPagos').addEventListener('click', () => {
     ], 'pagos_pendientes.xlsx')
 })
 
-document.getElementById('btnExportCobros').addEventListener('click', () => {
+document.getElementById('btnExportCobros')?.addEventListener('click', () => {
     exportTable(cobrosFiltradosCache, [
         { key: 'client_id',  label: 'Cliente' },
         { key: 'comments',   label: 'Concepto' },
@@ -679,7 +679,7 @@ document.getElementById('btnExportCobros').addEventListener('click', () => {
     ], 'cobros_pendientes.xlsx')
 })
 
-document.getElementById('btnExportEventos').addEventListener('click', () => {
+document.getElementById('btnExportEventos')?.addEventListener('click', () => {
     exportTable(eventosFilas, [
         { key: 'id',          label: 'Evento' },
         { key: 'dia',         label: 'Día' },
@@ -692,7 +692,7 @@ document.getElementById('btnExportEventos').addEventListener('click', () => {
     ], 'eventos.xlsx')
 })
 
-document.getElementById('btnExportProveedores').addEventListener('click', () => {
+document.getElementById('btnExportProveedores')?.addEventListener('click', () => {
     exportTable(provFilas, [
         { key: 'id',          label: 'Proveedor' },
         { key: 'capacidad',   label: 'Capacidad' },

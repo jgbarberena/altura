@@ -2379,7 +2379,7 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
     mostrarToast(`✅ ${creados.length} servicio${creados.length !== 1 ? 's' : ''} creado${creados.length !== 1 ? 's' : ''}`)
 })
 
-document.getElementById('btnExportServicios').addEventListener('click', () => {
+document.getElementById('btnExportServicios')?.addEventListener('click', () => {
     const id = proveedorActual?.id ?? 'proveedor'
     exportTable(_datosServiciosExport, [
         { key: 'service_id',    label: 'Servicio' },
