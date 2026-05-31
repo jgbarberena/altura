@@ -408,7 +408,7 @@ function Build-FAQ-Schema($html) {
 Get-ChildItem -Path $rootPath -Recurse -Filter *.html | Where-Object {
     $path = $_.FullName
     foreach ($f in $excludeFolders) {
-        if ($path -like "*\$f\*") { return $false }
+        if ($path -like "*/$f/*" -or $path -like "*\$f\*") { return $false }
     }
     return $true
 } | ForEach-Object {

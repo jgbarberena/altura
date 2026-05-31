@@ -69,7 +69,10 @@
       "Bash(takeown /f \"D:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge\" /r /d y)",
       "Bash(rmdir /s /q \"D:\\\\Projects\\\\Web\\\\Altura\\\\supabase\")",
       "Bash(takeown /f \"D:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge\" /r /d s)",
-      "Bash(cmd /c \"takeown /f D:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge /r /d s\")"
+      "Bash(cmd /c \"takeown /f D:\\\\Projects\\\\Web\\\\Altura\\\\supabase\\\\functions\\\\sfcom-bridge /r /d s\")",
+      "Bash(pwsh --version)",
+      "Bash(brew --version)",
+      "Bash(git restore *)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"

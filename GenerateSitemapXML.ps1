@@ -65,7 +65,7 @@ Get-ChildItem -Path $rootPath -Recurse -Filter "*.html" | Where-Object {
     $path = $_.FullName
 
     foreach ($f in $excludeFolders) {
-        if ($path -like "*\$f\*") { return $false }
+        if ($path -like "*/$f/*" -or $path -like "*\$f\*") { return $false }
     }
 
     if ($excludeFiles -contains $_.Name) { return $false }
@@ -130,7 +130,7 @@ $sitemap = @"
 $urlEntries</urlset>
 "@
 
-[System.IO.File]::WriteAllText("$rootPath\sitemap.xml", $sitemap, $utf8NoBom)
+[System.IO.File]::WriteAllText((Join-Path $rootPath "sitemap.xml"), $sitemap, $utf8NoBom)
 Write-Host "`nOK: sitemap.xml generado con $($pages.Count) URLs"
 
 # =========================
@@ -149,5 +149,5 @@ Disallow: /admin/
 Sitemap: $baseUrl/sitemap.xml
 "@
 
-[System.IO.File]::WriteAllText("$rootPath\robots.txt", $robots, $utf8NoBom)
+[System.IO.File]::WriteAllText((Join-Path $rootPath "robots.txt"), $robots, $utf8NoBom)
 Write-Host "OK: robots.txt generado"

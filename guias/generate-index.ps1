@@ -1,4 +1,4 @@
-$dir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$dir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
 Set-Location $dir
 
 function Read-File($path) {
@@ -138,7 +138,7 @@ $listado = $metas | Where-Object { $_ -notin $dest }
 # TEMPLATE
 # =========================
 
-$template = Read-File ".\index-template.html"
+$template = Read-File (Join-Path $dir "index-template.html")
 
 $tplDest = [regex]::Match($template, '(?s)<template id="tpl-destacado">(.*?)</template>').Groups[1].Value
 $tplList = [regex]::Match($template, '(?s)<template id="tpl-listado">(.*?)</template>').Groups[1].Value
@@ -204,6 +204,6 @@ $output = $output -replace '<!--GUIAS_JSON-->', "<script id='guias-data' type='a
 # GUARDAR
 # =========================
 
-[System.IO.File]::WriteAllText("index.html", $output, (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText((Join-Path $dir "index.html"), $output, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "OK: index.html generado con $($metas.Count) guias ($($dest.Count) destacadas, $($listado.Count) en listado)"

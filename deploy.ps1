@@ -32,9 +32,11 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 Set-Location $Root
 
+$pwshCmd = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+
 # ── FTP: lee config de .vscode/sftp.json ─────────────────────────────────────
 
-$ftpCfg    = Get-Content ".vscode\sftp.json" -Raw | ConvertFrom-Json
+$ftpCfg    = Get-Content ".vscode/sftp.json" -Raw | ConvertFrom-Json
 $FtpHost   = $ftpCfg.host
 $FtpPort   = $ftpCfg.port
 $FtpUser   = $ftpCfg.username
@@ -98,7 +100,7 @@ function Get-GitChangedFiles {
 
         # Solo archivos que existen (omitir eliminados)
         if ($xy -match 'D') { return }
-        if (-not (Test-Path "$Root\$path")) { return }
+        if (-not (Test-Path (Join-Path $Root $path))) { return }
 
         $files += $path
     }
@@ -112,18 +114,18 @@ Write-Host ""
 if (-not $SkipScripts) {
     Write-Host "[1/4] Regenerando indices, SEO y sitemap..." -ForegroundColor Cyan
 
-    Push-Location "$Root\guias"
+    Push-Location (Join-Path $Root 'guias')
     try {
-        & powershell -ExecutionPolicy Bypass -NonInteractive -File "generate-index.ps1" | Out-Null
+        & $pwshCmd -ExecutionPolicy Bypass -NonInteractive -File "generate-index.ps1" | Out-Null
         Write-Host "  + guias/index.html" -ForegroundColor Green
     } catch {
         Write-Host "  ! guias/generate-index.ps1: $_" -ForegroundColor Yellow
     }
     Pop-Location
 
-    Push-Location "$Root\faq"
+    Push-Location (Join-Path $Root 'faq')
     try {
-        & powershell -ExecutionPolicy Bypass -NonInteractive -File "generate-faqHTML.ps1" | Out-Null
+        & $pwshCmd -ExecutionPolicy Bypass -NonInteractive -File "generate-faqHTML.ps1" | Out-Null
         Write-Host "  + faq/index.html" -ForegroundColor Green
     } catch {
         Write-Host "  ! faq/generate-faqHTML.ps1: $_" -ForegroundColor Yellow
@@ -131,14 +133,14 @@ if (-not $SkipScripts) {
     Pop-Location
 
     try {
-        & powershell -ExecutionPolicy Bypass -NonInteractive -File "GenerateFolderAutoSEO.ps1" | Out-Null
+        & $pwshCmd -ExecutionPolicy Bypass -NonInteractive -File "GenerateFolderAutoSEO.ps1" | Out-Null
         Write-Host "  + SEO actualizado" -ForegroundColor Green
     } catch {
         Write-Host "  ! GenerateFolderAutoSEO.ps1: $_" -ForegroundColor Yellow
     }
 
     try {
-        & powershell -ExecutionPolicy Bypass -NonInteractive -File "GenerateSitemapXML.ps1" | Out-Null
+        & $pwshCmd -ExecutionPolicy Bypass -NonInteractive -File "GenerateSitemapXML.ps1" | Out-Null
         Write-Host "  + sitemap.xml" -ForegroundColor Green
     } catch {
         Write-Host "  ! GenerateSitemapXML.ps1: $_" -ForegroundColor Yellow
@@ -190,7 +192,7 @@ if (-not $SkipFtp) {
     } else {
         $ok = 0; $err = 0
         foreach ($file in $toUpload) {
-            $localPath  = "$Root\$file"
+            $localPath  = Join-Path $Root $file
             $remoteUrl  = "ftp://${FtpHost}:${FtpPort}/${FtpBase}/$($file -replace '\\', '/')"
 
             try {
