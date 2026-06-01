@@ -983,22 +983,60 @@ El endpoint acepta parámetros: `status=completed|processing|cancelled|any`, `af
 
 **Cómo implementarlo si en el futuro se decide:** Añadir un parámetro opcional `excluirSfcom = false` a `persistirCobrosCliente` en `utils.js` que filtre las reservas con `sfcom_order_ref IS NOT NULL` antes de calcular el hito final. Hacer lo mismo en `propuesta.js` al construir la lista de reservas a incluir. En formulario.html, detectar si el cliente tiene al menos una reserva no-sfcom; si no la tiene, desactivar los botones de cobro y propuesta con un tooltip explicativo.
 
-### 12.27 Facturación a sfcom como canal — **Pendiente, arquitectura definida**
+### 12.27 Facturación a sfcom como canal — **Pendiente, dos opciones en análisis**
 **Situación:** Cuando sfcom gestiona una venta, cobra al cliente final directamente y luego nos liquida la parte que nos corresponde (el `price_per_slot` que guardamos en `reservations`, ya descontada la comisión del 15%). No hay actualmente ningún mecanismo para generar facturas a sfcom ni gestionar el calendario de cobros a ese canal.
 
-**Arquitectura decidida para cuando se implemente:**
+---
 
-1. Crear una fila en la tabla `clients` con `id = 'SFCOM'` y `name = 'Canal sfcom'` (sin más datos). Es la forma más limpia de reutilizar toda la infraestructura existente de cobros y facturación sin duplicar lógica.
+**Opción A — Cliente SFCOM sin migración de reservas (mínimo cambio de datos)**
 
-2. Los hitos de cobro a sfcom van en la tabla `charges` con `client_id = 'SFCOM'`, exactamente igual que cualquier otro cliente. `persistirCobrosCliente(supabase, 'SFCOM', reservasSfcom)` funciona sin ningún cambio; `reservasSfcom` son las reservas con `sfcom_order_ref IS NOT NULL` y `status != 'Cancelada'`. El hito final se autocalcula igual que siempre: `SUM(total_amount)` de esas reservas menos la suma de los hitos no-finales ya registrados.
+Crear una fila `SFCOM` en `clients` solo como entidad de facturación. Las reservas sfcom siguen con su `client_id` actual (GARCIA_PEDRO, etc.). Los cobros a sfcom van a `charges` con `client_id = 'SFCOM'`, calculados sobre las reservas con `sfcom_order_ref IS NOT NULL`. Reutiliza `persistirCobrosCliente` y `factura.js` sin cambios.
 
-3. La generación de facturas reutiliza `factura.js` sin cambios. El emisor es Paula, el receptor es sfcom.
+Problema principal: los clientes sfcom ya tienen `charges` en el sistema (creados normalmente al gestionar sus reservas), lo que genera una doble contabilidad — tenemos cobros a GARCIA_PEDRO por una reserva que en realidad ya cobró sfcom, y encima cobros a SFCOM por esa misma reserva. El panel de control mezclaría ambos en los totales.
 
-4. El único cambio en código existente: añadir `id !== 'SFCOM'` en el filtro del autocomplete de `inputClientId` en `formulario.js` para que el cliente artificial no aparezca en las sugerencias.
+Mitigación posible: filtrar `client_id !== 'SFCOM'` en panel.js y eliminar/ignorar los cobros de clientes sfcom. Pero implica aceptar que los datos actuales de `charges` para esos clientes son incorrectos.
 
-5. El bloque de cobros en `admin/sfcom.html` sería el mismo HTML que el bloque 5 de `formulario.html`, cargando el cliente 'SFCOM' y sus reservas sfcom activas. No requiere módulo nuevo: importa `persistirCobrosCliente` de `utils.js` y `initFacturacion` de `factura.js`.
+Trabajo: SQL trivial (1 INSERT), JS moderado (~2h). No requiere migración de datos pero deja inconsistencias conceptuales.
 
-**Decisión pendiente antes de implementar:** Clarificar qué ocurre con los hitos ya emitidos si una reserva sfcom se cancela a posteriori. La lógica actual recalcula el hito final pero no toca hitos ya facturados — habría que decidir si eso es correcto en el contexto de liquidaciones con sfcom o si se necesita algún ajuste manual.
+---
+
+**Opción B — Refactor completo: reservas sfcom al cliente SFCOM**
+
+Mover todas las reservas con `sfcom_order_ref IS NOT NULL` al `client_id = 'SFCOM'`. Los clientes individuales (GARCIA_PEDRO) conservan solo sus reservas directas y sus cobros reales. SFCOM tiene sus propias reservas y sus propios cobros, calculados con la infraestructura existente sin ningún cambio.
+
+**SQL de migración (tú en Supabase):**
+```sql
+-- 1. Crear cliente canal
+INSERT INTO clients (id, name) VALUES ('SFCOM', 'Canal sfcom');
+
+-- 2. Mover reservas sfcom
+UPDATE reservations SET client_id = 'SFCOM' WHERE sfcom_order_ref IS NOT NULL;
+
+-- 3. Identificar clientes que quedan sin reservas directas (revisar sus charges)
+SELECT c.id, c.name FROM clients c
+WHERE c.id != 'SFCOM'
+AND NOT EXISTS (
+    SELECT 1 FROM reservations r
+    WHERE r.client_id = c.id AND r.sfcom_order_ref IS NULL
+);
+-- → borrar o recalcular sus charges desde el panel (persistirCobrosCliente)
+```
+
+**JS (yo):**
+- `formulario.js`: excluir SFCOM del autocomplete de clientes (1 línea)
+- `panel.js`: filtrar SFCOM de cobros de clientes directos, mostrarlo aparte (~15 líneas)
+- `sfcom-panel.js`: añadir bloque de cobros y facturación reutilizando la infraestructura (~100 líneas)
+- `factura.js`, `persistirCobrosCliente`: sin cambios
+
+**Pros:** datos correctos desde la raíz, panel sin mezcla, escala solo, cero duplicación de código.
+
+**Contras:** las reservas sfcom ya no muestran el nombre del cliente final (GARCIA_PEDRO) — solo aparece SFCOM. La trazabilidad del comprador queda en `sfcom_order_ref` → pedido en sfcom + `reservation_requests`. Para la gestión operativa de balcones y plazas no importa quién es el comprador final; para la relación con el cliente sí se pierde visibilidad directa en el panel.
+
+Trabajo: SQL ~10 min (tú) + JS ~2-3h (yo). Requiere revisar manualmente los `charges` de los clientes afectados.
+
+---
+
+**Decisión pendiente:** elegir entre Opción A (mínimo cambio, inconsistencia conceptual asumida) u Opción B (refactor limpio, pérdida de trazabilidad cliente sfcom en reservas). En ambos casos, clarificar qué ocurre con hitos ya facturados si una reserva sfcom se cancela a posteriori.
 
 ### 12.29 `togglePagoProvCobrado` no persistía en Supabase — **Resuelto**
 `proveedores.js` solo modificaba `hitosProvTemp` en memoria. Añadida función `persistirHitosProveedor(proveedorId)` con upsert inteligente (sin DELETE destructivo): actualiza hitos existentes por `id`, inserta nuevos, borra los eliminados comparando con `todosPayments`. Se llama automáticamente desde `togglePagoProvCobrado`, `eliminarHitoProv`, `cambiarFechaPagoFinal` y el handler de añadir nuevo hito. El `btnGuardarPagos` ahora también usa esta función. Los cobros de clientes (`toggleCobroCliente` en `formulario.js`) ya persistían correctamente antes.
