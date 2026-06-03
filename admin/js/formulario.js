@@ -6,6 +6,7 @@ import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
 import { crearModal } from './modal.js'
+import { SYSTEM_PROMPT_ASISTENTE } from './asistente-config.js'
 
 await requireAuth()
 initFacturacion(supabase)
@@ -1764,7 +1765,7 @@ async function cargarSolicitudes() {
     const { data: solicitudes, error } = await supabase
         .from('reservation_requests')
         .select('*')
-        .eq('status', 'nueva')
+        .in('status', ['nueva', 'email_parsed'])
         .order('created_at', { ascending: true })
 
     if (error) { console.error('Error cargando solicitudes:', error); return }
@@ -1780,12 +1781,14 @@ async function cargarSolicitudes() {
     bloque.style.display = 'block'
 
     // Separar sfcom de web para mostrar sfcom primero
-    const deSfcom = solicitudes.filter(s => _esSfcom(s.source))
-    const deWeb   = solicitudes.filter(s => !_esSfcom(s.source))
-    const ordenadas = [...deSfcom, ...deWeb]
+    const deSfcom  = solicitudes.filter(s => _esSfcom(s.source))
+    const deEmail  = solicitudes.filter(s => s.source === 'email')
+    const deWeb    = solicitudes.filter(s => !_esSfcom(s.source) && s.source !== 'email')
+    const ordenadas = [...deSfcom, ...deEmail, ...deWeb]
 
     tbody.innerHTML = ordenadas.map(s => {
         const esSfcom  = _esSfcom(s.source)
+        const esEmail  = s.source === 'email'
         const fecha    = s.created_at
             ? new Date(s.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
             : '—'
@@ -1798,12 +1801,12 @@ async function cargarSolicitudes() {
         const importe = esSfcom && s.price_per_slot && s.slots
             ? `${(s.price_per_slot * s.slots).toFixed(0)}€ bruto<br><strong>${(s.price_per_slot * s.slots / 1.15).toFixed(0)}€ neto</strong>`
             : '—'
-        const rowStyle = esSfcom
-            ? 'cursor:pointer;background:#fff0f0;border-left:3px solid #dc2626'
-            : 'cursor:pointer'
-        const badge = esSfcom
-            ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">sfcom</span>`
-            : ''
+        const rowStyle = esSfcom ? 'cursor:pointer;background:#fff0f0;border-left:3px solid #dc2626'
+                       : esEmail ? 'cursor:pointer;background:#eff6ff;border-left:3px solid #2563eb'
+                       : 'cursor:pointer'
+        const badge = esSfcom ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">sfcom</span>`
+                    : esEmail ? `<span style="font-size:10px;background:#2563eb;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">📧 email</span>`
+                    : ''
 
         return `<tr class="fila-solicitud" style="${rowStyle}"
             data-id="${s.id}"
@@ -1827,6 +1830,7 @@ async function cargarSolicitudes() {
             <td style="font-size:12px">${importe}</td>
             <td>${comentario}</td>
             <td class="td-acciones" onclick="event.stopPropagation()">
+                ${esEmail ? `<button class="btn-sm btn-responder" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:12px" data-id="${s.id}">💬 Responder</button>` : ''}
                 <button class="btn-sm btn-ok btn-atendida" data-id="${s.id}">✅ Procesado</button>
                 ${!esSfcom ? `<button class="btn-sm btn-err btn-descartar" data-id="${s.id}">🗑️ Descartar</button>` : ''}
             </td>
@@ -1843,6 +1847,14 @@ async function cargarSolicitudes() {
 
     tbody.querySelectorAll('.btn-descartar').forEach(btn => {
         btn.addEventListener('click', () => descartarSolicitud(btn.dataset.id))
+    })
+
+    tbody.querySelectorAll('.btn-responder').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation()
+            const sol = solicitudes.find(s => String(s.id) === String(btn.dataset.id))
+            if (sol) abrirAsistenteRespuesta(sol)
+        })
     })
 }
 
@@ -2156,6 +2168,207 @@ async function descartarSolicitud(id) {
     if (error) console.error('Error descartando solicitud:', error)
     await cargarSolicitudes()
 }
+
+// ===== ASISTENTE DE RESPUESTAS =====
+
+function disponibilidadParaAsistente(serviceId) {
+    if (!serviceId || !disponibilidad) return []
+
+    return disponibilidad
+        .filter(d => d.service_id === serviceId)
+        .map(d => {
+            const activas = (todasReservas || []).filter(r =>
+                r.provider_id === d.provider_id &&
+                r.service_id  === d.service_id  &&
+                r.status      !== 'Cancelada'
+            )
+            const ocupadas   = activas.reduce((s, r) => s + (r.slots || 0), 0)
+            const pendientes = activas.filter(r => r.status === 'Pendiente').reduce((s, r) => s + (r.slots || 0), 0)
+
+            return {
+                proveedor:         d.provider_id,
+                plazas_totales:    d.total_slots,
+                plazas_libres:     Math.max(0, d.total_slots - ocupadas),
+                plazas_pendientes: pendientes,
+                precio_proveedor:  d.price_per_slot   // coste al proveedor, no precio de venta
+            }
+        })
+}
+
+async function abrirAsistenteRespuesta(solicitud) {
+    const mensajes = []
+    let enviando   = false
+
+    const { overlay, panel } = crearModal('modal-asistente-respuesta', { wide: true, scroll: true })
+
+    const contacto = [solicitud.client_email, solicitud.client_phone].filter(Boolean).join(' · ') || '—'
+
+    panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="font-size:15px;font-weight:600;margin:0">💬 Asistente de respuesta</h3>
+            <button id="btn-asistente-cerrar" style="background:none;border:none;cursor:pointer;font-size:20px;color:#777;padding:0;line-height:1" title="Cerrar">✕</button>
+        </div>
+        <div style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:12px;color:#444;display:grid;grid-template-columns:1fr 1fr;gap:5px 16px">
+            <div><strong>Cliente:</strong> ${solicitud.client_name || '—'}</div>
+            <div><strong>Contacto:</strong> ${contacto}</div>
+            <div><strong>Evento:</strong> ${solicitud.level || solicitud.service_id || 'No especificado'}</div>
+            <div><strong>Día:</strong> ${solicitud.day ? solicitud.day + ' julio' : 'No especificado'}</div>
+            <div><strong>Personas:</strong> ${solicitud.slots || 'No especificado'}</div>
+            <div><strong>Idioma:</strong> ${solicitud.language || 'desconocido'}</div>
+            <div style="grid-column:1/-1"><strong>Consulta:</strong> ${solicitud.comments || '—'}</div>
+        </div>
+        <div id="asistente-mensajes" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;padding:4px 2px"></div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+            <textarea id="asistente-input"
+                placeholder="Escribe qué quieres ofrecer o pide un cambio…"
+                style="flex:1;resize:none;min-height:44px;max-height:120px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit"
+                rows="2"></textarea>
+            <button id="asistente-enviar" class="btn btn-primary" style="white-space:nowrap;flex-shrink:0">Enviar</button>
+        </div>
+        <div id="asistente-resultado" style="display:none;flex-direction:column;gap:10px">
+            <div style="font-size:12px;font-weight:600;color:#374151">✅ Mensaje para el cliente:</div>
+            <textarea id="asistente-mensaje-final"
+                style="width:100%;min-height:140px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button id="btn-asistente-copiar" class="btn btn-secondary">📋 Copiar</button>
+                ${solicitud.client_email ? `<a id="btn-asistente-email" class="btn btn-secondary" style="text-decoration:none">📧 Email</a>` : ''}
+                ${solicitud.client_phone ? `<a id="btn-asistente-whatsapp" class="btn btn-secondary" style="text-decoration:none" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+            </div>
+        </div>
+    `
+
+    const elMensajes  = panel.querySelector('#asistente-mensajes')
+    const elInput     = panel.querySelector('#asistente-input')
+    const elEnviar    = panel.querySelector('#asistente-enviar')
+    const elResultado = panel.querySelector('#asistente-resultado')
+    const elMsgFinal  = panel.querySelector('#asistente-mensaje-final')
+
+    function addMensaje(role, texto) {
+        const el = document.createElement('div')
+        el.style.cssText = role === 'assistant'
+            ? 'background:#f0f4ff;border-radius:8px 8px 8px 2px;padding:10px 12px;font-size:13px;max-width:92%;align-self:flex-start;white-space:pre-wrap;line-height:1.5'
+            : 'background:#e8f5e9;border-radius:8px 8px 2px 8px;padding:10px 12px;font-size:13px;max-width:92%;align-self:flex-end;white-space:pre-wrap;line-height:1.5'
+        el.textContent = texto
+        elMensajes.appendChild(el)
+        elMensajes.scrollTop = elMensajes.scrollHeight
+    }
+
+    function mostrarCargando() {
+        const el = document.createElement('div')
+        el.id = 'asistente-spinner'
+        el.style.cssText = 'background:#f0f4ff;border-radius:8px;padding:10px 12px;font-size:13px;color:#888;align-self:flex-start'
+        el.textContent = '…'
+        elMensajes.appendChild(el)
+        elMensajes.scrollTop = elMensajes.scrollHeight
+        return el
+    }
+
+    async function llamarClaude(userContent) {
+        mensajes.push({ role: 'user', content: userContent })
+
+        const spinner = mostrarCargando()
+        elEnviar.disabled = true
+        enviando = true
+
+        try {
+            const { data, error } = await supabase.functions.invoke('claude-proxy', {
+                body: { messages: mensajes, system: SYSTEM_PROMPT_ASISTENTE, max_tokens: 1000 }
+            })
+
+            spinner.remove()
+
+            if (error) throw new Error(error.message || 'Error en claude-proxy')
+
+            const respuesta = data?.content?.[0]?.text ?? ''
+            if (!respuesta) throw new Error('Respuesta vacía de Claude')
+
+            const MARKER   = '---MENSAJE_CLIENTE---'
+            const markerIdx = respuesta.indexOf(MARKER)
+
+            let textoChat, mensajeFinal
+            if (markerIdx !== -1) {
+                textoChat    = respuesta.slice(0, markerIdx).trim()
+                mensajeFinal = respuesta.slice(markerIdx + MARKER.length).trim()
+            } else {
+                textoChat    = respuesta
+                mensajeFinal = null
+            }
+
+            if (textoChat) addMensaje('assistant', textoChat)
+
+            mensajes.push({ role: 'assistant', content: respuesta })
+
+            if (mensajeFinal) {
+                elMsgFinal.value             = mensajeFinal
+                elResultado.style.display    = 'flex'
+                elResultado.style.flexDirection = 'column'
+                elResultado.style.gap        = '10px'
+
+                const btnEmail = panel.querySelector('#btn-asistente-email')
+                const btnWA    = panel.querySelector('#btn-asistente-whatsapp')
+                if (btnEmail && solicitud.client_email) {
+                    btnEmail.href = `mailto:${solicitud.client_email}?body=${encodeURIComponent(mensajeFinal)}`
+                }
+                if (btnWA && solicitud.client_phone) {
+                    const digits = (solicitud.client_phone).replace(/\D/g, '')
+                    const intl   = digits.length <= 9 ? '34' + digits : digits
+                    btnWA.href   = `https://wa.me/${intl}?text=${encodeURIComponent(mensajeFinal)}`
+                }
+            }
+        } catch (err) {
+            spinner.remove()
+            addMensaje('assistant', '❌ Error al conectar con el asistente. Inténtalo de nuevo.')
+            console.error('[asistente] Error:', err)
+        } finally {
+            elEnviar.disabled = false
+            enviando = false
+        }
+    }
+
+    // Event listeners del dialog
+    panel.querySelector('#btn-asistente-cerrar').addEventListener('click', () => overlay.close())
+
+    elEnviar.addEventListener('click', async () => {
+        if (enviando) return
+        const texto = elInput.value.trim()
+        if (!texto) return
+        elInput.value = ''
+        addMensaje('user', texto)
+        await llamarClaude(texto)
+    })
+
+    elInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            elEnviar.click()
+        }
+    })
+
+    panel.querySelector('#btn-asistente-copiar')?.addEventListener('click', () => {
+        navigator.clipboard.writeText(elMsgFinal.value)
+            .then(() => mostrarToast('📋 Copiado al portapapeles'))
+            .catch(() => mostrarToast('❌ No se pudo copiar', '#991b1b'))
+    })
+
+    // Llamada inicial automática con todo el contexto de la solicitud
+    const contextoInicial = JSON.stringify({
+        solicitud: {
+            nombre:           solicitud.client_name  || null,
+            email:            solicitud.client_email || null,
+            telefono:         solicitud.client_phone || null,
+            evento_detectado: solicitud.level || solicitud.service_id || null,
+            dia:              solicitud.day   || null,
+            personas:         solicitud.slots || null,
+            comentario:       solicitud.comments || null,
+            idioma_cliente:   solicitud.language || 'desconocido'
+        },
+        disponibilidad: disponibilidadParaAsistente(solicitud.service_id)
+    }, null, 2)
+
+    await llamarClaude(contextoInicial)
+}
+
+// ===== FIN ASISTENTE =====
 
 document.getElementById('btnCerrarReorg').addEventListener('click', cerrarPanelReorganizar)
 document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPanelReorganizar)
