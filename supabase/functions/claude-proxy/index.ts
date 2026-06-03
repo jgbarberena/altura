@@ -9,9 +9,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const DEFAULT_MODEL = 'claude-opus-4-7-20250514'
+const DEFAULT_MODEL = 'claude-opus-4-7'
 const ALLOWED_MODELS = new Set([
-    'claude-opus-4-7-20250514',
+    'claude-opus-4-7',
     'claude-haiku-4-5-20251001'
 ])
 
