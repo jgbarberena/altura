@@ -121,7 +121,8 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │       ├── sfcom.js                  ← comunicación con tienda.sanfermin.com via sf-api-paula.php (módulo ES6)
 │       ├── supabase.js               ← cliente Supabase admin (export const supabase)
 │       ├── utils.js                  ← utilidades compartidas del admin (fmt, fechas, persistencia)
-│       └── auth.js                   ← requireAuth / logout
+│       ├── auth.js                   ← requireAuth / logout
+│       └── asistente-config.js       ← prompts de IA exportados: SYSTEM_PROMPT_ASISTENTE y SYSTEM_PROMPT_PARSING
 └── guias/
     ├── generate-index.ps1            ← script PowerShell que genera guias/index.html
     ├── index-template.html           ← plantilla para generate-index.ps1
@@ -326,7 +327,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings` (UNI
 | paid_date | date | |
 | comments | text | `'Pago final'` identifica el hito final (deuda menor: no hay campo is_final) |
 
-**`reservation_requests`** — Solicitudes recibidas desde la web pública o desde sfcom
+**`reservation_requests`** — Solicitudes recibidas desde la web pública, desde sfcom o procesadas desde email
 | Campo | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | Generado automáticamente por la BD (`gen_random_uuid()`) |
@@ -337,13 +338,28 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings` (UNI
 | slots | integer | Número de plazas solicitadas |
 | level | text | Slug del tipo de experiencia (web) o nombre del producto (sfcom) |
 | day | integer | Día de julio preferido |
-| comments | text | |
-| status | text NOT NULL | `'nueva'`, `'atendida'`, `'descartada'`; default `'nueva'` |
+| comments | text | Para solicitudes de email: prefijo con `Días: X` y `Otros servicios: Y` (si los hay) seguido de resumen humano. Para web/sfcom: texto libre del cliente. |
+| status | text NOT NULL | `'nueva'` (web/sfcom sin atender), `'email_parsed'` (email procesado desde el panel, pendiente de gestión), `'atendida'`, `'descartada'`; default `'nueva'` |
 | created_at | timestamptz | default `now()` |
 | attended_at | timestamptz | Cuándo fue atendida o descartada |
-| source | text | Referencia del pedido sfcom (ej: `WEB123_456`). Nulo si viene de la web. Se usa para evitar duplicados al re-sincronizar |
+| source | text | `null` si viene de la web, `'email'` si se procesó desde el panel de email manual, referencia del pedido sfcom (ej: `WEB123_456`) si viene de sfcom |
 | price_per_slot | numeric | Precio bruto por plaza (solo en solicitudes de sfcom) |
 | service_id | text | Sin FK. Se guarda al registrar pedidos sfcom cuando el nombre del producto se resuelve sin ambigüedad. Se usa como verificación (cross-check) al cargar la solicitud en el formulario, nunca como búsqueda primaria (el nombre es el contrato) |
+| language | text | Idioma del cliente (`'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'`). Solo se rellena para solicitudes procesadas desde email. Nulo para web y sfcom. |
+| email_raw | text | Texto completo del email original (solo para solicitudes de email). Guardado para referencia pero no se muestra en el panel. |
+
+**`assistant_logs`** — Logs de conversaciones del asistente IA guardados manualmente por Paula
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | `gen_random_uuid()` |
+| created_at | timestamptz | default `now()` |
+| solicitud_id | uuid | ID de la solicitud de origen (sin FK — no bloquea borrados de `reservation_requests`) |
+| client_name | text | Nombre del cliente, copiado de la solicitud para identificación rápida |
+| event_hint | text | Evento o servicio de la solicitud (`level` o `service_id`) |
+| messages | jsonb NOT NULL | Array completo de mensajes de la conversación: `[{role:"user",content:"..."},{role:"assistant",content:"..."},...]` |
+| context_snapshot | jsonb | Objeto de contexto enviado a Claude al inicio: `{solicitud:{...}, disponibilidad:[...], precios:{...}}` |
+
+Los logs se guardan manualmente pulsando "Guardar log" en el dialog del asistente. No hay guardado automático. Su uso principal es pasarlos periódicamente a Claude para análisis y mejora del system prompt (ver deuda técnica 12.52).
 
 ### Vistas
 
@@ -608,7 +624,76 @@ Estos modales se usaban antes en `formulario.js`; se extrajeron a `verificacion.
 
 Módulo ES6. Panel de solo-lectura centrado en la actividad de sfcom: KPIs, solicitudes pendientes, reservas con `sfcom_order_ref`, y listings activos con su stock. Reutiliza `verificarCoherencia`, `mostrarModalVerificacion` y `mostrarModalPreCorreccion` de `verificacion.js`. No escribe en BD; solo consume datos.
 
-### 7.9 auth.js
+### 7.12 Asistente IA de respuesta a clientes (formulario.js + asistente-config.js)
+
+Sistema de IA para ayudar a Paula a gestionar y responder solicitudes de clientes. Toda la lógica vive en `formulario.js`; los prompts en `asistente-config.js` (separados para poder actualizarlos por FTP sin tocar la lógica).
+
+#### Flujo de email manual (`abrirProcesarEmail`)
+
+Botón "📧 Procesar email" en la cabecera del Bloque 0. Paula pega el texto del email (con cabeceras, firma, etc.):
+
+**Paso 1 — Extracción con Claude Haiku:** llama a `claude-proxy` con `model: 'claude-haiku-4-5-20251001'` y `SYSTEM_PROMPT_PARSING`. Extrae JSON estructurado: `client_name`, `client_email`, `client_phone`, `service_hint`, `service_hint_extra[]`, `day`, `days_all[]`, `days_flexible`, `slots`, `language`, `comments` (resumen en español).
+
+**Paso 2 — Revisión:** modal con campos editables precargados con lo que extrajo Claude. Info box muestra `days_all`, `days_flexible`, `service_hint_extra` para que Paula vea la interpretación completa. Botones: "Guardar" (INSERT en `reservation_requests` + recarga tabla) y "Guardar y responder" (lo mismo + abre el asistente).
+
+**`_insertarEmailParseado(campos)`:** construye `comments` como `"Días: X\nOtros servicios: Y\n\n{resumen humano}"` (el prefijo facilita el parsing posterior por `parsearMetaComments`). INSERT con `source='email', status='email_parsed', language, email_raw`.
+
+#### Asistente de respuesta (`abrirAsistenteRespuesta`)
+
+Se abre desde el botón "💬 Responder" de cualquier fila de solicitudes — web, email y sfcom. Recibe el objeto `solicitud` completo de `reservation_requests`.
+
+**Detección del tipo de solicitud:**
+```js
+const tipoSolicitud = _esSfcom(solicitud.source) ? 'sfcom_reserva'
+                    : solicitud.source === 'email' ? 'email'
+                    : 'web'
+```
+
+- `'web'`: formulario de contacto, puede faltar información.
+- `'email'`: email procesado por Paula, idioma puede estar relleno.
+- `'sfcom_reserva'`: pedido ya confirmado y pagado. Claude detecta esto, informa a Paula de que es una reserva hecha y le pregunta qué quiere comunicarle al cliente (bienvenida, instrucciones del día, etc.) — no intenta vender.
+
+**Construcción del contexto inicial (`contextoObj`):**
+```js
+{
+    solicitud: {
+        tipo,        // 'web' | 'email' | 'sfcom_reserva'
+        nombre, email, telefono, evento, dia, personas,
+        idioma,      // del campo language o 'desconocido'
+        comentario   // comments con prefijo Días:/Otros servicios: eliminado
+    },
+    disponibilidad: disponibilidadParaAsistente(serviceIds),
+    precios:        preciosReferencia(serviceIds)
+}
+```
+
+El objeto se serializa con `JSON.stringify(contextoObj)` (sin pretty-print) y se envía como primer mensaje de usuario.
+
+**`disponibilidadParaAsistente(serviceIds)`:** agrega disponibilidad por proveedor para los service_ids relevantes. Campos por entrada: `service_id`, `dia`, `billing_model`, `plazas_libres`, `coste_proveedor`. Ordenadas: capacity con plazas libres primero, luego por día, luego consumption. No incluye `plazas_totales`, `plazas_confirmadas` ni `plazas_pendientes` — son irrelevantes para la respuesta al cliente.
+
+**`preciosReferencia(serviceIds)`:** devuelve un objeto compacto `{ [service_id]: "min-max" | número }` con el rango de precios de venta de reservas existentes para cada servicio. Si todos los precios son iguales, devuelve un número. Útil para que Claude parta del precio más alto como referencia. No devuelve registros individuales.
+
+**`parsearMetaComments(comments)` y `expandirServiceIds(hint, day, meta)`:** el primero extrae `dias[]`, `flexible` y `extra[]` del prefijo del campo `comments`. El segundo mapea hints a `service_id[]`; si el hint es `'encierro'` sin día concreto, devuelve los 8 días (ENCIERRO_7 a ENCIERRO_14).
+
+**UI del asistente:** modal con historial de chat (burbujas azules para asistente, verdes para usuario). Cuando Claude incluye `---MENSAJE_CLIENTE---` en su respuesta, el texto tras la marca aparece en un textarea editable con botones "Copiar", "📧 Email" (mailto) y "💬 WhatsApp". El historial completo (`mensajes[]`) se acumula en memoria y se envía en cada turno.
+
+**Guardar log:** botón "Guardar log" (texto subrayado en gris, junto al ✕ de cerrar — poco visible a propósito). Guarda `mensajes`, `context_snapshot` y metadata en la tabla `assistant_logs`. El log puede recuperarse de Supabase y pegarse a Claude para analizar la calidad del asistente y mejorar el system prompt (ver 12.52).
+
+#### Edge Function `claude-proxy`
+
+Único punto de entrada a la Claude API desde el admin. Verifica JWT antes de cualquier llamada. Acepta `{ messages, system?, max_tokens?, model? }`. Modelo por defecto: `claude-sonnet-4-6`. Lista blanca: `claude-sonnet-4-6`, `claude-opus-4-7`, `claude-haiku-4-5-20251001`. Aplica prompt caching en el system prompt (`cache_control: { type: 'ephemeral' }`).
+
+El asistente de respuesta usa el modelo por defecto (Sonnet 4.6). El parser de email especifica explícitamente `claude-haiku-4-5-20251001` (más rápido y barato; la extracción estructurada no requiere el modelo mayor).
+
+#### asistente-config.js
+
+Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de `formulario.js` para poder actualizar los prompts subiendo solo este archivo por FTP, sin modificar la lógica.
+
+`SYSTEM_PROMPT_ASISTENTE` explica: identidad del negocio, catálogo, lógica comercial (capacity vs consumption, suelo de precios), formato de los datos de contexto (`disponibilidad`, `precios`, `tipo`), perfiles de cliente, flujo de la conversación (resumen → propuesta → mensaje → iteración), y el marcador `---MENSAJE_CLIENTE---`. Si se actualiza el prompt, actualizar también los nombres de campo si cambia la estructura del contexto.
+
+`SYSTEM_PROMPT_PARSING` explica: contexto del negocio (fechas, momentos, catálogo), campos a extraer, reglas de extracción (en particular: el remitente del email no es el cliente — buscar el contacto real en el cuerpo).
+
+### 7.13 auth.js
 
 ```js
 requireAuth()  // redirige a ./index.html si no hay sesión
@@ -1156,6 +1241,29 @@ Donde `coste_proveedor` se obtiene del `price_per_slot` de `availability` para e
 
 ### 12.51 Completar datos de servicios en Supabase — **Pendiente (tarea de datos)**
 El campo `name` ya existe en la tabla (12.45 resuelto). Hay que rellenar los datos de todos los servicios existentes en Supabase: `name` (nombre comercial corto), `description` (texto descriptivo), `image_url` (URL absoluta de imagen representativa) y `start_time` (hora de inicio). Esta no es una tarea de código sino de contenido — se hace desde el panel de proveedores o directamente en Supabase. Hacerla después de 12.45 para que el campo `name` ya exista.
+
+### 12.52 Optimización iterativa del system prompt del asistente — **Pendiente, periódico**
+
+**Situación:** El asistente de respuesta a clientes (ver 7.12) usa `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js`. La calidad de las respuestas depende directamente de este prompt: si está incompleto o desalineado con la realidad del negocio, Claude pide más información de la necesaria, propone precios incorrectos, usa un tono equivocado o requiere muchos turnos para llegar a un mensaje usable.
+
+**Objetivo del proceso:** conseguir que en la mayoría de casos la primera respuesta del asistente ya sea una propuesta útil y un borrador de mensaje enviable, con el mínimo de turnos de corrección por parte de Paula.
+
+**Cómo funciona el proceso de mejora:**
+
+1. Paula usa el asistente con solicitudes reales y pulsa "Guardar log" en las conversaciones representativas (tanto las que salen bien como las que requieren muchas correcciones).
+2. Los logs quedan en la tabla `assistant_logs` de Supabase (campos: `messages` jsonb con el historial completo, `context_snapshot` jsonb con el contexto enviado a Claude).
+3. Javier recupera los logs de Supabase (Table Editor o SQL: `SELECT client_name, event_hint, messages FROM assistant_logs ORDER BY created_at DESC`) y los pega a Claude con la instrucción: *"Analiza estas conversaciones del asistente de ventas. Dime qué falta o sobra en el system prompt para que las respuestas sean más precisas desde el primer turno y consuman menos tokens."*
+4. Claude identifica patrones: preguntas que se repiten, contexto que falta, instrucciones que se ignoran, secciones del prompt que no se usan.
+5. Actualizar `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js` y subir por FTP (sin tocar `formulario.js`).
+
+**Qué buscar en los logs:**
+- Turnos de usuario que son correcciones de precio → el prompt o el contexto de `precios` no está orientando bien.
+- Turnos que repiten información que ya estaba en el contexto → Claude no la procesó; puede ser un problema de posición en el prompt o de formato del dato.
+- Respuestas excesivamente largas o con demasiados escenarios → el prompt no está acotando bien la longitud.
+- Respuestas en el idioma equivocado → revisar la regla de idioma del prompt.
+- Mensajes al cliente que Paula siempre reescribe en la misma dirección → añadir esa convención al prompt.
+
+**Contexto de costes:** `claude-proxy` usa `claude-sonnet-4-6` por defecto. El prompt caching (`cache_control: ephemeral`) tiene TTL de 5 minutos — solo ahorra tokens dentro de la misma sesión del navegador, no entre sesiones distintas. El grueso del coste por conversación es el `SYSTEM_PROMPT_ASISTENTE` (procesado en cada llamada salvo que la caché esté caliente) más el contexto inicial. Reducir el prompt sin perder calidad ahorra tokens en cada turno.
 
 ---
 
