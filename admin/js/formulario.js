@@ -2248,16 +2248,24 @@ function disponibilidadParaAsistente(serviceIds) {
 
 function preciosReferencia(serviceIds) {
     if (!serviceIds?.length || !todasReservas) return []
-    return todasReservas
+    // Máximo 5 por service_id (los de mayor precio — ya sirven como referencia de techo)
+    const porServicio = {}
+    todasReservas
         .filter(r => serviceIds.includes(r.service_id) && ['Confirmada', 'Pendiente'].includes(r.status))
-        .map(r => ({
-            service_id:     r.service_id,
-            provider_id:    r.provider_id,
-            price_per_slot: r.price_per_slot,
-            slots:          r.slots,
-            status:         r.status
-        }))
         .sort((a, b) => b.price_per_slot - a.price_per_slot)
+        .forEach(r => {
+            if (!porServicio[r.service_id]) porServicio[r.service_id] = []
+            if (porServicio[r.service_id].length < 5) {
+                porServicio[r.service_id].push({
+                    service_id:     r.service_id,
+                    provider_id:    r.provider_id,
+                    price_per_slot: r.price_per_slot,
+                    slots:          r.slots,
+                    status:         r.status
+                })
+            }
+        })
+    return Object.values(porServicio).flat()
 }
 
 async function abrirAsistenteRespuesta(solicitud) {
