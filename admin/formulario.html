@@ -42,10 +42,14 @@
         <main class="content">
 
             <!-- BLOQUE 0: SOLICITUDES PENDIENTES -->
-            <div class="bloque" id="bloque-solicitudes" style="display:none">
-                <h2>🔔 Solicitudes pendientes</h2>
-                <p class="bloque-desc">Solicitudes recibidas desde la web sin atender.</p>
-                <div class="table-wrapper">
+            <div class="bloque" id="bloque-solicitudes">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <h2 style="margin:0">🔔 Solicitudes pendientes</h2>
+                    <button class="btn btn-secondary" id="btnProcesarEmail" style="font-size:13px">📧 Procesar email</button>
+                </div>
+                <p class="bloque-desc">Solicitudes recibidas sin atender.</p>
+                <p id="bloque-solicitudes-empty" style="display:none;color:#6b7280;font-size:14px;margin-top:4px">No hay solicitudes pendientes.</p>
+                <div class="table-wrapper" id="tabla-solicitudes-wrapper" style="display:none">
                     <table>
                         <thead>
                             <tr>

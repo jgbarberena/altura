@@ -1770,15 +1770,17 @@ async function cargarSolicitudes() {
 
     if (error) { console.error('Error cargando solicitudes:', error); return }
 
-    const bloque = document.getElementById('bloque-solicitudes')
-    const tbody  = document.getElementById('tbody-solicitudes')
+    const tbody     = document.getElementById('tbody-solicitudes')
+    const tablaWrap = document.getElementById('tabla-solicitudes-wrapper')
+    const emptyMsg  = document.getElementById('bloque-solicitudes-empty')
 
     if (!solicitudes || solicitudes.length === 0) {
-        bloque.style.display = 'none'
+        if (tablaWrap) tablaWrap.style.display = 'none'
+        if (emptyMsg)  emptyMsg.style.display  = 'block'
         return
     }
-
-    bloque.style.display = 'block'
+    if (tablaWrap) tablaWrap.style.display = ''
+    if (emptyMsg)  emptyMsg.style.display  = 'none'
 
     // Separar sfcom de web para mostrar sfcom primero
     const deSfcom  = solicitudes.filter(s => _esSfcom(s.source))
@@ -2439,9 +2441,209 @@ async function abrirAsistenteRespuesta(solicitud) {
 
 // ===== FIN ASISTENTE =====
 
+// ===== PROCESAR EMAIL MANUAL =====
+
+async function abrirProcesarEmail() {
+    const { overlay, panel } = crearModal('modal-parsear-email', { wide: true, scroll: true })
+    let textoEmail = ''
+
+    function mostrarPaso1() {
+        panel.innerHTML = `
+            <h3 style="margin-top:0">📧 Procesar email de cliente</h3>
+            <p style="color:#555;font-size:14px;margin-bottom:12px">Pega el texto completo del email. Puede incluir cabeceras, texto de reenvío, firmas, etc.</p>
+            <textarea id="ep-textarea" rows="13" style="width:100%;box-sizing:border-box;font-size:13px;font-family:monospace;padding:8px;border:1px solid #d1d5db;border-radius:4px;resize:vertical" placeholder="Pega aquí el texto del email..."></textarea>
+            <div id="ep-error" style="display:none;color:#dc2626;font-size:13px;margin-top:8px"></div>
+            <div class="btn-row" style="margin-top:16px">
+                <button class="btn btn-primary" id="ep-btn-procesar">Procesar con Claude</button>
+                <button class="btn btn-secondary" id="ep-btn-cancelar">Cancelar</button>
+            </div>
+        `
+        panel.querySelector('#ep-textarea').value = textoEmail
+
+        panel.querySelector('#ep-btn-cancelar').addEventListener('click', () => overlay.close())
+
+        panel.querySelector('#ep-btn-procesar').addEventListener('click', async () => {
+            textoEmail = panel.querySelector('#ep-textarea').value.trim()
+            const errorDiv = panel.querySelector('#ep-error')
+            if (!textoEmail) {
+                errorDiv.textContent = 'Pega el contenido del email antes de procesar.'
+                errorDiv.style.display = 'block'
+                return
+            }
+            const btn = panel.querySelector('#ep-btn-procesar')
+            btn.disabled = true
+            btn.textContent = 'Procesando…'
+            errorDiv.style.display = 'none'
+            try {
+                const { data, error } = await supabase.functions.invoke('parse-email', {
+                    body: { text: textoEmail }
+                })
+                if (error) throw new Error(error.message || 'Error al invocar parse-email')
+                if (!data?.ok) throw new Error(data?.error || 'Respuesta inesperada')
+                mostrarPasoRevision({ ...data.parsed, _emailRaw: textoEmail.slice(0, 2000) })
+            } catch (err) {
+                errorDiv.textContent = `Error: ${err.message}`
+                errorDiv.style.display = 'block'
+                btn.disabled = false
+                btn.textContent = 'Procesar con Claude'
+            }
+        })
+    }
+
+    function mostrarPasoRevision(parsed) {
+        const EVENTOS = [
+            ['', '— No identificado —'], ['encierro', 'Encierro'],
+            ['chupinazo', 'Chupinazo'], ['procesion', 'Procesión'],
+            ['gigantes', 'Gigantes'], ['pobre_de_mi', 'Pobre de Mí'],
+            ['personalizada', 'Personalizada'], ['empresa', 'Empresa'], ['hotel', 'Hotel']
+        ]
+        const IDIOMAS = [
+            ['es', 'Español'], ['en', 'Inglés'], ['fr', 'Francés'],
+            ['it', 'Italiano'], ['de', 'Alemán'], ['other', 'Otro']
+        ]
+        const extras = [
+            parsed.days_all?.length > 1        ? `Días detectados: ${parsed.days_all.join(', ')}` : null,
+            parsed.days_flexible               ? 'Flexible con el día' : null,
+            parsed.service_hint_extra?.length  ? `Otros eventos: ${parsed.service_hint_extra.join(', ')}` : null
+        ].filter(Boolean).join(' · ')
+
+        const esc = v => (v ?? '').toString()
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+        panel.innerHTML = `
+            <h3 style="margin-top:0">📋 Datos parseados — revisa y corrige</h3>
+            ${extras ? `<p style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:8px 12px;font-size:12px;color:#1e40af;margin-bottom:16px">${extras}</p>` : ''}
+            <div class="form-grid">
+                <div class="form-field">
+                    <label>Nombre</label>
+                    <input id="ep-nombre" type="text" value="${esc(parsed.client_name || '')}" placeholder="Nombre del cliente">
+                </div>
+                <div class="form-field">
+                    <label>Email</label>
+                    <input id="ep-email" type="text" value="${esc(parsed.client_email || '')}" placeholder="Email">
+                </div>
+                <div class="form-field">
+                    <label>Teléfono</label>
+                    <input id="ep-tel" type="text" value="${esc(parsed.client_phone || '')}" placeholder="Teléfono">
+                </div>
+                <div class="form-field">
+                    <label>Evento principal</label>
+                    <select id="ep-evento">
+                        ${EVENTOS.map(([v, l]) => `<option value="${v}"${parsed.service_hint === v ? ' selected' : ''}>${l}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Día de julio</label>
+                    <input id="ep-dia" type="number" min="6" max="14" value="${parsed.day || ''}" placeholder="6–14">
+                </div>
+                <div class="form-field">
+                    <label>Personas</label>
+                    <input id="ep-personas" type="number" min="1" value="${parsed.slots || ''}" placeholder="Nº personas">
+                </div>
+                <div class="form-field">
+                    <label>Idioma</label>
+                    <select id="ep-idioma">
+                        ${IDIOMAS.map(([v, l]) => `<option value="${v}"${parsed.language === v ? ' selected' : ''}>${l}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="form-field" style="margin-top:12px">
+                <label>Resumen (editable)</label>
+                <textarea id="ep-resumen" rows="4" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid #d1d5db;border-radius:4px">${esc(parsed.comments || '')}</textarea>
+            </div>
+            <div id="ep-error2" style="display:none;color:#dc2626;font-size:13px;margin-top:8px"></div>
+            <div class="btn-row" style="margin-top:16px">
+                <button class="btn btn-primary" id="ep-btn-guardar-responder">💬 Guardar y responder</button>
+                <button class="btn btn-secondary" id="ep-btn-solo-guardar">Solo guardar</button>
+                <button class="btn btn-secondary" id="ep-btn-volver">← Volver</button>
+            </div>
+        `
+
+        const getCampos = () => ({
+            client_name:        panel.querySelector('#ep-nombre').value.trim()      || null,
+            client_email:       panel.querySelector('#ep-email').value.trim()       || null,
+            client_phone:       panel.querySelector('#ep-tel').value.trim()         || null,
+            service_hint:       panel.querySelector('#ep-evento').value             || null,
+            day:                parseInt(panel.querySelector('#ep-dia').value)      || null,
+            slots:              parseInt(panel.querySelector('#ep-personas').value) || null,
+            language:           panel.querySelector('#ep-idioma').value,
+            comments_resumen:   panel.querySelector('#ep-resumen').value.trim(),
+            days_all:           parsed.days_all           || [],
+            days_flexible:      parsed.days_flexible      || false,
+            service_hint_extra: parsed.service_hint_extra || [],
+            _emailRaw:          parsed._emailRaw          || null
+        })
+
+        async function guardar(abrirAsistente) {
+            const btnGR  = panel.querySelector('#ep-btn-guardar-responder')
+            const btnSG  = panel.querySelector('#ep-btn-solo-guardar')
+            const errDiv = panel.querySelector('#ep-error2')
+            btnGR.disabled = btnSG.disabled = true
+            errDiv.style.display = 'none'
+            try {
+                const solicitud = await _insertarEmailParseado(getCampos())
+                await cargarSolicitudes()
+                overlay.close()
+                if (abrirAsistente) abrirAsistenteRespuesta(solicitud)
+            } catch (err) {
+                errDiv.textContent = `Error al guardar: ${err.message}`
+                errDiv.style.display = 'block'
+                btnGR.disabled = btnSG.disabled = false
+            }
+        }
+
+        panel.querySelector('#ep-btn-guardar-responder').addEventListener('click', () => guardar(true))
+        panel.querySelector('#ep-btn-solo-guardar').addEventListener('click', () => guardar(false))
+        panel.querySelector('#ep-btn-volver').addEventListener('click', mostrarPaso1)
+    }
+
+    mostrarPaso1()
+    overlay.showModal()
+}
+
+async function _insertarEmailParseado(campos) {
+    let prefix = ''
+    if (campos.days_flexible) {
+        prefix += 'Días: cualquiera\n'
+    } else if (campos.days_all.length > 1) {
+        prefix += `Días: ${campos.days_all.join(', ')}\n`
+    }
+    if (campos.service_hint_extra.length > 0) {
+        prefix += `Otros servicios: ${campos.service_hint_extra.join(', ')}\n`
+    }
+    const finalComments = prefix
+        ? prefix + '\n' + campos.comments_resumen
+        : campos.comments_resumen
+
+    const { data, error } = await supabase
+        .from('reservation_requests')
+        .insert({
+            client_name:  campos.client_name  || 'Sin nombre',
+            client_email: campos.client_email || null,
+            client_phone: campos.client_phone || null,
+            service_id:   null,
+            slots:        campos.slots        || null,
+            day:          campos.day          || null,
+            level:        campos.service_hint || null,
+            comments:     finalComments,
+            source:       'email',
+            status:       'email_parsed',
+            language:     campos.language     || 'es',
+            email_raw:    campos._emailRaw    || null
+        })
+        .select()
+        .single()
+
+    if (error) throw new Error(error.message)
+    return data
+}
+
+// ===== FIN PROCESAR EMAIL MANUAL =====
+
 document.getElementById('btnCerrarReorg').addEventListener('click', cerrarPanelReorganizar)
 document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPanelReorganizar)
 document.getElementById('btnConfirmarReorg').addEventListener('click', confirmarReorganizacion)
+document.getElementById('btnProcesarEmail').addEventListener('click', abrirProcesarEmail)
 
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
