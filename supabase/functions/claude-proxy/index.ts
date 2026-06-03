@@ -9,9 +9,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// ── Modelo ────────────────────────────────────────────────────────────────────
-// Para cambiar: editar esta constante y redesplegar la función en Supabase dashboard.
-const MODEL = 'claude-opus-4-7-20250514'
+const DEFAULT_MODEL = 'claude-opus-4-7-20250514'
+const ALLOWED_MODELS = new Set([
+    'claude-opus-4-7-20250514',
+    'claude-haiku-4-5-20251001'
+])
 
 const CORS = {
     'Access-Control-Allow-Origin':  '*',
@@ -49,14 +51,15 @@ Deno.serve(async (req: Request) => {
     }
 
     // 2 ── Parsear el body
-    let body: { messages: unknown; system?: string; max_tokens?: number }
+    let body: { messages: unknown; system?: string; max_tokens?: number; model?: string }
     try {
         body = await req.json()
     } catch {
         return json({ error: 'Invalid JSON' }, 400)
     }
 
-    const { messages, system, max_tokens = 1000 } = body
+    const { messages, system, max_tokens = 1000, model: reqModel } = body
+    const model = (reqModel && ALLOWED_MODELS.has(reqModel)) ? reqModel : DEFAULT_MODEL
 
     if (!Array.isArray(messages) || messages.length === 0) {
         return json({ error: 'messages must be a non-empty array' }, 400)
@@ -64,7 +67,7 @@ Deno.serve(async (req: Request) => {
 
     // 3 ── Reenviar a Claude API con prompt caching en el system prompt
     const anthropicBody: Record<string, unknown> = {
-        model:      MODEL,
+        model,
         max_tokens,
         messages
     }

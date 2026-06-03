@@ -6,7 +6,7 @@ import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
 import { crearModal } from './modal.js'
-import { SYSTEM_PROMPT_ASISTENTE } from './asistente-config.js'
+import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 await requireAuth()
 initFacturacion(supabase)
@@ -2475,12 +2475,20 @@ async function abrirProcesarEmail() {
             btn.textContent = 'Procesando…'
             errorDiv.style.display = 'none'
             try {
-                const { data, error } = await supabase.functions.invoke('parse-email', {
-                    body: { text: textoEmail }
+                const { data, error } = await supabase.functions.invoke('claude-proxy', {
+                    body: {
+                        model:      'claude-haiku-4-5-20251001',
+                        max_tokens: 500,
+                        system:     SYSTEM_PROMPT_PARSING,
+                        messages:   [{ role: 'user', content: textoEmail }]
+                    }
                 })
-                if (error) throw new Error(error.message || 'Error al invocar parse-email')
-                if (!data?.ok) throw new Error(data?.error || 'Respuesta inesperada')
-                mostrarPasoRevision({ ...data.parsed, _emailRaw: textoEmail.slice(0, 2000) })
+                if (error) throw new Error(error.message || 'Error al invocar claude-proxy')
+                const rawText   = String(data?.content?.[0]?.text ?? '').trim()
+                const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+                if (!jsonMatch) throw new Error('Claude no devolvió JSON válido')
+                const parsed = JSON.parse(jsonMatch[0])
+                mostrarPasoRevision({ ...parsed, _emailRaw: textoEmail.slice(0, 2000) })
             } catch (err) {
                 errorDiv.textContent = `Error: ${err.message}`
                 errorDiv.style.display = 'block'
