@@ -16,9 +16,64 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const MODEL = 'claude-haiku-4-5-20251001'
 
 // ── Prompt de parseo ──────────────────────────────────────────────────────────
-// Para actualizar: editar este texto y redesplegar la función.
-// El texto definitivo se completará cuando esté listo el prompt de extracción.
-const SYSTEM_PROMPT_PARSING = ``
+// Para actualizar: editar este texto y redesplegar la función en Supabase dashboard.
+const SYSTEM_PROMPT_PARSING = `\
+Eres un extractor de datos estructurados para "Vive San Fermín desde dentro" (experienciasanfermin.com), negocio de experiencias exclusivas en San Fermín (Pamplona, España). Recibes el cuerpo de un email de consulta y debes extraer información clave.
+
+CONTEXTO DEL NEGOCIO (para interpretar correctamente las consultas):
+San Fermín se celebra del 6 al 14 de julio en Pamplona. Las experiencias principales son:
+- Chupinazo: inicio de fiestas, 6 de julio a las 12:00, Plaza del Ayuntamiento. Balcones privados.
+- Encierro: cada día del 7 al 14 de julio a las 8:00. Balcones en el recorrido (Estafeta, Mercaderes, Santo Domingo, Plaza del Ayuntamiento y otras ubicaciones).
+- Procesión de San Fermín: 7 de julio por la mañana. Balcones en el recorrido (Mercaderes, Plaza del Ayuntamiento y otras ubicaciones).
+- Despedida de Gigantes: 14 de julio. Plaza del Ayuntamiento y entorno.
+- Pobre de Mí: cierre de fiestas, 14 de julio a las 24:00. Plaza del Ayuntamiento.
+- Experiencias personalizadas y complementarias: visitas guiadas, corralillos del Gas, charla con corredores, barrera del encierro, apartado y sorteo taurino, encierrillo nocturno, corrida de toros, fuegos artificiales, desayuno premium, gestión de alojamiento, To-Kō Collection (welcome gifts).
+- Experiencias para empresa u hotel: grupos corporativos, team building, clientes VIP, huéspedes de hotel, paquetes a medida.
+- Pueden existir consultas fuera de lo estándar (usos profesionales, medios de comunicación, producción audiovisual, instituciones, etc.) que también atendemos caso a caso.
+
+IMPORTANTE SOBRE EL ORIGEN DEL EMAIL:
+Este email puede llegar de múltiples formas: reenviado desde paula@experienciasanfermin.com, paula@lemonmilk.es, desde WhatsApp exportado a email, o reenviado por un colaborador (como Hilario de tienda.sanfermin.com). El remitente del email que recibes NO es necesariamente el cliente. Busca el contacto real del cliente dentro del cuerpo del mensaje: nombre, email y teléfono aparecerán en el texto, en una firma, o en los datos de un formulario copiado. Ignora las direcciones de paula@, lemonmilk.es, goviwebs.com o cualquier dirección interna como remitente.
+
+CAMPOS A EXTRAER:
+Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones:
+
+{
+  "client_name": string o null,
+  "client_email": string o null,
+  "client_phone": string o null,
+  "service_hint": string o null,
+  "service_hint_extra": array de strings (mismo vocabulario que service_hint) o [],
+  "day": número entre 6 y 14 o null,
+  "days_all": array de números 6-14 con todos los días mencionados o [],
+  "days_flexible": boolean,
+  "slots": número entero o null,
+  "language": string de dos letras (es/en/fr/it/de/other),
+  "comments": string
+}
+
+REGLAS DE EXTRACCIÓN:
+
+client_name: nombre completo del cliente real (no de Paula ni de colaboradores internos). Si aparece en el cuerpo, en una firma del cliente o en datos de formulario copiado. Null si no aparece.
+
+client_email: email de contacto del cliente real. Búscalo en el cuerpo del mensaje, no en el campo "from" del email (que será interno). Null si no aparece.
+
+client_phone: teléfono del cliente si aparece en el cuerpo o en la firma del cliente. Null si no aparece.
+
+service_hint: experiencia o momento de San Fermín que menciona el cliente. Usa exactamente uno de estos valores si aplica: "chupinazo", "encierro", "procesion", "gigantes", "pobre_de_mi", "personalizada", "empresa", "hotel". Si menciona varios, pon el principal. Si no menciona ninguno concreto o es una consulta fuera de catálogo, null.
+
+day: si mencionan un día de julio concreto (del 6 al 14), extrae solo el número. Si dicen "el primer día" → 6, "el último día" → 14. Si mencionan varios días, pon el primero. Null si no especifican o si son flexibles.
+
+service_hint_extra: otros servicios o momentos de San Fermín mencionados además del principal. Usa exactamente el mismo vocabulario que service_hint. Array vacío si no hay adicionales. Ejemplo: cliente pide "chupinazo y también encierro" → service_hint="chupinazo", service_hint_extra=["encierro"].
+
+days_all: array con TODOS los días de julio (6-14) que menciona el cliente, incluyendo el ya recogido en day. Ejemplos: "el 7 y el 9" → [7,9] · "del 7 al 11" → [7,8,9,10,11] · "estaremos del 8 al 14" → [8,9,10,11,12,13,14] · un solo día → [ese día] · días no mencionados o cliente flexible → [].
+
+days_flexible: true solo si el cliente indica explícitamente que cualquier día le va bien ("cualquier día", "lo que tengáis", "nos da igual el día", "somos flexibles con el día"). False en todos los demás casos, incluyendo cuando no menciona días.
+
+slots: número de personas o plazas que solicitan. Null si no se menciona número concreto.
+
+language: idioma principal en que está escrita la consulta del cliente (no el texto de reenvío interno). Valores: "es", "en", "fr", "it", "de", "other".
+
+comments: resumen en español en 2-4 frases, en tercera persona, con el tono de una nota interna para el equipo de ventas. NO copies el texto original: interpreta, resume y añade contexto útil. Incluye: qué quieren, para cuándo, perfil aproximado del cliente (particular, grupo, empresa, hotel, medio de comunicación, uso no estándar, etc.), y cualquier detalle relevante sobre sus necesidades, urgencia, flexibilidad o restricción especial. Ejemplo: "Grupo de 6 amigos, primera vez en San Fermín, interesados en ver el encierro desde balcón para el día 9. Tono informal y entusiasta, parecen decididos. No mencionan presupuesto."`
 
 // ── Configuración de notificaciones ──────────────────────────────────────────
 // FROM debe ser una dirección del dominio verificado en Resend
@@ -62,25 +117,21 @@ Deno.serve(async (req: Request) => {
 
     const emailRaw = emailBody.slice(0, 2000)
 
-    // 3 ── Detectar idioma (heurística simple)
-    const lower   = emailBody.toLowerCase()
-    let language  = 'es'
-    if (/\b(the|is|are|this|that|with|have|from|they|what|when|how|would|please)\b/.test(lower)) language = 'en'
-    else if (/\b(bonjour|je|nous|vous|est|les|une|pour|dans|merci|voudrais)\b/.test(lower)) language = 'fr'
-    else if (/\b(ciao|vorrei|siamo|sono|della|grazie|buongiorno|salve)\b/.test(lower)) language = 'it'
-    else if (/\b(ich|wir|bitte|haben|sind|der|die|das|und|möchte|sehr)\b/.test(lower)) language = 'de'
-
-    // 4 ── Llamar a Claude Haiku para extraer datos estructurados
+    // 3 ── Llamar a Claude Haiku para extraer datos estructurados
     // SYSTEM_PROMPT_PARSING se define al inicio del archivo para facilitar su actualización
 
     let parsed: {
-        client_name:  string | null
-        client_email: string | null
-        client_phone: string | null
-        service_hint: string | null
-        day:          number | null
-        slots:        number | null
-        comments:     string
+        client_name:        string | null
+        client_email:       string | null
+        client_phone:       string | null
+        service_hint:       string | null
+        service_hint_extra: string[]
+        day:                number | null
+        days_all:           number[]
+        days_flexible:      boolean
+        slots:              number | null
+        language:           string
+        comments:           string
     } | null = null
 
     let parseError: string | null = null
@@ -125,13 +176,17 @@ Deno.serve(async (req: Request) => {
     // Si el parseo falló, construir fila con fallback y notificar
     if (!parsed) {
         parsed = {
-            client_name:  null,
-            client_email: fromEmail || null,
-            client_phone: null,
-            service_hint: null,
-            day:          null,
-            slots:        null,
-            comments:     'Email recibido — parsing automático fallido. Revisar manualmente.'
+            client_name:        null,
+            client_email:       fromEmail || null,
+            client_phone:       null,
+            service_hint:       null,
+            service_hint_extra: [],
+            day:                null,
+            days_all:           [],
+            days_flexible:      false,
+            slots:              null,
+            language:           'es',
+            comments:           'Email recibido — parsing automático fallido. Revisar manualmente.'
         }
         await sendNotification(
             '⚠️ Error parseando email entrante',
@@ -139,7 +194,22 @@ Deno.serve(async (req: Request) => {
         )
     }
 
-    // 5 ── Insertar en reservation_requests
+    // 5 ── Construir comments enriquecido con meta-datos de días y servicios extra
+    // La Edge Function escribe el prefijo; el JS del asistente lo parsea después.
+    let commentsPrefix = ''
+    if (parsed.days_flexible) {
+        commentsPrefix += 'Días: cualquiera\n'
+    } else if ((parsed.days_all || []).length > 1) {
+        commentsPrefix += `Días: ${parsed.days_all.join(', ')}\n`
+    }
+    if ((parsed.service_hint_extra || []).length > 0) {
+        commentsPrefix += `Otros servicios: ${parsed.service_hint_extra.join(', ')}\n`
+    }
+    const finalComments = commentsPrefix
+        ? commentsPrefix + '\n' + parsed.comments
+        : parsed.comments
+
+    // 6 ── Insertar en reservation_requests
     const supabase = createClient(
         Deno.env.get('SUPABASE_URL')              ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -155,10 +225,10 @@ Deno.serve(async (req: Request) => {
             slots:        parsed.slots        || null,
             day:          parsed.day          || null,
             level:        parsed.service_hint || null,
-            comments:     parsed.comments,
+            comments:     finalComments,
             source:       'email',
             status:       'email_parsed',
-            language,
+            language:     parsed.language || 'es',
             email_raw:    emailRaw
         })
 
@@ -172,7 +242,7 @@ Deno.serve(async (req: Request) => {
         return json({ ok: false, error: insertError.message }, 500)
     }
 
-    // 6 ── Notificación de éxito con resumen del parseo
+    // 7 ── Notificación de éxito con resumen del parseo
     if (!parseError) {
         await sendNotification(
             `📧 Email parseado — ${parsed.client_name || fromEmail}`,
@@ -183,7 +253,7 @@ Deno.serve(async (req: Request) => {
             `Evento:   ${parsed.service_hint ?? '—'}\n` +
             `Día:      ${parsed.day    ?? '—'}\n` +
             `Personas: ${parsed.slots  ?? '—'}\n` +
-            `Idioma:   ${language}\n\n` +
+            `Idioma:   ${parsed.language ?? '—'}\n\n` +
             `Resumen:\n${parsed.comments}`
         )
     }

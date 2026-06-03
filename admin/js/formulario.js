@@ -2171,28 +2171,91 @@ async function descartarSolicitud(id) {
 
 // ===== ASISTENTE DE RESPUESTAS =====
 
-function disponibilidadParaAsistente(serviceId) {
-    if (!serviceId || !disponibilidad) return []
+function parsearMetaComments(comments) {
+    if (!comments) return { dias: null, flexible: false, extra: [] }
+    const diasMatch = comments.match(/^Días:\s*(.+)$/m)
+    const svcMatch  = comments.match(/^Otros servicios:\s*(.+)$/m)
+    let dias = null, flexible = false
+    if (diasMatch) {
+        if (diasMatch[1].trim() === 'cualquiera') {
+            flexible = true
+        } else {
+            const parsed = diasMatch[1].split(',').map(s => parseInt(s.trim())).filter(n => n >= 6 && n <= 14)
+            if (parsed.length) dias = parsed
+        }
+    }
+    const extra = svcMatch ? svcMatch[1].split(',').map(s => s.trim()).filter(Boolean) : []
+    return { dias, flexible, extra }
+}
 
-    return disponibilidad
-        .filter(d => d.service_id === serviceId)
-        .map(d => {
-            const activas = (todasReservas || []).filter(r =>
-                r.provider_id === d.provider_id &&
-                r.service_id  === d.service_id  &&
-                r.status      !== 'Cancelada'
-            )
-            const ocupadas   = activas.reduce((s, r) => s + (r.slots || 0), 0)
-            const pendientes = activas.filter(r => r.status === 'Pendiente').reduce((s, r) => s + (r.slots || 0), 0)
+function expandirServiceIds(serviceHint, day, meta) {
+    if (!serviceHint) return []
+    const FIJOS = {
+        chupinazo:   ['CHUPINAZO_6'],
+        procesion:   ['PROCESION_7'],
+        gigantes:    ['DESPEDIDA_GIGANTES_14'],
+        pobre_de_mi: ['POBRE_DE_MI']
+    }
+    if (FIJOS[serviceHint]) return FIJOS[serviceHint]
+    if (serviceHint !== 'encierro') return []
+    const todosDias = [7, 8, 9, 10, 11, 12, 13, 14]
+    if (meta.flexible || (!meta.dias && !day)) return todosDias.map(d => `ENCIERRO_${d}`)
+    const dias = meta.dias?.length ? meta.dias : (day ? [day] : todosDias)
+    return dias.map(d => `ENCIERRO_${d}`)
+}
 
-            return {
-                proveedor:         d.provider_id,
-                plazas_totales:    d.total_slots,
-                plazas_libres:     Math.max(0, d.total_slots - ocupadas),
-                plazas_pendientes: pendientes,
-                precio_proveedor:  d.price_per_slot   // coste al proveedor, no precio de venta
-            }
+function disponibilidadParaAsistente(serviceIds) {
+    if (!serviceIds?.length || !disponibilidad) return []
+    const RE_DIA = /_(\d+)$/
+    return serviceIds
+        .flatMap(sid => {
+            const rows = disponibilidad.filter(d => d.service_id === sid)
+            if (!rows.length) return []
+            const diaMatch = sid.match(RE_DIA)
+            const dia      = diaMatch ? parseInt(diaMatch[1]) : null
+            return rows.map(d => {
+                const activas     = (todasReservas || []).filter(r =>
+                    r.provider_id === d.provider_id && r.service_id === d.service_id && r.status !== 'Cancelada'
+                )
+                const ocupadas    = activas.reduce((s, r) => s + (r.slots || 0), 0)
+                const confirmadas = activas.filter(r => r.status === 'Confirmada').reduce((s, r) => s + (r.slots || 0), 0)
+                const pendientes  = activas.filter(r => r.status === 'Pendiente').reduce((s, r) => s + (r.slots || 0), 0)
+                return {
+                    service_id:         sid,
+                    day:                dia,
+                    billing_model:      d.billing_model,
+                    plazas_totales:     d.total_slots,
+                    plazas_libres:      Math.max(0, d.total_slots - ocupadas),
+                    plazas_confirmadas: confirmadas,
+                    plazas_pendientes:  pendientes,
+                    precio_por_plaza:   d.price_per_slot  // coste al proveedor — nunca vender por debajo
+                }
+            })
         })
+        .sort((a, b) => {
+            const aCapLibre = a.billing_model === 'capacity' && a.plazas_libres > 0
+            const bCapLibre = b.billing_model === 'capacity' && b.plazas_libres > 0
+            if (aCapLibre && !bCapLibre) return -1
+            if (!aCapLibre && bCapLibre)  return 1
+            if ((a.day || 0) !== (b.day || 0)) return (a.day || 0) - (b.day || 0)
+            if (a.billing_model === 'capacity' && b.billing_model !== 'capacity') return -1
+            if (a.billing_model !== 'capacity' && b.billing_model === 'capacity')  return 1
+            return b.plazas_libres - a.plazas_libres
+        })
+}
+
+function preciosReferencia(serviceIds) {
+    if (!serviceIds?.length || !todasReservas) return []
+    return todasReservas
+        .filter(r => serviceIds.includes(r.service_id) && ['Confirmada', 'Pendiente'].includes(r.status))
+        .map(r => ({
+            service_id:     r.service_id,
+            provider_id:    r.provider_id,
+            price_per_slot: r.price_per_slot,
+            slots:          r.slots,
+            status:         r.status
+        }))
+        .sort((a, b) => b.price_per_slot - a.price_per_slot)
 }
 
 async function abrirAsistenteRespuesta(solicitud) {
@@ -2351,18 +2414,24 @@ async function abrirAsistenteRespuesta(solicitud) {
     })
 
     // Llamada inicial automática con todo el contexto de la solicitud
+    const meta       = parsearMetaComments(solicitud.comments)
+    const svcPrinc   = expandirServiceIds(solicitud.level || null, solicitud.day, meta)
+    const svcExtra   = meta.extra.flatMap(h => expandirServiceIds(h, null, { dias: null, flexible: true, extra: [] }))
+    const serviceIds = [...new Set([...svcPrinc, ...svcExtra])]
+
     const contextoInicial = JSON.stringify({
         solicitud: {
-            nombre:           solicitud.client_name  || null,
-            email:            solicitud.client_email || null,
-            telefono:         solicitud.client_phone || null,
-            evento_detectado: solicitud.level || solicitud.service_id || null,
-            dia:              solicitud.day   || null,
-            personas:         solicitud.slots || null,
-            comentario:       solicitud.comments || null,
-            idioma_cliente:   solicitud.language || 'desconocido'
+            nombre:    solicitud.client_name  || null,
+            email:     solicitud.client_email || null,
+            telefono:  solicitud.client_phone || null,
+            evento:    solicitud.level || solicitud.service_id || null,
+            dia:       solicitud.day   || null,
+            personas:  solicitud.slots || null,
+            idioma:    solicitud.language || 'desconocido',
+            comentario: solicitud.comments || null
         },
-        disponibilidad: disponibilidadParaAsistente(solicitud.service_id)
+        disponibilidad:     disponibilidadParaAsistente(serviceIds),
+        precios_referencia: preciosReferencia(serviceIds)
     }, null, 2)
 
     await llamarClaude(contextoInicial)
