@@ -115,6 +115,7 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │       ├── formulario.js             ← lógica principal del panel de reservas (módulo ES6)
 │       ├── factura.js                ← módulo de facturación (importado por formulario.js)
 │       ├── propuesta.js              ← módulo de propuesta comercial PDF (importado por formulario.js)
+│       ├── asistente.js              ← módulo del asistente IA: parseo de email, respuesta a clientes, guardar log (importado por formulario.js)
 │       ├── panel.js                  ← lógica del panel de control (módulo ES6)
 │       ├── proveedores.js            ← lógica de gestión de proveedores (módulo ES6)
 │       ├── tablas.js                 ← lógica de tablas (módulo ES6)
@@ -122,7 +123,7 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │       ├── supabase.js               ← cliente Supabase admin (export const supabase)
 │       ├── utils.js                  ← utilidades compartidas del admin (fmt, fechas, persistencia)
 │       ├── auth.js                   ← requireAuth / logout
-│       └── asistente-config.js       ← prompts de IA exportados: SYSTEM_PROMPT_ASISTENTE y SYSTEM_PROMPT_PARSING
+│       └── asistente-config.js       ← prompts de IA exportados: SYSTEM_PROMPT_ASISTENTE y SYSTEM_PROMPT_PARSING (importado por asistente.js)
 └── guias/
     ├── generate-index.ps1            ← script PowerShell que genera guias/index.html
     ├── index-template.html           ← plantilla para generate-index.ps1
@@ -624,9 +625,11 @@ Estos modales se usaban antes en `formulario.js`; se extrajeron a `verificacion.
 
 Módulo ES6. Panel de solo-lectura centrado en la actividad de sfcom: KPIs, solicitudes pendientes, reservas con `sfcom_order_ref`, y listings activos con su stock. Reutiliza `verificarCoherencia`, `mostrarModalVerificacion` y `mostrarModalPreCorreccion` de `verificacion.js`. No escribe en BD; solo consume datos.
 
-### 7.12 Asistente IA de respuesta a clientes (formulario.js + asistente-config.js)
+### 7.12 Asistente IA de respuesta a clientes (asistente.js + asistente-config.js)
 
-Sistema de IA para ayudar a Paula a gestionar y responder solicitudes de clientes. Toda la lógica vive en `formulario.js`; los prompts en `asistente-config.js` (separados para poder actualizarlos por FTP sin tocar la lógica).
+Sistema de IA para ayudar a Paula a gestionar y responder solicitudes de clientes. Toda la lógica vive en `asistente.js`; los prompts en `asistente-config.js` (separados para poder actualizarlos por FTP sin tocar la lógica). `formulario.js` importa `initAsistente`, `abrirAsistenteRespuesta` y `abrirProcesarEmail` de `asistente.js` y los botones de la UI los invocan directamente.
+
+**Inicialización:** `initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom })` — recibe el cliente Supabase y cuatro getters/callbacks para acceder al estado de `formulario.js` sin crear dependencia circular. `getDisponibilidad` y `getTodasReservas` son funciones que devuelven `disponibilidad` y `todasReservas` en el momento de la llamada (necesario porque `todasReservas` es `let` y puede reasignarse). `onEmailSaved` es `cargarSolicitudes` (recarga el Bloque 0 tras guardar un email). `esSfcom` es la función `_esSfcom` de `formulario.js`.
 
 #### Flujo de email manual (`abrirProcesarEmail`)
 
@@ -687,7 +690,7 @@ El asistente de respuesta usa el modelo por defecto (Sonnet 4.6). El parser de e
 
 #### asistente-config.js
 
-Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de `formulario.js` para poder actualizar los prompts subiendo solo este archivo por FTP, sin modificar la lógica.
+Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de `asistente.js` para poder actualizar los prompts subiendo solo este archivo por FTP, sin modificar la lógica.
 
 `SYSTEM_PROMPT_ASISTENTE` explica: identidad del negocio, catálogo, lógica comercial (capacity vs consumption, suelo de precios), formato de los datos de contexto (`disponibilidad`, `precios`, `tipo`), perfiles de cliente, flujo de la conversación (resumen → propuesta → mensaje → iteración), y el marcador `---MENSAJE_CLIENTE---`. Si se actualiza el prompt, actualizar también los nombres de campo si cambia la estructura del contexto.
 
@@ -1254,7 +1257,7 @@ El campo `name` ya existe en la tabla (12.45 resuelto). Hay que rellenar los dat
 2. Los logs quedan en la tabla `assistant_logs` de Supabase (campos: `messages` jsonb con el historial completo, `context_snapshot` jsonb con el contexto enviado a Claude).
 3. Javier recupera los logs de Supabase (Table Editor o SQL: `SELECT client_name, event_hint, messages FROM assistant_logs ORDER BY created_at DESC`) y los pega a Claude con la instrucción: *"Analiza estas conversaciones del asistente de ventas. Dime qué falta o sobra en el system prompt para que las respuestas sean más precisas desde el primer turno y consuman menos tokens."*
 4. Claude identifica patrones: preguntas que se repiten, contexto que falta, instrucciones que se ignoran, secciones del prompt que no se usan.
-5. Actualizar `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js` y subir por FTP (sin tocar `formulario.js`).
+5. Actualizar `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js` y subir por FTP (sin tocar `asistente.js`).
 
 **Qué buscar en los logs:**
 - Turnos de usuario que son correcciones de precio → el prompt o el contexto de `precios` no está orientando bien.
@@ -1509,13 +1512,17 @@ El admin tenía duplicación significativa: cada módulo construía sus propios 
 
 ### Lo que queda pendiente
 
-**Phase 4** (pendiente de decisión): dividir `formulario.js` (~2150 líneas) en módulos más pequeños. Candidatos: `solicitudes.js` (bloque 0 + `registrarPedidosSfcom`), `reorganizar.js` (panel de reorganización, `abrirPanelReorganizar`/`confirmarReorg`), `cobros.js` (bloque 5 + `persistirHitosCliente`/`cargarCobrosCliente`). Ver sección de análisis de Phase 4 más abajo.
+**Phase 4** (pendiente de decisión): dividir `formulario.js` (~1680 líneas tras extracción del asistente) en módulos más pequeños. Candidatos: `solicitudes.js` (bloque 0 + `registrarPedidosSfcom`), `reorganizar.js` (panel de reorganización, `abrirPanelReorganizar`/`confirmarReorg`), `cobros.js` (bloque 5 + `persistirHitosCliente`/`cargarCobrosCliente`). Ver sección de análisis de Phase 4 más abajo.
+
+### Lo que ya se extrajo en la dirección de Phase 4
+
+**`asistente.js`** (jun 2026) — Toda la lógica del asistente IA extraída de `formulario.js`: `parsearMetaComments`, `expandirServiceIds`, `disponibilidadParaAsistente`, `preciosReferencia`, `abrirAsistenteRespuesta`, `abrirProcesarEmail`, `_insertarEmailParseado`. Patrón de inicialización con getters (`getDisponibilidad`, `getTodasReservas`) para acceder al estado de `formulario.js` sin dependencia circular. Redujo `formulario.js` en ~500 líneas (de ~2180 a ~1680).
 
 ### Análisis de Phase 4 — dividir formulario.js
 
-**Qué es Phase 4:** `formulario.js` tiene ~2150 líneas. A diferencia de las fases anteriores (que eliminaban código duplicado), Phase 4 solo busca dividir un archivo grande en archivos más pequeños para que sea más fácil de mantener. No hay duplicación que eliminar — es pura reorganización.
+**Qué es Phase 4:** `formulario.js` tiene ahora ~1680 líneas (tras la extracción de `asistente.js`). A diferencia de las fases anteriores (que eliminaban código duplicado), Phase 4 solo busca dividir un archivo grande en archivos más pequeños para que sea más fácil de mantener. No hay duplicación que eliminar — es pura reorganización.
 
-**Por qué el archivo es tan grande:** `formulario.js` implementa los 6 bloques de la página `formulario.html`. Los bloques son lógicamente independientes (solicitudes pendientes, datos del cliente, formulario de reserva, mapa de disponibilidad, tabla de reservas, cobros), pero todos comparten el mismo estado en memoria: `todasReservas`, `disponibilidad`, `clienteActual`, `reservasCliente`, etc. Ese estado compartido es lo que hace que todo esté en un mismo archivo.
+**Por qué el archivo sigue siendo grande:** `formulario.js` implementa los 6 bloques de la página `formulario.html`. Los bloques son lógicamente independientes (solicitudes pendientes, datos del cliente, formulario de reserva, mapa de disponibilidad, tabla de reservas, cobros), pero todos comparten el mismo estado en memoria: `todasReservas`, `disponibilidad`, `clienteActual`, `reservasCliente`, etc. Ese estado compartido es lo que hace que todo esté en un mismo archivo.
 
 **Los tres trozos que se podrían extraer:**
 
@@ -1527,7 +1534,7 @@ El admin tenía duplicación significativa: cada módulo construía sus propios 
 
 **Por qué no se ha hecho todavía:** los tres trozos necesitan leer y modificar variables que viven en `formulario.js` (`todasReservas`, `clienteActual`, `hitosClienteTemp`, etc.). Si los sacas a archivos separados, esas variables dejan de ser accesibles — habría que pasarlas como parámetros en cada llamada, o crear un objeto de estado compartido que todos importan. Ambas opciones añaden código de fontanería que actualmente no existe, y para un proyecto de este tamaño el coste supera al beneficio.
 
-**Cuándo hacerlo:** si en algún momento resulta difícil localizar o modificar el código de cobros porque hay que desplazarse por 2000 líneas de código que no tienen nada que ver, entonces vale la pena. El primer candidato sería `reorganizar.js` porque su estado es más local. Por ahora no hay ninguna razón práctica para hacerlo.
+**Cuándo hacerlo:** si en algún momento resulta difícil localizar o modificar el código de cobros porque hay que desplazarse por 1600 líneas de código que no tienen nada que ver, entonces vale la pena. El primer candidato sería `reorganizar.js` porque su estado es más local. Por ahora no hay ninguna razón práctica para hacerlo.
 
 ### Trampas técnicas aprendidas
 
