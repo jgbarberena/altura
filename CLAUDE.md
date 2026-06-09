@@ -1521,7 +1521,7 @@ Usar siempre `pwsh` (PowerShell 7), no `powershell` (PS5). En Mac es lo único i
 2. Redactar un mensaje de commit breve y descriptivo en español (máx. 60 caracteres).
 3. Ejecutar mediante la herramienta Bash:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Message "<mensaje>"
+   pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message "<mensaje>"
    ```
 4. Reportar el resultado (archivos subidos, errores si los hay).
 
