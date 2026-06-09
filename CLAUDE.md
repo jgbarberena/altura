@@ -1629,7 +1629,7 @@ catalogo/
 └── catalogo.css   ← estilos propios del catálogo
 ```
 
-**URL de ficha individual:** `catalogo/balcon.html?v=SLUG` donde `SLUG` es `venues.slug`.
+**URL de ficha individual:** `catalogo/balcon.html?v=SLUG&et=EVENT_TYPE` donde `SLUG` es `venues.slug` y `EVENT_TYPE` es el `event_type` concreto. Sin `&et=`, la ficha muestra todas las secciones (fallback para enlaces directos).
 
 **Identificador público:** `venues.slug` es el identificador estable del venue para URLs públicas. Se diferencia de `venues.id` (identificador técnico interno, en mayúsculas). El slug es texto libre en minúsculas con guiones (ej: `balcon-estafeta-1`). Se añade manualmente desde Supabase o desde el panel; el catálogo no lo gestiona automáticamente. Un venue sin slug simplemente no tiene ficha pública.
 
@@ -1637,10 +1637,13 @@ catalogo/
 
 **Agrupación por `event_type`:** tanto la ficha como el listado agrupan los servicios por `event_type` en el cliente JS. Las constantes `EVENT_TYPE_ORDER` (orden de secciones) y `EVENT_TYPE_LABELS` (nombres visibles) están en `catalogo.js`. El trigger `trg_sync_photos_event_type` en Supabase garantiza que todas las filas del mismo `venue_id+event_type` comparten siempre las mismas fotos.
 
-**Estructura de la ficha (`balcon.html`):**
-1. Cabecera con tipo de venue, nombre y dirección (`.catalogo-dossier-header`)
-2. Una sección por `event_type` en orden `EVENT_TYPE_ORDER`, con: título (`service_name`), carrusel de fotos si `photos.length > 1`, foto única si `photos.length === 1`, descripción, bloque de instrucciones de acceso
-Las fotos de cada grupo se toman de la primera fila con fotos del mismo `event_type`; se deduplicán por URL. Si un `event_type` no tiene fotos, la sección aparece sin imagen.
+**Estructura de la ficha (`balcon.html?v=SLUG&et=EVENT_TYPE`):**
+1. Cabecera: tipo de venue (tag), nombre del venue (h1), event_type label como subtítulo, dirección
+2. Un único bloque: carrusel de fotos si `photos.length > 1`, foto única si `photos.length === 1`, descripción, instrucciones de acceso
+
+Las fotos se recogen de todas las filas del `event_type` filtrado y se deduplicán por URL. El trigger `trg_sync_photos_event_type` garantiza que todas las filas del mismo `venue_id+event_type` tienen las mismas fotos, por lo que en la práctica siempre vienen del primer row.
+
+Sin `&et=` (fallback): muestra todas las secciones por `event_type` en orden `EVENT_TYPE_ORDER`, cada una con título (`service_name`) y su carousel propio.
 
 **Datos cargados:** todo va a través de la vista `catalogo_publico` — no hay JOINs directos entre tablas. La vista tiene permisos SELECT para el rol `anon` y devuelve una fila por servicio del venue. Campos: `slug, display_name, address, venue_type, service_id, description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`.
 

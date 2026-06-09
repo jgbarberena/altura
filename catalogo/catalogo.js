@@ -1,6 +1,6 @@
 // catalogo.js — Lógica del catálogo de venues para compartir con clientes
 // Página: catalogo/index.html  (listado interno con secciones por event_type)
-//         catalogo/balcon.html (ficha individual por slug)
+//         catalogo/balcon.html (ficha individual por slug+event_type)
 // El cliente Supabase viene de window.supabasePublic (supabase-global.js).
 // Datos: vista catalogo_publico — devuelve una fila por par venue+service_id.
 // La agrupación por event_type se hace en cliente; la BD no cambia.
@@ -35,13 +35,14 @@ if (document.getElementById('catalogo-index-main')) {
 }
 
 // ============================================================
-// FICHA DE VENUE (balcon.html?v=SLUG)
+// FICHA DE VENUE (balcon.html?v=SLUG&et=EVENT_TYPE)
 // ============================================================
 
 async function initFichaBalcon() {
     var main = document.getElementById('catalogo-balcon-main')
     var params = new URLSearchParams(window.location.search)
     var slug = params.get('v')
+    var et   = params.get('et')  // si está presente, muestra solo ese event_type
 
     if (!slug) {
         main.innerHTML = renderError('No se ha especificado un venue. Comprueba que la URL es correcta.')
@@ -78,7 +79,113 @@ async function initFichaBalcon() {
         venue_type:   filas[0].venue_type
     }
 
-    actualizarOGTags(venue, filas)
+    if (et) {
+        // Ficha de evento concreto
+        var filasEt = filas.filter(function(r) { return (r.event_type || 'otro') === et })
+        if (filasEt.length === 0) filasEt = filas  // fallback si el et no existe en este venue
+        actualizarOGTags(venue, filasEt, et)
+        renderFichaSimple(main, venue, filasEt, et)
+    } else {
+        // Ficha completa con todas las secciones (fallback para URLs sin &et=)
+        actualizarOGTags(venue, filas, null)
+        renderFichaMulti(main, venue, filas)
+    }
+
+    initCarruseles()
+}
+
+// Ficha de un único event_type (URL con &et=)
+function renderFichaSimple(main, venue, filas, et) {
+    var nombre    = venue.display_name || venue.slug
+    var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
+    var etLabel   = EVENT_TYPE_LABELS[et] || et
+
+    // Recopilar fotos y textos de todas las filas del event_type (trigger las sincroniza)
+    var photos = []
+    var vistos = {}
+    var description = null
+    var access_instructions = null
+
+    filas.forEach(function(row) {
+        if (Array.isArray(row.photos)) {
+            row.photos.forEach(function(url) {
+                if (url && !vistos[url]) { vistos[url] = true; photos.push(url) }
+            })
+        }
+        if (!description && row.description) description = row.description
+        if (!access_instructions && row.access_instructions) access_instructions = row.access_instructions
+    })
+
+    main.innerHTML = ''
+
+    var dossier = document.createElement('div')
+    dossier.className = 'catalogo-dossier'
+
+    var card = document.createElement('div')
+    card.className = 'catalogo-dossier-card'
+
+    var layout = document.createElement('div')
+    layout.className = 'catalogo-dossier-layout'
+
+    // --- CABECERA: tipo + nombre + evento + dirección ---
+    var headerCol = document.createElement('div')
+    headerCol.className = 'catalogo-dossier-header'
+
+    var headerHtml = ''
+    if (tipoLabel) {
+        headerHtml += '<p class="text-tag catalogo-dossier-tipo">' + escHtml(tipoLabel) + '</p>'
+    }
+    headerHtml += '<h1 class="catalogo-dossier-nombre">' + escHtml(nombre) + '</h1>'
+    if (etLabel) {
+        headerHtml += '<p class="catalogo-dossier-evento">' + escHtml(etLabel) + '</p>'
+    }
+    if (venue.address) {
+        headerHtml += '<div class="catalogo-meta-item">'
+        headerHtml += '<span class="catalogo-meta-icon">&#128205;</span>'
+        headerHtml += '<span>' + escHtml(venue.address) + '</span>'
+        headerHtml += '</div>'
+    }
+    headerCol.innerHTML = headerHtml
+
+    // --- CUERPO: fotos + descripción + acceso ---
+    var bodyCol = document.createElement('div')
+    bodyCol.className = 'catalogo-dossier-body'
+
+    var bodyHtml = '<div class="catalogo-servicio-bloque">'
+
+    if (photos.length > 1) {
+        bodyHtml += renderCarouselHtml(photos, true)
+    } else if (photos.length === 1) {
+        bodyHtml += '<img class="catalogo-grupo-foto-unica" src="' + escAttr(photos[0]) + '" alt="" loading="eager">'
+    }
+
+    if (description) {
+        bodyHtml += '<p class="text-body catalogo-descripcion">' + escHtml(description) + '</p>'
+    }
+    if (access_instructions) {
+        bodyHtml += '<div class="catalogo-acceso">'
+        bodyHtml += '<span class="catalogo-acceso-icon">&#128204;</span>'
+        bodyHtml += '<div>'
+        bodyHtml += '<p class="text-small catalogo-acceso-label">Instrucciones de acceso</p>'
+        bodyHtml += '<p class="text-body">' + escHtml(access_instructions) + '</p>'
+        bodyHtml += '</div>'
+        bodyHtml += '</div>'
+    }
+
+    bodyHtml += '</div>'
+    bodyCol.innerHTML = bodyHtml
+
+    layout.appendChild(headerCol)
+    layout.appendChild(bodyCol)
+    card.appendChild(layout)
+    dossier.appendChild(card)
+    main.appendChild(dossier)
+}
+
+// Ficha completa con todas las secciones por event_type (fallback sin &et=)
+function renderFichaMulti(main, venue, filas) {
+    var nombre    = venue.display_name || venue.slug
+    var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
 
     // Agrupar filas por event_type; fotos del primer row con fotos de ese grupo
     var grupos = {}
@@ -109,9 +216,6 @@ async function initFichaBalcon() {
         }
     })
 
-    var nombre    = venue.display_name || venue.slug
-    var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
-
     main.innerHTML = ''
 
     var dossier = document.createElement('div')
@@ -123,7 +227,6 @@ async function initFichaBalcon() {
     var layout = document.createElement('div')
     layout.className = 'catalogo-dossier-layout'
 
-    // --- CABECERA: tipo + nombre + dirección ---
     var headerCol = document.createElement('div')
     headerCol.className = 'catalogo-dossier-header'
 
@@ -140,7 +243,6 @@ async function initFichaBalcon() {
     }
     headerCol.innerHTML = headerHtml
 
-    // --- CUERPO: una sección por event_type en orden fijo ---
     var bodyCol = document.createElement('div')
     bodyCol.className = 'catalogo-dossier-body'
 
@@ -164,8 +266,6 @@ async function initFichaBalcon() {
     card.appendChild(layout)
     dossier.appendChild(card)
     main.appendChild(dossier)
-
-    initCarruseles()
 }
 
 // Sección de un event_type: titulo + carousel propio + descripción + acceso
@@ -243,11 +343,12 @@ async function initListadoCatalogo() {
         if (!secciones[et]) secciones[et] = {}
         if (!secciones[et][row.slug]) {
             secciones[et][row.slug] = {
-                slug:         row.slug,
+                slug:        row.slug,
                 display_name: row.display_name,
-                address:      row.address,
-                venue_type:   row.venue_type,
-                photo:        _primeraFotoReal(row) || row.service_image_fallback || null
+                address:     row.address,
+                venue_type:  row.venue_type,
+                event_type:  et,
+                photo:       _primeraFotoReal(row) || row.service_image_fallback || null
             }
         } else if (!secciones[et][row.slug].photo) {
             secciones[et][row.slug].photo = _primeraFotoReal(row) || row.service_image_fallback || null
@@ -278,7 +379,8 @@ async function initListadoCatalogo() {
         venuesList.forEach(function(venue) {
             var nombre    = venue.display_name || venue.slug
             var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
-            var url       = 'balcon.html?v=' + encodeURIComponent(venue.slug)
+            // URL incluye &et= para que la ficha muestre solo este event_type
+            var url       = 'balcon.html?v=' + encodeURIComponent(venue.slug) + '&et=' + encodeURIComponent(venue.event_type)
 
             var card = document.createElement('div')
             card.className = 'card catalogo-card'
@@ -363,9 +465,12 @@ function initCarruseles() {
 // OG TAGS DINÁMICOS
 // ============================================================
 
-function actualizarOGTags(venue, filas) {
-    var nombre = venue.display_name || venue.slug
-    var titulo = nombre + ' — Vive San Fermín desde dentro'
+function actualizarOGTags(venue, filas, et) {
+    var nombre  = venue.display_name || venue.slug
+    var etLabel = et ? (EVENT_TYPE_LABELS[et] || et) : null
+    var titulo  = etLabel
+        ? nombre + ' · ' + etLabel + ' — Vive San Fermín desde dentro'
+        : nombre + ' — Vive San Fermín desde dentro'
 
     var desc = 'Conoce este espacio y sus características para los grandes momentos de San Fermín.'
     if (filas.length > 0 && filas[0].description) {
