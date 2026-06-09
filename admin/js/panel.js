@@ -22,7 +22,7 @@ const [
     supabase.from('services').select('*').order('day'),
     supabase.from('payments').select('*').order('due_date'),
     supabase.from('charges').select('*').order('due_date'),
-    supabase.from('reservation_requests').select('id, source').eq('status', 'nueva')
+    supabase.from('reservation_requests').select('id, source, conversation_status').in('status', ['nueva', 'email_parsed'])
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -71,9 +71,10 @@ function calcularAlertas() {
     }
 
     // Solicitudes pendientes desde la web
-    // Separar solicitudes sfcom (source tipo WEBxxx_nnnn) de solicitudes web
-    const solicitudesSfcom = (solicitudesNuevas ?? []).filter(s => s.source && /^WEB\d+_\d+$/.test(s.source))
-    const solicitudesWeb   = (solicitudesNuevas ?? []).filter(s => !s.source || !/^WEB\d+_\d+$/.test(s.source))
+    // Separar solicitudes sfcom (source tipo WEBxxx_nnnn) de solicitudes web; excluir cerradas
+    const solicitudesActivas = (solicitudesNuevas ?? []).filter(s => s.conversation_status !== 'cerrada')
+    const solicitudesSfcom = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source))
+    const solicitudesWeb   = solicitudesActivas.filter(s => !s.source || !/^WEB\d+_\d+$/.test(s.source))
 
     const alertaSfcom = document.getElementById('alerta-sfcom')
     if (solicitudesSfcom.length > 0) {

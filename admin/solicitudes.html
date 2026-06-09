@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitudes — Vive San Fermín</title>
+    <link rel="icon" href="../img/logos/VIVESF_FAVICON.ico">
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/solicitudes.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <a href="../index.html" class="topbar-title topbar-home">Vive San Fermín</a>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="solicitudes.html" class="active">📬 Solicitudes</a>
+                <a href="formulario.html">📝 Gestión de Reservas</a>
+                <a href="proveedores.html">🏠 Gestión de Proveedores</a>
+                <a href="tablas.html">📊 Tablas</a>
+                <a href="sfcom.html">🛒 Canal sfcom</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+            <div class="sol-layout">
+
+                <!-- COLUMNA IZQUIERDA: LISTA -->
+                <div class="sol-col-lista">
+                    <div class="sol-lista-header">
+                        <h2>📬 Solicitudes</h2>
+                        <button class="btn btn-secondary" id="btnProcesarEmail" style="font-size:12px;padding:6px 10px">📧 Email</button>
+                    </div>
+                    <div id="sol-lista">
+                        <div class="sol-empty">Cargando…</div>
+                    </div>
+                </div>
+
+                <!-- COLUMNA DERECHA: DETALLE -->
+                <div class="sol-col-detalle" id="sol-detalle">
+                    <div class="sol-detalle-placeholder">
+                        Selecciona una solicitud para ver el detalle
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/solicitudes.js"></script>
+</body>
+</html>

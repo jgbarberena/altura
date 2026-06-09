@@ -64,11 +64,17 @@ function disponibilidadParaAsistente(serviceIds) {
                 )
                 const ocupadas = activas.reduce((s, r) => s + (r.slots || 0), 0)
                 return {
-                    service_id:      sid,
+                    service_id:          sid,
                     dia,
-                    billing_model:   d.billing_model,
-                    plazas_libres:   Math.max(0, d.total_slots - ocupadas),
-                    coste_proveedor: d.price_per_slot
+                    venue_id:            d.venue_id,
+                    venue_display_name:  d.venue_display_name  || null,
+                    venue_address:       d.venue_address       || null,
+                    description:         d.description         || null,
+                    access_instructions: d.access_instructions || null,
+                    photo_url:           d.photos?.[0]         || null,
+                    billing_model:       d.billing_model,
+                    plazas_libres:       Math.max(0, d.total_slots - ocupadas),
+                    coste_proveedor:     d.price_per_slot
                 }
             })
         })

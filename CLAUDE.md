@@ -105,17 +105,20 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │   ├── index.html                    ← login de Supabase Auth
 │   ├── formulario.html               ← gestión de reservas (página principal del admin)
 │   ├── panel.html                    ← panel de control con métricas y alertas
+│   ├── solicitudes.html              ← gestión centralizada de solicitudes (reservation_requests)
 │   ├── proveedores.html              ← gestión de proveedores
 │   ├── tablas.html                   ← vista de todas las tablas de Supabase
 │   ├── css/
 │   │   ├── admin.css                 ← estilos compartidos del panel de administración
 │   │   ├── panel.css                 ← estilos específicos del panel de control
-│   │   └── tablas.css                ← estilos específicos de la vista de tablas
+│   │   ├── tablas.css                ← estilos específicos de la vista de tablas
+│   │   └── solicitudes.css           ← estilos específicos del panel de solicitudes
 │   └── js/
 │       ├── formulario.js             ← lógica principal del panel de reservas (módulo ES6)
+│       ├── solicitudes.js            ← lógica del panel de solicitudes (módulo ES6)
 │       ├── factura.js                ← módulo de facturación (importado por formulario.js)
 │       ├── propuesta.js              ← módulo de propuesta comercial PDF (importado por formulario.js)
-│       ├── asistente.js              ← módulo del asistente IA: parseo de email, respuesta a clientes, guardar log (importado por formulario.js)
+│       ├── asistente.js              ← módulo del asistente IA reutilizable: parseo de email, respuesta a clientes, guardar log (importado por formulario.js y solicitudes.js)
 │       ├── panel.js                  ← lógica del panel de control (módulo ES6)
 │       ├── proveedores.js            ← lógica de gestión de proveedores (módulo ES6)
 │       ├── tablas.js                 ← lógica de tablas (módulo ES6)
@@ -363,6 +366,10 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings` (UNI
 | service_id | text | Sin FK. Se guarda al registrar pedidos sfcom cuando el nombre del producto se resuelve sin ambigüedad. Se usa como verificación (cross-check) al cargar la solicitud en el formulario, nunca como búsqueda primaria (el nombre es el contrato) |
 | language | text | Idioma del cliente (`'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'`). Solo se rellena para solicitudes procesadas desde email. Nulo para web y sfcom. |
 | email_raw | text | Texto completo del email original (solo para solicitudes de email). Guardado para referencia pero no se muestra en el panel. |
+| conversation_status | text | Estado del seguimiento comercial: `'nueva'`, `'en_conversacion'`, `'propuesta_enviada'`, `'esperando_cliente'`, `'cerrada'`. Default `'nueva'`. Independiente de `status` (que describe origen/proceso). Las solicitudes con `conversation_status = 'cerrada'` no aparecen en la lista activa de `solicitudes.html`. |
+| conversation_notes | text | Notas internas del equipo sobre la solicitud (seguimiento, anotaciones). Solo visibles en el panel. |
+| assigned_venue_id | text FK→venues | Venue asignado a la solicitud (opcional). Permite preparar la propuesta antes de convertir en reserva. |
+| updated_at | timestamptz | Actualizado automáticamente por trigger `trg_reservation_requests_updated_at` en cada UPDATE. Usado por `solicitudes.js` para ordenar la lista por actividad reciente. |
 
 **`assistant_logs`** — Logs de conversaciones del asistente IA guardados manualmente por Paula
 | Campo | Tipo | Notas |
@@ -645,9 +652,9 @@ Módulo ES6. Panel de solo-lectura centrado en la actividad de sfcom: KPIs, soli
 
 ### 7.12 Asistente IA de respuesta a clientes (asistente.js + asistente-config.js)
 
-Sistema de IA para ayudar a Paula a gestionar y responder solicitudes de clientes. Toda la lógica vive en `asistente.js`; los prompts en `asistente-config.js` (separados para poder actualizarlos por FTP sin tocar la lógica). `formulario.js` importa `initAsistente`, `abrirAsistenteRespuesta` y `abrirProcesarEmail` de `asistente.js` y los botones de la UI los invocan directamente.
+Sistema de IA para ayudar a Paula a gestionar y responder solicitudes de clientes. Toda la lógica vive en `asistente.js`; los prompts en `asistente-config.js` (separados para poder actualizarlos por FTP sin tocar la lógica). El módulo es reutilizable: tanto `formulario.js` como `solicitudes.js` importan `initAsistente`, `abrirAsistenteRespuesta` y `abrirProcesarEmail`, y los botones de la UI los invocan directamente.
 
-**Inicialización:** `initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom })` — recibe el cliente Supabase y cuatro getters/callbacks para acceder al estado de `formulario.js` sin crear dependencia circular. `getDisponibilidad` y `getTodasReservas` son funciones que devuelven `disponibilidad` y `todasReservas` en el momento de la llamada (necesario porque `todasReservas` es `let` y puede reasignarse). `onEmailSaved` es `cargarSolicitudes` (recarga el Bloque 0 tras guardar un email). `esSfcom` es la función `_esSfcom` de `formulario.js`.
+**Inicialización:** `initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom })` — recibe el cliente Supabase y cuatro getters/callbacks para acceder al estado del módulo importador sin crear dependencia circular. `getDisponibilidad` y `getTodasReservas` son funciones que devuelven los arrays en el momento de la llamada (necesario porque son `let` y pueden reasignarse). `onEmailSaved` es el callback para recargar la lista de solicitudes tras guardar un email (en `formulario.js`: `cargarSolicitudes`; en `solicitudes.js`: `cargarSolicitudes`). `esSfcom` es la función de detección de source sfcom del módulo importador.
 
 #### Flujo de email manual (`abrirProcesarEmail`)
 
@@ -690,7 +697,7 @@ const tipoSolicitud = _esSfcom(solicitud.source) ? 'sfcom_reserva'
 
 El objeto se serializa con `JSON.stringify(contextoObj)` (sin pretty-print) y se envía como primer mensaje de usuario.
 
-**`disponibilidadParaAsistente(serviceIds)`:** agrega disponibilidad por proveedor para los service_ids relevantes. Campos por entrada: `service_id`, `dia`, `billing_model`, `plazas_libres`, `coste_proveedor`. Ordenadas: capacity con plazas libres primero, luego por día, luego consumption. No incluye `plazas_totales`, `plazas_confirmadas` ni `plazas_pendientes` — son irrelevantes para la respuesta al cliente.
+**`disponibilidadParaAsistente(serviceIds)`:** agrega disponibilidad por proveedor para los service_ids relevantes. Campos por entrada: `service_id`, `dia`, `venue_id`, `venue_display_name`, `venue_address`, `description`, `access_instructions`, `photo_url` (primer elemento de `photos[]`), `billing_model`, `plazas_libres`, `coste_proveedor`. Ordenadas: capacity con plazas libres primero, luego por día, luego consumption. No incluye `plazas_totales`, `plazas_confirmadas` ni `plazas_pendientes` — son irrelevantes para la respuesta al cliente. Los campos de venue permiten que Claude describa el balcón concreto (descripción, ubicación, fotos) en la propuesta y prepare instrucciones de acceso para confirmaciones.
 
 **`preciosReferencia(serviceIds)`:** devuelve un objeto compacto `{ [service_id]: "min-max" | número }` con el rango de precios de venta de reservas existentes para cada servicio. Si todos los precios son iguales, devuelve un número. Útil para que Claude parta del precio más alto como referencia. No devuelve registros individuales.
 
@@ -722,6 +729,33 @@ logout()       // cierra sesión y redirige
 ```
 
 La autenticación usa Supabase Auth. La página de login es `admin/index.html` (no en el proyecto actualmente, puede ser que sea la misma que el formulario en entorno sin sesión).
+
+### 7.14 solicitudes.js — Panel de solicitudes
+
+Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js`, y los tres exports del asistente de `asistente.js`. Gestiona centralmente todas las `reservation_requests` activas (excluidas las `conversation_status = 'cerrada'`).
+
+**Sistema de dos ejes de estado:**
+- `status` (origen/proceso): `'nueva'` | `'email_parsed'` | `'atendida'` | `'descartada'`. Describe si la solicitud fue procesada administrativamente.
+- `conversation_status` (seguimiento comercial): `'nueva'` | `'en_conversacion'` | `'propuesta_enviada'` | `'esperando_cliente'` | `'cerrada'`. Describe el estado de la relación con el cliente. Solo `solicitudes.js` lo gestiona; `formulario.js` no lo toca.
+
+**Layout:** dos columnas en desktop (lista izquierda 320px, detalle derecha). En mobile: bottom sheet deslizante (`position:fixed; bottom:0; transform:translateY(100%)` + clase `.visible`).
+
+**Lista:** cada ítem muestra nombre, fecha, badges de origen (sfcom/email) y de `conversation_status`, experiencia, y preview de las notas (64 chars). Click en ítem abre el detalle y marca el ítem como activo.
+
+**Detalle:** sección completa con:
+- Selector de `conversation_status` con autosave inmediato a BD
+- Grid de datos: experiencia, día, personas, precio de referencia (`_calcularPrecioRef`), consulta
+- Selector de venue asignado (si hay `service_id`), con plazas libres calculadas en tiempo real a partir de `availability_with_sfcom` y `reservations`
+- Textarea de notas internas con autosave por debounce (1500ms)
+- Botón "💬 Abrir asistente" → `abrirAsistenteRespuesta(sol)`
+- Enlace "📋 Convertir en reserva" → `formulario.html?client_name=...&service_id=...&venue_id=...&slots=...`
+- Botón "✅ Cerrar solicitud" → pone `conversation_status = 'cerrada'` y retira de la lista
+
+**Datos cargados al inicio:** `availability_with_sfcom` (para calcular disponibilidad de venues) y `reservations` (para el precio de referencia y calcular plazas ocupadas). La query de solicitudes usa `.or('conversation_status.is.null,conversation_status.neq.cerrada')` para incluir filas anteriores a la migración (donde el campo es NULL).
+
+**Flujo "Convertir en reserva":** el enlace pasa por URL params a `formulario.html` los datos de la solicitud (`client_name`, `client_email`, `client_phone`, `service_id`, `day`, `slots`, `venue_id` si hay `assigned_venue_id`). `formulario.js` los lee al cargar y prerrellena el formulario automáticamente.
+
+**`btnProcesarEmail`:** botón en la cabecera que invoca `abrirProcesarEmail` del asistente. Permite procesar emails pegados manualmente, igual que en `formulario.js`.
 
 ---
 

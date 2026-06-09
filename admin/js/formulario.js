@@ -2273,3 +2273,64 @@ if (_clienteParam) {
     if (_clientePreload) { inputId.value = _clientePreload.id; cargarCliente(_clientePreload) }
 }
 
+// Precarga desde solicitudes.html via query params
+// Se activa cuando hay client_name o service_id pero no el parámetro ?cliente= de panel.html
+const _solP         = new URLSearchParams(location.search)
+const _solName      = _solP.get('client_name')
+const _solServiceId = _solP.get('service_id')
+
+if (!_clienteParam && (_solName || _solServiceId)) {
+    _cargandoSolicitud = true
+
+    if (_solName) {
+        const nombreBase = _solName.toUpperCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/[^A-Z0-9\s]/g, '').trim().replace(/\s+/g, '_')
+        let clienteId = nombreBase, sufijo = 2
+        while (todosClientes.find(c => c.id === clienteId)) { clienteId = nombreBase + '_' + sufijo; sufijo++ }
+
+        inputId.value      = clienteId
+        inputName.value    = _solName
+        inputEmail.value   = _solP.get('client_email') || ''
+        inputPhone.value   = _solP.get('client_phone') || ''
+        clienteActual = null
+        statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
+            + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+            + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
+            + ' o se guardará al añadir una reserva'
+        statusDiv.style.color = 'var(--accent-warn)'
+    }
+
+    if (_solServiceId) {
+        const svcUpper = _solServiceId.toUpperCase()
+        const existe   = servicios.find(s => s.id === svcUpper)
+        if (existe) {
+            selectServicio.value = existe.id
+            selectServicio.dispatchEvent(new Event('change'))
+
+            const _solVenueId = _solP.get('venue_id')
+            if (_solVenueId) {
+                setTimeout(() => {
+                    selectProveedor.value = _solVenueId
+                    selectProveedor.dispatchEvent(new Event('change'))
+                }, 100)
+            } else {
+                // Auto-seleccionar si solo hay un venue para este servicio
+                const venuesServicio = disponibilidad.filter(d => d.service_id === svcUpper)
+                if (venuesServicio.length === 1) {
+                    setTimeout(() => {
+                        selectProveedor.value = venuesServicio[0].venue_id
+                        selectProveedor.dispatchEvent(new Event('change'))
+                    }, 100)
+                }
+            }
+        }
+    }
+
+    if (_solP.get('slots')) inputPlazas.value = _solP.get('slots')
+
+    _cargandoSolicitud = false
+    setTimeout(() => actualizarBtnAnadir(), 200)
+    document.getElementById('bloque-cliente').scrollIntoView({ behavior: 'smooth' })
+}
+
