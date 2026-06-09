@@ -245,12 +245,12 @@ async function initListadoCatalogo() {
         }
         inner += '<div class="card-overlay">'
         inner += '<p class="text-tag">' + escHtml(tipoLabel) + '</p>'
-        inner += '<h2 class="text-title">' + escHtml(nombre) + '</h2>'
+        inner += '<h2>' + escHtml(nombre) + '</h2>'
         if (venue.address) {
-            inner += '<p class="text-small">' + escHtml(venue.address) + '</p>'
+            inner += '<p>' + escHtml(venue.address) + '</p>'
         }
-        inner += '<a href="' + escAttr(url) + '" class="btn btn-primary btn-mini">Ver ficha</a>'
         inner += '</div>'
+        inner += '<a href="' + escAttr(url) + '" class="catalogo-card-link" aria-label="Ver ficha de ' + escAttr(nombre) + '"></a>'
 
         card.innerHTML = inner
         grid.appendChild(card)

@@ -307,9 +307,31 @@
     background: #ccc;
 }
 
+.catalogo-card {
+    cursor: pointer;
+}
+
 .catalogo-card .card-overlay {
-    height: auto;
-    min-height: 40%;
+    height: 42%;
+    overflow-y: auto;
+}
+
+.catalogo-card .card-overlay h2 {
+    font-size: var(--text-base);
+    font-weight: 600;
+    margin-bottom: 3px;
+}
+
+.catalogo-card .card-overlay p:not(.text-tag) {
+    font-size: var(--text-tag);
+    opacity: 0.85;
+    margin-bottom: 0;
+}
+
+.catalogo-card-link {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
 }
 
 @media (min-width: 769px) {
