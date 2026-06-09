@@ -69,12 +69,13 @@ async function initFichaBalcon() {
     var nombre    = venue.display_name || venue.slug
     var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
 
-    // Reunir todas las fotos de todos los servicios para el carrusel izquierdo
+    // Fotos del espacio físico: usar las del primer servicio que tenga fotos
+    // (son las mismas para todos los servicios del venue)
     var todasFotos = []
-    servicios.forEach(function(svc) {
-        var ps = Array.isArray(svc.photos) ? svc.photos.filter(Boolean) : []
-        todasFotos = todasFotos.concat(ps)
-    })
+    for (var i = 0; i < servicios.length; i++) {
+        var ps = Array.isArray(servicios[i].photos) ? servicios[i].photos.filter(Boolean) : []
+        if (ps.length > 0) { todasFotos = ps; break }
+    }
     if (todasFotos.length === 0) {
         for (var i = 0; i < servicios.length; i++) {
             if (servicios[i].service_image_fallback) {
