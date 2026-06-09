@@ -220,12 +220,17 @@ async function initListadoCatalogo() {
                 display_name: row.display_name,
                 address:      row.address,
                 venue_type:   row.venue_type,
-                foto:         _primeraFoto(row)
+                foto:         _primeraFotoReal(row),
+                fallback:     row.service_image_fallback || null
             })
-        } else if (!venues[idxMap[row.slug]].foto) {
-            venues[idxMap[row.slug]].foto = _primeraFoto(row)
+        } else {
+            var v = venues[idxMap[row.slug]]
+            if (!v.foto)     v.foto     = _primeraFotoReal(row)
+            if (!v.fallback) v.fallback = row.service_image_fallback || null
         }
     })
+    // Aplicar fallback solo si ningún row del slug tenía foto real
+    venues.forEach(function(v) { if (!v.foto) v.foto = v.fallback })
 
     var grid = document.createElement('div')
     grid.className = 'cards-grid cards-grid--3 catalogo-grid'
@@ -261,13 +266,13 @@ async function initListadoCatalogo() {
     main.appendChild(grid)
 }
 
-function _primeraFoto(row) {
+function _primeraFotoReal(row) {
     if (Array.isArray(row.photos)) {
         for (var i = 0; i < row.photos.length; i++) {
             if (row.photos[i]) return row.photos[i]
         }
     }
-    return row.service_image_fallback || null
+    return null
 }
 
 // ============================================================
