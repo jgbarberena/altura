@@ -127,6 +127,11 @@ No hay servidor propio. Toda la lógica de administración corre en el navegador
 │       ├── utils.js                  ← utilidades compartidas del admin (fmt, fechas, persistencia)
 │       ├── auth.js                   ← requireAuth / logout
 │       └── asistente-config.js       ← prompts de IA exportados: SYSTEM_PROMPT_ASISTENTE y SYSTEM_PROMPT_PARSING (importado por asistente.js)
+├── catalogo/
+│   ├── index.html                    ← listado interno de todos los venues (solo uso interno, noindex)
+│   ├── balcon.html                   ← ficha pública de un venue; recibe el slug via ?v=SLUG (noindex)
+│   ├── catalogo.js                   ← lógica de ambas páginas (script clásico, usa window.supabasePublic)
+│   └── catalogo.css                  ← estilos específicos del catálogo
 └── guias/
     ├── generate-index.ps1            ← script PowerShell que genera guias/index.html
     ├── index-template.html           ← plantilla para generate-index.ps1
@@ -260,6 +265,7 @@ Hay dos clientes Supabase:
 | display_name | text | Nombre visible del venue (opcional; si null se usa el id) |
 | address | text | Dirección física del venue (la ubicación del balcón) |
 | venue_type | text | `'balcon'`, `'barrera'`, `'guia'`, `'servicio_especial'`; default `'balcon'` |
+| slug | text | Identificador público estable del venue (ej: `balcon-estafeta-1`). Se usa como parámetro `?v=SLUG` en la URL del catálogo. Único por venue; null si no tiene ficha pública. |
 | comments | text | |
 
 Relación: un provider puede tener múltiples venues. Al crear un proveedor nuevo desde el panel, se crea automáticamente un venue con el mismo ID.
@@ -410,7 +416,7 @@ La vista agrega por `service_id` (suma todos los proveedores de ese servicio). L
 
 **`availability_with_sfcom`** — JOIN de availability + sfcom_listings + venues (vista de lectura para el panel)
 
-Hace un LEFT JOIN de `availability` con `sfcom_listings` por `availability_id` y con `venues` por `venue_id`, exponiendo todos los campos de `availability` más `sfcom_listing_id` (el id de `sfcom_listings`), `venue_provider_id` (el `provider_id` del venue — obtenido de `venues`, no de `availability`), `venue_display_name`, `venue_address`, `venue_type`, y los campos sfcom. Las filas sin entrada en `sfcom_listings` tienen los campos sfcom a null.
+Hace un LEFT JOIN de `availability` con `sfcom_listings` por `availability_id` y con `venues` por `venue_id`, exponiendo todos los campos de `availability` más `sfcom_listing_id` (el id de `sfcom_listings`), `venue_provider_id` (el `provider_id` del venue — obtenido de `venues`, no de `availability`), `venue_display_name`, `venue_address`, `venue_type`, `venue_slug` (el campo `slug` de `venues`, usado en el catálogo), y los campos sfcom. Las filas sin entrada en `sfcom_listings` tienen los campos sfcom a null.
 
 Todo el código del admin que necesita leer datos de disponibilidad con campos sfcom usa esta vista. Los writes de campos sfcom van siempre directamente a `sfcom_listings`. Para obtener el `provider_id` de un venue, usar `venue_provider_id` de esta vista o consultar `venues` directamente.
 
@@ -1607,3 +1613,50 @@ El admin tenía duplicación significativa: cada módulo construía sus propios 
 **ES6 modules redeclaración = SyntaxError silencioso.** Si un import trae `foo` y en el mismo archivo hay `const foo` o `function foo`, el módulo no carga y falla en silencio (sin error visible en la UI). Fix: borrar la declaración local en el mismo Edit que añade el nombre al import — nunca en pasos separados.
 
 **`panel.querySelector()` no `document.getElementById()` tras `crearModal`.** Aunque `crearModal` añade el overlay al body con un `id` único, `document.getElementById` puede devolver un overlay anterior si no se limpió bien. `panel.querySelector('#mi-btn')` es siempre seguro y no depende de la unicidad global del DOM.
+
+---
+
+## 23. Catálogo de venues (catalogo/)
+
+Sección pública para compartir fichas individuales de venues con clientes potenciales por WhatsApp o email. Informacional: sin precios, sin formulario de reserva, sin CTA de compra.
+
+**Archivos:**
+```
+catalogo/
+├── index.html     ← listado interno de todos los venues (balcon/barrera)
+├── balcon.html    ← ficha individual de un venue
+├── catalogo.js    ← lógica de ambas páginas (script clásico)
+└── catalogo.css   ← estilos propios del catálogo
+```
+
+**URL de ficha individual:** `catalogo/balcon.html?v=SLUG` donde `SLUG` es `venues.slug`.
+
+**Identificador público:** `venues.slug` es el identificador estable del venue para URLs públicas. Se diferencia de `venues.id` (identificador técnico interno, en mayúsculas). El slug es texto libre en minúsculas con guiones (ej: `balcon-estafeta-1`). Se añade manualmente desde Supabase o desde el panel; el catálogo no lo gestiona automáticamente. Un venue sin slug simplemente no tiene ficha pública.
+
+**Visibilidad:** ambas páginas tienen `<meta name="robots" content="noindex, nofollow">`. No aparecen en el sitemap ni en robots.txt. Solo accesibles via URL directa compartida manualmente.
+
+**Estructura de la ficha (`balcon.html`):**
+1. Hero fullscreen (`section--first--fullscreen has-overlay`) con imagen del primer servicio + nombre del venue + tipo + dirección
+2. Una sección por servicio en `availability`, con título (nombre + día), carrusel de fotos si `photos.length > 1`, descripción, bloque de instrucciones de acceso
+3. Pie de contacto con botones WhatsApp y email (hardcoded: paula@experienciasanfermin.com)
+
+**Datos cargados:** todo va a través de la vista `catalogo_publico` — no hay JOINs directos entre tablas. La vista tiene permisos SELECT para el rol `anon` y devuelve una fila por servicio del venue. Campos: `slug, display_name, address, venue_type, service_id, description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`.
+
+**Queries:**
+```js
+// Ficha individual — devuelve N filas (una por servicio)
+await supabase.from('catalogo_publico').select('*').eq('slug', slug)
+
+// Listado — deduplicar por slug en JS antes de renderizar
+await supabase.from('catalogo_publico')
+    .select('slug, display_name, address, venue_type, photos, service_image_fallback')
+    .order('slug')
+```
+
+**Imagen del hero / thumbnail del listado:** primera foto disponible en `photos[]` de cualquier servicio; `service_image_fallback` como respaldo. Función `_primeraFoto(row)` centraliza este fallback.
+
+**OG tags:** `balcon.html` tiene tags estáticos de fallback en el HTML que el JS sobreescribe al cargar los datos reales (og:title, og:description con los primeros 160 chars de la primera descripción, og:image con la primera foto, og:url con la URL actual).
+
+**`index.html`:** listado interno de todos los venues con servicios disponibles, ordenados por slug. Grid de cards con foto, tipo, nombre, dirección y enlace a la ficha. Uso previsto: el admin navega aquí para copiar URLs de fichas concretas.
+
+**Integración con el asistente IA:** `disponibilidadParaAsistente()` en `asistente.js` incluye `catalogo_url` por entrada (construida como `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${venue_slug}` o `null` si no hay slug). `SYSTEM_PROMPT_ASISTENTE` instruye a Claude a incluir la URL de forma natural cuando sea relevante. El campo `venue_slug` viene de la vista admin `availability_with_sfcom` (pendiente de añadir si no está expuesto ya).

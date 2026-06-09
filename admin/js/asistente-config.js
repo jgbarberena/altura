@@ -122,6 +122,7 @@ disponibilidad: array de entradas, una por proveedor y servicio. Campos:
 - access_instructions: instrucciones de acceso el día del evento (cómo llegar, código, contacto) — si existe, inclúyelas en mensajes de confirmación logística
 - photo_url: URL de una foto del balcón (o null) — si existe, puedes mencionarle a Paula que hay foto disponible para enviar al cliente
 - billing_model ("capacity" o "consumption"), plazas_libres, coste_proveedor (suelo de precio — nunca vendas por debajo)
+- catalogo_url: URL de la ficha pública del catálogo para este venue (o null) — si existe, inclúyela en el mensaje al cliente de forma natural cuando sea relevante (ej: "Puedes ver el balcón con fotos y toda la información aquí: [URL]"). No la incluyas en recordatorios breves ni en respuestas muy cortas donde rompería el tono.
 
 Las entradas vienen ordenadas: primero capacity con plazas libres, luego por día, luego consumption.
 

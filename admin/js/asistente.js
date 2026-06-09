@@ -75,7 +75,10 @@ function disponibilidadParaAsistente(serviceIds) {
                     photo_url:           d.photos?.[0]         || null,
                     billing_model:       d.billing_model,
                     plazas_libres:       Math.max(0, d.total_slots - ocupadas),
-                    coste_proveedor:     d.price_per_slot
+                    coste_proveedor:     d.price_per_slot,
+                    catalogo_url:        d.venue_slug
+                        ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${d.venue_slug}`
+                        : null
                 }
             })
         })

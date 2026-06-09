@@ -1,0 +1,319 @@
+/* ========================
+   CATÁLOGO DE VENUES
+   Estilos para catalogo/index.html y catalogo/balcon.html
+======================== */
+
+/* ========================
+   FICHA DOSSIER (balcon.html)
+======================== */
+
+/* Fondo "documento/papel" para distinguir de una web normal */
+#catalogo-balcon-main {
+    background: #e8e4de;
+    min-height: 100vh;
+}
+
+/* Wrapper externo: mismo padding-top que section--first para respetar el header fijo */
+.catalogo-dossier {
+    padding: calc(var(--header-height) + clamp(16px, 4vw, 40px)) 0 clamp(24px, 5vw, 56px);
+}
+
+/* La tarjeta-documento */
+.catalogo-dossier-card {
+    background: #fff;
+    overflow: hidden;
+}
+
+/* Layout base: columna en mobile.
+   DOM order = orden visual mobile: cabecera → fotos → cuerpo.
+   En desktop el grid recoloca fotos a la columna izquierda con grid-column/row explícitos. */
+.catalogo-dossier-layout {
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- Columna de fotos --- */
+.catalogo-dossier-fotos {
+    position: relative;  /* containing block para el carrusel absoluto */
+    background: #1a1a1a;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+/* --- Cabecera del panel: tipo + nombre + dirección --- */
+.catalogo-dossier-header {
+    padding: clamp(20px, 4vw, 28px) clamp(20px, 5vw, 36px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.catalogo-dossier-tipo {
+    margin-bottom: 4px;
+}
+
+.catalogo-dossier-nombre {
+    font-family: var(--font-serif);
+    font-size: clamp(22px, 3vw, 28px);
+    font-weight: 600;
+    color: var(--color-heading);
+    line-height: 1.2;
+    margin-bottom: 10px;
+}
+
+.catalogo-meta-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-family: var(--font-sans);
+    font-size: var(--text-small);
+    color: var(--color-subtle);
+    line-height: 1.5;
+    margin-top: 4px;
+}
+
+.catalogo-meta-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* --- Cuerpo: bloques de servicio + CTA --- */
+.catalogo-dossier-body {
+    padding: 0 clamp(20px, 5vw, 36px) clamp(20px, 4vw, 32px);
+}
+
+/* --- Bloques de servicio --- */
+.catalogo-servicio-bloque {
+    padding: clamp(16px, 3vw, 24px) 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.catalogo-servicio-bloque:last-of-type {
+    border-bottom: none;
+}
+
+.catalogo-servicio-titulo {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--color-heading);
+    line-height: 1.4;
+    margin-bottom: 10px;
+}
+
+.catalogo-servicio-dia {
+    font-weight: 400;
+    color: var(--color-subtle);
+}
+
+.catalogo-descripcion {
+    margin-bottom: 0;
+}
+
+/* --- Instrucciones de acceso --- */
+.catalogo-acceso {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: rgba(0, 0, 0, 0.03);
+    border-left: 3px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 14px;
+    margin-top: 12px;
+}
+
+.catalogo-acceso-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.catalogo-acceso-label {
+    font-weight: 600;
+    margin-bottom: 2px;
+    color: var(--color-heading);
+}
+
+
+/* ========================
+   CARRUSEL DE FOTOS
+======================== */
+
+/* Carrusel estándar (en bloque de servicio, listado, etc.) */
+.catalogo-carousel {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    background: #111;
+    max-height: 480px;
+}
+
+.catalogo-carousel-track {
+    width: 100%;
+}
+
+.catalogo-carousel-slide {
+    display: none;
+}
+
+.catalogo-carousel-slide.active {
+    display: block;
+}
+
+.catalogo-carousel-slide img {
+    width: 100%;
+    max-height: 480px;
+    object-fit: cover;
+    display: block;
+}
+
+.catalogo-carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    border: none;
+    padding: 12px 16px;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+    z-index: 2;
+}
+
+.catalogo-carousel-btn:hover {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.catalogo-carousel-btn--prev { left: 10px; }
+.catalogo-carousel-btn--next { right: 10px; }
+
+.catalogo-carousel-counter {
+    position: absolute;
+    bottom: 10px;
+    right: 14px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    padding: 3px 8px;
+    border-radius: 999px;
+    z-index: 2;
+}
+
+/* Carrusel dentro del panel de fotos del dossier: llena todo el contenedor */
+.catalogo-dossier-fotos .catalogo-carousel {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    margin: 0;
+}
+
+.catalogo-dossier-fotos .catalogo-carousel-track {
+    height: 100%;
+}
+
+.catalogo-dossier-fotos .catalogo-carousel-slide {
+    height: 100%;
+}
+
+.catalogo-dossier-fotos .catalogo-carousel-slide img {
+    height: 100%;
+    max-height: none;
+    object-fit: cover;
+}
+
+/* Foto única dentro del panel de fotos */
+.catalogo-dossier-foto-unica {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.catalogo-dossier-foto-placeholder {
+    width: 100%;
+    height: 100%;
+    min-height: 220px;
+    background: #ccc;
+}
+
+/* ========================
+   DESKTOP — DOSSIER
+======================== */
+
+@media (min-width: 769px) {
+    .catalogo-dossier {
+        padding-left: clamp(16px, 3vw, 32px);
+        padding-right: clamp(16px, 3vw, 32px);
+    }
+
+    .catalogo-dossier {
+        padding-left: clamp(32px, 6vw, 80px);
+        padding-right: clamp(32px, 6vw, 80px);
+    }
+
+    .catalogo-dossier-card {
+        max-width: 720px;
+        margin: 0 auto;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 48px rgba(0, 0, 0, 0.10);
+    }
+
+    .catalogo-dossier-fotos {
+        width: 100%;
+    }
+
+    .catalogo-dossier-header {
+        padding: clamp(24px, 3vw, 36px) clamp(28px, 3.5vw, 44px) clamp(20px, 2.5vw, 28px);
+    }
+
+    .catalogo-dossier-body {
+        padding: 0 clamp(28px, 3.5vw, 44px) clamp(28px, 3vw, 40px);
+    }
+
+    .catalogo-servicio-bloque:first-child {
+        padding-top: clamp(20px, 3vw, 28px);
+    }
+}
+
+/* ========================
+   LISTADO (catalogo/index.html)
+======================== */
+
+.catalogo-list-header {
+    max-width: var(--width-main);
+}
+
+.catalogo-grid {
+    margin-top: 24px;
+}
+
+.catalogo-card {
+    height: 300px;
+    cursor: default;
+}
+
+.catalogo-card-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #ccc;
+}
+
+.catalogo-card .card-overlay {
+    height: auto;
+    min-height: 40%;
+}
+
+@media (min-width: 769px) {
+    .catalogo-card {
+        height: 280px;
+    }
+}
