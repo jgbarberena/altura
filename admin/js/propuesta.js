@@ -22,20 +22,22 @@ const TEXTO_CIERRE = 'Las plazas son limitadas. No esperes más.'
 const TEXTO_CTA    = 'Confírmanos tu reserva y prepárate para vivir San Fermín como nunca.'
 
 // ===== ESTADO DEL MÓDULO =====
-let _supabase        = null
-let _cliente         = null
-let _reservas        = []
-let _servicios       = []
-let _venues          = []
-let _logoBase64      = null
-let _logoBlackBase64 = null
-let _logoWhiteBase64 = null
-let _numPropuesta    = null
+let _supabase           = null
+let _cliente            = null
+let _reservas           = []
+let _servicios          = []
+let _venues             = []
+let _getDisponibilidad  = null
+let _logoBase64         = null
+let _logoBlackBase64    = null
+let _logoWhiteBase64    = null
+let _numPropuesta       = null
 
 // ===== INICIALIZACIÓN =====
-export function initPropuesta(supabaseClient, serviciosData, venuesData) {
-    _supabase  = supabaseClient
-    _servicios = serviciosData ?? []
+export function initPropuesta(supabaseClient, serviciosData, venuesData, getDisponibilidad) {
+    _supabase          = supabaseClient
+    _servicios         = serviciosData ?? []
+    _getDisponibilidad = getDisponibilidad ?? null
     _venues    = venuesData ?? []
     _cargarLogos()
 
@@ -114,11 +116,13 @@ function _buildPropuestaHTML() {
         const hora  = svc.start_time ?? '—'
         const dir   = _dirProveedor(r)
 
+        const disp    = _getDisponibilidad?.()?.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
+        const realImg = disp?.photos?.[0] ?? svc.image_url ?? ''
         return `
         <tr class="prop-tabla-fila">
             <td class="prop-col-img">
                 <img class="prop-img" src="${LOGO_URL_P}"
-                    data-real="${svc.image_url ?? ''}" alt="${label}">
+                    data-real="${realImg}" alt="${label}">
             </td>
             <td class="prop-col-desc">
                 <div class="prop-svc-nombre prop-editable" contenteditable="true"
@@ -307,8 +311,10 @@ async function _generarPDF() {
     // Pre-cargar imágenes de servicios en base64
     const imgCache = {}
     for (const r of _reservas) {
-        const svc = _servicios.find(s => s.id === r.service_id) ?? {}
-        if (svc.image_url) imgCache[r.service_id] = await _imgToBase64(svc.image_url)
+        const svc     = _servicios.find(s => s.id === r.service_id) ?? {}
+        const disp    = _getDisponibilidad?.()?.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
+        const imgUrl  = disp?.photos?.[0] ?? svc.image_url
+        if (imgUrl) imgCache[r.service_id] = await _imgToBase64(imgUrl)
     }
 
     // ── Constantes ────────────────────────────────────────────────────────────

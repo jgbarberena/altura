@@ -270,7 +270,7 @@ Relación: un provider puede tener múltiples venues. Al crear un proveedor nuev
 | description | text | |
 | comments | text | |
 | start_time | text | Hora de inicio (ej: `'08:00'`) |
-| image_url | text | URL absoluta de imagen representativa (ej: `https://www.experienciasanfermin.com/img/cards/...`) |
+| image_url | text | URL absoluta de imagen representativa (ej: `https://www.experienciasanfermin.com/img/cards/...`). Fallback en propuestas cuando `availability.photos` está vacío. **No editable desde el panel** — se actualiza directamente en BD o via `dlgNuevoServicio`. |
 
 **`availability`** — Disponibilidad por venue y servicio
 | Campo | Tipo | Notas |
@@ -282,6 +282,9 @@ Relación: un provider puede tener múltiples venues. Al crear un proveedor nuev
 | price_per_slot | decimal | Coste que se paga al proveedor por plaza |
 | billing_model | text NOT NULL | `'capacity'`, `'consumption'` o `'fixed'`; default `'capacity'` |
 | comments | text | |
+| description | text | Descripción específica del par venue/servicio (ej: vistas, ubicación exacta del balcón) |
+| access_instructions | text | Instrucciones de acceso el día del evento (cómo llegar, código, contacto). Editable en el panel de proveedores con autosave. |
+| photos | text[] ARRAY | URLs de fotos del balcón para este par venue/servicio. Se gestionan con el carousel en el panel de proveedores. `propuesta.js` usa `photos[0]` como imagen principal, con `services.image_url` como fallback. |
 
 **`sfcom_listings`** — Configuración de publicación en sfcom por par proveedor/servicio
 | Campo | Tipo | Notas |

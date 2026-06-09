@@ -21,7 +21,7 @@ const { data: disponibilidad } = await supabase.from('availability_with_sfcom').
 const { data: venues }         = await supabase.from('venues').select('*').order('id')
 let todasReservas              = (await supabase.from('reservations').select('*')).data
 
-initPropuesta(supabase, servicios, venues)
+initPropuesta(supabase, servicios, venues, () => disponibilidad)
 initAsistente(supabase, { getDisponibilidad: () => disponibilidad, getTodasReservas: () => todasReservas, onEmailSaved: cargarSolicitudes, esSfcom: _esSfcom })
 
 function _getProviderIdFromVenue(venueId) {
