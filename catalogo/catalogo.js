@@ -1,14 +1,29 @@
 // catalogo.js — Lógica del catálogo de venues para compartir con clientes
-// Página: catalogo/index.html  (listado interno)
+// Página: catalogo/index.html  (listado interno con secciones por event_type)
 //         catalogo/balcon.html (ficha individual por slug)
 // El cliente Supabase viene de window.supabasePublic (supabase-global.js).
-// Datos: vista catalogo_publico — devuelve una fila por servicio del venue.
+// Datos: vista catalogo_publico — devuelve una fila por par venue+service_id.
+// La agrupación por event_type se hace en cliente; la BD no cambia.
+// El trigger trg_sync_photos_event_type en Supabase garantiza que todas las filas
+// del mismo venue_id+event_type tienen siempre las mismas fotos.
 
 var VENUE_TYPE_LABELS = {
     balcon:            'Balcón privado',
     barrera:           'Barrera del recorrido',
     guia:              'Visita guiada',
     servicio_especial: 'Experiencia especial'
+}
+
+var EVENT_TYPE_ORDER = ['encierro', 'chupinazo', 'procesion', 'despedida_gigantes', 'pobre_de_mi', 'visita_guiada', 'otro']
+
+var EVENT_TYPE_LABELS = {
+    encierro:           'Balcones Encierro',
+    chupinazo:          'Chupinazo',
+    procesion:          'Procesión de San Fermín',
+    despedida_gigantes: 'Despedida de Gigantes',
+    pobre_de_mi:        'Pobre de Mí',
+    visita_guiada:      'Visitas Guiadas',
+    otro:               'Otras Experiencias'
 }
 
 // Detectar página y arrancar
@@ -55,35 +70,47 @@ async function initFichaBalcon() {
     }
 
     var filas = result.data
-    // Datos del venue — iguales en todas las filas
+
     var venue = {
         slug:         filas[0].slug,
         display_name: filas[0].display_name,
         address:      filas[0].address,
         venue_type:   filas[0].venue_type
     }
-    var servicios = filas  // una fila por servicio
 
-    actualizarOGTags(venue, servicios)
+    actualizarOGTags(venue, filas)
+
+    // Agrupar filas por event_type; fotos del primer row con fotos de ese grupo
+    var grupos = {}
+    filas.forEach(function(row) {
+        var et = row.event_type || 'otro'
+        if (!grupos[et]) {
+            grupos[et] = {
+                service_name:        row.service_name || et,
+                event_type:          et,
+                description:         null,
+                access_instructions: null,
+                photos:              []
+            }
+        }
+        if (grupos[et].photos.length === 0 && Array.isArray(row.photos) && row.photos.length > 0) {
+            var vistos = {}
+            grupos[et].photos = row.photos.filter(function(url) {
+                if (!url || vistos[url]) return false
+                vistos[url] = true
+                return true
+            })
+        }
+        if (!grupos[et].description && row.description) {
+            grupos[et].description = row.description
+        }
+        if (!grupos[et].access_instructions && row.access_instructions) {
+            grupos[et].access_instructions = row.access_instructions
+        }
+    })
 
     var nombre    = venue.display_name || venue.slug
     var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
-
-    // Fotos del espacio físico: usar las del primer servicio que tenga fotos
-    // (son las mismas para todos los servicios del venue)
-    var todasFotos = []
-    for (var i = 0; i < servicios.length; i++) {
-        var ps = Array.isArray(servicios[i].photos) ? servicios[i].photos.filter(Boolean) : []
-        if (ps.length > 0) { todasFotos = ps; break }
-    }
-    if (todasFotos.length === 0) {
-        for (var i = 0; i < servicios.length; i++) {
-            if (servicios[i].service_image_fallback) {
-                todasFotos.push(servicios[i].service_image_fallback)
-                break
-            }
-        }
-    }
 
     main.innerHTML = ''
 
@@ -95,30 +122,6 @@ async function initFichaBalcon() {
 
     var layout = document.createElement('div')
     layout.className = 'catalogo-dossier-layout'
-
-    // --- COLUMNA DE FOTOS (izquierda en desktop, centro en mobile) ---
-    var fotosCol = document.createElement('div')
-    fotosCol.className = 'catalogo-dossier-fotos'
-
-    if (todasFotos.length > 1) {
-        var carouselHtml = '<div class="catalogo-carousel">'
-        carouselHtml += '<div class="catalogo-carousel-track">'
-        todasFotos.forEach(function(url, i) {
-            carouselHtml += '<div class="catalogo-carousel-slide' + (i === 0 ? ' active' : '') + '">'
-            carouselHtml += '<img src="' + escAttr(url) + '" alt="" loading="' + (i === 0 ? 'eager' : 'lazy') + '">'
-            carouselHtml += '</div>'
-        })
-        carouselHtml += '</div>'
-        carouselHtml += '<button class="catalogo-carousel-btn catalogo-carousel-btn--prev" aria-label="Foto anterior">&#8249;</button>'
-        carouselHtml += '<button class="catalogo-carousel-btn catalogo-carousel-btn--next" aria-label="Foto siguiente">&#8250;</button>'
-        carouselHtml += '<div class="catalogo-carousel-counter"><span class="catalogo-carousel-cur">1</span>/<span class="catalogo-carousel-tot">' + todasFotos.length + '</span></div>'
-        carouselHtml += '</div>'
-        fotosCol.innerHTML = carouselHtml
-    } else if (todasFotos.length === 1) {
-        fotosCol.innerHTML = '<img class="catalogo-dossier-foto-unica" src="' + escAttr(todasFotos[0]) + '" alt="" loading="eager">'
-    } else {
-        fotosCol.innerHTML = '<div class="catalogo-dossier-foto-placeholder"></div>'
-    }
 
     // --- CABECERA: tipo + nombre + dirección ---
     var headerCol = document.createElement('div')
@@ -137,20 +140,26 @@ async function initFichaBalcon() {
     }
     headerCol.innerHTML = headerHtml
 
-    // --- CUERPO: bloques de servicio + contacto ---
+    // --- CUERPO: una sección por event_type en orden fijo ---
     var bodyCol = document.createElement('div')
     bodyCol.className = 'catalogo-dossier-body'
 
     var bodyHtml = ''
-    servicios.forEach(function(svc) {
-        bodyHtml += renderServicioBloque(svc)
+    var esPrimero = true
+    EVENT_TYPE_ORDER.forEach(function(et) {
+        if (grupos[et]) {
+            bodyHtml += renderGrupoBloque(grupos[et], esPrimero)
+            esPrimero = false
+        }
+    })
+    Object.keys(grupos).forEach(function(et) {
+        if (EVENT_TYPE_ORDER.indexOf(et) === -1) {
+            bodyHtml += renderGrupoBloque(grupos[et], false)
+        }
     })
     bodyCol.innerHTML = bodyHtml
 
-    // DOM order = orden visual mobile: cabecera → fotos → cuerpo
-    // En desktop el grid los recoloca visualmente sin tocar el DOM
     layout.appendChild(headerCol)
-    layout.appendChild(fotosCol)
     layout.appendChild(bodyCol)
     card.appendChild(layout)
     dossier.appendChild(card)
@@ -159,26 +168,26 @@ async function initFichaBalcon() {
     initCarruseles()
 }
 
-// Bloque de un servicio dentro del panel de info (sin fotos — van todas en el carrusel izquierdo)
-function renderServicioBloque(svc) {
-    var nombre = svc.service_name || svc.service_id
+// Sección de un event_type: titulo + carousel propio + descripción + acceso
+function renderGrupoBloque(grupo, eagerFirst) {
     var html = '<div class="catalogo-servicio-bloque">'
+    html += '<h2 class="catalogo-servicio-titulo">' + escHtml(grupo.service_name) + '</h2>'
 
-    var titulo = svc.day
-        ? (escHtml(nombre) + ' <span class="catalogo-servicio-dia">&mdash; ' + svc.day + ' de julio</span>')
-        : escHtml(nombre)
-    html += '<h2 class="catalogo-servicio-titulo">' + titulo + '</h2>'
-
-    if (svc.description) {
-        html += '<p class="text-body catalogo-descripcion">' + escHtml(svc.description) + '</p>'
+    if (grupo.photos.length > 1) {
+        html += renderCarouselHtml(grupo.photos, eagerFirst)
+    } else if (grupo.photos.length === 1) {
+        html += '<img class="catalogo-grupo-foto-unica" src="' + escAttr(grupo.photos[0]) + '" alt="" loading="' + (eagerFirst ? 'eager' : 'lazy') + '">'
     }
 
-    if (svc.access_instructions) {
+    if (grupo.description) {
+        html += '<p class="text-body catalogo-descripcion">' + escHtml(grupo.description) + '</p>'
+    }
+    if (grupo.access_instructions) {
         html += '<div class="catalogo-acceso">'
-        html += '<span class="catalogo-acceso-icon">&#128204;</span>'  // 📌 chincheta
+        html += '<span class="catalogo-acceso-icon">&#128204;</span>'
         html += '<div>'
         html += '<p class="text-small catalogo-acceso-label">Instrucciones de acceso</p>'
-        html += '<p class="text-body">' + escHtml(svc.access_instructions) + '</p>'
+        html += '<p class="text-body">' + escHtml(grupo.access_instructions) + '</p>'
         html += '</div>'
         html += '</div>'
     }
@@ -187,8 +196,24 @@ function renderServicioBloque(svc) {
     return html
 }
 
+function renderCarouselHtml(fotos, eagerFirst) {
+    var html = '<div class="catalogo-carousel">'
+    html += '<div class="catalogo-carousel-track">'
+    fotos.forEach(function(url, i) {
+        html += '<div class="catalogo-carousel-slide' + (i === 0 ? ' active' : '') + '">'
+        html += '<img src="' + escAttr(url) + '" alt="" loading="' + (eagerFirst && i === 0 ? 'eager' : 'lazy') + '">'
+        html += '</div>'
+    })
+    html += '</div>'
+    html += '<button class="catalogo-carousel-btn catalogo-carousel-btn--prev" aria-label="Foto anterior">&#8249;</button>'
+    html += '<button class="catalogo-carousel-btn catalogo-carousel-btn--next" aria-label="Foto siguiente">&#8250;</button>'
+    html += '<div class="catalogo-carousel-counter"><span class="catalogo-carousel-cur">1</span>/<span class="catalogo-carousel-tot">' + fotos.length + '</span></div>'
+    html += '</div>'
+    return html
+}
+
 // ============================================================
-// LISTADO INTERNO (index.html)
+// LISTADO INTERNO (index.html) — secciones por event_type
 // ============================================================
 
 async function initListadoCatalogo() {
@@ -201,69 +226,88 @@ async function initListadoCatalogo() {
 
     var result = await window.supabasePublic
         .from('catalogo_publico')
-        .select('slug, display_name, address, venue_type, photos, service_image_fallback')
-        .order('slug')
+        .select('slug, display_name, address, venue_type, photos, event_type, service_name, service_image_fallback')
+        .order('display_name')
 
     if (result.error || !result.data || result.data.length === 0) {
         main.innerHTML = '<p class="text-body">No hay venues disponibles o no se pudo cargar el catálogo.</p>'
         return
     }
 
-    // Deduplicar por slug — puede haber varias filas por venue (un servicio por fila)
-    var idxMap = {}  // slug → índice en venues[]
-    var venues = []
+    // secciones[event_type][slug] = venueData
+    // Un venue puede aparecer en varias secciones si ofrece varios event_types
+    var secciones = {}
     result.data.forEach(function(row) {
-        if (!idxMap.hasOwnProperty(row.slug)) {
-            idxMap[row.slug] = venues.length
-            venues.push({
+        if (!row.slug) return
+        var et = row.event_type || 'otro'
+        if (!secciones[et]) secciones[et] = {}
+        if (!secciones[et][row.slug]) {
+            secciones[et][row.slug] = {
                 slug:         row.slug,
                 display_name: row.display_name,
                 address:      row.address,
                 venue_type:   row.venue_type,
-                foto:         _primeraFotoReal(row),
-                fallback:     row.service_image_fallback || null
-            })
-        } else {
-            var v = venues[idxMap[row.slug]]
-            if (!v.foto)     v.foto     = _primeraFotoReal(row)
-            if (!v.fallback) v.fallback = row.service_image_fallback || null
+                photo:        _primeraFotoReal(row) || row.service_image_fallback || null
+            }
+        } else if (!secciones[et][row.slug].photo) {
+            secciones[et][row.slug].photo = _primeraFotoReal(row) || row.service_image_fallback || null
         }
     })
-    // Aplicar fallback solo si ningún row del slug tenía foto real
-    venues.forEach(function(v) { if (!v.foto) v.foto = v.fallback })
 
-    var grid = document.createElement('div')
-    grid.className = 'cards-grid cards-grid--3 catalogo-grid'
+    var fragment = document.createDocumentFragment()
 
-    venues.forEach(function(venue) {
-        var nombre    = venue.display_name || venue.slug
-        var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
-        var url       = 'balcon.html?v=' + encodeURIComponent(venue.slug)
-
-        var card = document.createElement('div')
-        card.className = 'card catalogo-card'
-
-        var inner = ''
-        if (venue.foto) {
-            inner += '<img src="' + escAttr(venue.foto) + '" alt="' + escAttr(nombre) + '" loading="lazy">'
-        } else {
-            inner += '<div class="catalogo-card-placeholder"></div>'
+    EVENT_TYPE_ORDER.forEach(function(et) {
+        if (!secciones[et]) return
+        var venuesList = []
+        for (var s in secciones[et]) {
+            if (secciones[et].hasOwnProperty(s)) venuesList.push(secciones[et][s])
         }
-        inner += '<div class="card-overlay">'
-        inner += '<p class="text-tag">' + escHtml(tipoLabel) + '</p>'
-        inner += '<h2>' + escHtml(nombre) + '</h2>'
-        if (venue.address) {
-            inner += '<p>' + escHtml(venue.address) + '</p>'
-        }
-        inner += '</div>'
-        inner += '<a href="' + escAttr(url) + '" class="catalogo-card-link" aria-label="Ver ficha de ' + escAttr(nombre) + '"></a>'
+        if (venuesList.length === 0) return
 
-        card.innerHTML = inner
-        grid.appendChild(card)
+        var section = document.createElement('div')
+        section.className = 'catalogo-seccion'
+
+        var heading = document.createElement('h2')
+        heading.className = 'catalogo-seccion-titulo'
+        heading.textContent = EVENT_TYPE_LABELS[et] || et
+        section.appendChild(heading)
+
+        var grid = document.createElement('div')
+        grid.className = 'cards-grid cards-grid--3 catalogo-grid'
+
+        venuesList.forEach(function(venue) {
+            var nombre    = venue.display_name || venue.slug
+            var tipoLabel = VENUE_TYPE_LABELS[venue.venue_type] || venue.venue_type
+            var url       = 'balcon.html?v=' + encodeURIComponent(venue.slug)
+
+            var card = document.createElement('div')
+            card.className = 'card catalogo-card'
+
+            var inner = ''
+            if (venue.photo) {
+                inner += '<img src="' + escAttr(venue.photo) + '" alt="' + escAttr(nombre) + '" loading="lazy">'
+            } else {
+                inner += '<div class="catalogo-card-placeholder"></div>'
+            }
+            inner += '<div class="card-overlay">'
+            inner += '<p class="text-tag">' + escHtml(tipoLabel) + '</p>'
+            inner += '<h2>' + escHtml(nombre) + '</h2>'
+            if (venue.address) {
+                inner += '<p>' + escHtml(venue.address) + '</p>'
+            }
+            inner += '</div>'
+            inner += '<a href="' + escAttr(url) + '" class="catalogo-card-link" aria-label="Ver ficha de ' + escAttr(nombre) + '"></a>'
+
+            card.innerHTML = inner
+            grid.appendChild(card)
+        })
+
+        section.appendChild(grid)
+        fragment.appendChild(section)
     })
 
     main.innerHTML = ''
-    main.appendChild(grid)
+    main.appendChild(fragment)
 }
 
 function _primeraFotoReal(row) {
@@ -319,17 +363,17 @@ function initCarruseles() {
 // OG TAGS DINÁMICOS
 // ============================================================
 
-function actualizarOGTags(venue, servicios) {
+function actualizarOGTags(venue, filas) {
     var nombre = venue.display_name || venue.slug
     var titulo = nombre + ' — Vive San Fermín desde dentro'
 
     var desc = 'Conoce este espacio y sus características para los grandes momentos de San Fermín.'
-    if (servicios.length > 0 && servicios[0].description) {
-        desc = servicios[0].description.slice(0, 160)
-        if (servicios[0].description.length > 160) desc += '…'
+    if (filas.length > 0 && filas[0].description) {
+        desc = filas[0].description.slice(0, 160)
+        if (filas[0].description.length > 160) desc += '…'
     }
 
-    var img = obtenerImagenHero(servicios)
+    var img = obtenerImagenHero(filas)
 
     setMetaOG('og:title', titulo)
     setMetaOG('og:description', desc)
@@ -339,15 +383,15 @@ function actualizarOGTags(venue, servicios) {
     document.title = titulo
 }
 
-function obtenerImagenHero(servicios) {
-    for (var i = 0; i < servicios.length; i++) {
-        var photos = servicios[i].photos
+function obtenerImagenHero(filas) {
+    for (var i = 0; i < filas.length; i++) {
+        var photos = filas[i].photos
         if (Array.isArray(photos)) {
             for (var j = 0; j < photos.length; j++) {
                 if (photos[j]) return photos[j]
             }
         }
-        if (servicios[i].service_image_fallback) return servicios[i].service_image_fallback
+        if (filas[i].service_image_fallback) return filas[i].service_image_fallback
     }
     return null
 }

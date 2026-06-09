@@ -339,3 +339,33 @@
         height: 280px;
     }
 }
+
+/* ========================
+   LISTADO — SECCIONES POR TIPO DE EVENTO
+======================== */
+
+.catalogo-seccion {
+    margin-bottom: clamp(32px, 5vw, 56px);
+}
+
+.catalogo-seccion-titulo {
+    font-family: var(--font-serif);
+    font-size: clamp(18px, 2.5vw, 24px);
+    font-weight: 600;
+    color: var(--color-heading);
+    margin-bottom: 0;
+}
+
+/* ========================
+   FICHA — FOTO ÚNICA EN BLOQUE DE SERVICIO
+======================== */
+
+.catalogo-grupo-foto-unica {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: cover;
+    display: block;
+    border-radius: 10px;
+    margin-bottom: 16px;
+}

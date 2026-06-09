@@ -1616,14 +1616,14 @@ El admin tenía duplicación significativa: cada módulo construía sus propios 
 
 ---
 
-## 23. Catálogo de venues (catalogo/)
+## 23. Catálogo de balcones (catalogo/)
 
-Sección pública para compartir fichas individuales de venues con clientes potenciales por WhatsApp o email. Informacional: sin precios, sin formulario de reserva, sin CTA de compra.
+Sección pública para compartir fichas individuales de venues con clientes potenciales. Informacional: sin precios, sin formulario de reserva, sin CTA de compra.
 
 **Archivos:**
 ```
 catalogo/
-├── index.html     ← listado interno de todos los venues (balcon/barrera)
+├── index.html     ← listado interno de todos los venues agrupado por event_type
 ├── balcon.html    ← ficha individual de un venue
 ├── catalogo.js    ← lógica de ambas páginas (script clásico)
 └── catalogo.css   ← estilos propios del catálogo
@@ -1635,10 +1635,12 @@ catalogo/
 
 **Visibilidad:** ambas páginas tienen `<meta name="robots" content="noindex, nofollow">`. No aparecen en el sitemap ni en robots.txt. Solo accesibles via URL directa compartida manualmente.
 
+**Agrupación por `event_type`:** tanto la ficha como el listado agrupan los servicios por `event_type` en el cliente JS. Las constantes `EVENT_TYPE_ORDER` (orden de secciones) y `EVENT_TYPE_LABELS` (nombres visibles) están en `catalogo.js`. El trigger `trg_sync_photos_event_type` en Supabase garantiza que todas las filas del mismo `venue_id+event_type` comparten siempre las mismas fotos.
+
 **Estructura de la ficha (`balcon.html`):**
-1. Hero fullscreen (`section--first--fullscreen has-overlay`) con imagen del primer servicio + nombre del venue + tipo + dirección
-2. Una sección por servicio en `availability`, con título (nombre + día), carrusel de fotos si `photos.length > 1`, descripción, bloque de instrucciones de acceso
-3. Pie de contacto con botones WhatsApp y email (hardcoded: paula@experienciasanfermin.com)
+1. Cabecera con tipo de venue, nombre y dirección (`.catalogo-dossier-header`)
+2. Una sección por `event_type` en orden `EVENT_TYPE_ORDER`, con: título (`service_name`), carrusel de fotos si `photos.length > 1`, foto única si `photos.length === 1`, descripción, bloque de instrucciones de acceso
+Las fotos de cada grupo se toman de la primera fila con fotos del mismo `event_type`; se deduplicán por URL. Si un `event_type` no tiene fotos, la sección aparece sin imagen.
 
 **Datos cargados:** todo va a través de la vista `catalogo_publico` — no hay JOINs directos entre tablas. La vista tiene permisos SELECT para el rol `anon` y devuelve una fila por servicio del venue. Campos: `slug, display_name, address, venue_type, service_id, description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`.
 
@@ -1647,16 +1649,16 @@ catalogo/
 // Ficha individual — devuelve N filas (una por servicio)
 await supabase.from('catalogo_publico').select('*').eq('slug', slug)
 
-// Listado — deduplicar por slug en JS antes de renderizar
+// Listado — agrupa por event_type y slug en JS
 await supabase.from('catalogo_publico')
-    .select('slug, display_name, address, venue_type, photos, service_image_fallback')
-    .order('slug')
+    .select('slug, display_name, address, venue_type, photos, event_type, service_name, service_image_fallback')
+    .order('display_name')
 ```
 
-**Imagen del hero / thumbnail del listado:** primera foto disponible en `photos[]` de cualquier servicio; `service_image_fallback` como respaldo. Función `_primeraFoto(row)` centraliza este fallback.
+**Imagen thumbnail del listado:** `_primeraFotoReal(row)` (solo fotos reales, sin fallback) aplicada a todas las filas del venue; `service_image_fallback` como último recurso.
 
 **OG tags:** `balcon.html` tiene tags estáticos de fallback en el HTML que el JS sobreescribe al cargar los datos reales (og:title, og:description con los primeros 160 chars de la primera descripción, og:image con la primera foto, og:url con la URL actual).
 
-**`index.html`:** listado interno de todos los venues con servicios disponibles, ordenados por slug. Grid de cards con foto, tipo, nombre, dirección y enlace a la ficha. Uso previsto: el admin navega aquí para copiar URLs de fichas concretas.
+**`index.html`:** listado agrupado por `event_type` en secciones con título. Un venue puede aparecer en varias secciones si ofrece varios event_types. Cada sección tiene un grid de cards con foto, tipo de venue, nombre, dirección y enlace a la ficha. Uso previsto: visitable por el cliente que ya está en contacto o compartible manualmente por el admin.
 
 **Integración con el asistente IA:** `disponibilidadParaAsistente()` en `asistente.js` incluye `catalogo_url` por entrada (construida como `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${venue_slug}` o `null` si no hay slug). `SYSTEM_PROMPT_ASISTENTE` instruye a Claude a incluir la URL de forma natural cuando sea relevante. El campo `venue_slug` viene de la vista admin `availability_with_sfcom` (pendiente de añadir si no está expuesto ya).
