@@ -2,14 +2,15 @@ import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
-let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom
+let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada
 
-export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom }) {
-    _supabase          = supabase
-    _getDisponibilidad = getDisponibilidad
-    _getTodasReservas  = getTodasReservas
-    _onEmailSaved      = onEmailSaved
-    _esSfcom           = esSfcom
+export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom, onRespuestaUsada }) {
+    _supabase           = supabase
+    _getDisponibilidad  = getDisponibilidad
+    _getTodasReservas   = getTodasReservas
+    _onEmailSaved       = onEmailSaved
+    _esSfcom            = esSfcom
+    _onRespuestaUsada   = onRespuestaUsada ?? null
 }
 
 // ===== HELPERS DE CONTEXTO =====
@@ -111,7 +112,7 @@ function preciosReferencia(serviceIds) {
 
 // ===== ASISTENTE DE RESPUESTAS =====
 
-export async function abrirAsistenteRespuesta(solicitud) {
+export async function abrirAsistenteRespuesta(solicitud, opts = {}) {
     const mensajes = []
     let enviando   = false
 
@@ -155,6 +156,7 @@ export async function abrirAsistenteRespuesta(solicitud) {
                 <button id="btn-asistente-copiar" class="btn btn-secondary">📋 Copiar</button>
                 ${solicitud.client_email ? `<a id="btn-asistente-email" class="btn btn-secondary" style="text-decoration:none">📧 Email</a>` : ''}
                 ${solicitud.client_phone ? `<a id="btn-asistente-whatsapp" class="btn btn-secondary" style="text-decoration:none" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+                ${_onRespuestaUsada ? `<button id="btn-asistente-usar" class="btn btn-primary">✅ Usar respuesta</button>` : ''}
             </div>
         </div>
     `
@@ -272,6 +274,11 @@ export async function abrirAsistenteRespuesta(solicitud) {
             .catch(() => mostrarToast('❌ No se pudo copiar', '#991b1b'))
     })
 
+    panel.querySelector('#btn-asistente-usar')?.addEventListener('click', async () => {
+        await _onRespuestaUsada(elMsgFinal.value, solicitud)
+        mostrarToast('✅ Respuesta añadida al log')
+    })
+
     // Contexto inicial
     const meta       = parsearMetaComments(solicitud.comments)
     const svcPrinc   = expandirServiceIds(solicitud.level || null, solicitud.day, meta)
@@ -295,6 +302,11 @@ export async function abrirAsistenteRespuesta(solicitud) {
         },
         disponibilidad: disponibilidadParaAsistente(serviceIds),
         precios:        preciosReferencia(serviceIds)
+    }
+
+    if (opts.modo === 'recordatorio') {
+        contextoObj.solicitud.modo = 'recordatorio'
+        contextoObj.solicitud.log_conversacion = solicitud.conversation_notes || ''
     }
 
     panel.querySelector('#btn-guardar-log').addEventListener('click', async () => {

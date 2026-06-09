@@ -366,8 +366,8 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings` (UNI
 | service_id | text | Sin FK. Se guarda al registrar pedidos sfcom cuando el nombre del producto se resuelve sin ambigüedad. Se usa como verificación (cross-check) al cargar la solicitud en el formulario, nunca como búsqueda primaria (el nombre es el contrato) |
 | language | text | Idioma del cliente (`'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'`). Solo se rellena para solicitudes procesadas desde email. Nulo para web y sfcom. |
 | email_raw | text | Texto completo del email original (solo para solicitudes de email). Guardado para referencia pero no se muestra en el panel. |
-| conversation_status | text | Estado del seguimiento comercial: `'nueva'`, `'en_conversacion'`, `'propuesta_enviada'`, `'esperando_cliente'`, `'cerrada'`. Default `'nueva'`. Independiente de `status` (que describe origen/proceso). Las solicitudes con `conversation_status = 'cerrada'` no aparecen en la lista activa de `solicitudes.html`. |
-| conversation_notes | text | Notas internas del equipo sobre la solicitud (seguimiento, anotaciones). Solo visibles en el panel. |
+| conversation_status | text | Estado del seguimiento comercial: `'nueva'`, `'en_conversacion'`, `'respuesta_enviada'`, `'seguimiento_pendiente'`, `'cerrada'`. Default `'nueva'`. Independiente de `status` (que describe origen/proceso). Las solicitudes con `conversation_status = 'cerrada'` no aparecen en la lista activa de `solicitudes.html`. Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `updated_at` supera 3 días (aplicada por `solicitudes.js` al cargar). |
+| conversation_notes | text | Log de conversación interna en formato estructurado de texto plano. Formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto`. Parseado y renderizado como chat en el panel de solicitudes. Solo visible para el equipo. |
 | assigned_venue_id | text FK→venues | Venue asignado a la solicitud (opcional). Permite preparar la propuesta antes de convertir en reserva. |
 | updated_at | timestamptz | Actualizado automáticamente por trigger `trg_reservation_requests_updated_at` en cada UPDATE. Usado por `solicitudes.js` para ordenar la lista por actividad reciente. |
 
@@ -654,7 +654,7 @@ Módulo ES6. Panel de solo-lectura centrado en la actividad de sfcom: KPIs, soli
 
 Sistema de IA para ayudar a Paula a gestionar y responder solicitudes de clientes. Toda la lógica vive en `asistente.js`; los prompts en `asistente-config.js` (separados para poder actualizarlos por FTP sin tocar la lógica). El módulo es reutilizable: tanto `formulario.js` como `solicitudes.js` importan `initAsistente`, `abrirAsistenteRespuesta` y `abrirProcesarEmail`, y los botones de la UI los invocan directamente.
 
-**Inicialización:** `initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom })` — recibe el cliente Supabase y cuatro getters/callbacks para acceder al estado del módulo importador sin crear dependencia circular. `getDisponibilidad` y `getTodasReservas` son funciones que devuelven los arrays en el momento de la llamada (necesario porque son `let` y pueden reasignarse). `onEmailSaved` es el callback para recargar la lista de solicitudes tras guardar un email (en `formulario.js`: `cargarSolicitudes`; en `solicitudes.js`: `cargarSolicitudes`). `esSfcom` es la función de detección de source sfcom del módulo importador.
+**Inicialización:** `initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom, onRespuestaUsada })` — recibe el cliente Supabase y cinco getters/callbacks. `getDisponibilidad` y `getTodasReservas` son funciones que devuelven los arrays en el momento de la llamada. `onEmailSaved` recarga la lista de solicitudes tras guardar un email. `esSfcom` detecta el source sfcom. `onRespuestaUsada(texto, solicitud)` (opcional) — se llama cuando Paula pulsa "✅ Usar respuesta" en el asistente; en `solicitudes.js` inserta el texto como entrada de Paula en el log y cambia el estado a `'respuesta_enviada'`; en `formulario.js` no se pasa (null).
 
 #### Flujo de email manual (`abrirProcesarEmail`)
 
@@ -668,7 +668,9 @@ Botón "📧 Procesar email" en la cabecera del Bloque 0. Paula pega el texto de
 
 #### Asistente de respuesta (`abrirAsistenteRespuesta`)
 
-Se abre desde el botón "💬 Responder" de cualquier fila de solicitudes — web, email y sfcom. Recibe el objeto `solicitud` completo de `reservation_requests`.
+`abrirAsistenteRespuesta(solicitud, opts = {})` — se abre desde "💬 Abrir asistente" en cualquier fila de solicitudes (web, email, sfcom), o desde "📩 Enviar recordatorio" cuando `conversation_status === 'seguimiento_pendiente'`.
+
+**`opts.modo`:** si es `'recordatorio'`, el asistente sabe que el cliente ya recibió una respuesta y no ha contestado; Claude debe generar un seguimiento breve en lugar de presentar disponibilidad desde cero. En ese caso se añaden al contexto `solicitud.modo = 'recordatorio'` y `solicitud.log_conversacion = conversation_notes` (el historial del log interno).
 
 **Detección del tipo de solicitud:**
 ```js
@@ -679,7 +681,7 @@ const tipoSolicitud = _esSfcom(solicitud.source) ? 'sfcom_reserva'
 
 - `'web'`: formulario de contacto, puede faltar información.
 - `'email'`: email procesado por Paula, idioma puede estar relleno.
-- `'sfcom_reserva'`: pedido ya confirmado y pagado. Claude detecta esto, informa a Paula de que es una reserva hecha y le pregunta qué quiere comunicarle al cliente (bienvenida, instrucciones del día, etc.) — no intenta vender.
+- `'sfcom_reserva'`: pedido ya confirmado y pagado. Claude informa a Paula de que es una reserva hecha y le pregunta qué comunicarle al cliente — no intenta vender.
 
 **Construcción del contexto inicial (`contextoObj`):**
 ```js
@@ -688,7 +690,10 @@ const tipoSolicitud = _esSfcom(solicitud.source) ? 'sfcom_reserva'
         tipo,        // 'web' | 'email' | 'sfcom_reserva'
         nombre, email, telefono, evento, dia, personas,
         idioma,      // del campo language o 'desconocido'
-        comentario   // comments con prefijo Días:/Otros servicios: eliminado
+        comentario,  // comments con prefijo Días:/Otros servicios: eliminado
+        // Si opts.modo === 'recordatorio':
+        modo: 'recordatorio',
+        log_conversacion: conversation_notes
     },
     disponibilidad: disponibilidadParaAsistente(serviceIds),
     precios:        preciosReferencia(serviceIds)
@@ -696,6 +701,8 @@ const tipoSolicitud = _esSfcom(solicitud.source) ? 'sfcom_reserva'
 ```
 
 El objeto se serializa con `JSON.stringify(contextoObj)` (sin pretty-print) y se envía como primer mensaje de usuario.
+
+**Botón "✅ Usar respuesta":** aparece en el área de resultado solo cuando `_onRespuestaUsada` está definido (es decir, cuando el módulo importador pasó ese callback a `initAsistente`). Al pulsarlo se llama `_onRespuestaUsada(texto, solicitud)` y se muestra un toast de confirmación.
 
 **`disponibilidadParaAsistente(serviceIds)`:** agrega disponibilidad por proveedor para los service_ids relevantes. Campos por entrada: `service_id`, `dia`, `venue_id`, `venue_display_name`, `venue_address`, `description`, `access_instructions`, `photo_url` (primer elemento de `photos[]`), `billing_model`, `plazas_libres`, `coste_proveedor`. Ordenadas: capacity con plazas libres primero, luego por día, luego consumption. No incluye `plazas_totales`, `plazas_confirmadas` ni `plazas_pendientes` — son irrelevantes para la respuesta al cliente. Los campos de venue permiten que Claude describa el balcón concreto (descripción, ubicación, fotos) en la propuesta y prepare instrucciones de acceso para confirmaciones.
 
@@ -736,20 +743,25 @@ Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js`, y los tres exports de
 
 **Sistema de dos ejes de estado:**
 - `status` (origen/proceso): `'nueva'` | `'email_parsed'` | `'atendida'` | `'descartada'`. Describe si la solicitud fue procesada administrativamente.
-- `conversation_status` (seguimiento comercial): `'nueva'` | `'en_conversacion'` | `'propuesta_enviada'` | `'esperando_cliente'` | `'cerrada'`. Describe el estado de la relación con el cliente. Solo `solicitudes.js` lo gestiona; `formulario.js` no lo toca.
+- `conversation_status` (seguimiento comercial): `'nueva'` | `'en_conversacion'` | `'respuesta_enviada'` | `'seguimiento_pendiente'` | `'cerrada'`. Describe el estado de la relación con el cliente. Solo `solicitudes.js` lo gestiona; `formulario.js` no lo toca. Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `updated_at` supera 3 días (función `_verificarTransicionesAutomaticas` que corre cada vez que se carga la lista).
 
 **Layout:** dos columnas en desktop (lista izquierda 320px, detalle derecha). En mobile: bottom sheet deslizante (`position:fixed; bottom:0; transform:translateY(100%)` + clase `.visible`).
 
-**Lista:** cada ítem muestra nombre, fecha, badges de origen (sfcom/email) y de `conversation_status`, experiencia, y preview de las notas (64 chars). Click en ítem abre el detalle y marca el ítem como activo.
+**Lista:** cada ítem muestra nombre, fecha, badges de origen (sfcom/email) y de `conversation_status`, experiencia, y preview del último mensaje del log (64 chars). Click en ítem abre el detalle y marca el ítem como activo.
 
 **Detalle:** sección completa con:
 - Selector de `conversation_status` con autosave inmediato a BD
+- Botón "📩 Enviar recordatorio" (visible solo cuando `conversation_status === 'seguimiento_pendiente'`) → `abrirAsistenteRespuesta(sol, { modo: 'recordatorio' })`
 - Grid de datos: experiencia, día, personas, precio de referencia (`_calcularPrecioRef`), consulta
 - Selector de venue asignado (si hay `service_id`), con plazas libres calculadas en tiempo real a partir de `availability_with_sfcom` y `reservations`
-- Textarea de notas internas con autosave por debounce (1500ms)
+- Log de conversación: chat renderizado desde `conversation_notes` con burbujas Paula/Cliente; separadores de fecha; botón ✏️ para editar mensajes del día de hoy; botones "＋ Mi mensaje" / "＋ Mensaje del cliente" para añadir entradas
 - Botón "💬 Abrir asistente" → `abrirAsistenteRespuesta(sol)`
 - Enlace "📋 Convertir en reserva" → `formulario.html?client_name=...&service_id=...&venue_id=...&slots=...`
 - Botón "✅ Cerrar solicitud" → pone `conversation_status = 'cerrada'` y retira de la lista
+
+**Log de conversación — formato interno (`conversation_notes`):** texto plano con estructura `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto`. Helpers: `_parsearLog(texto)` → array de items `{type:'date'|'message', ...}`; `_reconstruirLog(items)` → texto plano; `_renderizarLog(items)` → HTML con burbujas. `_insertarMensaje(sol, autor, texto)` añade la entrada, crea el separador de fecha si hace falta, y persiste en BD actualizando también `_solicitudesActuales`. Los mensajes del día actual tienen botón de edición.
+
+**Integración con el asistente (`onRespuestaUsada`):** `initAsistente` recibe `onRespuestaUsada: _onRespuestaUsadaEnLog`. Cuando Paula pulsa "✅ Usar respuesta" en el asistente, `_onRespuestaUsadaEnLog(texto, solicitud)`: inserta el texto como mensaje de Paula en el log + cambia `conversation_status` a `'respuesta_enviada'` + refresca el log en el detalle si la solicitud sigue activa + actualiza badge y select.
 
 **Datos cargados al inicio:** `availability_with_sfcom` (para calcular disponibilidad de venues) y `reservations` (para el precio de referencia y calcular plazas ocupadas). La query de solicitudes usa `.or('conversation_status.is.null,conversation_status.neq.cerrada')` para incluir filas anteriores a la migración (donde el campo es NULL).
 

@@ -137,8 +137,8 @@
 
 .sol-badge--nueva              { background: #fee2e2; color: #991b1b; }
 .sol-badge--en_conversacion    { background: #ffedd5; color: #9a3412; }
-.sol-badge--propuesta_enviada  { background: #dbeafe; color: #1e40af; }
-.sol-badge--esperando_cliente  { background: #fef9c3; color: #854d0e; }
+.sol-badge--respuesta_enviada     { background: #dbeafe; color: #1e40af; }
+.sol-badge--seguimiento_pendiente { background: #fef9c3; color: #854d0e; }
 .sol-badge--sfcom              { background: #fee2e2; color: #991b1b; }
 .sol-badge--email              { background: #dbeafe; color: #1e40af; }
 
@@ -341,4 +341,101 @@
     padding: 2px 4px;
     line-height: 1;
     flex-shrink: 0;
+}
+
+/* =========================
+   LOG DE CONVERSACIÓN
+========================= */
+.sol-log-section { margin-bottom: 16px; }
+
+.sol-log-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--subtle);
+    margin-bottom: 8px;
+    display: block;
+}
+
+.sol-log-area {
+    min-height: 200px;
+    max-height: 360px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sol-log-empty {
+    color: var(--subtle);
+    font-size: 13px;
+    text-align: center;
+    padding: 24px 0;
+    font-style: italic;
+}
+
+.sol-log-date {
+    text-align: center;
+    font-size: 11px;
+    color: var(--subtle);
+    padding: 4px 0;
+    position: relative;
+}
+
+.sol-log-date::before,
+.sol-log-date::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: var(--border);
+}
+
+.sol-log-date::before { left: 0; }
+.sol-log-date::after  { right: 0; }
+
+.sol-log-msg {
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+}
+
+.sol-log-msg--paula  { flex-direction: row-reverse; }
+
+.sol-log-bubble {
+    max-width: 80%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.sol-log-msg--paula  .sol-log-bubble { background: #fce7e7; color: var(--color-heading); border-radius: 12px 12px 2px 12px; }
+.sol-log-msg--cliente .sol-log-bubble { background: #f3f4f6; color: var(--color-heading); border-radius: 12px 12px 12px 2px; }
+
+.sol-log-edit {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px;
+    color: var(--subtle);
+    opacity: 0.6;
+    flex-shrink: 0;
+    line-height: 1;
+    align-self: center;
+}
+
+.sol-log-edit:hover { opacity: 1; }
+
+@media (max-width: 768px) {
+    .sol-log-area { min-height: 160px; }
 }
