@@ -17,7 +17,7 @@ var VENUE_TYPE_LABELS = {
 var EVENT_TYPE_ORDER = ['encierro', 'chupinazo', 'procesion', 'despedida_gigantes', 'pobre_de_mi', 'visita_guiada', 'otro']
 
 var EVENT_TYPE_LABELS = {
-    encierro:           'Balcones Encierro',
+    encierro:           'Encierros',
     chupinazo:          'Chupinazo',
     procesion:          'Procesión de San Fermín',
     despedida_gigantes: 'Despedida de Gigantes',
