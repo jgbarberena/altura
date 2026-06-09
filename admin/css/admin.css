@@ -1241,10 +1241,10 @@ dialog.modal-dialog-overlay::backdrop {
 /* =========================
    LAYOUT DESCRIPCIÓN + IMAGEN (Bloque 2)
 ========================= */
-.servicio-desc-img-wrap {
+.servicio-desc-photos-wrap {
     display: flex;
     gap: 16px;
-    align-items: flex-start;
+    align-items: stretch;
 }
 .servicio-desc-col {
     flex: 1;
@@ -1253,9 +1253,37 @@ dialog.modal-dialog-overlay::backdrop {
     flex-direction: column;
     gap: 12px;
 }
-.servicio-img-col {
-    width: 160px;
-    flex-shrink: 0;
+.servicio-photos-col {
+    flex: 0 0 42%;
+    min-width: 0;
+    flex-direction: column;
+}
+.servicio-photos-label {
+    display: block;
+    font-size: 11px;
+    color: var(--subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+.servicio-photos-col .photo-carousel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.servicio-photos-col .photo-carousel-img-wrap {
+    flex: 1;
+    min-height: 100px;
+    height: auto;
+}
+.servicio-photos-col .photo-carousel-img-wrap img {
+    object-fit: contain;
+}
+
+@media (max-width: 768px) {
+    .servicio-desc-photos-wrap { flex-direction: column; }
+    .servicio-photos-col { flex: none; }
+    .servicio-photos-col .photo-carousel-img-wrap { height: 200px; }
 }
 .img-picker {
     position: relative;

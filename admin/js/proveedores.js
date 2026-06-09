@@ -1404,7 +1404,7 @@ function cargarServicioEnFormulario(dispIds) {
         _photos  = Array.isArray(disps[0].photos) ? [...disps[0].photos] : []
         _photoIdx = 0
         _renderCarousel()
-        document.getElementById('photoCarouselField').style.display = 'block'
+        document.getElementById('photoCarouselField').style.display = 'flex'
         document.getElementById('servicio-dia-warning').style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
         actualizarSeccionSfcom(disps[0])

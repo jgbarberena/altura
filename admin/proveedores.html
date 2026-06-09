@@ -160,40 +160,44 @@
                         <input type="time" id="inputServicioHora">
                     </div>
                 </div>
-                <div class="form-field">
-                    <label>Nombre</label>
-                    <input type="text" id="inputServicioNombre" placeholder="Nombre comercial corto (ej: Balcón encierro)">
-                </div>
-                <div class="form-field">
-                    <label>Descripción</label>
-                    <textarea id="inputServicioDescription" rows="2" placeholder="Descripción del servicio" style="width:100%;resize:vertical"></textarea>
-                </div>
-                <div class="form-field">
-                    <label>Instrucciones de acceso</label>
-                    <textarea id="inputAccessInstructions" rows="2" placeholder="Cómo llegar, código de entrada, contacto día del evento…" style="width:100%;resize:vertical"></textarea>
-                </div>
-                <div class="form-field">
-                    <label>Comentarios</label>
-                    <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="width:100%;resize:vertical"></textarea>
-                </div>
-                <div class="form-field" id="photoCarouselField" style="display:none">
-                    <label>Fotos del balcón</label>
-                    <div class="photo-carousel" id="photoCarousel">
-                        <div class="photo-carousel-img-wrap">
-                            <img id="photoCarouselImg" src="" alt="" style="display:none">
-                            <div id="photoCarouselEmpty" class="photo-carousel-empty">Sin fotos</div>
+                <div class="servicio-desc-photos-wrap">
+                    <div class="servicio-desc-col">
+                        <div class="form-field">
+                            <label>Nombre</label>
+                            <input type="text" id="inputServicioNombre" placeholder="Nombre comercial corto (ej: Balcón encierro)">
                         </div>
-                        <div class="photo-carousel-footer">
-                            <div class="photo-carousel-nav">
-                                <button type="button" id="btnPhotoPrev" class="btn btn-secondary">◀</button>
-                                <span id="photoCarouselCounter">0 / 0</span>
-                                <button type="button" id="btnPhotoNext" class="btn btn-secondary">▶</button>
+                        <div class="form-field">
+                            <label>Descripción</label>
+                            <textarea id="inputServicioDescription" rows="2" placeholder="Descripción del servicio" style="resize:vertical"></textarea>
+                        </div>
+                        <div class="form-field">
+                            <label>Instrucciones de acceso</label>
+                            <textarea id="inputAccessInstructions" rows="2" placeholder="Cómo llegar, código de entrada, contacto día del evento…" style="resize:vertical"></textarea>
+                        </div>
+                        <div class="form-field">
+                            <label>Comentarios</label>
+                            <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="resize:vertical"></textarea>
+                        </div>
+                    </div>
+                    <div class="servicio-photos-col" id="photoCarouselField" style="display:none">
+                        <label class="servicio-photos-label">Fotos del balcón</label>
+                        <div class="photo-carousel" id="photoCarousel">
+                            <div class="photo-carousel-img-wrap">
+                                <img id="photoCarouselImg" src="" alt="" style="display:none">
+                                <div id="photoCarouselEmpty" class="photo-carousel-empty">Sin fotos</div>
                             </div>
-                            <button type="button" id="btnPhotoDel" class="btn btn-danger" style="display:none">🗑</button>
-                        </div>
-                        <div class="photo-carousel-add">
-                            <input type="text" id="inputPhotoUrl" placeholder="URL de la foto">
-                            <button type="button" id="btnPhotoAdd" class="btn btn-secondary">+ Añadir</button>
+                            <div class="photo-carousel-footer">
+                                <div class="photo-carousel-nav">
+                                    <button type="button" id="btnPhotoPrev" class="btn btn-secondary">◀</button>
+                                    <span id="photoCarouselCounter">0 / 0</span>
+                                    <button type="button" id="btnPhotoNext" class="btn btn-secondary">▶</button>
+                                </div>
+                                <button type="button" id="btnPhotoDel" class="btn btn-danger" style="display:none">🗑</button>
+                            </div>
+                            <div class="photo-carousel-add">
+                                <input type="text" id="inputPhotoUrl" placeholder="URL de la foto">
+                                <button type="button" id="btnPhotoAdd" class="btn btn-secondary">+ Añadir</button>
+                            </div>
                         </div>
                     </div>
                 </div>
