@@ -60,7 +60,7 @@ function disponibilidadParaAsistente(serviceIds) {
             const dia      = diaMatch ? parseInt(diaMatch[1]) : null
             return rows.map(d => {
                 const activas  = (todasReservas || []).filter(r =>
-                    r.provider_id === d.provider_id && r.service_id === d.service_id && r.status !== 'Cancelada'
+                    r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada'
                 )
                 const ocupadas = activas.reduce((s, r) => s + (r.slots || 0), 0)
                 return {

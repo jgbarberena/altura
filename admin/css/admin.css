@@ -1331,4 +1331,46 @@ dialog.modal-dialog-overlay::backdrop {
     transition: background .1s, color .1s, border-color .1s;
 }
 .dia-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Venue tabs ── */
+.venue-sep {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 18px 0 14px;
+}
+.venue-sep-hr {
+    flex: 1;
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0;
+}
+.btn-add-venue {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--subtle);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 1px 7px;
+    transition: color .15s, border-color .15s;
+}
+.btn-add-venue:hover { color: var(--text); border-color: var(--subtle); }
+.venue-tab {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--subtle);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: monospace;
+    letter-spacing: .02em;
+    padding: 2px 8px;
+    transition: all .15s;
+}
+.venue-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.venue-tab:not(.active):hover { color: var(--text); border-color: var(--subtle); }
 .dia-chip.active { background: var(--accent); color: white; border-color: var(--accent); }

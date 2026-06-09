@@ -192,25 +192,37 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
     }
 }
 
+// Formatea un venue para mostrar en UI: "PROV — VENUE" solo si tienen IDs distintos.
+// Ocurre cuando un proveedor tiene más de un venue (AMAYA_SABATE_1, AMAYA_SABATE_2…).
+// En el 95%+ de casos venueId === venueProviderId y se muestra solo venueId.
+export function formatVenueLabel(venueId, venueProviderId) {
+    if (!venueProviderId || venueId === venueProviderId) return venueId
+    return `${venueProviderId} — ${venueId}`
+}
+
 // Recalcula y persiste en Supabase el pago final de un proveedor
 // Llama siempre que cambie cualquier reserva o servicio del proveedor
 export async function persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad) {
-    const dispProv  = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
+    // Buscar los venues del proveedor para agregar disponibilidad y reservas de todos ellos
+    const { data: venuesProv } = await supabase.from('venues').select('id').eq('provider_id', proveedorId)
+    const venueIds = new Set((venuesProv ?? []).map(v => v.id))
+
+    const dispProv  = todaDisponibilidad.filter(d => venueIds.has(d.venue_id))
     const costTotal = dispProv.reduce((total, d) => {
         if (d.billing_model === 'capacity') {
             return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
         } else if (d.billing_model === 'fixed') {
             const tieneReserva = todasReservas.some(r =>
-                r.provider_id === proveedorId &&
-                r.service_id  === d.service_id &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === d.venue_id &&
+                r.service_id === d.service_id &&
+                r.status     !== 'Cancelada'
             )
             return total + (tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0)
         } else {
             const plazasRes = todasReservas
-                .filter(r => r.provider_id === proveedorId &&
-                             r.service_id  === d.service_id &&
-                             r.status      !== 'Cancelada')
+                .filter(r => r.venue_id   === d.venue_id &&
+                             r.service_id === d.service_id &&
+                             r.status     !== 'Cancelada')
                 .reduce((s, r) => s + r.slots, 0)
             return total + plazasRes * parseFloat(d.price_per_slot ?? 0)
         }

@@ -101,17 +101,17 @@ async function apiFetchStockAll() {
 // Si el PUT falla, muestra modal con correo listo para enviar a Hilario.
 // ────────────────────────────────────────────────────────────────────────────
 
-export async function syncStockToSfcom(supabase, providerId, serviceId) {
+export async function syncStockToSfcom(supabase, venueId, serviceId) {
     // 1. Leer fila de availability
     const { data: avail, error: errAvail } = await supabase
         .from('availability_with_sfcom')
         .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
-        .eq('provider_id', providerId)
+        .eq('venue_id', venueId)
         .eq('service_id', serviceId)
         .single()
 
     if (errAvail || !avail) {
-        console.warn(`[sfcom] No se encontró availability para ${providerId} + ${serviceId}`)
+        console.warn(`[sfcom] No se encontró availability para ${venueId} + ${serviceId}`)
         return { ok: true, skipped: true, reason: 'no_availability_row' }
     }
 
@@ -124,10 +124,10 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
     //    pero tampoco puede vender más plazas de las que quedan libres en total.
     const [{ data: sfcomData, error: errSfcom }, { data: allData, error: errAll }] = await Promise.all([
         supabase.from('reservations').select('slots')
-            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .eq('venue_id', venueId).eq('service_id', serviceId)
             .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
         supabase.from('reservations').select('slots')
-            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .eq('venue_id', venueId).eq('service_id', serviceId)
             .neq('status', 'Cancelada')
     ])
 
@@ -155,7 +155,7 @@ export async function syncStockToSfcom(supabase, providerId, serviceId) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
         mostrarModalError({
             servicio:   avail.sfcom_service_name,
-            providerId,
+            venueId,
             serviceId,
             endpoint,
             nuevoStock,
@@ -245,11 +245,11 @@ export async function checkSfcomOrders(supabase) {
 // momentáneamente — no podemos bloquear una reserva legítima por eso).
 // ────────────────────────────────────────────────────────────────────────────
 
-export async function checkAvailabilityBeforeSave(supabase, providerId, serviceId, plazasSolicitadas) {
+export async function checkAvailabilityBeforeSave(supabase, venueId, serviceId, plazasSolicitadas) {
     const { data: avail } = await supabase
         .from('availability_with_sfcom')
         .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
-        .eq('provider_id', providerId)
+        .eq('venue_id', venueId)
         .eq('service_id', serviceId)
         .single()
 
@@ -273,10 +273,10 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
     // Calcular stock esperado con la fórmula correcta (dos componentes)
     const [{ data: sfcomData }, { data: allData }] = await Promise.all([
         supabase.from('reservations').select('slots')
-            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .eq('venue_id', venueId).eq('service_id', serviceId)
             .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
         supabase.from('reservations').select('slots')
-            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .eq('venue_id', venueId).eq('service_id', serviceId)
             .neq('status', 'Cancelada')
     ])
     const sfcomVendidas  = (sfcomData ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
@@ -311,11 +311,11 @@ export async function checkAvailabilityBeforeSave(supabase, providerId, serviceI
 
 // sfcomDelta: plazas que se añaden/quitan con sfcom_order_ref (reservas de sfcom)
 // allDelta:   plazas totales que se añaden/quitan (sfcom + propias)
-export async function computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta = 0, allDelta = 0 } = {}) {
+export async function computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta = 0, allDelta = 0 } = {}) {
     const { data: avail } = await supabase
         .from('availability_with_sfcom')
         .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
-        .eq('provider_id', providerId)
+        .eq('venue_id', venueId)
         .eq('service_id', serviceId)
         .single()
 
@@ -324,10 +324,10 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
 
     const [{ data: sfcomData }, { data: allData }] = await Promise.all([
         supabase.from('reservations').select('slots')
-            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .eq('venue_id', venueId).eq('service_id', serviceId)
             .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
         supabase.from('reservations').select('slots')
-            .eq('provider_id', providerId).eq('service_id', serviceId)
+            .eq('venue_id', venueId).eq('service_id', serviceId)
             .neq('status', 'Cancelada')
     ])
 
@@ -353,17 +353,17 @@ export async function computeExpectedStock(supabase, providerId, serviceId, { sf
         }
     }
 
-    return { servicio: avail.sfcom_service_name, providerId, serviceId, stockActual, nuevoStock }
+    return { servicio: avail.sfcom_service_name, venueId, serviceId, stockActual, nuevoStock }
 }
 
 // Computa el stock esperado para cada par y muestra el modal consultivo pre-save.
-// pares: [{ providerId, serviceId, sfcomDelta?, allDelta? }]
+// pares: [{ venueId, serviceId, sfcomDelta?, allDelta? }]
 // Devuelve 'sync' (guardar + PUT a sfcom), 'save' (solo guardar) o 'cancel' (abortar).
 // Devuelve 'sync' directamente si ningún par tiene sfcom activo (sin modal).
 export async function confirmarStockSfcom(supabase, pares) {
     const cambios = []
-    for (const { providerId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
-        const cambio = await computeExpectedStock(supabase, providerId, serviceId, { sfcomDelta, allDelta })
+    for (const { venueId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
+        const cambio = await computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta, allDelta })
         if (cambio) cambios.push(cambio)
     }
     if (cambios.length === 0) return 'sync'
@@ -374,7 +374,7 @@ export async function confirmarStockSfcom(supabase, pares) {
 // mostrarModalConfirmacionSfcom (exportado)
 // Modal consultivo pre-save: muestra los cambios de stock previstos en sfcom
 // y pide confirmación antes de guardar en Supabase y ejecutar los PUTs.
-// cambios: [{ servicio, providerId, serviceId, stockActual, nuevoStock }]
+// cambios: [{ servicio, venueId, serviceId, stockActual, nuevoStock }]
 // Devuelve Promise<boolean> — true si el admin confirma, false si cancela.
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -427,7 +427,7 @@ export function mostrarModalConfirmacionSfcom(cambios) {
 // El modal no se cierra solo — Paula debe pulsar "Cerrar" explícitamente.
 // ────────────────────────────────────────────────────────────────────────────
 
-function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoStock, putError }) {
+function mostrarModalError({ servicio, venueId, serviceId, endpoint, nuevoStock, putError }) {
     const endpointCompleto = `${API_URL}?endpoint=${encodeURIComponent(endpoint)}`
     const subject          = `Disponibilidad "${servicio}" — revisión pendiente`
 
@@ -436,7 +436,7 @@ function mostrarModalError({ servicio, providerId, serviceId, endpoint, nuevoSto
         ``,
         `Ha habido un problema al sincronizar la disponibilidad de uno de los balcones desde nuestro sistema.`,
         ``,
-        `Al registrar una reserva para "${servicio}" (${providerId} / ${serviceId}), el sistema intentó actualizar automáticamente el stock:`,
+        `Al registrar una reserva para "${servicio}" (${venueId} / ${serviceId}), el sistema intentó actualizar automáticamente el stock:`,
         ``,
         `PUT ${endpointCompleto}`,
         `Nuevo stock calculado: ${nuevoStock} plaza(s)`,
@@ -552,56 +552,56 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         { data: reservas,     error: eRes },
         { data: availability, error: eAvail },
         { data: clients,      error: eClients },
-        { data: providers,    error: eProviders },
+        { data: venues,       error: eVenues },
         { data: services,     error: eServices },
         { data: solicitudes,  error: eSol }
     ] = await Promise.all([
-        supabase.from('reservations').select('id, client_id, provider_id, service_id, status, slots, sfcom_order_ref'),
+        supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, sfcom_order_ref'),
         supabase.from('availability_with_sfcom').select('*'),
         supabase.from('clients').select('id, name'),
-        supabase.from('providers').select('id'),
+        supabase.from('venues').select('id'),
         supabase.from('services').select('id'),
         supabase.from('reservation_requests').select('id, source, client_name, service_id, slots, level, day').eq('status', 'nueva')
     ])
 
-    if (eRes || eAvail || eClients || eProviders || eServices || eSol) {
+    if (eRes || eAvail || eClients || eVenues || eServices || eSol) {
         resultado.errores.push('Error al leer datos de Supabase — verifica la conexión')
         resultado.ok = false
         return resultado
     }
 
     // ── Sets para lookup rápido ─────────────────────────────────────
-    const clienteIds   = new Set((clients     ?? []).map(c => c.id))
-    const clientsMap   = Object.fromEntries((clients ?? []).map(c => [c.id, c.name ?? c.id]))
-    const proveedorIds = new Set((providers   ?? []).map(p => p.id))
-    const servicioIds  = new Set((services    ?? []).map(s => s.id))
-    const availKeys    = new Set((availability ?? []).map(a => `${a.provider_id}|${a.service_id}`))
+    const clienteIds = new Set((clients   ?? []).map(c => c.id))
+    const clientsMap = Object.fromEntries((clients ?? []).map(c => [c.id, c.name ?? c.id]))
+    const venueIds   = new Set((venues    ?? []).map(v => v.id))
+    const servicioIds = new Set((services ?? []).map(s => s.id))
+    const availKeys  = new Set((availability ?? []).map(a => `${a.venue_id}|${a.service_id}`))
 
     // ── Coherencia de FK en reservas ────────────────────────────────
     for (const r of (reservas ?? [])) {
         if (!clienteIds.has(r.client_id))
             resultado.errores.push(`Reserva ${r.id}: cliente "${r.client_id}" no existe en la BD`)
-        if (!proveedorIds.has(r.provider_id))
-            resultado.errores.push(`Reserva ${r.id}: proveedor "${r.provider_id}" no existe en la BD`)
+        if (!venueIds.has(r.venue_id))
+            resultado.errores.push(`Reserva ${r.id}: venue "${r.venue_id}" no existe en la BD`)
         if (!servicioIds.has(r.service_id))
             resultado.errores.push(`Reserva ${r.id}: servicio "${r.service_id}" no existe en la BD`)
-        if (r.status !== 'Cancelada' && !availKeys.has(`${r.provider_id}|${r.service_id}`))
-            resultado.errores.push(`Reserva ${r.id}: sin fila availability para ${r.provider_id} / ${r.service_id}`)
+        if (r.status !== 'Cancelada' && !availKeys.has(`${r.venue_id}|${r.service_id}`))
+            resultado.errores.push(`Reserva ${r.id}: sin fila availability para ${r.venue_id} / ${r.service_id}`)
     }
 
-    // ── Sobrereserva por par proveedor/servicio ─────────────────────
+    // ── Sobrereserva por par venue/servicio ─────────────────────────
     for (const avail of (availability ?? [])) {
         const plazasActivas = (reservas ?? [])
             .filter(r =>
-                r.provider_id === avail.provider_id &&
-                r.service_id  === avail.service_id  &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === avail.venue_id &&
+                r.service_id === avail.service_id &&
+                r.status     !== 'Cancelada'
             )
             .reduce((sum, r) => sum + (r.slots ?? 0), 0)
 
         if (plazasActivas > avail.total_slots) {
             resultado.errores.push(
-                `Sobrereserva: ${avail.provider_id} / ${avail.service_id} — ` +
+                `Sobrereserva: ${avail.venue_id} / ${avail.service_id} — ` +
                 `${plazasActivas} plazas reservadas sobre ${avail.total_slots} plazas totales`
             )
         }
@@ -620,7 +620,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
     for (const avail of (availability ?? [])) {
         if (avail.sfcom_status === 'confirmed' && !avail.sfcom_product_id) {
             resultado.avisos.push(
-                `${avail.provider_id} / ${avail.service_id}: marcado como "confirmed" en sfcom ` +
+                `${avail.venue_id} / ${avail.service_id}: marcado como "confirmed" en sfcom ` +
                 `pero sin ID de producto — "${avail.sfcom_service_name ?? '—'}" puede no existir aún en sfcom`
             )
         }
@@ -646,10 +646,10 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         } catch (e) {
             for (const avail of mappedAvails) {
                 resultado.sfcom.fallos.push({
-                    servicio:   avail.sfcom_service_name ?? `${avail.provider_id}/${avail.service_id}`,
-                    providerId: avail.provider_id,
-                    serviceId:  avail.service_id,
-                    error:      e.message
+                    servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
+                    venueId:   avail.venue_id,
+                    serviceId: avail.service_id,
+                    error:     e.message
                 })
             }
             resultado.sfcom.error      = e.message
@@ -681,7 +681,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         // ── Procesar cada par ─────────────────────────────────────────────────
         for (const avail of mappedAvails) {
             const yaEnFallos = resultado.sfcom.fallos.some(
-                f => f.providerId === avail.provider_id && f.serviceId === avail.service_id
+                f => f.venueId === avail.venue_id && f.serviceId === avail.service_id
             )
             if (yaEnFallos) continue
 
@@ -691,15 +691,15 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
             if (stockReal === undefined) {
                 if (avail.sfcom_status === 'deactivation_pending') {
                     resultado.avisos.push(
-                        `${avail.sfcom_service_name} (${avail.provider_id}): producto ya retirado de sfcom ` +
+                        `${avail.sfcom_service_name} (${avail.venue_id}): producto ya retirado de sfcom ` +
                         `— puedes confirmar la baja en proveedores.html`
                     )
                 } else {
                     resultado.sfcom.fallos.push({
-                        servicio:   avail.sfcom_service_name ?? `${avail.provider_id}/${avail.service_id}`,
-                        providerId: avail.provider_id,
-                        serviceId:  avail.service_id,
-                        error:      'ID no encontrado en stock-all'
+                        servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
+                        venueId:   avail.venue_id,
+                        serviceId: avail.service_id,
+                        error:     'ID no encontrado en stock-all'
                     })
                 }
                 continue
@@ -718,7 +718,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                         variacionNombre,
                         dayStored:         varDay,
                         dayExpected:       serviceDay,
-                        providerId:        avail.provider_id,
+                        venueId:           avail.venue_id,
                         serviceId:         avail.service_id,
                         availId:           avail.id,
                         storedVariationId: avail.sfcom_variation_id,
@@ -731,9 +731,9 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
             if (stockReal === null) continue  // producto sin gestión de stock en sfcom
 
             const resParProp    = (reservas ?? []).filter(r =>
-                r.provider_id === avail.provider_id &&
-                r.service_id  === avail.service_id  &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === avail.venue_id &&
+                r.service_id === avail.service_id &&
+                r.status     !== 'Cancelada'
             )
             const sfcomVendidas = resParProp.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
             const todasOcupadas = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
@@ -771,7 +771,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                 resultado.sfcom.discrepancias.push({
                     servicio:           avail.sfcom_service_name,
                     variacionNombre,
-                    providerId:         avail.provider_id,
+                    venueId:            avail.venue_id,
                     serviceId:          avail.service_id,
                     sfcom_slots_listed: avail.sfcom_slots_listed,
                     total_slots:        avail.total_slots,
@@ -782,7 +782,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                     diferencia,
                     reservasPar:        resParProp.map(r => ({
                         id:         r.id,
-                        clientName: clientsMap[r.client_id] ?? r.client_id,
+                        clientName: r.client_id,
                         slots:      r.slots ?? 0,
                         sfcomRef:   r.sfcom_order_ref ?? null
                     })),
@@ -857,7 +857,7 @@ export async function verificarConfirmarSfcom(supabase, dispId, productName, ser
     } catch (e) {
         mostrarModalError({
             servicio:   productName,
-            providerId: '—', serviceId: '—', endpoint: 'products',
+            venueId: '—', serviceId: '—', endpoint: 'products',
             nuevoStock: 0,   putError: e.message
         })
         return { ok: false, error: e.message }

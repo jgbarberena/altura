@@ -239,15 +239,27 @@ Hay dos clientes Supabase:
 | nif | text | |
 | comments | text | |
 
-**`providers`** — Proveedores de balcones
+**`providers`** — Personas o empresas propietarias de venues
 | Campo | Tipo | Notas |
 |---|---|---|
 | id | text PK | |
-| name | text | |
-| address | text | |
+| name | text | Nombre del propietario |
+| address | text | Dirección de contacto/personal (NO la dirección física del balcón) |
 | payment_method | text | |
 | invoice | boolean | Si emite factura |
 | comments | text | |
+
+**`venues`** — Lugares físicos (balcones, barreras, servicios) ofertados por un proveedor
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | text PK | Mismo que `provider_id` cuando el proveedor tiene un único venue |
+| provider_id | text FK→providers | Proveedor propietario del venue |
+| display_name | text | Nombre visible del venue (opcional; si null se usa el id) |
+| address | text | Dirección física del venue (la ubicación del balcón) |
+| venue_type | text | `'balcon'`, `'barrera'`, `'guia'`, `'servicio_especial'`; default `'balcon'` |
+| comments | text | |
+
+Relación: un provider puede tener múltiples venues. Al crear un proveedor nuevo desde el panel, se crea automáticamente un venue con el mismo ID.
 
 **`services`** — Servicios/eventos disponibles
 | Campo | Tipo | Notas |
@@ -258,13 +270,13 @@ Hay dos clientes Supabase:
 | description | text | |
 | comments | text | |
 | start_time | text | Hora de inicio (ej: `'08:00'`) |
-| image_url | text | URL absoluta de imagen representativa (ej: `https://www.experienciasanfermin.com/img/cards/...`). Los registros existentes con rutas relativas deben migrarse con: `UPDATE services SET image_url = 'https://www.experienciasanfermin.com/' \|\| image_url WHERE image_url IS NOT NULL AND image_url NOT LIKE 'http%'` |
+| image_url | text | URL absoluta de imagen representativa (ej: `https://www.experienciasanfermin.com/img/cards/...`) |
 
-**`availability`** — Disponibilidad por proveedor y servicio
+**`availability`** — Disponibilidad por venue y servicio
 | Campo | Tipo | Notas |
 |---|---|---|
 | id | integer PK | |
-| provider_id | text FK→providers | |
+| venue_id | text FK→venues | Venue que ofrece este servicio |
 | service_id | text FK→services | |
 | total_slots | integer NOT NULL | |
 | price_per_slot | decimal | Coste que se paga al proveedor por plaza |
@@ -291,7 +303,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings` (UNI
 | id | text PK | Formato `R0001`, `R0002`… (R + 4 dígitos, correlativo) |
 | client_id | text FK→clients | |
 | service_id | text FK→services | |
-| provider_id | text FK→providers | |
+| venue_id | text FK→venues | Venue donde se realiza la reserva |
 | slots | integer NOT NULL | |
 | price_per_slot | decimal NOT NULL | Precio de venta al cliente por plaza |
 | total_amount | decimal | Columna generada por Supabase: slots × price_per_slot. El JS no la calcula ni la envía (ver decisión 13.2) |
@@ -370,38 +382,38 @@ Los logs se guardan manualmente pulsando "Guardar log" en el dialog del asistent
 | service_id | text | |
 | free_slots | numeric | `sum(total_slots) - sum(slots reservados)` agregado por servicio |
 
-SQL real (confirmado):
+SQL real (actualizado con venue_id):
 ```sql
 SELECT a.service_id,
     (sum(a.total_slots) - COALESCE(sum(r.slots_reservados), 0)) AS free_slots
 FROM availability a
 LEFT JOIN (
-    SELECT service_id, provider_id, sum(slots) AS slots_reservados
+    SELECT service_id, venue_id, sum(slots) AS slots_reservados
     FROM reservations
     WHERE status = ANY (ARRAY['Confirmada', 'Pendiente'])
-    GROUP BY service_id, provider_id
-) r ON r.service_id = a.service_id AND r.provider_id = a.provider_id
+    GROUP BY service_id, venue_id
+) r ON r.service_id = a.service_id AND r.venue_id = a.venue_id
 GROUP BY a.service_id
 ```
 
 La vista agrega por `service_id` (suma todos los proveedores de ese servicio). La usa `disponibilidad.js` en el frontend público para los badges de disponibilidad.
 
-**`availability_with_sfcom`** — JOIN de availability + sfcom_listings (vista de lectura para el panel)
+**`availability_with_sfcom`** — JOIN de availability + sfcom_listings + venues (vista de lectura para el panel)
 
-Reconstruye la estructura plana que usaba el JS antes de la separación de tablas. Hace un LEFT JOIN de `availability` con `sfcom_listings` por `availability_id`, exponiendo todos los campos de ambas tablas más `sfcom_listing_id` (el id de `sfcom_listings`). Las filas sin entrada en `sfcom_listings` tienen los campos sfcom a null.
+Hace un LEFT JOIN de `availability` con `sfcom_listings` por `availability_id` y con `venues` por `venue_id`, exponiendo todos los campos de `availability` más `sfcom_listing_id` (el id de `sfcom_listings`), `venue_provider_id` (el `provider_id` del venue — obtenido de `venues`, no de `availability`), `venue_display_name`, `venue_address`, `venue_type`, y los campos sfcom. Las filas sin entrada en `sfcom_listings` tienen los campos sfcom a null.
 
-Todo el código del admin que necesita leer datos de disponibilidad con campos sfcom usa esta vista. Los writes de campos sfcom van siempre directamente a `sfcom_listings`.
+Todo el código del admin que necesita leer datos de disponibilidad con campos sfcom usa esta vista. Los writes de campos sfcom van siempre directamente a `sfcom_listings`. Para obtener el `provider_id` de un venue, usar `venue_provider_id` de esta vista o consultar `venues` directamente.
 
 ### Constraints relevantes
 
-- `availability`: UNIQUE (provider_id, service_id) — un par proveedor/servicio es único.
+- `availability`: UNIQUE (venue_id, service_id) — un par venue/servicio es único.
 - `sfcom_listings`: UNIQUE (availability_id) — un par proveedor/servicio tiene como máximo una entrada sfcom.
 - `charges`: UNIQUE (client_id, amount, due_date) — un cliente no puede tener dos hitos con el mismo importe y fecha. Tenerlo en cuenta si se crean hitos iguales.
 - `payments`: UNIQUE (provider_id, amount, due_date) — idem para pagos a proveedores.
 
 ### Triggers
 
-**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en todas las tablas con IDs de texto (`clients`, `providers`, `services`, `availability`, `charges`, `payments`, `reservations`). Convierte a mayúsculas los campos `id`, `client_id`, `provider_id`, `service_id`. El JS no necesita hacerlo.
+**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en todas las tablas con IDs de texto (`clients`, `providers`, `venues`, `services`, `availability`, `charges`, `payments`, `reservations`). Convierte a mayúsculas según la tabla: `id` en clients/providers/services; `id`, `client_id`, `venue_id`, `service_id` en reservations; `venue_id`, `service_id` en availability; `client_id` en charges; `provider_id` en payments. El JS no necesita hacerlo.
 
 **`notificar-solicitud`** — AFTER INSERT en `reservation_requests`. Llama a la Supabase Edge Function `notificar-solicitud` vía HTTP POST. Esto significa que **cada vez que se inserta una solicitud nueva** (desde la web pública o desde el admin al procesar pedidos de sfcom con `checkSfcomOrders`), se dispara automáticamente una notificación. Probablemente envía un email o alerta. Este trigger no requiere ninguna acción del JS — es transparente.
 
@@ -416,6 +428,7 @@ Todo el código del admin que necesita leer datos de disponibilidad con campos s
 | charges | 31 |
 | clients | 31 |
 | providers | 31 |
+| venues | 31 |
 | services | 20 |
 | reservation_requests | 7 |
 
@@ -527,10 +540,12 @@ Bloques:
 ### 7.6 proveedores.js — Gestión de proveedores
 
 Módulo ES6. Importa `syncStockToSfcom` de `sfcom.js` y `crearModal` de `modal.js`. Gestiona:
-- CRUD de proveedores con autocomplete (igual que clientes en formulario.js)
-- Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability` y `sfcom_listings`. Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
+- CRUD de proveedores con autocomplete (igual que clientes en formulario.js). Al crear un proveedor nuevo (desde `guardarProveedorNuevo`, `btnGuardarServicio` o `btnNuevoCrear`), también se crea automáticamente un venue con el mismo ID en `venues`.
+- Dos campos de dirección: `providers.address` (dirección de contacto del propietario) y `venues.address` (dirección física del balcón). Ambos tienen autosave.
+- Campo `venue_type` (selector: balcon/barrera/guia/servicio_especial) con autosave en `venues`.
+- Disponibilidad por servicio: añadir/editar/eliminar entradas en `availability` y `sfcom_listings`. Los INSERTs en `availability` usan `venue_id: proveedorActual.id` (ya que venue.id = provider.id en el flujo actual). Tras guardar o editar cualquier entrada de disponibilidad llama a `syncStockToSfcom` para mantener el stock de sfcom sincronizado.
 - Hitos de pago al proveedor: gestión de `payments` con modelo `capacity`/`consumption`/`fixed`
-- Guardado automático por campo para proveedores existentes
+- Guardado automático por campo para proveedores y venues existentes
 
 **Bloque 2 — campos de servicio extendidos:** además de plazas/precio/modelo, el formulario expone `day` (selector 6–14), `start_time` (hora inicio) e `image_url` (URL absoluta). Al seleccionar un servicio existente se cargan estos campos desde `todosServicios`. Al guardar un servicio nuevo se insertan en `services`. En modo edición, `day` no se cambia (el ID ya lleva el sufijo `_N`); si hay discrepancia entre el sufijo del ID y el selector, se muestra un aviso. `start_time` e `image_url` sí se actualizan en modo edición vía `guardarDescripcionServicio`.
 

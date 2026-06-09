@@ -15,7 +15,7 @@ let todosLosDatos = {
     disponibilidad: [],
     solicitudes:   [],
     servicios:     {},
-    proveedores:   {},
+    venues:        {},
     clientes:      {}
 }
 
@@ -33,25 +33,25 @@ async function cargarDatos() {
         { data: proveedores,    error: errP },
         { data: clientes,       error: errC }
     ] = await Promise.all([
-        supabase.from('reservations').select('id,client_id,service_id,provider_id,slots,price_per_slot,total_amount,status,sfcom_order_ref').order('id', { ascending: false }),
+        supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,sfcom_order_ref').order('id', { ascending: false }),
         supabase.from('availability_with_sfcom').select('*'),
         supabase.from('reservation_requests').select('id,client_name,client_email,source,service_id,level,day,slots,price_per_slot,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
         supabase.from('services').select('id,event_type,day,description'),
-        supabase.from('providers').select('id,name'),
+        supabase.from('venues').select('id,display_name,provider_id'),
         supabase.from('clients').select('id,name')
     ])
 
     if (errR)   console.error('[sfcom-panel] reservations:', errR)
     if (errD)   console.error('[sfcom-panel] availability_with_sfcom:', errD)
     if (errSvc) console.error('[sfcom-panel] services:', errSvc)
-    if (errP)   console.error('[sfcom-panel] providers:', errP)
+    if (errP)   console.error('[sfcom-panel] venues:', errP)
     if (errC)   console.error('[sfcom-panel] clients:', errC)
 
     todosLosDatos.reservas       = reservas      || []
     todosLosDatos.disponibilidad = disponibilidad || []
     todosLosDatos.solicitudes    = solicitudes    || []
     todosLosDatos.servicios      = Object.fromEntries((servicios  || []).map(s => [s.id, s]))
-    todosLosDatos.proveedores    = Object.fromEntries((proveedores || []).map(p => [p.id, p]))
+    todosLosDatos.venues         = Object.fromEntries((proveedores || []).map(v => [v.id, v]))
     todosLosDatos.clientes       = Object.fromEntries((clientes   || []).map(c => [c.id, c]))
 
     renderKpis()
@@ -76,7 +76,7 @@ function renderKpis() {
     // fixed → (price_per_slot / total_slots) × slots  (coste unitario aproximado)
     const costeSfcom = sfcomActivas.reduce((s, r) => {
         const avail = todosLosDatos.disponibilidad.find(
-            d => d.provider_id === r.provider_id && d.service_id === r.service_id
+            d => d.venue_id === r.venue_id && d.service_id === r.service_id
         )
         if (!avail) return s
         const costeUnit = avail.billing_model === 'fixed'
@@ -131,7 +131,7 @@ function renderSolicitudes() {
 
 function renderReservas() {
     const tbody = document.getElementById('tbody-reservas-sfcom')
-    const { reservas, servicios, proveedores, clientes } = todosLosDatos
+    const { reservas, servicios, venues, clientes } = todosLosDatos
     const sfcom = reservas.filter(r => r.sfcom_order_ref)
 
     if (!sfcom.length) {
@@ -140,9 +140,9 @@ function renderReservas() {
     }
 
     tbody.innerHTML = sfcom.map(r => {
-        const svc  = servicios[r.service_id]
-        const prov = proveedores[r.provider_id]
-        const cli  = clientes[r.client_id]
+        const svc   = servicios[r.service_id]
+        const venue = venues[r.venue_id]
+        const cli   = clientes[r.client_id]
         const totalNeto  = parseFloat(r.total_amount) || (r.slots * parseFloat(r.price_per_slot))
         const estadoClass = r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'
 
@@ -150,7 +150,7 @@ function renderReservas() {
             <td><code>${r.sfcom_order_ref}</code></td>
             <td>${cli?.name  ?? r.client_id   ?? '—'}</td>
             <td>${svc?.description ?? r.service_id  ?? '—'}</td>
-            <td>${prov?.name ?? r.provider_id ?? '—'}</td>
+            <td>${venue?.display_name ?? r.venue_id ?? '—'}</td>
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(r.price_per_slot)}</td>
             <td style="text-align:right;font-weight:600">${fmt(totalNeto)}</td>
@@ -169,7 +169,7 @@ const ESTADO_LABEL = {
 
 function renderListings() {
     const tbody = document.getElementById('tbody-listings')
-    const { disponibilidad, reservas, servicios, proveedores } = todosLosDatos
+    const { disponibilidad, reservas, servicios } = todosLosDatos
 
     const listings = disponibilidad.filter(d => d.sfcom_status !== null)
     if (!listings.length) {
@@ -178,12 +178,11 @@ function renderListings() {
     }
 
     tbody.innerHTML = listings.map(d => {
-        const svc  = servicios[d.service_id]
-        const prov = proveedores[d.provider_id]
+        const svc = servicios[d.service_id]
 
         // Todas las reservas activas para este par (sfcom y propias)
-        const resSfcom  = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && r.sfcom_order_ref && r.status !== 'Cancelada')
-        const resPropia = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada')
+        const resSfcom  = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.sfcom_order_ref && r.status !== 'Cancelada')
+        const resPropia = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada')
         const slotsSfcom   = resSfcom.reduce((s, r)  => s + r.slots, 0)
         const slotsPropios = resPropia.reduce((s, r) => s + r.slots, 0)
         const slotsTotales = slotsSfcom + slotsPropios
@@ -204,13 +203,13 @@ function renderListings() {
         return `<tr>
             <td>${d.sfcom_service_name || '—'}</td>
             <td>${svc?.description ?? d.service_id ?? '—'}</td>
-            <td>${prov?.name ?? d.provider_id ?? '—'}</td>
+            <td>${d.venue_display_name ?? d.venue_id ?? '—'}</td>
             <td><span class="sfcom-badge sfcom-badge--${d.sfcom_status === 'confirmed' ? 'confirmed' : d.sfcom_status === 'pending' ? 'pending' : 'deactivation'}">${estadoInfo.label}</span></td>
             <td style="text-align:center">${listedSlots}</td>
             <td style="text-align:center">${slotsSfcom}</td>
             <td style="text-align:center">${slotsPropios}</td>
             <td style="text-align:center;font-weight:600">${stockEsperado}</td>
-            <td class="td-stock-real" data-sfkey="${sfKey}" data-provider="${d.provider_id}" data-service="${d.service_id}" style="text-align:center">${stockRealTxt}</td>
+            <td class="td-stock-real" data-sfkey="${sfKey}" data-venue="${d.venue_id}" data-service="${d.service_id}" style="text-align:center">${stockRealTxt}</td>
         </tr>`
     }).join('')
 }
@@ -279,11 +278,11 @@ async function ejecutarVerificacion(modoManual = false) {
 function actualizarStockDesdeVerificacion(resultado) {
     if (!resultado?.sfcom) return
     const confirmados = todosLosDatos.disponibilidad.filter(d => d.sfcom_status === 'confirmed')
-    const fallos  = new Set((resultado.sfcom.fallos ?? []).map(f => `${f.providerId}|${f.serviceId}`))
-    const discMap = new Map((resultado.sfcom.discrepancias ?? []).map(d => [`${d.providerId}|${d.serviceId}`, d.stockReal]))
+    const fallos  = new Set((resultado.sfcom.fallos ?? []).map(f => `${f.venueId}|${f.serviceId}`))
+    const discMap = new Map((resultado.sfcom.discrepancias ?? []).map(d => [`${d.venueId}|${d.serviceId}`, d.stockReal]))
 
     confirmados.forEach(d => {
-        const pairKey = `${d.provider_id}|${d.service_id}`
+        const pairKey = `${d.venue_id}|${d.service_id}`
         const sfKey   = `${d.sfcom_product_id}_${d.sfcom_variation_id ?? 'null'}`
         if (fallos.has(pairKey)) return
 
@@ -292,8 +291,8 @@ function actualizarStockDesdeVerificacion(resultado) {
         } else {
             // sin discrepancia → stockReal === stockEsperado, calculamos igual que renderListings
             const { reservas } = todosLosDatos
-            const slotsSfcom   = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
-            const slotsTotales = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+            const slotsSfcom   = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+            const slotsTotales = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
             stockSfcom.set(sfKey, Math.max(0, Math.min(
                 (d.sfcom_slots_listed ?? 0) - slotsSfcom,
                 d.total_slots - slotsTotales
@@ -302,8 +301,8 @@ function actualizarStockDesdeVerificacion(resultado) {
     })
 
     // Marcar como '?' las celdas de pares que fallaron
-    document.querySelectorAll('.td-stock-real[data-provider]').forEach(td => {
-        const pairKey = `${td.dataset.provider}|${td.dataset.service}`
+    document.querySelectorAll('.td-stock-real[data-venue]').forEach(td => {
+        const pairKey = `${td.dataset.venue}|${td.dataset.service}`
         if (fallos.has(pairKey) && td.textContent === '…') {
             td.textContent = '?'
             td.style.color = 'var(--accent-warn)'
@@ -319,8 +318,8 @@ document.getElementById('btnExportListings')?.addEventListener('click', () => {
     const { disponibilidad, reservas } = todosLosDatos
     const listings = disponibilidad.filter(d => d.sfcom_status !== null)
     const rows = listings.map(d => {
-        const resSfcom  = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && r.sfcom_order_ref  && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
-        const resPropia = reservas.filter(r => r.provider_id === d.provider_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+        const resSfcom  = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.sfcom_order_ref  && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+        const resPropia = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
         const esperado  = Math.max(0, Math.min(
             (d.sfcom_slots_listed ?? 0) - resSfcom,
             d.total_slots - resSfcom - resPropia
@@ -330,7 +329,7 @@ document.getElementById('btnExportListings')?.addEventListener('click', () => {
     exportTable(rows, [
         { key: 'sfcom_service_name', label: 'Producto sfcom' },
         { key: 'service_id',         label: 'Servicio' },
-        { key: 'provider_id',        label: 'Proveedor' },
+        { key: 'venue_id',           label: 'Venue' },
         { key: 'sfcom_status',       label: 'Estado',
           fmt: v => v === 'confirmed' ? 'Activo' : v === 'pending' ? 'Pendiente alta' : v === 'deactivation_pending' ? 'Pendiente baja' : v ?? '—' },
         { key: 'sfcom_slots_listed', label: 'Plazas listadas' },
@@ -347,7 +346,7 @@ document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () 
         { key: 'id',              label: 'ID reserva' },
         { key: 'client_id',       label: 'Cliente' },
         { key: 'service_id',      label: 'Servicio' },
-        { key: 'provider_id',     label: 'Proveedor' },
+        { key: 'venue_id',        label: 'Venue' },
         { key: 'slots',           label: 'Plazas' },
         { key: 'price_per_slot',  label: 'Precio neto/plaza', fmt: v => fmt(v) },
         { key: 'total_amount',    label: 'Total neto',        fmt: v => fmt(v) },

@@ -79,7 +79,7 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
                         display:flex;flex-direction:column;gap:5px">
                 <div>
                     <span style="font-size:13px;font-weight:600;color:#1f2937">${m.servicio}</span>
-                    <span style="font-size:11px;color:#6b7280;margin-left:6px">${m.providerId} · ${m.serviceId}</span>
+                    <span style="font-size:11px;color:#6b7280;margin-left:6px">${m.venueId} · ${m.serviceId}</span>
                 </div>
                 <div style="font-size:12px;color:#374151">
                     Variación guardada: <strong style="color:#991b1b">${m.storedVariationId}
@@ -174,10 +174,10 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
                         <div>
                             <div style="font-size:13px;font-weight:600;color:#1f2937">${titulo}</div>
-                            <div style="font-size:11px;color:#6b7280;margin-top:1px">${d.providerId} · ${d.serviceId}</div>
+                            <div style="font-size:11px;color:#6b7280;margin-top:1px">${d.venueId} · ${d.serviceId}</div>
                         </div>
                         <button class="btn-sync-par"
-                            data-provider="${d.providerId}" data-service="${d.serviceId}"
+                            data-venue="${d.venueId}" data-service="${d.serviceId}"
                             style="background:transparent;border:1px solid ${borderCard};border-radius:5px;
                                    padding:3px 10px;font-size:11px;cursor:pointer;color:${colorDir};
                                    white-space:nowrap;flex-shrink:0">
@@ -231,7 +231,7 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
                             background:#eff6ff;display:flex;flex-direction:column;gap:8px">
                     <div>
                         <div style="font-size:13px;font-weight:600;color:#1f2937">${titulo}</div>
-                        <div style="font-size:11px;color:#6b7280;margin-top:1px">${d.providerId} · ${d.serviceId}</div>
+                        <div style="font-size:11px;color:#6b7280;margin-top:1px">${d.venueId} · ${d.serviceId}</div>
                     </div>
                     <div style="font-size:12px;font-weight:600;color:#1d4ed8;background:#dbeafe;
                                 padding:4px 8px;border-radius:4px;display:inline-block">
@@ -277,7 +277,7 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
         const filasFallos = (resultado.sfcom.fallos ?? []).map(f => `
             <div style="font-size:12px;color:#374151;padding:2px 0">
                 <span style="color:#6b7280">${f.servicio}</span>
-                <span style="color:#9ca3af;margin-left:4px">· ${f.providerId} · ${f.serviceId}</span>
+                <span style="color:#9ca3af;margin-left:4px">· ${f.venueId} · ${f.serviceId}</span>
             </div>`).join('')
         secciones += `
             <div style="padding:10px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb">
@@ -351,7 +351,7 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
             this.disabled = true
             this.textContent = 'Actualizando…'
             for (const d of discrepanciasReales) {
-                await syncStockToSfcom(supabase, d.providerId, d.serviceId)
+                await syncStockToSfcom(supabase, d.venueId, d.serviceId)
             }
             overlay.remove()
             await onReverify()
@@ -361,7 +361,7 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
             btn.addEventListener('click', async function () {
                 this.disabled = true
                 this.textContent = '…'
-                await syncStockToSfcom(supabase, this.dataset.provider, this.dataset.service)
+                await syncStockToSfcom(supabase, this.dataset.venue, this.dataset.service)
                 overlay.remove()
                 await onReverify()
             })
@@ -379,7 +379,7 @@ export function mostrarModalPreCorreccion(mismatches) {
         const lista = mismatches.map(m => `
             <div style="font-size:12px;color:#374151;padding:4px 0;border-bottom:1px solid #fecaca">
                 <strong>${m.servicio}</strong>
-                <span style="color:#6b7280"> · ${m.providerId} · ${m.serviceId}</span><br>
+                <span style="color:#6b7280"> · ${m.venueId} · ${m.serviceId}</span><br>
                 Variación guardada: <span style="color:#991b1b">${m.storedVariationId} (día ${m.dayStored})</span>
                 → esperado: día ${m.dayExpected}
             </div>`

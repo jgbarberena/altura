@@ -13,7 +13,6 @@ const [
     { data: reservas },
     { data: disponibilidad },
     { data: servicios },
-    { data: proveedores },
     { data: payments },
     { data: charges },
     { data: solicitudesNuevas }
@@ -21,7 +20,6 @@ const [
     supabase.from('reservations').select('*'),
     supabase.from('availability').select('*'),
     supabase.from('services').select('*').order('day'),
-    supabase.from('providers').select('*').order('id'),
     supabase.from('payments').select('*').order('due_date'),
     supabase.from('charges').select('*').order('due_date'),
     supabase.from('reservation_requests').select('id, source').eq('status', 'nueva')
@@ -38,15 +36,15 @@ function calcularAlertas() {
 
     disponibilidad.forEach(d => {
         const reservasPS     = reservas.filter(r =>
-            r.provider_id === d.provider_id &&
-            r.service_id  === d.service_id  &&
-            r.status      !== 'Cancelada'
+            r.venue_id   === d.venue_id   &&
+            r.service_id === d.service_id &&
+            r.status     !== 'Cancelada'
         )
         const totalReservado = reservasPS.reduce((s, r) => s + r.slots, 0)
         if (totalReservado > d.total_slots) {
             haySobrereserva = true
             const li = document.createElement('li')
-            li.textContent = `${d.provider_id} / ${d.service_id}: ${totalReservado} reservadas, ${d.total_slots} disponibles`
+            li.textContent = `${d.venue_id} / ${d.service_id}: ${totalReservado} reservadas, ${d.total_slots} disponibles`
             listaSobre.appendChild(li)
         }
     })
@@ -331,15 +329,15 @@ function calcularEventos() {
         const colorFill   = pct >= 90 ? 'var(--accent)' : pct >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
 
         const detalleProveedores = dispS.map(d => {
-            const resP  = reservasS.filter(r => r.provider_id === d.provider_id)
+            const resP  = reservasS.filter(r => r.venue_id === d.venue_id)
             const confP = resP.filter(r => r.status === 'Confirmada').reduce((s, r) => s + r.slots, 0)
             const pendP = resP.filter(r => r.status === 'Pendiente').reduce((s, r) => s + r.slots, 0)
             const libP  = (d.total_slots ?? 0) - confP - pendP
             const pctP  = d.total_slots > 0 ? Math.round((confP + pendP) / d.total_slots * 100) : 0
             const colP  = pctP >= 90 ? 'var(--accent)' : pctP >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
-            const clientesP    = [...new Set(resP.map(r => r.client_id))].join(', ')
+            const clientesP     = [...new Set(resP.map(r => r.client_id))].join(', ')
             const clientesHTMLP = renderClientChips(resP)
-            return { id: d.provider_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP }
+            return { id: d.venue_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP }
         })
 
         const clientesEvento     = [...new Set(reservasS.map(r => r.client_id))].join(', ')
@@ -437,12 +435,13 @@ function renderProveedores(filtro) {
 function calcularProveedores() {
     const selector = document.getElementById('selector-proveedor')
 
-    provFilas = proveedores.map(p => {
-        const dispP     = disponibilidad.filter(d => d.provider_id === p.id)
+    const venueIds = [...new Set(disponibilidad.map(d => d.venue_id))].sort()
+    provFilas = venueIds.map(venueId => {
+        const dispP     = disponibilidad.filter(d => d.venue_id === venueId)
         const capacidad = dispP.reduce((sum, d) => sum + (d.total_slots ?? 0), 0)
         if (capacidad === 0) return null
 
-        const reservasP   = reservas.filter(r => r.provider_id === p.id && r.status !== 'Cancelada')
+        const reservasP   = reservas.filter(r => r.venue_id === venueId && r.status !== 'Cancelada')
         const confirmadas = reservasP.filter(r => r.status === 'Confirmada').reduce((sum, r) => sum + r.slots, 0)
         const pendientes  = reservasP.filter(r => r.status === 'Pendiente').reduce((sum, r) => sum + r.slots, 0)
         const libres      = capacidad - confirmadas - pendientes
@@ -465,7 +464,7 @@ function calcularProveedores() {
 
         const clientesProv     = [...new Set(reservasP.map(r => r.client_id))].join(', ')
         const clientesProvHTML = renderClientChips(reservasP)
-        return { id: p.id, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv, clientesHTML: clientesProvHTML }
+        return { id: venueId, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv, clientesHTML: clientesProvHTML }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los proveedores —</option>' +
@@ -516,9 +515,9 @@ function calcularResumen() {
     // Plazas libres totales (sin canceladas)
     const plazasLibres = disponibilidad.reduce((s, d) => {
         const reservadas = reservas.filter(r =>
-            r.provider_id === d.provider_id &&
-            r.service_id  === d.service_id  &&
-            r.status      !== 'Cancelada'
+            r.venue_id   === d.venue_id   &&
+            r.service_id === d.service_id &&
+            r.status     !== 'Cancelada'
         ).reduce((s, r) => s + r.slots, 0)
         return s + Math.max(0, (d.total_slots ?? 0) - reservadas)
     }, 0)
@@ -528,9 +527,9 @@ function calcularResumen() {
         .filter(d => d.billing_model === 'consumption')
         .reduce((s, d) => {
             const reservadas = reservas.filter(r =>
-                r.provider_id === d.provider_id &&
-                r.service_id  === d.service_id  &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === d.venue_id   &&
+                r.service_id === d.service_id &&
+                r.status     !== 'Cancelada'
             ).reduce((s, r) => s + r.slots, 0)
             const libres = Math.max(0, (d.total_slots ?? 0) - reservadas)
             return s + libres * parseFloat(d.price_per_slot ?? 0)

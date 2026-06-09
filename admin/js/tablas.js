@@ -17,7 +17,7 @@ const TABLAS = {
         cols: [
             { label: 'ID',          campo: 'id' },
             { label: 'Cliente',     campo: 'client_id' },
-            { label: 'Proveedor',   campo: 'provider_id' },
+            { label: 'Venue',       campo: 'venue_id' },
             { label: 'Servicio',    campo: 'service_id' },
             { label: 'Plazas',      campo: 'slots' },
             { label: '€/plaza',     campo: 'price_per_slot',  fmt: v => fmt(v) },
@@ -76,12 +76,24 @@ const TABLAS = {
             { label: 'Concepto',    campo: 'comments' },
         ]
     },
-    availability: {
-        titulo: 'Disponibilidad',
-        query:  () => supabase.from('availability').select('*').order('provider_id'),
+    venues: {
+        titulo: 'Venues',
+        query:  () => supabase.from('venues').select('*').order('id'),
         cols: [
             { label: 'ID',          campo: 'id' },
             { label: 'Proveedor',   campo: 'provider_id' },
+            { label: 'Nombre',      campo: 'display_name' },
+            { label: 'Dirección',   campo: 'address' },
+            { label: 'Tipo',        campo: 'venue_type' },
+            { label: 'Comentarios', campo: 'comments' },
+        ]
+    },
+    availability: {
+        titulo: 'Disponibilidad',
+        query:  () => supabase.from('availability').select('*').order('venue_id'),
+        cols: [
+            { label: 'ID',          campo: 'id' },
+            { label: 'Venue',       campo: 'venue_id' },
             { label: 'Servicio',    campo: 'service_id' },
             { label: 'Plazas',      campo: 'total_slots' },
             { label: '€/plaza',     campo: 'price_per_slot', fmt: v => fmt(v) },

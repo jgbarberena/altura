@@ -54,8 +54,8 @@
                         <input type="text" id="inputNombre" placeholder="Nombre del propietario">
                     </div>
                     <div class="form-field">
-                        <label>Dirección</label>
-                        <input type="text" id="inputDireccion" placeholder="Dirección">
+                        <label>Dirección (contacto)</label>
+                        <input type="text" id="inputDireccion" placeholder="Dirección del propietario">
                     </div>
                     <div class="form-field">
                         <label>Forma de pago</label>
@@ -76,6 +76,27 @@
                         <input type="text" id="inputProveedorComments" placeholder="Comentarios">
                     </div>
                 </div>
+
+                <!-- VENUE: separador/tabs + campos venue -->
+                <div id="venue-sep-area" style="display:none">
+                    <div id="venue-sep" class="venue-sep"></div>
+                    <div class="form-grid" style="margin-top:0">
+                        <div class="form-field">
+                            <label>Tipo</label>
+                            <select id="selectVenueType">
+                                <option value="balcon">Balcón</option>
+                                <option value="barrera">Barrera</option>
+                                <option value="guia">Guía</option>
+                                <option value="servicio_especial">Servicio especial</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Dirección balcón</label>
+                            <input type="text" id="inputVenueDireccion" placeholder="Dirección física del balcón">
+                        </div>
+                    </div>
+                </div>
+
                 <div id="proveedor-status" style="margin-top:12px; font-size:12px; color:var(--subtle)"></div>
             </div>
 
@@ -403,6 +424,40 @@
             <div style="padding:12px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0">
                 <button type="button" id="btnMultipleGuardar" class="btn btn-primary">💾 Guardar todos</button>
                 <button type="button" id="btnMultipleCancelar" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- DIÁLOGO NUEVO VENUE -->
+    <dialog id="dlgNuevoVenue">
+        <div style="padding:20px 24px;min-width:340px">
+            <h2 style="font-size:15px;margin-bottom:16px">Añadir venue</h2>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label>ID Venue</label>
+                    <input type="text" id="dlgVenueId"
+                           style="text-transform:uppercase;font-family:monospace;letter-spacing:.04em"
+                           autocomplete="off">
+                    <div style="font-size:11px;color:var(--subtle);margin-top:3px">El ID no se puede cambiar después.</div>
+                </div>
+                <div class="form-field">
+                    <label>Tipo</label>
+                    <select id="dlgVenueType">
+                        <option value="balcon">Balcón</option>
+                        <option value="barrera">Barrera</option>
+                        <option value="guia">Guía</option>
+                        <option value="servicio_especial">Servicio especial</option>
+                    </select>
+                </div>
+                <div class="form-field" style="grid-column:1/-1">
+                    <label>Dirección</label>
+                    <input type="text" id="dlgVenueDireccion" placeholder="Dirección física del venue">
+                </div>
+            </div>
+            <div id="dlgVenueError" style="font-size:12px;color:var(--accent);margin-top:8px;display:none"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+                <button class="btn btn-primary" id="dlgVenueCrear">Crear</button>
+                <button class="btn btn-secondary" id="dlgVenueCancelar">Cancelar</button>
             </div>
         </div>
     </dialog>

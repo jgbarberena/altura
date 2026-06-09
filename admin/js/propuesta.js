@@ -26,17 +26,17 @@ let _supabase        = null
 let _cliente         = null
 let _reservas        = []
 let _servicios       = []
-let _providers       = []
+let _venues          = []
 let _logoBase64      = null
 let _logoBlackBase64 = null
 let _logoWhiteBase64 = null
 let _numPropuesta    = null
 
 // ===== INICIALIZACIÓN =====
-export function initPropuesta(supabaseClient, serviciosData, providersData) {
+export function initPropuesta(supabaseClient, serviciosData, venuesData) {
     _supabase  = supabaseClient
     _servicios = serviciosData ?? []
-    _providers = providersData ?? []
+    _venues    = venuesData ?? []
     _cargarLogos()
 
     const dialog = document.getElementById('dialogPropuesta')
@@ -91,8 +91,8 @@ function _calcularTotal() {
 
 // ===== DIRECCIÓN DEL PROVEEDOR =====
 function _dirProveedor(reserva) {
-    const prov = _providers.find(p => p.id === reserva.provider_id)
-    return prov?.address ?? ''
+    const venue = _venues.find(v => v.id === reserva.venue_id)
+    return venue?.address ?? ''
 }
 
 // ===== RENDERIZADO DEL PANEL =====

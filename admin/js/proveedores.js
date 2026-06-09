@@ -11,6 +11,7 @@ initSidebar()
 
 // ===== DATOS GLOBALES =====
 let todosProveedores   = (await supabase.from('providers').select('*').order('id')).data
+let todosVenues        = (await supabase.from('venues').select('*').order('id')).data
 let todosServicios     = (await supabase.from('services').select('*').order('id')).data
 let todaDisponibilidad = (await supabase.from('availability_with_sfcom').select('*')).data
 let todosPayments      = (await supabase.from('payments').select('*')).data
@@ -21,6 +22,8 @@ let servicioEditandoId   = null
 let serviciosEditandoIds = []
 let hitosProvTemp        = []
 let ultimoCampoActivo    = 'precio'
+let venuesDelProveedor   = []
+let venueActual          = null
 
 const hoy = new Date().toISOString().split('T')[0]
 
@@ -29,6 +32,8 @@ const hoy = new Date().toISOString().split('T')[0]
 const inputProveedorId       = document.getElementById('inputProveedorId')
 const inputNombre            = document.getElementById('inputNombre')
 const inputDireccion         = document.getElementById('inputDireccion')
+const inputVenueDireccion    = document.getElementById('inputVenueDireccion')
+const selectVenueType        = document.getElementById('selectVenueType')
 const selectFormaPago        = document.getElementById('selectFormaPago')
 const checkFactura           = document.getElementById('checkFactura')
 const inputProveedorComments = document.getElementById('inputProveedorComments')
@@ -139,7 +144,7 @@ document.getElementById('btnConfirmarSfcom').addEventListener('click', async () 
     if (!servicioEditandoId) { alert('Guarda el servicio primero para poder confirmar.'); return }
     const serviceId    = inputServicioId.value.trim().toUpperCase()
     const excludeNames = todaDisponibilidad
-        .filter(d => d.provider_id === proveedorActual?.id &&
+        .filter(d => d.venue_provider_id === proveedorActual?.id &&
                      d.id !== servicioEditandoId &&
                      d.sfcom_status === 'confirmed' && d.sfcom_service_name)
         .map(d => d.sfcom_service_name)
@@ -155,8 +160,9 @@ document.getElementById('btnConfirmarSfcom').addEventListener('click', async () 
         sfcomEstadoLocal = 'confirmed'
         actualizarSeccionSfcom(todaDisponibilidad.find(d => d.id === servicioEditandoId))
         // Sincronización inicial: stock puede estar en estado desconocido en sfcom.
-        const sfcomOk = await confirmarStockSfcom(supabase, [{ providerId: proveedorActual.id, serviceId }])
-        if (sfcomOk === 'sync') await syncStockToSfcom(supabase, proveedorActual.id, serviceId)
+        const venueId = disp?.venue_id ?? proveedorActual.id
+        const sfcomOk = await confirmarStockSfcom(supabase, [{ venueId, serviceId }])
+        if (sfcomOk === 'sync') await syncStockToSfcom(supabase, venueId, serviceId)
     } else if (result?.notInList && result?.name) {
         sfcomNombreProducto.value    = result.name
         if (disp) disp.sfcom_service_name = result.name
@@ -196,7 +202,7 @@ document.getElementById('btnEditarNombreSfcom').addEventListener('click', async 
     const disp = todaDisponibilidad.find(d => d.id === servicioEditandoId)
     if (!disp) return
     const excludeNames = todaDisponibilidad
-        .filter(d => d.provider_id === proveedorActual?.id &&
+        .filter(d => d.venue_provider_id === proveedorActual?.id &&
                      d.id !== servicioEditandoId &&
                      d.sfcom_status === 'confirmed' && d.sfcom_service_name)
         .map(d => d.sfcom_service_name)
@@ -349,6 +355,11 @@ function cargarProveedor(p) {
     selectFormaPago.value        = p.payment_method ?? ''
     checkFactura.checked         = p.invoice        ?? false
     inputProveedorComments.value = p.comments       ?? ''
+    venuesDelProveedor = todosVenues.filter(v => v.provider_id === p.id)
+    venueActual        = venuesDelProveedor[0] ?? null
+    inputVenueDireccion.value = venueActual?.address    ?? ''
+    selectVenueType.value     = venueActual?.venue_type ?? 'balcon'
+    renderVenueTabs(venuesDelProveedor, venueActual?.id ?? null)
     proveedorStatus.textContent  = '✅ Proveedor existente — los cambios se guardan automáticamente'
     proveedorStatus.style.color  = 'var(--accent-ok)'
     document.getElementById('bloque-servicio').style.display = 'block'
@@ -372,15 +383,33 @@ function limpiarProveedor() {
 function limpiarCamposProveedor() {
     inputNombre.value            = ''
     inputDireccion.value         = ''
+    inputVenueDireccion.value    = ''
+    selectVenueType.value        = 'balcon'
     selectFormaPago.value        = ''
     checkFactura.checked         = false
     inputProveedorComments.value = ''
+    venuesDelProveedor = []
+    venueActual        = null
+    renderVenueTabs([], null)
 }
 
 const camposProveedor = [inputNombre, inputDireccion, inputProveedorComments]
 const camposProvDB    = ['name', 'address', 'comments']
 initAutoSave(supabase, camposProveedor, camposProvDB, 'providers', () => proveedorActual, {
     onSaved: mostrarGuardado
+})
+
+initAutoSave(supabase, [inputVenueDireccion], ['address'], 'venues',
+    () => venueActual,
+    { onSaved: mostrarGuardado })
+
+selectVenueType.addEventListener('change', async () => {
+    if (!venueActual) return
+    await supabase.from('venues').update({ venue_type: selectVenueType.value }).eq('id', venueActual.id)
+    venueActual.venue_type = selectVenueType.value
+    const v = todosVenues.find(v => v.id === venueActual.id)
+    if (v) v.venue_type = selectVenueType.value
+    mostrarGuardado()
 })
 
 selectFormaPago.addEventListener('change', async () => {
@@ -409,6 +438,80 @@ function mostrarGuardado() {
     }, 2000)
 }
 
+function renderVenueTabs(venues, activeId) {
+    const sep  = document.getElementById('venue-sep')
+    const area = document.getElementById('venue-sep-area')
+    if (venues.length === 0) { area.style.display = 'none'; return }
+    area.style.display = 'block'
+    if (venues.length === 1) {
+        sep.innerHTML = `<hr class="venue-sep-hr"><button class="btn-add-venue" id="btnAddVenue">+</button>`
+    } else {
+        const tabs = venues.map(v =>
+            `<button class="venue-tab${v.id === activeId ? ' active' : ''}" data-venue-id="${v.id}">${v.id}</button>`
+        ).join('')
+        sep.innerHTML = `<hr class="venue-sep-hr">` + tabs + `<button class="btn-add-venue" id="btnAddVenue">+</button>`
+    }
+    sep.querySelectorAll('.venue-tab').forEach(btn =>
+        btn.addEventListener('click', () => selectVenueTab(btn.dataset.venueId))
+    )
+    document.getElementById('btnAddVenue')?.addEventListener('click', abrirDialogNuevoVenue)
+}
+
+function selectVenueTab(venueId) {
+    const venue = venuesDelProveedor.find(v => v.id === venueId)
+    if (!venue) return
+    venueActual = venue
+    inputVenueDireccion.value = venue.address    ?? ''
+    selectVenueType.value     = venue.venue_type ?? 'balcon'
+    renderVenueTabs(venuesDelProveedor, venueActual.id)
+}
+
+function abrirDialogNuevoVenue() {
+    if (!proveedorActual) return
+    const existingIds = new Set(venuesDelProveedor.map(v => v.id))
+    let n = 2
+    while (existingIds.has(`${proveedorActual.id}_${n}`)) n++
+    document.getElementById('dlgVenueId').value        = `${proveedorActual.id}_${n}`
+    document.getElementById('dlgVenueType').value      = 'balcon'
+    document.getElementById('dlgVenueDireccion').value = ''
+    document.getElementById('dlgVenueError').style.display = 'none'
+    document.getElementById('dlgNuevoVenue').showModal()
+}
+
+document.getElementById('dlgVenueCancelar').addEventListener('click', () =>
+    document.getElementById('dlgNuevoVenue').close()
+)
+
+document.getElementById('dlgVenueCrear').addEventListener('click', async () => {
+    const venueId   = document.getElementById('dlgVenueId').value.trim().toUpperCase()
+    const venueType = document.getElementById('dlgVenueType').value || 'balcon'
+    const venueDir  = document.getElementById('dlgVenueDireccion').value.trim() || null
+    const errEl     = document.getElementById('dlgVenueError')
+    if (!venueId) {
+        errEl.textContent = 'El ID no puede estar vacío.'
+        errEl.style.display = 'block'
+        return
+    }
+    if (todosVenues.find(v => v.id === venueId)) {
+        errEl.textContent = 'Ya existe un venue con ese ID.'
+        errEl.style.display = 'block'
+        return
+    }
+    const { error } = await supabase.from('venues').insert({
+        id: venueId, provider_id: proveedorActual.id, venue_type: venueType, address: venueDir
+    })
+    if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return }
+    const newVenue = { id: venueId, provider_id: proveedorActual.id, venue_type: venueType, address: venueDir }
+    todosVenues.push(newVenue)
+    venuesDelProveedor.push(newVenue)
+    venueActual = newVenue
+    inputVenueDireccion.value = venueDir ?? ''
+    selectVenueType.value     = venueType
+    document.getElementById('dlgNuevoVenue').close()
+    renderVenueTabs(venuesDelProveedor, venueActual.id)
+    mostrarGuardado()
+})
+
 // Guarda un proveedor nuevo sin necesidad de anadir un servicio
 window.guardarProveedorNuevo = async function(e) {
     e.preventDefault()
@@ -421,6 +524,16 @@ window.guardarProveedorNuevo = async function(e) {
         comments: document.getElementById('inputProveedorComments').value.trim() || null
     })
     if (error) { alert('Error al guardar el proveedor: ' + error.message); return }
+    const venueAddress = inputVenueDireccion.value.trim() || null
+    const venueType    = selectVenueType.value || 'balcon'
+    const { error: venueErr } = await supabase.from('venues').insert({
+        id:          proveedorId,
+        provider_id: proveedorId,
+        address:     venueAddress,
+        venue_type:  venueType
+    })
+    if (venueErr) console.error('Error al crear venue:', venueErr.message)
+    else todosVenues.push({ id: proveedorId, provider_id: proveedorId, address: venueAddress, venue_type: venueType })
     const nuevo = { id: proveedorId, name: document.getElementById('inputNombre').value.trim() || null }
     todosProveedores.push(nuevo)
     cargarProveedor(nuevo)
@@ -630,26 +743,30 @@ function actualizarCosteServicio() {
     const servId = inputServicioId.value.trim().toUpperCase()
     let coste    = 0
 
+    const currentVenueId = servicioEditandoId
+        ? (todaDisponibilidad.find(d => d.id === servicioEditandoId)?.venue_id ?? proveedorActual?.id)
+        : proveedorActual?.id
+
     if (modelo === 'capacity') {
         coste = plazas * precio
         document.getElementById('inputCosteServicio').value = fmt(coste)
     } else if (modelo === 'fixed') {
         const costoFijo = parseFloat(inputCosteTotal.value) || 0
-        if (proveedorActual && servId) {
+        if (currentVenueId && servId) {
             const tieneReserva = todasReservas.some(r =>
-                r.provider_id === proveedorActual.id &&
-                r.service_id  === servId &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === currentVenueId &&
+                r.service_id === servId &&
+                r.status     !== 'Cancelada'
             )
             coste = tieneReserva ? costoFijo : 0
         }
         document.getElementById('inputCosteServicio').value = fmt(coste) + ' (cuota fija)'
     } else {
-        if (proveedorActual && servId) {
+        if (currentVenueId && servId) {
             const plazasRes = todasReservas
-                .filter(r => r.provider_id === proveedorActual.id &&
-                             r.service_id  === servId &&
-                             r.status      !== 'Cancelada')
+                .filter(r => r.venue_id   === currentVenueId &&
+                             r.service_id === servId &&
+                             r.status     !== 'Cancelada')
                 .reduce((s, r) => s + r.slots, 0)
             coste = plazasRes * precio
         }
@@ -759,8 +876,8 @@ function mostrarSugerenciasNombreProducto(val) {
     if (!proveedorActual) { sfcomNombreAutoList.style.display = 'none'; return }
     const nombresExistentes = [...new Set(
         todaDisponibilidad
-            .filter(d => d.provider_id === proveedorActual.id &&
-                         d.id          !== servicioEditandoId &&
+            .filter(d => d.venue_provider_id === proveedorActual.id &&
+                         d.id               !== servicioEditandoId &&
                          d.sfcom_service_name)
             .map(d => d.sfcom_service_name)
     )]
@@ -882,6 +999,21 @@ btnGuardarServicio.addEventListener('click', async () => {
             comments: inputProveedorComments.value.trim() || null
         })
         if (error) { alert('Error al crear proveedor: ' + error.message); return }
+        const venueAddress = inputVenueDireccion.value.trim() || null
+        const venueType    = selectVenueType.value || 'balcon'
+        const { error: venueErr } = await supabase.from('venues').insert({
+            id:          proveedorId,
+            provider_id: proveedorId,
+            address:     venueAddress,
+            venue_type:  venueType
+        })
+        if (venueErr) console.error('Error al crear venue:', venueErr.message)
+        else {
+            todosVenues.push({ id: proveedorId, provider_id: proveedorId, address: venueAddress, venue_type: venueType })
+            venuesDelProveedor = [{ id: proveedorId, provider_id: proveedorId, address: venueAddress, venue_type: venueType }]
+            venueActual        = venuesDelProveedor[0]
+            renderVenueTabs(venuesDelProveedor, venueActual.id)
+        }
         const nuevo = { id: proveedorId, name: inputNombre.value.trim() || null }
         proveedorActual = nuevo
         todosProveedores.push(nuevo)
@@ -895,7 +1027,7 @@ btnGuardarServicio.addEventListener('click', async () => {
         const paresMulti = serviciosEditandoIds
             .map(id => todaDisponibilidad.find(d => d.id === id))
             .filter(Boolean)
-            .map(d => ({ providerId: d.provider_id, serviceId: d.service_id }))
+            .map(d => ({ venueId: d.venue_id, serviceId: d.service_id }))
         const sfcomOkMulti = await confirmarStockSfcom(supabase, paresMulti)
         if (sfcomOkMulti === 'cancel') return
 
@@ -919,8 +1051,8 @@ btnGuardarServicio.addEventListener('click', async () => {
             )
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
-        for (const { providerId, serviceId } of paresMulti) {
-            if (sfcomOkMulti === 'sync') await syncStockToSfcom(supabase, providerId, serviceId)
+        for (const { venueId, serviceId } of paresMulti) {
+            if (sfcomOkMulti === 'sync') await syncStockToSfcom(supabase, venueId, serviceId)
         }
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorActual.id)
@@ -983,7 +1115,10 @@ btnGuardarServicio.addEventListener('click', async () => {
     )
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
-    const sfcomOkSingle = await confirmarStockSfcom(supabase, [{ providerId: proveedorActual.id, serviceId: servicioId }])
+    const venueId = servicioEditandoId
+        ? (todaDisponibilidad.find(d => d.id === servicioEditandoId)?.venue_id ?? proveedorActual.id)
+        : (venueActual?.id ?? proveedorActual.id)
+    const sfcomOkSingle = await confirmarStockSfcom(supabase, [{ venueId, serviceId: servicioId }])
     if (sfcomOkSingle === 'cancel') return
 
     if (servicioEditandoId) {
@@ -1021,15 +1156,16 @@ btnGuardarServicio.addEventListener('click', async () => {
             d.id === servicioEditandoId ? { ...d, ...availPayload, ...sfcomUpdate } : d
         )
     } else {
+        const _targetVenueId = venueActual?.id ?? proveedorActual.id
         const yaExiste = todaDisponibilidad.find(d =>
-            d.provider_id === proveedorActual.id && d.service_id === servicioId
+            d.venue_id === _targetVenueId && d.service_id === servicioId
         )
         if (yaExiste) {
             alert(`Este proveedor ya tiene el servicio ${servicioId}. Selecciónalo en la tabla para editarlo.`)
             return
         }
         const { data: nuevaDisp, error } = await supabase.from('availability').insert({
-            provider_id:    proveedorActual.id,
+            venue_id:       _targetVenueId,
             service_id:     servicioId,
             total_slots:    plazas,
             price_per_slot: isNaN(precio) ? 0 : precio,
@@ -1050,7 +1186,7 @@ btnGuardarServicio.addEventListener('click', async () => {
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
-    if (sfcomOkSingle === 'sync') await syncStockToSfcom(supabase, proveedorActual.id, servicioId)
+    if (sfcomOkSingle === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
 
     limpiarFormularioServicio()
     cargarServiciosProveedor(proveedorActual.id)
@@ -1073,7 +1209,7 @@ let serviciosProveedor      = []
 let _datosServiciosExport   = []  // copia del último render para export
 
 async function cargarServiciosProveedor(proveedorId) {
-    const dispProv = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
+    const dispProv = todaDisponibilidad.filter(d => d.venue_provider_id === proveedorId)
     const bloque   = document.getElementById('bloque-servicios-proveedor')
     if (dispProv.length === 0) { bloque.style.display = 'none'; return }
     serviciosProveedor = dispProv
@@ -1098,23 +1234,23 @@ function renderTablaServicios(proveedorId) {
             coste = (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
         } else if (d.billing_model === 'fixed') {
             const tieneReserva = todasReservas.some(r =>
-                r.provider_id === proveedorId &&
-                r.service_id  === d.service_id &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === d.venue_id &&
+                r.service_id === d.service_id &&
+                r.status     !== 'Cancelada'
             )
             coste = tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0
         } else {
             const plazasRes = todasReservas
-                .filter(r => r.provider_id === proveedorId &&
-                             r.service_id  === d.service_id &&
-                             r.status      !== 'Cancelada')
+                .filter(r => r.venue_id   === d.venue_id &&
+                             r.service_id === d.service_id &&
+                             r.status     !== 'Cancelada')
                 .reduce((s, r) => s + r.slots, 0)
             coste = plazasRes * parseFloat(d.price_per_slot ?? 0)
         }
         const reservasServicio = todasReservas.filter(r =>
-            r.provider_id === proveedorId &&
-            r.service_id  === d.service_id &&
-            r.status      !== 'Cancelada'
+            r.venue_id   === d.venue_id &&
+            r.service_id === d.service_id &&
+            r.status     !== 'Cancelada'
         )
         const plazasReservadas = reservasServicio.reduce((s, r) => s + r.slots, 0)
         const clientes     = [...new Set(reservasServicio.map(r => r.client_id))].join('; ')
@@ -1276,7 +1412,7 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
         const disp   = todaDisponibilidad.find(d => d.id === dispId)
         if (!disp) continue
 
-        const { service_id: servicioId, provider_id: proveedorId } = disp
+        const { service_id: servicioId, venue_id: venueId } = disp
 
         if (disp.sfcom_status !== null && disp.sfcom_status !== undefined) {
             noEliminados.push(`${servicioId} (tiene sfcom activo: "${disp.sfcom_status}" — da de baja en sfcom primero)`)
@@ -1284,9 +1420,9 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
         }
 
         const reservasActivas = todasReservas.filter(r =>
-            r.provider_id === proveedorId &&
-            r.service_id  === servicioId  &&
-            r.status      !== 'Cancelada'
+            r.venue_id   === venueId    &&
+            r.service_id === servicioId &&
+            r.status     !== 'Cancelada'
         )
         if (reservasActivas.length > 0) {
             const clientes = [...new Set(reservasActivas.map(r => r.client_id))].join(', ')
@@ -1296,7 +1432,7 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
 
         await supabase.from('availability').delete().eq('id', dispId)
         todaDisponibilidad = todaDisponibilidad.filter(d => d.id !== dispId)
-        eliminados.push({ servicioId, proveedorId, dispId })
+        eliminados.push({ servicioId, venueId, dispId })
 
         const otrosProveedores = todaDisponibilidad.filter(d => d.service_id === servicioId)
         if (otrosProveedores.length === 0) {
@@ -1313,7 +1449,7 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
 
     const proveedorId = proveedorActual?.id
     if (proveedorId) {
-        const serviciosRestantes = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
+        const serviciosRestantes = todaDisponibilidad.filter(d => d.venue_provider_id === proveedorId)
         if (serviciosRestantes.length === 0 && eliminados.length > 0) {
             const borrarProveedor = confirm(
                 `"${proveedorId}" se ha quedado sin servicios.\n` +
@@ -1345,22 +1481,22 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
 // ===== BLOQUE 4: PAGOS AL PROVEEDOR =====
 
 function calcularCosteTotalProveedor(proveedorId) {
-    const dispProv = todaDisponibilidad.filter(d => d.provider_id === proveedorId)
+    const dispProv = todaDisponibilidad.filter(d => d.venue_provider_id === proveedorId)
     return dispProv.reduce((total, d) => {
         if (d.billing_model === 'capacity') {
             return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
         } else if (d.billing_model === 'fixed') {
             const tieneReserva = todasReservas.some(r =>
-                r.provider_id === proveedorId &&
-                r.service_id  === d.service_id &&
-                r.status      !== 'Cancelada'
+                r.venue_id   === d.venue_id &&
+                r.service_id === d.service_id &&
+                r.status     !== 'Cancelada'
             )
             return total + (tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0)
         } else {
             const plazasRes = todasReservas
-                .filter(r => r.provider_id === proveedorId &&
-                             r.service_id  === d.service_id &&
-                             r.status      !== 'Cancelada')
+                .filter(r => r.venue_id   === d.venue_id &&
+                             r.service_id === d.service_id &&
+                             r.status     !== 'Cancelada')
                 .reduce((s, r) => s + r.slots, 0)
             return total + plazasRes * parseFloat(d.price_per_slot ?? 0)
         }
@@ -1582,7 +1718,7 @@ function sugerirNombreVariacion(servicioId) {
 function abrirAsistenteMultiple() {
     if (!proveedorActual) return
 
-    const existingDisp = todaDisponibilidad.filter(d => d.provider_id === proveedorActual.id)
+    const existingDisp = todaDisponibilidad.filter(d => d.venue_provider_id === proveedorActual.id)
     const assignedIds  = new Set(existingDisp.map(d => d.service_id))
     const unassigned   = todosServicios.filter(s => !assignedIds.has(s.id))
 
@@ -1966,7 +2102,10 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 )
             }
             todaDisponibilidad = todaDisponibilidad.map(d => d.id === row.dispId ? { ...d, ...updateData, ...sfcomUpdateMulti } : d)
-            if (row.modified) pairsSync.push({ provider_id: proveedorId, service_id: row.serviceId })
+            if (row.modified) {
+                const _disp = todaDisponibilidad.find(d => d.id === row.dispId)
+                pairsSync.push({ venueId: _disp?.venue_id ?? proveedorId, serviceId: row.serviceId })
+            }
         } else if (!row.isExisting && row.active && row.serviceId) {
             // INSERT nuevo servicio
             const servicioExiste = todosServicios.find(s => s.id === row.serviceId)
@@ -1975,10 +2114,11 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 if (errSvc) { alert(`Error al crear servicio ${row.serviceId}: ${errSvc.message}`); continue }
                 todosServicios.push({ id: row.serviceId })
             }
-            const yaExiste = todaDisponibilidad.find(d => d.provider_id === proveedorId && d.service_id === row.serviceId)
+            const _newVenueId = venueActual?.id ?? proveedorId
+            const yaExiste = todaDisponibilidad.find(d => d.venue_id === _newVenueId && d.service_id === row.serviceId)
             if (yaExiste) continue
             const insertData = {
-                provider_id:    proveedorId,
+                venue_id:       _newVenueId,
                 service_id:     row.serviceId,
                 total_slots:    row.total_slots ?? 0,
                 price_per_slot: row.price_per_slot ?? 0,
@@ -1996,7 +2136,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 await supabase.from('sfcom_listings').insert({ availability_id: data[0].id, ...sfcomInsertMulti })
             }
             todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti })
-            pairsSync.push({ provider_id: proveedorId, service_id: row.serviceId })
+            pairsSync.push({ venueId: _newVenueId, serviceId: row.serviceId })
         }
     }
 
@@ -2005,7 +2145,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
     if (pairsSync.length > 0) {
         const sfcomOkMultiple = await confirmarStockSfcom(supabase, pairsSync)
         if (sfcomOkMultiple === 'sync') {
-            for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.provider_id, pair.service_id)
+            for (const pair of pairsSync) await syncStockToSfcom(supabase, pair.venueId, pair.serviceId)
         }
     }
 
@@ -2345,6 +2485,21 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
             comments: inputProveedorComments.value.trim()   || null
         })
         if (error) { alert('Error al crear proveedor: ' + error.message); return }
+        const venueAddress = inputVenueDireccion.value.trim() || null
+        const venueType    = selectVenueType.value || 'balcon'
+        const { error: venueErr } = await supabase.from('venues').insert({
+            id:          provNombre,
+            provider_id: provNombre,
+            address:     venueAddress,
+            venue_type:  venueType
+        })
+        if (venueErr) console.error('Error al crear venue:', venueErr.message)
+        else {
+            todosVenues.push({ id: provNombre, provider_id: provNombre, address: venueAddress, venue_type: venueType })
+            venuesDelProveedor = [{ id: provNombre, provider_id: provNombre, address: venueAddress, venue_type: venueType }]
+            venueActual        = venuesDelProveedor[0]
+            renderVenueTabs(venuesDelProveedor, venueActual.id)
+        }
         proveedorActual = { id: provNombre, name: inputNombre.value.trim() || null }
         todosProveedores.push(proveedorActual)
         proveedorStatus.textContent = '✅ Proveedor creado'
@@ -2366,10 +2521,11 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
 
     // Crear entradas de availability para los marcados
     if (!soloServicios && proveedorActual && creados.length > 0 && paraAsignar.length > 0) {
+        const _nuevoVenueId = venueActual?.id ?? proveedorActual.id
         for (const id of paraAsignar.filter(id => creados.includes(id))) {
-            if (todaDisponibilidad.find(d => d.provider_id === proveedorActual.id && d.service_id === id)) continue
+            if (todaDisponibilidad.find(d => d.venue_id === _nuevoVenueId && d.service_id === id)) continue
             const { data: nd, error } = await supabase.from('availability').insert({
-                provider_id:    proveedorActual.id,
+                venue_id:       _nuevoVenueId,
                 service_id:     id,
                 total_slots:    plazas,
                 price_per_slot: isNaN(precio) ? 0 : precio,

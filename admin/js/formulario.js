@@ -18,11 +18,15 @@ initSidebar()
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
 const { data: servicios }      = await supabase.from('services').select('*').order('day')
 const { data: disponibilidad } = await supabase.from('availability_with_sfcom').select('*')
-const { data: providers }      = await supabase.from('providers').select('*').order('id')
+const { data: venues }         = await supabase.from('venues').select('*').order('id')
 let todasReservas              = (await supabase.from('reservations').select('*')).data
 
-initPropuesta(supabase, servicios, providers)
+initPropuesta(supabase, servicios, venues)
 initAsistente(supabase, { getDisponibilidad: () => disponibilidad, getTodasReservas: () => todasReservas, onEmailSaved: cargarSolicitudes, esSfcom: _esSfcom })
+
+function _getProviderIdFromVenue(venueId) {
+    return disponibilidad.find(d => d.venue_id === venueId)?.venue_provider_id ?? null
+}
 
 let clienteActual      = null
 let reservaEditandoId  = null
@@ -287,16 +291,16 @@ function actualizarTotal() {
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
 }
 
-function getPlazasInfo(proveedorId, servicioId, excluirId = null) {
+function getPlazasInfo(venueId, servicioId, excluirId = null) {
     const reservasPS  = todasReservas.filter(r =>
-        r.provider_id === proveedorId &&
-        r.service_id  === servicioId  &&
-        r.status      !== 'Cancelada' &&
-        r.id          !== excluirId
+        r.venue_id   === venueId    &&
+        r.service_id === servicioId &&
+        r.status     !== 'Cancelada' &&
+        r.id         !== excluirId
     )
     const confirmadas = reservasPS.filter(r => r.status === 'Confirmada').reduce((s, r) => s + r.slots, 0)
     const pendientes  = reservasPS.filter(r => r.status === 'Pendiente').reduce((s, r) => s + r.slots, 0)
-    const disp        = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const disp        = disponibilidad.find(d => d.venue_id === venueId && d.service_id === servicioId)
     const total       = disp?.total_slots ?? 0
     const libres      = total - confirmadas - pendientes
     return { total, confirmadas, pendientes, libres }
@@ -316,7 +320,7 @@ function actualizarProveedores() {
     selectProveedor.disabled = false
 
     dispServicio.forEach(d => {
-        const { total, pendientes, libres } = getPlazasInfo(d.provider_id, servicioId, reservaEditandoId)
+        const { total, pendientes, libres } = getPlazasInfo(d.venue_id, servicioId, reservaEditandoId)
         if (plazas > 0 && total < plazas) return
 
         let simbolo = ''
@@ -329,8 +333,8 @@ function actualizarProveedores() {
         }
 
         const opt = document.createElement('option')
-        opt.value       = d.provider_id
-        opt.textContent = `${d.provider_id} (${libres}/${total})${simbolo ? ' ' + simbolo : ''}`
+        opt.value       = d.venue_id
+        opt.textContent = `${d.venue_id} (${libres}/${total})${simbolo ? ' ' + simbolo : ''}`
         selectProveedor.appendChild(opt)
     })
 
@@ -375,14 +379,14 @@ function validarPrecio() {
         return
     }
 
-    const disp = disponibilidad.find(d => d.service_id === servicioId && d.provider_id === proveedorId)
+    const disp = disponibilidad.find(d => d.service_id === servicioId && d.venue_id === proveedorId)
     if (!disp) return
 
     if (disp.billing_model === 'fixed') {
         const fixedCost = parseFloat(disp.price_per_slot) || 0
         const plazas    = parseInt(inputPlazas.value) || 0
         const ingresoExistente = todasReservas
-            .filter(r => r.provider_id === proveedorId &&
+            .filter(r => r.venue_id    === proveedorId &&
                          r.service_id  === servicioId  &&
                          r.status      !== 'Cancelada' &&
                          (reservaEditandoId ? r.id !== reservaEditandoId : true))
@@ -478,7 +482,7 @@ function renderTablaReservas() {
     const cols = [
         { label: 'ID',          campo: 'id' },
         { label: 'Servicio',    campo: 'service_id' },
-        { label: 'Proveedor',   campo: 'provider_id' },
+        { label: 'Venue',       campo: 'venue_id' },
         { label: 'Plazas',      campo: 'slots' },
         { label: '€/plaza',     campo: 'price_per_slot' },
         { label: 'Total',       campo: 'total_amount' },
@@ -521,7 +525,7 @@ function renderTablaReservas() {
             <td><input type="checkbox" class="chk-reserva"></td>
             <td>${r.id}</td>
             <td>${r.service_id}</td>
-            <td>${r.provider_id}</td>
+            <td>${r.venue_id}</td>
             <td>${r.slots}</td>
             <td>${r.price_per_slot}€</td>
             <td>${r.total_amount}€</td>
@@ -560,7 +564,7 @@ function cargarReservaEnFormulario(reserva) {
     actualizarProveedores()
 
     setTimeout(() => {
-        selectProveedor.value = reserva.provider_id
+        selectProveedor.value = reserva.venue_id
         validarPrecio()
         actualizarBloque3()
         actualizarBtnAnadir()
@@ -586,7 +590,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
 
     const afectadas = [...new Map(
         todasReservas.filter(r => ids.includes(r.id))
-            .map(r => [`${r.provider_id}|${r.service_id}`, { proveedorId: r.provider_id, servicioId: r.service_id }])
+            .map(r => [`${r.venue_id}|${r.service_id}`, { venueId: r.venue_id, servicioId: r.service_id }])
     ).values()]
 
     // Modal consultivo cuando el cambio altera el conteo de reservas activas en sfcom.
@@ -597,9 +601,9 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         // Cancelar reservas activas → stock sube (deltas negativos de plazas activas)
         pairsConCambio = [...new Map(
             todasReservas.filter(r => ids.includes(r.id) && r.status !== 'Cancelada')
-                .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
+                .map(r => [`${r.venue_id}|${r.service_id}`, { venueId: r.venue_id, serviceId: r.service_id }])
         ).values()].map(p => {
-            const activas    = todasReservas.filter(r => ids.includes(r.id) && r.provider_id === p.providerId && r.service_id === p.serviceId && r.status !== 'Cancelada')
+            const activas    = todasReservas.filter(r => ids.includes(r.id) && r.venue_id === p.venueId && r.service_id === p.serviceId && r.status !== 'Cancelada')
             const allDelta   = -activas.reduce((s, r) => s + (r.slots ?? 0), 0)
             const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
@@ -612,16 +616,16 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         // Reactivar reservas canceladas → stock baja (deltas positivos de plazas que vuelven a ser activas)
         pairsConCambio = [...new Map(
             todasReservas.filter(r => ids.includes(r.id) && r.status === 'Cancelada')
-                .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
+                .map(r => [`${r.venue_id}|${r.service_id}`, { venueId: r.venue_id, serviceId: r.service_id }])
         ).values()].map(p => {
-            const reactivadas = todasReservas.filter(r => ids.includes(r.id) && r.provider_id === p.providerId && r.service_id === p.serviceId && r.status === 'Cancelada')
+            const reactivadas = todasReservas.filter(r => ids.includes(r.id) && r.venue_id === p.venueId && r.service_id === p.serviceId && r.status === 'Cancelada')
             const allDelta    = reactivadas.reduce((s, r) => s + (r.slots ?? 0), 0)
             const sfcomDelta  = reactivadas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
         for (const p of pairsConCambio) {
             if (p.allDelta <= 0) continue
-            const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
+            const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.venueId, p.serviceId, p.allDelta)
             if (sfcomResult.sfcomCheck && sfcomResult.warning) {
                 if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
             }
@@ -638,11 +642,12 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
-        const pairsConCambioSet = new Set(pairsConCambio.map(p => `${p.providerId}|${p.serviceId}`))
-        for (const { proveedorId, servicioId } of afectadas) {
-            await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-            if (pairsConCambioSet.has(`${proveedorId}|${servicioId}`) && sfcomResultEstado === 'sync')
-                await syncStockToSfcom(supabase, proveedorId, servicioId)
+        const pairsConCambioSet = new Set(pairsConCambio.map(p => `${p.venueId}|${p.serviceId}`))
+        for (const { venueId, servicioId } of afectadas) {
+            const provId = _getProviderIdFromVenue(venueId)
+            if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
+            if (pairsConCambioSet.has(`${venueId}|${servicioId}`) && sfcomResultEstado === 'sync')
+                await syncStockToSfcom(supabase, venueId, servicioId)
         }
         cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
@@ -658,9 +663,9 @@ async function eliminarSeleccionadas() {
     // Modal consultivo: eliminar reservas activas sube el stock en sfcom
     const pairsParaModal = [...new Map(
         todasReservas.filter(r => ids.includes(r.id) && r.status !== 'Cancelada')
-            .map(r => [`${r.provider_id}|${r.service_id}`, { providerId: r.provider_id, serviceId: r.service_id }])
+            .map(r => [`${r.venue_id}|${r.service_id}`, { venueId: r.venue_id, serviceId: r.service_id }])
     ).values()].map(p => {
-        const activas    = todasReservas.filter(r => ids.includes(r.id) && r.provider_id === p.providerId && r.service_id === p.serviceId && r.status !== 'Cancelada')
+        const activas    = todasReservas.filter(r => ids.includes(r.id) && r.venue_id === p.venueId && r.service_id === p.serviceId && r.status !== 'Cancelada')
         const allDelta   = -activas.reduce((s, r) => s + (r.slots ?? 0), 0)
         const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
         return { ...p, sfcomDelta, allDelta }
@@ -674,12 +679,12 @@ async function eliminarSeleccionadas() {
     const afectadas = [...todasReservas
         .filter(r => ids.includes(r.id))
         .reduce((map, r) => {
-            const key  = `${r.provider_id}|${r.service_id}`
+            const key  = `${r.venue_id}|${r.service_id}`
             const prev = map.get(key)
             map.set(key, {
-                proveedorId: r.provider_id,
-                servicioId:  r.service_id,
-                cancelada:   prev ? (prev.cancelada && r.status === 'Cancelada') : r.status === 'Cancelada'
+                venueId:   r.venue_id,
+                servicioId: r.service_id,
+                cancelada:  prev ? (prev.cancelada && r.status === 'Cancelada') : r.status === 'Cancelada'
             })
             return map
         }, new Map()).values()]
@@ -704,9 +709,10 @@ async function eliminarSeleccionadas() {
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
     }
 
-    for (const { proveedorId, servicioId, cancelada } of afectadas) {
-        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-        if (!cancelada && sfcomResultElim === 'sync') await syncStockToSfcom(supabase, proveedorId, servicioId)
+    for (const { venueId, servicioId, cancelada } of afectadas) {
+        const provId = _getProviderIdFromVenue(venueId)
+        if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
+        if (!cancelada && sfcomResultElim === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
     }
 
     limpiarFormularioReserva()
@@ -752,13 +758,13 @@ function setGuardando(on) {
 }
 
 btnAnadir.addEventListener('click', async () => {
-    const clienteId   = inputId.value.trim().toUpperCase()
-    const servicioId  = selectServicio.value
-    const proveedorId = selectProveedor.value
-    const plazas      = parseInt(inputPlazas.value)
-    const precio      = parseFloat(inputPrecio.value)
-    const estado      = selectEstado.value
-    const comments    = document.getElementById('inputReservaComments').value.trim() || null
+    const clienteId  = inputId.value.trim().toUpperCase()
+    const servicioId = selectServicio.value
+    const venueId    = selectProveedor.value
+    const plazas     = parseInt(inputPlazas.value)
+    const precio     = parseFloat(inputPrecio.value)
+    const estado     = selectEstado.value
+    const comments   = document.getElementById('inputReservaComments').value.trim() || null
 
     if (plazas < 0) { alert('El número de plazas no puede ser negativo.'); return }
     if (plazas === 0) { if (!confirm('¿Crear una reserva con 0 plazas?')) return }
@@ -767,24 +773,24 @@ btnAnadir.addEventListener('click', async () => {
     try {
 
     if (reservaEditandoId) {
-        const reservaOriginal     = todasReservas.find(r => r.id === reservaEditandoId)
-        const proveedorIdAnterior = reservaOriginal?.provider_id
-        const servicioIdAnterior  = reservaOriginal?.service_id
+        const reservaOriginal   = todasReservas.find(r => r.id === reservaEditandoId)
+        const venueIdAnterior   = reservaOriginal?.venue_id
+        const servicioIdAnterior = reservaOriginal?.service_id
 
         // Calcular deltas para el modal consultivo antes de guardar
         const pairsParaModal = []
-        const parCambia  = proveedorId !== proveedorIdAnterior || servicioId !== servicioIdAnterior
+        const parCambia  = venueId !== venueIdAnterior || servicioId !== servicioIdAnterior
         const esSfcomRes = Boolean(reservaOriginal?.sfcom_order_ref)
         if (parCambia) {
             const eraActiva  = reservaOriginal?.status !== 'Cancelada'
             const seraActiva = estado !== 'Cancelada'
             if (eraActiva) pairsParaModal.push({
-                providerId: proveedorIdAnterior, serviceId: servicioIdAnterior,
+                venueId: venueIdAnterior, serviceId: servicioIdAnterior,
                 sfcomDelta: esSfcomRes ? -(reservaOriginal?.slots ?? 0) : 0,
                 allDelta:   -(reservaOriginal?.slots ?? 0)
             })
             if (seraActiva) pairsParaModal.push({
-                providerId: proveedorId, serviceId: servicioId,
+                venueId: venueId, serviceId: servicioId,
                 sfcomDelta: esSfcomRes ? plazas : 0,
                 allDelta:   plazas
             })
@@ -793,11 +799,11 @@ btnAnadir.addEventListener('click', async () => {
             const seraActiva = estado !== 'Cancelada'
             const allDelta   = (seraActiva ? plazas : 0) - (eraActiva ? (reservaOriginal?.slots ?? 0) : 0)
             const sfcomDelta = esSfcomRes ? allDelta : 0
-            if (allDelta !== 0) pairsParaModal.push({ providerId: proveedorId, serviceId: servicioId, sfcomDelta, allDelta })
+            if (allDelta !== 0) pairsParaModal.push({ venueId, serviceId: servicioId, sfcomDelta, allDelta })
         }
         for (const p of pairsParaModal) {
             if (p.allDelta <= 0) continue
-            const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
+            const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.venueId, p.serviceId, p.allDelta)
             if (sfcomResult.sfcomCheck && sfcomResult.warning) {
                 if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
             }
@@ -810,7 +816,7 @@ btnAnadir.addEventListener('click', async () => {
         }
 
         const { error } = await supabase.from('reservations').update({
-            service_id: servicioId, provider_id: proveedorId,
+            service_id: servicioId, venue_id: venueId,
             slots: plazas, price_per_slot: precio, status: estado, comments
         }).eq('id', reservaEditandoId)
         if (error) { alert('Error al guardar: ' + error.message); return }
@@ -819,24 +825,26 @@ btnAnadir.addEventListener('click', async () => {
         todasReservas = reservasActualizadas
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
-        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-        if (proveedorIdAnterior !== undefined && proveedorIdAnterior !== proveedorId) {
-            await persistirPagosProveedor(supabase, proveedorIdAnterior, todasReservas, disponibilidad)
+        const provId = _getProviderIdFromVenue(venueId)
+        if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
+        if (venueIdAnterior !== undefined && venueIdAnterior !== venueId) {
+            const provIdAnterior = _getProviderIdFromVenue(venueIdAnterior)
+            if (provIdAnterior) await persistirPagosProveedor(supabase, provIdAnterior, todasReservas, disponibilidad)
         }
         for (const p of pairsParaModal)
-            if (sfcomResultEdit === 'sync') await syncStockToSfcom(supabase, p.providerId, p.serviceId)
+            if (sfcomResultEdit === 'sync') await syncStockToSfcom(supabase, p.venueId, p.serviceId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
 
     } else {
-        const { libres } = getPlazasInfo(proveedorId, servicioId)
+        const { libres } = getPlazasInfo(venueId, servicioId)
         if (libres < plazas) {
             alert(`No hay suficientes plazas libres. Disponibles: ${libres}, necesitas: ${plazas}`)
             return
         }
 
-        const sfcomResult = await checkAvailabilityBeforeSave(supabase, proveedorId, servicioId, plazas)
+        const sfcomResult = await checkAvailabilityBeforeSave(supabase, venueId, servicioId, plazas)
         if (!sfcomResult.ok) {
             alert(`No se puede guardar la reserva:\n\n${sfcomResult.message}`)
             return
@@ -846,7 +854,7 @@ btnAnadir.addEventListener('click', async () => {
         }
 
         const sfcomResultNuevo = await confirmarStockSfcom(supabase, [{
-            providerId: proveedorId, serviceId: servicioId,
+            venueId, serviceId: servicioId,
             sfcomDelta: solicitudSfcomRef ? plazas : 0,
             allDelta:   plazas
         }])
@@ -879,7 +887,7 @@ btnAnadir.addEventListener('click', async () => {
 
         const { error: errReserva } = await supabase.from('reservations').insert({
             id: nuevaId, client_id: clienteActual.id,
-            provider_id: proveedorId, service_id: servicioId,
+            venue_id: venueId, service_id: servicioId,
             slots: plazas, price_per_slot: precio, status: estado, comments,
             sfcom_order_ref: solicitudSfcomRef || null
         })
@@ -889,8 +897,9 @@ btnAnadir.addEventListener('click', async () => {
         todasReservas = reservasActualizadas
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
-        await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
-        if (sfcomResultNuevo === 'sync') await syncStockToSfcom(supabase, proveedorId, servicioId)
+        const provIdNuevo = _getProviderIdFromVenue(venueId)
+        if (provIdNuevo) await persistirPagosProveedor(supabase, provIdNuevo, todasReservas, disponibilidad)
+        if (sfcomResultNuevo === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -922,7 +931,7 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
     }
 
     const proveedoresConInfo = dispServicio.map(d => ({
-        d, ...getPlazasInfo(d.provider_id, servicioId, reservaEditandoId)
+        d, ...getPlazasInfo(d.venue_id, servicioId, reservaEditandoId)
     })).filter(({ total }) => plazas === 0 || total >= plazas)
     .sort((a, b) => b.libres - a.libres)
 
@@ -940,11 +949,11 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
             else                   claseDisp = 'disp-error'
         }
 
-        const esSeleccionado = proveedorSeleccionado && d.provider_id === proveedorSeleccionado
+        const esSeleccionado = proveedorSeleccionado && d.venue_id === proveedorSeleccionado
         const esAtenuado     = proveedorSeleccionado && !esSeleccionado
 
         const reservasCol = todasReservas.filter(r =>
-            r.provider_id === d.provider_id && r.service_id === servicioId && r.status !== 'Cancelada'
+            r.venue_id === d.venue_id && r.service_id === servicioId && r.status !== 'Cancelada'
         )
 
         const MAX_FILAS = 8
@@ -962,9 +971,9 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
 
         return `<div class="proveedor-col ${claseDisp} ${esSeleccionado ? 'destacado' : 'normal'} ${esAtenuado ? 'atenuado' : ''}"
                     style="border:2px solid; cursor:pointer"
-                    onclick="seleccionarProveedorDesdeCajita('${d.provider_id}')">
+                    onclick="seleccionarProveedorDesdeCajita('${d.venue_id}')">
             <div class="proveedor-col-header">
-                <div class="nombre">${simbolo} ${d.provider_id}</div>
+                <div class="nombre">${simbolo} ${d.venue_id}</div>
                 <div class="plazas">${libres}/${total} libres</div>
             </div>
             <div class="proveedor-col-body">${filasReservas}</div>
@@ -1365,14 +1374,14 @@ let reorgContexto = null
 let reorgCambios  = {}
 let reorgFilas    = []
 
-function abrirPanelReorganizar(proveedorId, servicioId, plazasNecesarias) {
-    reorgContexto = { proveedorId, servicioId, plazasNecesarias }
+function abrirPanelReorganizar(venueId, servicioId, plazasNecesarias) {
+    reorgContexto = { venueId, servicioId, plazasNecesarias }
     reorgCambios  = {}
 
     const reservasBloquean = todasReservas.filter(r =>
-        r.provider_id === proveedorId &&
-        r.service_id  === servicioId  &&
-        r.status      !== 'Cancelada'
+        r.venue_id   === venueId    &&
+        r.service_id === servicioId &&
+        r.status     !== 'Cancelada'
     )
     reorgFilas = reservasBloquean.map(r => ({ ...r }))
 
@@ -1398,18 +1407,18 @@ window.cerrarPanelReorganizar = function() {
 }
 
 function renderPanelReorganizar() {
-    const { proveedorId, servicioId, plazasNecesarias } = reorgContexto
+    const { venueId, servicioId, plazasNecesarias } = reorgContexto
 
     const plazasOcupadas = reorgFilas
-        .filter(r => r.provider_id === proveedorId && r.service_id === servicioId)
+        .filter(r => r.venue_id === venueId && r.service_id === servicioId)
         .reduce((s, r) => s + r.slots, 0)
 
-    const dispObj     = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const dispObj     = disponibilidad.find(d => d.venue_id === venueId && d.service_id === servicioId)
     const totalSlots  = dispObj?.total_slots ?? 0
     const libresAhora = totalSlots - plazasOcupadas
 
     document.getElementById('panel-reorg-cabecera').textContent =
-        `Quieres meter ${plazasNecesarias} plaza(s) en ${proveedorId} / ${servicioId}`
+        `Quieres meter ${plazasNecesarias} plaza(s) en ${venueId} / ${servicioId}`
 
     const estadoDiv = document.getElementById('panel-reorg-estado')
     if (libresAhora >= plazasNecesarias) {
@@ -1435,10 +1444,10 @@ function renderPanelReorganizar() {
         const dispDeServicio = disponibilidad.filter(d => d.service_id === r.service_id)
         const optsProveedor = dispDeServicio.map(d => {
             const ocupadasEnPanel = reorgFilas
-                .filter(f => f.provider_id === d.provider_id && f.service_id === d.service_id && f.id !== r.id)
+                .filter(f => f.venue_id === d.venue_id && f.service_id === d.service_id && f.id !== r.id)
                 .reduce((s, f) => s + f.slots, 0)
             const reservasReales = todasReservas
-                .filter(res => res.provider_id === d.provider_id && res.service_id === d.service_id &&
+                .filter(res => res.venue_id === d.venue_id && res.service_id === d.service_id &&
                                res.status !== 'Cancelada' && !reorgFilas.find(f => f.id === res.id))
                 .reduce((s, res) => s + res.slots, 0)
             const totalOcupadas = ocupadasEnPanel + reservasReales
@@ -1449,8 +1458,8 @@ function renderPanelReorganizar() {
             else if (libres > 0)        simbolo = '⚠️'
             else                         simbolo = '❌'
 
-            return `<option value="${d.provider_id}" ${r.provider_id === d.provider_id ? 'selected' : ''}>
-                ${d.provider_id} (${libres} libres) ${simbolo}
+            return `<option value="${d.venue_id}" ${r.venue_id === d.venue_id ? 'selected' : ''}>
+                ${d.venue_id} (${libres} libres) ${simbolo}
             </option>`
         }).join('')
 
@@ -1485,10 +1494,10 @@ window.reorgCambiarServicio = function(idx, nuevoServicio) {
 
     reorgFilas[idx].service_id = nuevoServicio
 
-    const dispNuevoServicio        = disponibilidad.filter(d => d.service_id === nuevoServicio)
-    const proveedorSigueDisponible = dispNuevoServicio.some(d => d.provider_id === r.provider_id)
-    if (!proveedorSigueDisponible && dispNuevoServicio.length > 0) {
-        reorgFilas[idx].provider_id = dispNuevoServicio[0].provider_id
+    const dispNuevoServicio      = disponibilidad.filter(d => d.service_id === nuevoServicio)
+    const venueSigueDisponible   = dispNuevoServicio.some(d => d.venue_id === r.venue_id)
+    if (!venueSigueDisponible && dispNuevoServicio.length > 0) {
+        reorgFilas[idx].venue_id = dispNuevoServicio[0].venue_id
     }
 
     registrarCambioReorg(idx, original)
@@ -1499,25 +1508,25 @@ window.reorgCambiarProveedor = function(idx, nuevoProveedor) {
     const r        = reorgFilas[idx]
     const original = todasReservas.find(res => res.id === r.id)
 
-    reorgFilas[idx].provider_id = nuevoProveedor
+    reorgFilas[idx].venue_id = nuevoProveedor
 
     const yaEnPanel = reorgFilas.some(f =>
-        f.provider_id === nuevoProveedor && f.service_id === r.service_id && f.id !== r.id
+        f.venue_id === nuevoProveedor && f.service_id === r.service_id && f.id !== r.id
     )
     if (!yaEnPanel) {
-        const reservasNuevoProv = todasReservas.filter(res =>
-            res.provider_id === nuevoProveedor &&
+        const reservasNuevoVenue = todasReservas.filter(res =>
+            res.venue_id    === nuevoProveedor &&
             res.service_id  === r.service_id   &&
             res.status      !== 'Cancelada'    &&
             !reorgFilas.find(f => f.id === res.id)
         )
-        const dispNuevoProv     = disponibilidad.find(d =>
-            d.provider_id === nuevoProveedor && d.service_id === r.service_id
+        const dispNuevoVenue     = disponibilidad.find(d =>
+            d.venue_id === nuevoProveedor && d.service_id === r.service_id
         )
-        const totalNuevoProv    = dispNuevoProv?.total_slots ?? 0
-        const ocupadasNuevoProv = reservasNuevoProv.reduce((s, res) => s + res.slots, 0) + r.slots
-        if (ocupadasNuevoProv > totalNuevoProv) {
-            reorgFilas.push(...reservasNuevoProv.map(res => ({ ...res })))
+        const totalNuevoVenue    = dispNuevoVenue?.total_slots ?? 0
+        const ocupadasNuevoVenue = reservasNuevoVenue.reduce((s, res) => s + res.slots, 0) + r.slots
+        if (ocupadasNuevoVenue > totalNuevoVenue) {
+            reorgFilas.push(...reservasNuevoVenue.map(res => ({ ...res })))
         }
     }
 
@@ -1529,10 +1538,10 @@ function registrarCambioReorg(idx, original) {
     const r = reorgFilas[idx]
     const precioModificado = reorgCambios[r.id]?.price_per_slot
 
-    if (r.service_id !== original.service_id || r.provider_id !== original.provider_id) {
+    if (r.service_id !== original.service_id || r.venue_id !== original.venue_id) {
         reorgCambios[r.id] = {
-            service_id:  r.service_id,
-            provider_id: r.provider_id,
+            service_id: r.service_id,
+            venue_id:   r.venue_id,
             ...(precioModificado !== undefined && { price_per_slot: precioModificado })
         }
     } else if (precioModificado === undefined) {
@@ -1549,30 +1558,30 @@ window.reorgCambiarPrecio = function(idx, nuevoPrecio) {
     reorgFilas[idx].price_per_slot = precio
 
     if (Math.abs(precio - parseFloat(original.price_per_slot)) >= 0.01) {
-        // Hay cambio de precio — registrar, preservando service_id y provider_id si ya cambiaron
+        // Hay cambio de precio — registrar, preservando service_id y venue_id si ya cambiaron
         reorgCambios[r.id] = {
-            service_id:    reorgCambios[r.id]?.service_id  ?? r.service_id,
-            provider_id:   reorgCambios[r.id]?.provider_id ?? r.provider_id,
+            service_id:     reorgCambios[r.id]?.service_id ?? r.service_id,
+            venue_id:       reorgCambios[r.id]?.venue_id   ?? r.venue_id,
             price_per_slot: precio
         }
     } else {
         // Precio volvió al original — eliminar solo price_per_slot
         if (reorgCambios[r.id]) {
             delete reorgCambios[r.id].price_per_slot
-            // Si tampoco hay cambio de servicio ni proveedor, eliminar la entrada completa
-            if (reorgCambios[r.id].service_id  === original.service_id &&
-                reorgCambios[r.id].provider_id === original.provider_id) {
+            // Si tampoco hay cambio de servicio ni venue, eliminar la entrada completa
+            if (reorgCambios[r.id].service_id === original.service_id &&
+                reorgCambios[r.id].venue_id   === original.venue_id) {
                 delete reorgCambios[r.id]
             }
         }
     }
 
     // Recalcular estado del botón sin re-renderizar la tabla (evita perder el foco del input)
-    const { plazasNecesarias, proveedorId, servicioId } = reorgContexto
+    const { plazasNecesarias, venueId, servicioId } = reorgContexto
     const plazasOcupadas = reorgFilas
-        .filter(f => f.provider_id === proveedorId && f.service_id === servicioId)
+        .filter(f => f.venue_id === venueId && f.service_id === servicioId)
         .reduce((s, f) => s + f.slots, 0)
-    const dispObj     = disponibilidad.find(d => d.provider_id === proveedorId && d.service_id === servicioId)
+    const dispObj     = disponibilidad.find(d => d.venue_id === venueId && d.service_id === servicioId)
     const libresAhora = (dispObj?.total_slots ?? 0) - plazasOcupadas
     document.getElementById('btnConfirmarReorg').disabled =
         libresAhora < plazasNecesarias || Object.keys(reorgCambios).length === 0
@@ -1584,10 +1593,10 @@ window.confirmarReorganizacion = async function() {
     const lineas = Object.entries(reorgCambios).map(([id, cambio]) => {
         const original = todasReservas.find(r => r.id === id)
         const partes   = []
-        if (cambio.service_id  !== undefined && cambio.service_id  !== original.service_id)
+        if (cambio.service_id !== undefined && cambio.service_id !== original.service_id)
             partes.push(`${original.service_id} → ${cambio.service_id}`)
-        if (cambio.provider_id !== undefined && cambio.provider_id !== original.provider_id)
-            partes.push(`${original.provider_id} → ${cambio.provider_id}`)
+        if (cambio.venue_id !== undefined && cambio.venue_id !== original.venue_id)
+            partes.push(`${original.venue_id} → ${cambio.venue_id}`)
         if (cambio.price_per_slot !== undefined)
             partes.push(`precio ${original.price_per_slot}€ → ${cambio.price_per_slot}€`)
         return `${id}  ${original.client_id}  ${partes.join('  |  ')}`
@@ -1599,7 +1608,7 @@ window.confirmarReorganizacion = async function() {
     const originales = Object.fromEntries(
         Object.entries(reorgCambios).map(([id]) => {
             const r = todasReservas.find(r => r.id === id)
-            return [id, { service_id: r.service_id, provider_id: r.provider_id, price_per_slot: r.price_per_slot }]
+            return [id, { service_id: r.service_id, venue_id: r.venue_id, price_per_slot: r.price_per_slot }]
         })
     )
 
@@ -1608,18 +1617,18 @@ window.confirmarReorganizacion = async function() {
     Object.entries(reorgCambios).forEach(([id, cambio]) => {
         const r = todasReservas.find(r => r.id === id)
         if (!r) return
-        const newProviderId = cambio.provider_id ?? r.provider_id
-        const newServiceId  = cambio.service_id  ?? r.service_id
-        if (newProviderId === r.provider_id && newServiceId === r.service_id) return
+        const newVenueId   = cambio.venue_id   ?? r.venue_id
+        const newServiceId = cambio.service_id ?? r.service_id
+        if (newVenueId === r.venue_id && newServiceId === r.service_id) return
         const isSfcom = Boolean(r.sfcom_order_ref)
         const slots   = r.slots ?? 0
-        const origKey = `${r.provider_id}|${r.service_id}`
-        const newKey  = `${newProviderId}|${newServiceId}`
-        const orig = sfcomDeltasMap.get(origKey) ?? { providerId: r.provider_id, serviceId: r.service_id, sfcomDelta: 0, allDelta: 0 }
+        const origKey = `${r.venue_id}|${r.service_id}`
+        const newKey  = `${newVenueId}|${newServiceId}`
+        const orig = sfcomDeltasMap.get(origKey) ?? { venueId: r.venue_id, serviceId: r.service_id, sfcomDelta: 0, allDelta: 0 }
         orig.allDelta   -= slots
         orig.sfcomDelta -= isSfcom ? slots : 0
         sfcomDeltasMap.set(origKey, orig)
-        const dest = sfcomDeltasMap.get(newKey) ?? { providerId: newProviderId, serviceId: newServiceId, sfcomDelta: 0, allDelta: 0 }
+        const dest = sfcomDeltasMap.get(newKey) ?? { venueId: newVenueId, serviceId: newServiceId, sfcomDelta: 0, allDelta: 0 }
         dest.allDelta   += slots
         dest.sfcomDelta += isSfcom ? slots : 0
         sfcomDeltasMap.set(newKey, dest)
@@ -1627,7 +1636,7 @@ window.confirmarReorganizacion = async function() {
     const sfcomPairsReorg = [...sfcomDeltasMap.values()].filter(p => p.allDelta !== 0 || p.sfcomDelta !== 0)
     for (const p of sfcomPairsReorg) {
         if (p.allDelta <= 0) continue
-        const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.providerId, p.serviceId, p.allDelta)
+        const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.venueId, p.serviceId, p.allDelta)
         if (sfcomResult.sfcomCheck && sfcomResult.warning) {
             if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
         }
@@ -1642,7 +1651,7 @@ window.confirmarReorganizacion = async function() {
     for (const [id, cambio] of Object.entries(reorgCambios)) {
         const updateData = {}
         if (cambio.service_id     !== undefined) updateData.service_id     = cambio.service_id
-        if (cambio.provider_id    !== undefined) updateData.provider_id    = cambio.provider_id
+        if (cambio.venue_id       !== undefined) updateData.venue_id       = cambio.venue_id
         if (cambio.price_per_slot !== undefined) updateData.price_per_slot = cambio.price_per_slot
 
         const { error } = await supabase.from('reservations')
@@ -1673,8 +1682,10 @@ window.confirmarReorganizacion = async function() {
     const proveedoresAfectados = new Set()
     Object.entries(reorgCambios).forEach(([id, cambio]) => {
         const original = todasReservas.find(r => r.id === id)
-        proveedoresAfectados.add(cambio.provider_id)
-        if (original) proveedoresAfectados.add(original.provider_id)
+        const provIdNuevo = cambio.venue_id ? _getProviderIdFromVenue(cambio.venue_id) : null
+        const provIdOrig  = original?.venue_id ? _getProviderIdFromVenue(original.venue_id) : null
+        if (provIdNuevo) proveedoresAfectados.add(provIdNuevo)
+        if (provIdOrig)  proveedoresAfectados.add(provIdOrig)
     })
     for (const proveedorId of proveedoresAfectados) {
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, disponibilidad)
@@ -1683,16 +1694,16 @@ window.confirmarReorganizacion = async function() {
     const sfcomPares = new Set()
     Object.entries(reorgCambios).forEach(([id, cambio]) => {
         const orig = originales[id]
-        const newProviderId = cambio.provider_id ?? orig.provider_id
-        const newServiceId  = cambio.service_id  ?? orig.service_id
-        if (newProviderId !== orig.provider_id || newServiceId !== orig.service_id) {
-            sfcomPares.add(`${orig.provider_id}|${orig.service_id}`)
-            sfcomPares.add(`${newProviderId}|${newServiceId}`)
+        const newVenueId   = cambio.venue_id   ?? orig.venue_id
+        const newServiceId = cambio.service_id ?? orig.service_id
+        if (newVenueId !== orig.venue_id || newServiceId !== orig.service_id) {
+            sfcomPares.add(`${orig.venue_id}|${orig.service_id}`)
+            sfcomPares.add(`${newVenueId}|${newServiceId}`)
         }
     })
     for (const par of sfcomPares) {
-        const [provId, svcId] = par.split('|')
-        if (sfcomResultReorg === 'sync') await syncStockToSfcom(supabase, provId, svcId)
+        const [venId, svcId] = par.split('|')
+        if (sfcomResultReorg === 'sync') await syncStockToSfcom(supabase, venId, svcId)
     }
 
     cerrarPanelReorganizar()
@@ -1703,12 +1714,12 @@ window.confirmarReorganizacion = async function() {
     alert('✅ Cambios guardados. Ahora puedes añadir la reserva.')
 }
 
-// Infiere service_id y provider_id desde el mapeo de availability.
+// Infiere service_id y venue_id desde el mapeo de availability.
 // El nombre (sfcom_service_name) es la búsqueda primaria.
 // Fallback de prefix-scan para solicitudes antiguas donde level contiene
 // el nombre completo de variación ("Balcón Estafeta - Viernes 10 de Julio...").
 function _inferirDesdeSfcom(level, day) {
-    if (!level) return { serviceId: null, providerId: null }
+    if (!level) return { serviceId: null, venueId: null }
 
     const norm = s => s.toLowerCase()
     let filas = disponibilidad.filter(d =>
@@ -1726,16 +1737,16 @@ function _inferirDesdeSfcom(level, day) {
         }
     }
 
-    if (!filas.length) return { serviceId: null, providerId: null }
+    if (!filas.length) return { serviceId: null, venueId: null }
 
     // Varias filas con el mismo nombre (e.g. "Balcón Estafeta" con varios días):
     // intentar filtrar por día
     if (filas.length > 1 && day) {
         const filaDia = filas.find(d => d.service_id === 'ENCIERRO_' + day)
-        if (filaDia) return { serviceId: filaDia.service_id, providerId: filaDia.provider_id }
+        if (filaDia) return { serviceId: filaDia.service_id, venueId: filaDia.venue_id }
     }
 
-    return { serviceId: filas[0].service_id, providerId: filas[0].provider_id }
+    return { serviceId: filas[0].service_id, venueId: filas[0].venue_id }
 }
 
 // Infiere el service_id probable a partir del slug (level) y el día
@@ -1905,7 +1916,7 @@ async function cargarDesdeSolicitud(data) {
 
     if (esSfcom) {
         // Nombre como búsqueda primaria; service_id almacenado solo como verificación
-        const { serviceId, providerId } = _inferirDesdeSfcom(data.level, data.day)
+        const { serviceId, venueId: venueInferido } = _inferirDesdeSfcom(data.level, data.day)
 
         // Cross-check: si hay service_id guardado y no coincide con el inferido por nombre → modal de aviso
         if (serviceId && data.serviceId && serviceId !== data.serviceId) {
@@ -1919,9 +1930,9 @@ async function cargarDesdeSolicitud(data) {
         if (serviceId) {
             selectServicio.value = serviceId
             selectServicio.dispatchEvent(new Event('change'))
-            if (providerId) {
+            if (venueInferido) {
                 setTimeout(() => {
-                    selectProveedor.value = providerId
+                    selectProveedor.value = venueInferido
                     selectProveedor.dispatchEvent(new Event('change'))
                 }, 100)
             }
@@ -1946,11 +1957,11 @@ async function cargarDesdeSolicitud(data) {
             if (existe) {
                 selectServicio.value = serviceIdInferido
                 selectServicio.dispatchEvent(new Event('change'))
-                // Si solo hay un proveedor para este servicio, auto-seleccionarlo
-                const proveedoresServicio = disponibilidad.filter(d => d.service_id === serviceIdInferido)
-                if (proveedoresServicio.length === 1) {
+                // Si solo hay un venue para este servicio, auto-seleccionarlo
+                const venuesServicio = disponibilidad.filter(d => d.service_id === serviceIdInferido)
+                if (venuesServicio.length === 1) {
                     setTimeout(() => {
-                        selectProveedor.value = proveedoresServicio[0].provider_id
+                        selectProveedor.value = venuesServicio[0].venue_id
                         selectProveedor.dispatchEvent(new Event('change'))
                     }, 100)
                 }
@@ -2245,7 +2256,7 @@ document.getElementById('btnExportReservasCliente')?.addEventListener('click', (
     exportTable(reservasCliente, [
         { key: 'id',             label: 'ID reserva' },
         { key: 'service_id',     label: 'Servicio' },
-        { key: 'provider_id',    label: 'Proveedor' },
+        { key: 'venue_id',       label: 'Venue' },
         { key: 'slots',          label: 'Plazas' },
         { key: 'price_per_slot', label: '€/plaza',    fmt: v => fmt(v) },
         { key: 'total_amount',   label: 'Total',      fmt: v => fmt(v) },
