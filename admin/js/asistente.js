@@ -87,21 +87,15 @@ function disponibilidadParaAsistente(serviceIds, primaryDay, personas) {
         const diaNum = parseInt(sid.match(RE_DIA)?.[1]) || null
 
         for (const row of rows) {
-            // Venue too small for the group regardless of reservation state
-            if (personas && row.total_slots < personas) continue
-
             const activas   = (todasReservas || []).filter(r =>
                 r.venue_id === row.venue_id && r.service_id === sid && r.status !== 'Cancelada'
             )
             const confirmed = activas.filter(r => r.status === 'Confirmada').reduce((s, r) => s + (r.slots || 0), 0)
             const pending   = activas.filter(r => r.status === 'Pendiente').reduce((s, r) => s + (r.slots || 0), 0)
             const libres    = Math.max(0, row.total_slots - confirmed - pending)
+            const available = libres + pending
 
-            // Fully sold out with confirmed reservations
-            if (confirmed >= row.total_slots) continue
-
-            // Neither free slots nor pending slots reach the group size
-            if (personas && libres < personas && pending < personas) continue
+            if (personas ? available < personas : available === 0) continue
 
             const gk = `${row.venue_id}::${row.event_type}`
             if (!groups[gk]) {
@@ -154,15 +148,17 @@ function disponibilidadParaAsistente(serviceIds, primaryDay, personas) {
         result.push(entry)
     }
 
-    // Capacity first, then within capacity: venues with truly free slots before pending-only
+    const sumField = (entry, field) => entry.dias
+        ? entry.dias.reduce((s, d) => s + (d[field] || 0), 0)
+        : (entry[field] || 0)
+
+    // Sort: capacity first, then libres DESC, then plazas_pendientes DESC
     return result.sort((a, b) => {
         if (a.billing_model === 'capacity' && b.billing_model !== 'capacity') return -1
         if (a.billing_model !== 'capacity' && b.billing_model === 'capacity') return 1
-        const aFree = (a.plazas || 0) > 0 || a.dias?.some(d => d.plazas > 0)
-        const bFree = (b.plazas || 0) > 0 || b.dias?.some(d => d.plazas > 0)
-        if (aFree && !bFree) return -1
-        if (!aFree && bFree) return 1
-        return 0
+        const diff = sumField(b, 'plazas') - sumField(a, 'plazas')
+        if (diff !== 0) return diff
+        return sumField(b, 'plazas_pendientes') - sumField(a, 'plazas_pendientes')
     })
 }
 

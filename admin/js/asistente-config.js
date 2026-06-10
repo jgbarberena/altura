@@ -144,7 +144,7 @@ Significado de los campos de disponibilidad por venue/día:
 - plazas_pendientes: [campo opcional] plazas ocupadas por reservas Pendientes (no confirmadas aún). Pueden convertirse en Confirmadas (quedan ocupadas definitivamente) o cancelarse (pasan a libres). Solo aparece si hay al menos una reserva Pendiente. Cuando existe, el venue tiene capacidad real pero parte está en juego — menciónalo a Paula cuando influya en la propuesta (ej: "hay 8 plazas en reservas pendientes que podrían liberarse").
 - precio: precio de referencia por plaza, derivado del cuartil superior de ventas históricas para ese venue. Ausente si no hay historial — en ese caso deja que Paula indique el precio.
 
-Las entradas vienen ordenadas: capacity primero, luego consumption. Dentro de capacity: venues con plazas libres reales antes de los que solo tienen plazas_pendientes.
+Las entradas vienen ordenadas: (1) capacity antes que consumption, (2) más plazas libres primero, (3) más plazas_pendientes segundo. Los venues con plazas libres suficientes para el grupo aparecen primero; después, los que solo llegan al mínimo sumando las pendientes — estos necesitan que esas reservas se cancelen para poder acomodar al grupo.
 
 Nunca menciones venue_id, provider IDs ni identificadores internos al cliente.
 

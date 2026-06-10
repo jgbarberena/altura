@@ -448,13 +448,9 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
 
 **`disponibilidadParaAsistente(serviceIds, primaryDay, personas)`:** agrupa por `venue_id + event_type` (un objeto por venue, no por venue+día). `personas` viene de `solicitud.slots` y controla los filtros de capacidad.
 
-**Filtros de inclusión por venue+día:**
-- Excluir si `total_slots < personas` (venue demasiado pequeño para el grupo)
-- Excluir si `confirmadas >= total_slots` (completamente agotado con reservas confirmadas)
-- Incluir si `libres >= personas` (hay plazas libres suficientes)
-- Incluir si `libres < personas` pero `pendientes >= personas` (plazas en reservas Pendientes que podrían liberarse)
-- Excluir en el resto (ni libres ni pendientes alcanzan el mínimo del grupo)
-- Si `personas = null`, se omiten los filtros por tamaño de grupo
+**Filtro de inclusión:** `available = libres + pending`. Incluir si `available >= personas` (o `> 0` si personas es null). Los casos "sold out confirmado" y "venue demasiado pequeño" quedan excluidos implícitamente porque `libres + pending ≤ total_slots - confirmed`.
+
+**Orden:** capacity primero, luego `libres` DESC, luego `pending` DESC.
 
 `precio` calculado por cuartil superior (top 25%) de reservas históricas Confirmadas/Pendientes para ese venue+event_type. Se omite si no hay historial.
 
