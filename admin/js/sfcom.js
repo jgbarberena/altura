@@ -557,7 +557,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         { data: solicitudes,  error: eSol }
     ] = await Promise.all([
         supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, sfcom_order_ref'),
-        supabase.from('availability_with_sfcom').select('*'),
+        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name'),
         supabase.from('clients').select('id, name'),
         supabase.from('venues').select('id'),
         supabase.from('services').select('id'),

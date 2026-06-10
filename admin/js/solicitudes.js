@@ -8,7 +8,8 @@ document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
 
 // ===== DATOS GLOBALES =====
-const { data: disponibilidad } = await supabase.from('availability_with_sfcom').select('*')
+const { data: disponibilidad } = await supabase.from('availability_panel')
+    .select('venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type')
 let todasReservas = (await supabase.from('reservations').select('*')).data
 
 function _esSfcom(source) {
@@ -579,7 +580,7 @@ function mostrarDetalle(sol) {
 
     // ── Recordatorio ────────────────────────────────────────────────────────
     document.getElementById('btnEnviarRecordatorio')?.addEventListener('click', () => {
-        abrirAsistenteRespuesta(sol, { modo: 'recordatorio' })
+        abrirAsistenteRespuesta(sol, 'recordatorio')
     })
 
     // ── Abrir asistente ──────────────────────────────────────────────────────

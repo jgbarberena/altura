@@ -17,15 +17,26 @@ initSidebar()
 // ===== DATOS GLOBALES =====
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
 const { data: servicios }      = await supabase.from('services').select('*').order('day')
-const { data: disponibilidad } = await supabase.from('availability_with_sfcom').select('*')
+const { data: disponibilidad } = await supabase.from('availability_panel')
+    .select('venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type')
 const { data: venues }         = await supabase.from('venues').select('*').order('id')
+const { data: _sfcomRaw }      = await supabase.from('sfcom_listings')
+    .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id)')
+const sfcomListings = (_sfcomRaw ?? []).map(r => ({
+    id:                 r.availability_id,
+    sfcom_service_name: r.sfcom_service_name,
+    sfcom_product_id:   r.sfcom_product_id,
+    sfcom_variation_id: r.sfcom_variation_id,
+    venue_id:           r.availability?.venue_id,
+    service_id:         r.availability?.service_id
+})).filter(r => r.venue_id)
 let todasReservas              = (await supabase.from('reservations').select('*')).data
 
 initPropuesta(supabase, servicios, venues, () => disponibilidad)
 initAsistente(supabase, { getDisponibilidad: () => disponibilidad, getTodasReservas: () => todasReservas, onEmailSaved: cargarSolicitudes, esSfcom: _esSfcom })
 
 function _getProviderIdFromVenue(venueId) {
-    return disponibilidad.find(d => d.venue_id === venueId)?.venue_provider_id ?? null
+    return venues?.find(v => v.id === venueId)?.provider_id ?? null
 }
 
 let clienteActual      = null
@@ -1722,16 +1733,16 @@ function _inferirDesdeSfcom(level, day) {
     if (!level) return { serviceId: null, venueId: null }
 
     const norm = s => s.toLowerCase()
-    let filas = disponibilidad.filter(d =>
+    let filas = sfcomListings.filter(d =>
         d.sfcom_service_name && norm(d.sfcom_service_name) === norm(level)
     )
 
     // Fallback para registros antiguos con nombre completo de variación
     if (!filas.length) {
-        const nombres        = [...new Set(disponibilidad.filter(d => d.sfcom_service_name).map(d => d.sfcom_service_name))]
+        const nombres        = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
         const nombreExtraido = extraerNombreProducto(level, nombres)
         if (nombreExtraido) {
-            filas = disponibilidad.filter(d =>
+            filas = sfcomListings.filter(d =>
                 d.sfcom_service_name && norm(d.sfcom_service_name) === norm(nombreExtraido)
             )
         }
@@ -2060,9 +2071,7 @@ async function registrarPedidosSfcom(pedidos) {
     const nuevos = pedidos.filter(p => !sourcesRegistrados.has(p.sfcom_order_ref))
     if (!nuevos.length) return
 
-    const nombresConocidos = [...new Set(
-        disponibilidad.filter(d => d.sfcom_service_name).map(d => d.sfcom_service_name)
-    )]
+    const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
 
     for (const pedido of nuevos) {
         if ((pedido.productos?.length ?? 0) > 1) {
@@ -2081,7 +2090,7 @@ async function registrarPedidosSfcom(pedidos) {
         //    (p.ej. "Balcon Estafeta mitad" para múltiples días), desambiguar por día.
         let filaByName = null
         if (nombreExtraido) {
-            const candidatos = disponibilidad.filter(d => d.sfcom_service_name === nombreExtraido)
+            const candidatos = sfcomListings.filter(d => d.sfcom_service_name === nombreExtraido)
             if (candidatos.length === 1) {
                 filaByName = candidatos[0]
             } else if (candidatos.length > 1) {
@@ -2098,7 +2107,7 @@ async function registrarPedidosSfcom(pedidos) {
         }
 
         // 3. Buscar por IDs (verification)
-        const filaById = disponibilidad.find(d =>
+        const filaById = sfcomListings.find(d =>
             d.sfcom_product_id == li.product_id &&
             (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
         )
@@ -2123,7 +2132,7 @@ async function registrarPedidosSfcom(pedidos) {
                     .update({ sfcom_product_id: li.product_id, sfcom_variation_id: li.variation_id || null })
                     .eq('availability_id', filaByName.id)
                 // Actualizar en memoria local para coherencia del resto de la sesión
-                const local = disponibilidad.find(d => d.id === filaByName.id)
+                const local = sfcomListings.find(d => d.id === filaByName.id)
                 if (local) {
                     local.sfcom_product_id   = li.product_id
                     local.sfcom_variation_id = li.variation_id || null

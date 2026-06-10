@@ -72,12 +72,11 @@ function disponibilidadParaAsistente(serviceIds) {
                     venue_address:       d.venue_address       || null,
                     description:         d.description         || null,
                     access_instructions: d.access_instructions || null,
-                    photo_url:           d.photos?.[0]         || null,
                     billing_model:       d.billing_model,
                     plazas_libres:       Math.max(0, d.total_slots - ocupadas),
                     coste_proveedor:     d.price_per_slot,
-                    catalogo_url:        d.venue_slug
-                        ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${d.venue_slug}`
+                    catalogo_url:        d.venue_slug && d.event_type
+                        ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${d.venue_slug}&et=${d.event_type}`
                         : null
                 }
             })
@@ -115,7 +114,7 @@ function preciosReferencia(serviceIds) {
 
 // ===== ASISTENTE DE RESPUESTAS =====
 
-export async function abrirAsistenteRespuesta(solicitud, opts = {}) {
+export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     const mensajes = []
     let enviando   = false
 
@@ -293,23 +292,22 @@ export async function abrirAsistenteRespuesta(solicitud, opts = {}) {
 
     const contextoObj = {
         solicitud: {
-            tipo:       tipoSolicitud,
-            nombre:     solicitud.client_name  || null,
-            email:      solicitud.client_email || null,
-            telefono:   solicitud.client_phone || null,
-            evento:     solicitud.level || solicitud.service_id || null,
-            dia:        solicitud.day   || null,
-            personas:   solicitud.slots || null,
-            idioma:     solicitud.language || 'desconocido',
-            comentario: comentarioLimpio
+            tipo:                tipoSolicitud,
+            nombre:              solicitud.client_name  || null,
+            email:               solicitud.client_email || null,
+            telefono:            solicitud.client_phone || null,
+            evento:              solicitud.level || solicitud.service_id || null,
+            dia:                 solicitud.day   || null,
+            personas:            solicitud.slots || null,
+            idioma:              solicitud.language || 'desconocido',
+            comentario:          comentarioLimpio,
+            conversation_log:    solicitud.conversation_notes  || null,
+            assigned_venue_id:   solicitud.assigned_venue_id   || null,
+            conversation_status: solicitud.conversation_status || 'nueva',
+            modo:                modo || null
         },
         disponibilidad: disponibilidadParaAsistente(serviceIds),
         precios:        preciosReferencia(serviceIds)
-    }
-
-    if (opts.modo === 'recordatorio') {
-        contextoObj.solicitud.modo = 'recordatorio'
-        contextoObj.solicitud.log_conversacion = solicitud.conversation_notes || ''
     }
 
     panel.querySelector('#btn-guardar-log').addEventListener('click', async () => {

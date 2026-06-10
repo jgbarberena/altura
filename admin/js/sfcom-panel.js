@@ -34,7 +34,7 @@ async function cargarDatos() {
         { data: clientes,       error: errC }
     ] = await Promise.all([
         supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,sfcom_order_ref').order('id', { ascending: false }),
-        supabase.from('availability_with_sfcom').select('*'),
+        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status'),
         supabase.from('reservation_requests').select('id,client_name,client_email,source,service_id,level,day,slots,price_per_slot,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
         supabase.from('services').select('id,event_type,day,description'),
         supabase.from('venues').select('id,display_name,provider_id'),
