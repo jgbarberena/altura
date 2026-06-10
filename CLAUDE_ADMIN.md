@@ -430,22 +430,51 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
 ```js
 {
     solicitud: {
-        tipo, nombre, email, telefono, evento, dia, personas,
+        tipo, nombre, evento, dia, personas,
         idioma,              // campo language o 'desconocido'
         comentario,          // comments sin prefijos Días:/Otros servicios:
-        conversation_log,    // conversation_notes
+        conversation_log,    // conversation_notes, truncado a 2000 chars si es mayor
         assigned_venue_id,
         conversation_status,
         modo
     },
-    disponibilidad: [...],  // array de disponibilidadParaAsistente
-    precios: {...}          // objeto de preciosReferencia
+    disponibilidad: [...]   // un objeto por venue (ver estructura abajo)
 }
 ```
 
-**`disponibilidadParaAsistente(serviceIds)`:** campos por entrada: `service_id, dia, venue_id, venue_display_name, venue_address, description, access_instructions, billing_model, plazas_libres, coste_proveedor, catalogo_url`. La `catalogo_url` se construye como `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${venue_slug}&et=${event_type}` solo si hay TANTO `venue_slug` como `event_type`; null si falta alguno. Ordenadas: capacity con plazas libres primero, luego por día.
+`email` y `telefono` no se incluyen en el contexto de Claude: Paula ya los tiene visibles en el panel.
 
-**`preciosReferencia(serviceIds)`:** devuelve `{ [service_id]: "min-max" | número }` con el rango de precios de reservas existentes activas. Si todos los precios son iguales, devuelve un número.
+`conversation_log` se trunca a los últimos 2.000 caracteres con prefijo `[... conversación anterior truncada ...]` si supera esa longitud. Lo relevante para la respuesta actual es lo más reciente.
+
+**`disponibilidadParaAsistente(serviceIds, primaryDay)`:** agrupa por `venue_id + event_type` (un objeto por venue, no por venue+día). Venues con 0 plazas en todos los días relevantes se excluyen. Precio calculado por cuartil superior (top 25%) de reservas históricas Confirmadas/Pendientes para ese venue+event_type — filtra precios negociados corporativos. Si no hay reservas históricas, el campo `precio` se omite.
+
+Estructura para encierros (multi-día):
+```js
+{
+    venue_display_name: "Balcón Estafeta nº45",
+    billing_model: "capacity",
+    catalogo_url: "https://...",
+    dias: [                           // día solicitado primero, resto ascendente
+        { dia: 7, plazas: 12, precio: 150 },
+        { dia: 9, plazas: 8,  precio: 150 }
+    ]
+}
+```
+
+Estructura para eventos de día único (chupinazo, procesion, gigantes, pobre_de_mi):
+```js
+{
+    venue_display_name: "Balcón Ayuntamiento",
+    billing_model: "capacity",
+    plazas: 18,
+    precio: 500,
+    catalogo_url: "https://..."
+}
+```
+
+`catalogo_url` se construye solo si hay `venue_slug` Y `event_type`; null si falta alguno. Ordenadas: capacity primero, luego consumption. El `precio` en cada entrada es el cuartil superior de ventas históricas (no el `coste_proveedor`). Si `disponibilidad` es vacío o el evento no está identificado, Claude lo indica y pregunta cómo orientar la respuesta.
+
+**Nota:** el `SYSTEM_PROMPT_ASISTENTE` menciona campos que ya no se envían en el contexto (`description`, `access_instructions`, `venue_address`, `coste_proveedor`, campo `precios` separado). Claude los ignorará al no recibirlos. No actualizar el system prompt sin revisar el impacto completo.
 
 **Marcador `---MENSAJE_CLIENTE---`:** cuando Claude incluye este marcador, el texto posterior aparece en un textarea editable con botones Copiar / Email / WhatsApp. El botón "✅ Usar respuesta" aparece solo si `onRespuestaUsada` fue pasado en `initAsistente`.
 
@@ -462,7 +491,7 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
 ### asistente-config.js
 Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de asistente.js para poder actualizar los prompts subiendo solo este archivo por FTP, sin tocar la lógica.
 
-Si se actualiza el prompt: también actualizar los nombres de campo si cambia la estructura del contexto. El prompt de caching tiene TTL de 5 minutos en la Edge Function — solo ahorra tokens dentro de la misma sesión del navegador.
+Si se actualiza el prompt: revisar que los nombres de campo son coherentes con la estructura del contexto documentada en la sección `disponibilidadParaAsistente` de este documento. El prompt de caching tiene TTL de 5 minutos en la Edge Function — solo ahorra tokens dentro de la misma sesión del navegador.
 
 ---
 

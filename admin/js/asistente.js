@@ -48,68 +48,103 @@ function expandirServiceIds(serviceHint, day, meta) {
     return dias.map(d => `ENCIERRO_${d}`)
 }
 
-function disponibilidadParaAsistente(serviceIds) {
+function disponibilidadParaAsistente(serviceIds, primaryDay) {
     const disponibilidad = _getDisponibilidad()
     const todasReservas  = _getTodasReservas()
     if (!serviceIds?.length || !disponibilidad) return []
-    const RE_DIA = /_(\d+)$/
-    return serviceIds
-        .flatMap(sid => {
-            const rows = disponibilidad.filter(d => d.service_id === sid)
-            if (!rows.length) return []
-            const diaMatch = sid.match(RE_DIA)
-            const dia      = diaMatch ? parseInt(diaMatch[1]) : null
-            return rows.map(d => {
-                const activas  = (todasReservas || []).filter(r =>
-                    r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada'
-                )
-                const ocupadas = activas.reduce((s, r) => s + (r.slots || 0), 0)
-                return {
-                    service_id:          sid,
-                    dia,
-                    venue_id:            d.venue_id,
-                    venue_display_name:  d.venue_display_name  || null,
-                    venue_address:       d.venue_address       || null,
-                    description:         d.description         || null,
-                    access_instructions: d.access_instructions || null,
-                    billing_model:       d.billing_model,
-                    plazas_libres:       Math.max(0, d.total_slots - ocupadas),
-                    coste_proveedor:     d.price_per_slot,
-                    catalogo_url:        d.venue_slug && d.event_type
-                        ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${d.venue_slug}&et=${d.event_type}`
-                        : null
-                }
-            })
-        })
-        .sort((a, b) => {
-            const aCapLibre = a.billing_model === 'capacity' && a.plazas_libres > 0
-            const bCapLibre = b.billing_model === 'capacity' && b.plazas_libres > 0
-            if (aCapLibre && !bCapLibre) return -1
-            if (!aCapLibre && bCapLibre)  return 1
-            if ((a.dia || 0) !== (b.dia || 0)) return (a.dia || 0) - (b.dia || 0)
-            if (a.billing_model === 'capacity' && b.billing_model !== 'capacity') return -1
-            if (a.billing_model !== 'capacity' && b.billing_model === 'capacity')  return 1
-            return b.plazas_libres - a.plazas_libres
-        })
-}
 
-function preciosReferencia(serviceIds) {
-    const todasReservas = _getTodasReservas()
-    if (!serviceIds?.length || !todasReservas) return {}
-    const porServicio = {}
-    todasReservas
-        .filter(r => serviceIds.includes(r.service_id) && ['Confirmada', 'Pendiente'].includes(r.status))
-        .forEach(r => {
-            if (!porServicio[r.service_id]) porServicio[r.service_id] = []
-            porServicio[r.service_id].push(r.price_per_slot)
-        })
-    const result = {}
-    for (const [sid, prices] of Object.entries(porServicio)) {
-        const min = Math.min(...prices)
-        const max = Math.max(...prices)
-        result[sid] = min === max ? min : `${min}-${max}`
+    // Map service_id → event_type using availability data (reservations don't include event_type)
+    const sidToEventType = {}
+    for (const row of disponibilidad) {
+        if (row.service_id && row.event_type) sidToEventType[row.service_id] = row.event_type
     }
-    return result
+
+    // Top-quartile sale price per venue+event_type — filters out negotiated corporate prices
+    const salesByKey = {}
+    for (const r of (todasReservas || [])) {
+        if (!['Confirmada', 'Pendiente'].includes(r.status) || !r.price_per_slot) continue
+        const et = sidToEventType[r.service_id]
+        if (!et) continue
+        const k = `${r.venue_id}::${et}`
+        if (!salesByKey[k]) salesByKey[k] = []
+        salesByKey[k].push(r.price_per_slot)
+    }
+
+    function topQuartile(prices) {
+        if (!prices?.length) return null
+        const sorted = [...prices].sort((a, b) => b - a)
+        const top    = sorted.slice(0, Math.max(1, Math.ceil(sorted.length * 0.25)))
+        const mn = Math.min(...top), mx = Math.max(...top)
+        return mn === mx ? mn : `${mn}-${mx}`
+    }
+
+    // Group by venue+event_type; only days with plazas > 0 are included
+    const RE_DIA = /_(\d+)$/
+    const groups  = {}
+
+    for (const sid of serviceIds) {
+        const rows   = disponibilidad.filter(d => d.service_id === sid)
+        const diaNum = parseInt(sid.match(RE_DIA)?.[1]) || null
+
+        for (const row of rows) {
+            const activas  = (todasReservas || []).filter(r =>
+                r.venue_id === row.venue_id && r.service_id === sid && r.status !== 'Cancelada'
+            )
+            const ocupadas = activas.reduce((s, r) => s + (r.slots || 0), 0)
+            const plazas   = Math.max(0, row.total_slots - ocupadas)
+            if (plazas === 0) continue
+
+            const gk = `${row.venue_id}::${row.event_type}`
+            if (!groups[gk]) {
+                groups[gk] = {
+                    venue_display_name: row.venue_display_name || null,
+                    billing_model:      row.billing_model,
+                    catalogo_url:       row.venue_slug && row.event_type
+                        ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${row.venue_slug}&et=${row.event_type}`
+                        : null,
+                    _event_type: row.event_type,
+                    _precio:     topQuartile(salesByKey[gk] || []),
+                    _dias:       []
+                }
+            }
+            groups[gk]._dias.push({ dia: diaNum, plazas })
+        }
+    }
+
+    const result = []
+    for (const g of Object.values(groups)) {
+        // Primary day first; remaining days ascending
+        g._dias.sort((a, b) => {
+            if (primaryDay && a.dia === primaryDay && b.dia !== primaryDay) return -1
+            if (primaryDay && b.dia === primaryDay && a.dia !== primaryDay) return 1
+            return (a.dia || 0) - (b.dia || 0)
+        })
+
+        const entry = {
+            venue_display_name: g.venue_display_name,
+            billing_model:      g.billing_model,
+            catalogo_url:       g.catalogo_url
+        }
+
+        if (g._event_type === 'encierro') {
+            entry.dias = g._dias.map(d => {
+                const de = { dia: d.dia, plazas: d.plazas }
+                if (g._precio !== null) de.precio = g._precio
+                return de
+            })
+        } else {
+            entry.plazas = g._dias[0].plazas
+            if (g._precio !== null) entry.precio = g._precio
+        }
+
+        result.push(entry)
+    }
+
+    return result.sort((a, b) => {
+        if (a.billing_model === 'capacity' && b.billing_model !== 'capacity') return -1
+        if (a.billing_model !== 'capacity' && b.billing_model === 'capacity') return 1
+        return 0
+    })
 }
 
 // ===== ASISTENTE DE RESPUESTAS =====
@@ -290,24 +325,26 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     const comentarioLimpio = (solicitud.comments || '')
         .replace(/^(Días|Otros servicios):[^\n]*\n?/gm, '').trim() || null
 
+    const rawLog          = solicitud.conversation_notes || null
+    const conversationLog = rawLog && rawLog.length > 2000
+        ? '[... conversación anterior truncada ...]\n' + rawLog.slice(-2000)
+        : rawLog
+
     const contextoObj = {
         solicitud: {
             tipo:                tipoSolicitud,
             nombre:              solicitud.client_name  || null,
-            email:               solicitud.client_email || null,
-            telefono:            solicitud.client_phone || null,
             evento:              solicitud.level || solicitud.service_id || null,
             dia:                 solicitud.day   || null,
             personas:            solicitud.slots || null,
             idioma:              solicitud.language || 'desconocido',
             comentario:          comentarioLimpio,
-            conversation_log:    solicitud.conversation_notes  || null,
+            conversation_log:    conversationLog,
             assigned_venue_id:   solicitud.assigned_venue_id   || null,
             conversation_status: solicitud.conversation_status || 'nueva',
             modo:                modo || null
         },
-        disponibilidad: disponibilidadParaAsistente(serviceIds),
-        precios:        preciosReferencia(serviceIds)
+        disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null)
     }
 
     panel.querySelector('#btn-guardar-log').addEventListener('click', async () => {
@@ -330,6 +367,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         }
     })
 
+    console.log('[asistente] contexto tokens ~', Math.round(JSON.stringify(contextoObj).length / 4))
     await llamarClaude(JSON.stringify(contextoObj))
 }
 
