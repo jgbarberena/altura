@@ -446,7 +446,17 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
 
 `conversation_log` se trunca a los últimos 2.000 caracteres con prefijo `[... conversación anterior truncada ...]` si supera esa longitud. Lo relevante para la respuesta actual es lo más reciente.
 
-**`disponibilidadParaAsistente(serviceIds, primaryDay)`:** agrupa por `venue_id + event_type` (un objeto por venue, no por venue+día). Venues con 0 plazas en todos los días relevantes se excluyen. Precio calculado por cuartil superior (top 25%) de reservas históricas Confirmadas/Pendientes para ese venue+event_type — filtra precios negociados corporativos. Si no hay reservas históricas, el campo `precio` se omite.
+**`disponibilidadParaAsistente(serviceIds, primaryDay, personas)`:** agrupa por `venue_id + event_type` (un objeto por venue, no por venue+día). `personas` viene de `solicitud.slots` y controla los filtros de capacidad.
+
+**Filtros de inclusión por venue+día:**
+- Excluir si `total_slots < personas` (venue demasiado pequeño para el grupo)
+- Excluir si `confirmadas >= total_slots` (completamente agotado con reservas confirmadas)
+- Incluir si `libres >= personas` (hay plazas libres suficientes)
+- Incluir si `libres < personas` pero `pendientes >= personas` (plazas en reservas Pendientes que podrían liberarse)
+- Excluir en el resto (ni libres ni pendientes alcanzan el mínimo del grupo)
+- Si `personas = null`, se omiten los filtros por tamaño de grupo
+
+`precio` calculado por cuartil superior (top 25%) de reservas históricas Confirmadas/Pendientes para ese venue+event_type. Se omite si no hay historial.
 
 Estructura para encierros (multi-día):
 ```js
@@ -454,9 +464,9 @@ Estructura para encierros (multi-día):
     venue_display_name: "Balcón Estafeta nº45",
     billing_model: "capacity",
     catalogo_url: "https://...",
-    dias: [                           // día solicitado primero, resto ascendente
-        { dia: 7, plazas: 12, precio: 150 },
-        { dia: 9, plazas: 8,  precio: 150 }
+    dias: [                                          // día solicitado primero, resto ascendente
+        { dia: 7, plazas: 12, precio: 150 },         // plazas: libres sin ninguna reserva activa
+        { dia: 9, plazas: 0, plazas_pendientes: 8, precio: 150 }  // 0 libres, 8 en pendientes
     ]
 }
 ```
@@ -466,15 +476,14 @@ Estructura para eventos de día único (chupinazo, procesion, gigantes, pobre_de
 {
     venue_display_name: "Balcón Ayuntamiento",
     billing_model: "capacity",
-    plazas: 18,
+    plazas: 18,                    // libres sin ninguna reserva activa
+    plazas_pendientes: 4,          // opcional, solo si existen reservas Pendientes activas
     precio: 500,
     catalogo_url: "https://..."
 }
 ```
 
-`catalogo_url` se construye solo si hay `venue_slug` Y `event_type`; null si falta alguno. Ordenadas: capacity primero, luego consumption. El `precio` en cada entrada es el cuartil superior de ventas históricas (no el `coste_proveedor`). Si `disponibilidad` es vacío o el evento no está identificado, Claude lo indica y pregunta cómo orientar la respuesta.
-
-**Nota:** el `SYSTEM_PROMPT_ASISTENTE` menciona campos que ya no se envían en el contexto (`description`, `access_instructions`, `venue_address`, `coste_proveedor`, campo `precios` separado). Claude los ignorará al no recibirlos. No actualizar el system prompt sin revisar el impacto completo.
+`catalogo_url` se construye solo si hay `venue_slug` Y `event_type`; null si falta alguno. Ordenadas: capacity primero (venues con plazas libres antes de los que solo tienen pendientes), luego consumption.
 
 **Marcador `---MENSAJE_CLIENTE---`:** cuando Claude incluye este marcador, el texto posterior aparece en un textarea editable con botones Copiar / Email / WhatsApp. El botón "✅ Usar respuesta" aparece solo si `onRespuestaUsada` fue pasado en `initAsistente`.
 

@@ -48,7 +48,7 @@ function expandirServiceIds(serviceHint, day, meta) {
     return dias.map(d => `ENCIERRO_${d}`)
 }
 
-function disponibilidadParaAsistente(serviceIds, primaryDay) {
+function disponibilidadParaAsistente(serviceIds, primaryDay, personas) {
     const disponibilidad = _getDisponibilidad()
     const todasReservas  = _getTodasReservas()
     if (!serviceIds?.length || !disponibilidad) return []
@@ -78,7 +78,7 @@ function disponibilidadParaAsistente(serviceIds, primaryDay) {
         return mn === mx ? mn : `${mn}-${mx}`
     }
 
-    // Group by venue+event_type; only days with plazas > 0 are included
+    // Group by venue+event_type, applying availability filters per day
     const RE_DIA = /_(\d+)$/
     const groups  = {}
 
@@ -87,12 +87,21 @@ function disponibilidadParaAsistente(serviceIds, primaryDay) {
         const diaNum = parseInt(sid.match(RE_DIA)?.[1]) || null
 
         for (const row of rows) {
-            const activas  = (todasReservas || []).filter(r =>
+            // Venue too small for the group regardless of reservation state
+            if (personas && row.total_slots < personas) continue
+
+            const activas   = (todasReservas || []).filter(r =>
                 r.venue_id === row.venue_id && r.service_id === sid && r.status !== 'Cancelada'
             )
-            const ocupadas = activas.reduce((s, r) => s + (r.slots || 0), 0)
-            const plazas   = Math.max(0, row.total_slots - ocupadas)
-            if (plazas === 0) continue
+            const confirmed = activas.filter(r => r.status === 'Confirmada').reduce((s, r) => s + (r.slots || 0), 0)
+            const pending   = activas.filter(r => r.status === 'Pendiente').reduce((s, r) => s + (r.slots || 0), 0)
+            const libres    = Math.max(0, row.total_slots - confirmed - pending)
+
+            // Fully sold out with confirmed reservations
+            if (confirmed >= row.total_slots) continue
+
+            // Neither free slots nor pending slots reach the group size
+            if (personas && libres < personas && pending < personas) continue
 
             const gk = `${row.venue_id}::${row.event_type}`
             if (!groups[gk]) {
@@ -107,7 +116,7 @@ function disponibilidadParaAsistente(serviceIds, primaryDay) {
                     _dias:       []
                 }
             }
-            groups[gk]._dias.push({ dia: diaNum, plazas })
+            groups[gk]._dias.push({ dia: diaNum, libres, pending })
         }
     }
 
@@ -126,23 +135,33 @@ function disponibilidadParaAsistente(serviceIds, primaryDay) {
             catalogo_url:       g.catalogo_url
         }
 
+        const buildDiaEntry = d => {
+            const de = { dia: d.dia, plazas: d.libres }
+            if (d.pending > 0) de.plazas_pendientes = d.pending
+            if (g._precio !== null) de.precio = g._precio
+            return de
+        }
+
         if (g._event_type === 'encierro') {
-            entry.dias = g._dias.map(d => {
-                const de = { dia: d.dia, plazas: d.plazas }
-                if (g._precio !== null) de.precio = g._precio
-                return de
-            })
+            entry.dias = g._dias.map(buildDiaEntry)
         } else {
-            entry.plazas = g._dias[0].plazas
+            const d = g._dias[0]
+            entry.plazas = d.libres
+            if (d.pending > 0) entry.plazas_pendientes = d.pending
             if (g._precio !== null) entry.precio = g._precio
         }
 
         result.push(entry)
     }
 
+    // Capacity first, then within capacity: venues with truly free slots before pending-only
     return result.sort((a, b) => {
         if (a.billing_model === 'capacity' && b.billing_model !== 'capacity') return -1
         if (a.billing_model !== 'capacity' && b.billing_model === 'capacity') return 1
+        const aFree = (a.plazas || 0) > 0 || a.dias?.some(d => d.plazas > 0)
+        const bFree = (b.plazas || 0) > 0 || b.dias?.some(d => d.plazas > 0)
+        if (aFree && !bFree) return -1
+        if (!aFree && bFree) return 1
         return 0
     })
 }
@@ -344,7 +363,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             conversation_status: solicitud.conversation_status || 'nueva',
             modo:                modo || null
         },
-        disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null)
+        disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null, solicitud.slots || null)
     }
 
     panel.querySelector('#btn-guardar-log').addEventListener('click', async () => {
