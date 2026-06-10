@@ -17,6 +17,10 @@ let todaDisponibilidad = (await supabase.from('availability_with_sfcom').select(
 let todosPayments      = (await supabase.from('payments').select('*')).data
 let todasReservas      = (await supabase.from('reservations').select('*')).data
 
+// availability_with_sfcom no incluye venue_provider_id — se deriva desde venues
+const _venueProv = new Map((todosVenues || []).map(v => [v.id, v.provider_id]))
+for (const d of (todaDisponibilidad || [])) d.venue_provider_id = _venueProv.get(d.venue_id) ?? null
+
 let proveedorActual      = null
 let servicioEditandoId   = null
 let serviciosEditandoIds = []
@@ -1235,7 +1239,7 @@ btnGuardarServicio.addEventListener('click', async () => {
             }
             await supabase.from('sfcom_listings').insert({ availability_id: nuevaDisp.id, ...sfcomInsert })
         }
-        todaDisponibilidad.push({ ...nuevaDisp, ...sfcomInsert })
+        todaDisponibilidad.push({ ...nuevaDisp, ...sfcomInsert, venue_provider_id: proveedorActual?.id ?? null })
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
@@ -2198,7 +2202,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 }
                 await supabase.from('sfcom_listings').insert({ availability_id: data[0].id, ...sfcomInsertMulti })
             }
-            todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti })
+            todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti, venue_provider_id: proveedorActual?.id ?? null })
             pairsSync.push({ venueId: _newVenueId, serviceId: row.serviceId })
         }
     }
@@ -2597,7 +2601,7 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
                 billing_model:  modelo
             }).select().single()
             if (error) console.error('Error al asignar', id, ':', error.message)
-            else       todaDisponibilidad.push({ ...nd })
+            else       todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null })
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
     }
