@@ -17,9 +17,17 @@ let todaDisponibilidad = (await supabase.from('availability_with_sfcom').select(
 let todosPayments      = (await supabase.from('payments').select('*')).data
 let todasReservas      = (await supabase.from('reservations').select('*')).data
 
-// availability_with_sfcom no incluye venue_provider_id — se deriva desde venues
+// availability_with_sfcom no incluye campos añadidos después de crear la vista —
+// se complementan aquí: venue_provider_id desde venues, photos/access_instructions desde availability
 const _venueProv = new Map((todosVenues || []).map(v => [v.id, v.provider_id]))
 for (const d of (todaDisponibilidad || [])) d.venue_provider_id = _venueProv.get(d.venue_id) ?? null
+
+const { data: _avExtra } = await supabase.from('availability').select('id, photos, access_instructions')
+const _avMap = new Map((_avExtra || []).map(r => [r.id, r]))
+for (const d of (todaDisponibilidad || [])) {
+    const extra = _avMap.get(d.id)
+    if (extra) { d.photos = extra.photos ?? null; d.access_instructions = extra.access_instructions ?? null }
+}
 
 let proveedorActual      = null
 let servicioEditandoId   = null
@@ -1239,7 +1247,7 @@ btnGuardarServicio.addEventListener('click', async () => {
             }
             await supabase.from('sfcom_listings').insert({ availability_id: nuevaDisp.id, ...sfcomInsert })
         }
-        todaDisponibilidad.push({ ...nuevaDisp, ...sfcomInsert, venue_provider_id: proveedorActual?.id ?? null })
+        todaDisponibilidad.push({ ...nuevaDisp, ...sfcomInsert, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null })
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
@@ -2202,7 +2210,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 }
                 await supabase.from('sfcom_listings').insert({ availability_id: data[0].id, ...sfcomInsertMulti })
             }
-            todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti, venue_provider_id: proveedorActual?.id ?? null })
+            todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null })
             pairsSync.push({ venueId: _newVenueId, serviceId: row.serviceId })
         }
     }
@@ -2601,7 +2609,7 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
                 billing_model:  modelo
             }).select().single()
             if (error) console.error('Error al asignar', id, ':', error.message)
-            else       todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null })
+            else       todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null })
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
     }
