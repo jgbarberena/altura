@@ -197,9 +197,9 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 **`service_availability`** — Plazas libres por servicio (solo lectura, acceso anon). Campos: `service_id`, `free_slots`. Calculada como `SUM(total_slots) - SUM(slots reservados Confirmados+Pendientes)`, agrupada por `service_id`. Usada por `disponibilidad.js` en el frontend público para los badges de disponibilidad.
 
-**`availability_panel`** — Solo authenticated. Campos: `venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type`. Usada por `formulario.js`, `solicitudes.js` y `asistente.js`. No incluye campos sfcom.
+**`availability_panel`** — Solo authenticated. Campos: `id, venue_id, service_id, total_slots, price_per_slot, billing_model, description, access_instructions, photos, venue_display_name, venue_address, venue_slug, event_type, day, start_time`. Usada por `formulario.js`, `solicitudes.js`, `asistente.js` y `proveedores.js`. No incluye campos sfcom.
 
-**`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id`. Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js`, `sfcom-panel.js` y `proveedores.js`. No usar para operaciones que no necesiten campos sfcom.
+**`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id`. Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js` y `sfcom-panel.js`. No usar para operaciones que no necesiten campos sfcom.
 
 **`catalogo_publico`** — Acceso anon. Campos: `slug, display_name, address, venue_type, service_id, description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`. Usada por `catalogo/catalogo.js`.
 
@@ -315,7 +315,7 @@ Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `update
 **Integración con asistente:** `onRespuestaUsada: _onRespuestaUsadaEnLog`. Cuando Paula pulsa "✅ Usar respuesta": inserta el texto como entrada `<Paula>` en el log + cambia `conversation_status` a `'respuesta_enviada'` + refresca el detalle + actualiza badge.
 
 ### proveedores.js
-Módulo ES6. Lee `availability_with_sfcom` al cargar (para tener campos sfcom en memoria).
+Módulo ES6. Lee `availability_panel` al cargar. Los datos sfcom se obtienen en una segunda consulta a `sfcom_listings` y se mezclan en memoria por `availability_id`.
 
 Gestiona:
 - CRUD de proveedores con autocomplete. Al crear un proveedor nuevo se crea automáticamente un venue con el mismo ID.
@@ -327,7 +327,7 @@ Gestiona:
 - Asistente de creación en lote (`dlgNuevoServicio`): crea servicios y availability para un rango de días desde un nombre base.
 - Widget de imagen (`.img-picker`): cuadro cuadrado, vacío muestra input de URL, con imagen muestra la foto con botón ✕.
 
-**Acceso a datos sfcom:** lecturas vía `availability_with_sfcom`. Escrituras sfcom siempre a `sfcom_listings`, nunca a `availability`.
+**Acceso a datos sfcom:** lecturas vía `sfcom_listings` (mezclados en memoria con `availability_panel`). Escrituras sfcom siempre a `sfcom_listings`, nunca a `availability`.
 
 **Flujos sfcom en proveedores.js:**
 - `null` → "Solicitar a SFcom" → `'pending'` (correo a Hilario) → Hilario activa → "Confirmar" → GET verificación → `'confirmed'` + sync inicial
