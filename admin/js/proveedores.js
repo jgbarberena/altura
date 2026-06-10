@@ -13,21 +13,28 @@ initSidebar()
 let todosProveedores   = (await supabase.from('providers').select('*').order('id')).data
 let todosVenues        = (await supabase.from('venues').select('*').order('id')).data
 let todosServicios     = (await supabase.from('services').select('*').order('id')).data
-let todaDisponibilidad = (await supabase.from('availability_with_sfcom').select('*')).data
+let todaDisponibilidad = (await supabase.from('availability_panel').select('*')).data
 let todosPayments      = (await supabase.from('payments').select('*')).data
 let todasReservas      = (await supabase.from('reservations').select('*')).data
 
-// availability_with_sfcom no incluye campos añadidos después de crear la vista —
-// se complementan aquí: venue_provider_id desde venues, photos/access_instructions desde availability
+// Enriquecer con datos sfcom desde sfcom_listings (availability_panel no los incluye)
+const { data: _sfcomRaw } = await supabase.from('sfcom_listings')
+    .select('id, availability_id, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price')
+const _sfcomByAvailId = new Map((_sfcomRaw || []).map(r => [r.availability_id, r]))
+for (const d of (todaDisponibilidad || [])) {
+    const sl = _sfcomByAvailId.get(d.id)
+    d.sfcom_service_name  = sl?.sfcom_service_name  ?? null
+    d.sfcom_slots_listed  = sl?.sfcom_slots_listed  ?? null
+    d.sfcom_product_id    = sl?.sfcom_product_id    ?? null
+    d.sfcom_variation_id  = sl?.sfcom_variation_id  ?? null
+    d.sfcom_status        = sl?.sfcom_status        ?? null
+    d.sfcom_public_price  = sl?.sfcom_public_price  ?? null
+    d.sfcom_listing_id    = sl?.id                  ?? null
+}
+
+// venue_provider_id no está en ninguna vista — se deriva desde venues para la UI del panel
 const _venueProv = new Map((todosVenues || []).map(v => [v.id, v.provider_id]))
 for (const d of (todaDisponibilidad || [])) d.venue_provider_id = _venueProv.get(d.venue_id) ?? null
-
-const { data: _avExtra } = await supabase.from('availability').select('id, photos, access_instructions')
-const _avMap = new Map((_avExtra || []).map(r => [r.id, r]))
-for (const d of (todaDisponibilidad || [])) {
-    const extra = _avMap.get(d.id)
-    if (extra) { d.photos = extra.photos ?? null; d.access_instructions = extra.access_instructions ?? null }
-}
 
 let proveedorActual      = null
 let servicioEditandoId   = null
@@ -1247,7 +1254,7 @@ btnGuardarServicio.addEventListener('click', async () => {
             }
             await supabase.from('sfcom_listings').insert({ availability_id: nuevaDisp.id, ...sfcomInsert })
         }
-        todaDisponibilidad.push({ ...nuevaDisp, ...sfcomInsert, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null })
+        todaDisponibilidad.push({ ...nuevaDisp, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null, ...sfcomInsert })
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
@@ -2210,7 +2217,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 }
                 await supabase.from('sfcom_listings').insert({ availability_id: data[0].id, ...sfcomInsertMulti })
             }
-            todaDisponibilidad.push({ ...data[0], ...sfcomInsertMulti, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null })
+            todaDisponibilidad.push({ ...data[0], venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null, ...sfcomInsertMulti })
             pairsSync.push({ venueId: _newVenueId, serviceId: row.serviceId })
         }
     }
@@ -2609,7 +2616,7 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
                 billing_model:  modelo
             }).select().single()
             if (error) console.error('Error al asignar', id, ':', error.message)
-            else       todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null })
+            else       todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null })
         }
         await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
     }
