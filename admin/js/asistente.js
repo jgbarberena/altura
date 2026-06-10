@@ -165,7 +165,7 @@ function disponibilidadParaAsistente(serviceIds, primaryDay, personas) {
 // ===== ASISTENTE DE RESPUESTAS =====
 
 export async function abrirAsistenteRespuesta(solicitud, modo = null) {
-    const mensajes = []
+    let mensajes = []
     let enviando   = false
 
     const { overlay, panel } = crearModal('modal-asistente-respuesta', { wide: true, scroll: true })
@@ -362,6 +362,14 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null, solicitud.slots || null)
     }
 
+    const storageKey = solicitud.id ? `asistente_conv_${solicitud.id}` : null
+
+    if (storageKey) {
+        overlay.addEventListener('close', () => {
+            if (mensajes.length > 0) sessionStorage.setItem(storageKey, JSON.stringify(mensajes))
+        })
+    }
+
     panel.querySelector('#btn-guardar-log').addEventListener('click', async () => {
         if (mensajes.length === 0) {
             mostrarToast('No hay conversación que guardar', '#6b7280')
@@ -382,8 +390,58 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         }
     })
 
-    console.log('[asistente] contexto tokens ~', Math.round(JSON.stringify(contextoObj).length / 4))
-    await llamarClaude(JSON.stringify(contextoObj))
+    // Restore stored conversation or start fresh
+    let hasHistory = false
+    if (storageKey) {
+        const guardado = sessionStorage.getItem(storageKey)
+        if (guardado) {
+            try {
+                mensajes = JSON.parse(guardado)
+                const MARKER = '---MENSAJE_CLIENTE---'
+                let lastFinal = null
+                // mensajes[0] is the context JSON payload, skip it for display
+                for (let i = 1; i < mensajes.length; i++) {
+                    const msg = mensajes[i]
+                    if (msg.role === 'assistant') {
+                        const idx = msg.content.indexOf(MARKER)
+                        if (idx !== -1) {
+                            const chat = msg.content.slice(0, idx).trim()
+                            if (chat) addMensaje('assistant', chat)
+                            lastFinal = msg.content.slice(idx + MARKER.length).trim()
+                        } else {
+                            addMensaje('assistant', msg.content)
+                        }
+                    } else {
+                        addMensaje(msg.role, msg.content)
+                    }
+                }
+                if (lastFinal) {
+                    elMsgFinal.value                = lastFinal
+                    elResultado.style.display       = 'flex'
+                    elResultado.style.flexDirection = 'column'
+                    elResultado.style.gap           = '10px'
+                    const btnEmail = panel.querySelector('#btn-asistente-email')
+                    const btnWA    = panel.querySelector('#btn-asistente-whatsapp')
+                    if (btnEmail && solicitud.client_email) {
+                        btnEmail.href = `mailto:${solicitud.client_email}?body=${encodeURIComponent(lastFinal)}`
+                    }
+                    if (btnWA && solicitud.client_phone) {
+                        const digits = solicitud.client_phone.replace(/\D/g, '')
+                        const intl   = digits.length <= 9 ? '34' + digits : digits
+                        btnWA.href   = `https://wa.me/${intl}?text=${encodeURIComponent(lastFinal)}`
+                    }
+                }
+                hasHistory = mensajes.length > 0
+            } catch(e) {
+                mensajes = []
+            }
+        }
+    }
+
+    if (!hasHistory) {
+        console.log('[asistente] contexto tokens ~', Math.round(JSON.stringify(contextoObj).length / 4))
+        await llamarClaude(JSON.stringify(contextoObj))
+    }
 }
 
 // ===== PROCESAR EMAIL MANUAL =====
