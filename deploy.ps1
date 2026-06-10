@@ -51,7 +51,7 @@ function Should-Ignore([string]$path) {
     if ($p -eq '.claude' -or $p.StartsWith('.claude/'))  { return $true }
     if ($p -match '(^|/)node_modules/')                  { return $true }
     if ($p -eq 'README.md')                              { return $true }
-    if ($p -eq 'CLAUDE.md')                              { return $true }
+    if ($p -match '^CLAUDE.*\.md$')                      { return $true }
     if ($p -eq 'deploy.ps1')                             { return $true }
     if ($p -match '\.ps1$')                              { return $true }
     if ($p -match '\.zip$')                              { return $true }
