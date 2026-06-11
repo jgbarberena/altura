@@ -1811,9 +1811,13 @@ async function cargarSolicitudes() {
 
     if (avisoEl) {
         if (otrasActivas.length > 0) {
-            const n = otrasActivas.length
+            const nNuevas  = otrasActivas.filter(s => s.status === 'nueva').length
+            const nGestion = otrasActivas.filter(s => s.status !== 'nueva').length
+            const partes   = []
+            if (nNuevas  > 0) partes.push(`${nNuevas} nueva${nNuevas > 1 ? 's' : ''}`)
+            if (nGestion > 0) partes.push(`${nGestion} en gestión`)
             avisoEl.style.display = 'block'
-            avisoEl.innerHTML = `${n} solicitud${n > 1 ? 'es' : ''} web/email activa${n > 1 ? 's' : ''} — <a href="solicitudes.html">ver en solicitudes</a>`
+            avisoEl.innerHTML = `${partes.join(', ')} — <a href="solicitudes.html">ver en solicitudes</a>`
         } else {
             avisoEl.style.display = 'none'
         }

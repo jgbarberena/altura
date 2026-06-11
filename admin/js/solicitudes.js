@@ -31,10 +31,17 @@ const STATUS_LABELS = {
     en_conversacion:       'En conversación',
     respuesta_enviada:     'Respuesta enviada',
     seguimiento_pendiente: 'Seguimiento pendiente',
+    convertida:            'Convertida',
+    descartada:            'Descartada',
 }
 
-// Estados activos que pueden seleccionarse desde el desplegable
-const STATUS_ACTIVOS = Object.keys(STATUS_LABELS)
+// Estados activos que pueden seleccionarse desde el desplegable (excluye cerrados)
+const STATUS_ACTIVOS = ['nueva', 'en_conversacion', 'respuesta_enviada', 'seguimiento_pendiente']
+
+const BATCH_CERRADAS = 15
+let _solicitudesCerradas = []
+let _cerradasOffset      = 0
+let _hayMasCerradas      = false
 
 // ===== LOG DE CONVERSACIÓN — HELPERS =====
 
@@ -261,12 +268,33 @@ async function cargarSolicitudes() {
 
     _solicitudesActuales = data ?? []
     await _verificarTransicionesAutomaticas()
-    renderLista(_solicitudesActuales)
+
+    _cerradasOffset    = 0
+    _solicitudesCerradas = []
+    await _cargarCerradas()
+
+    renderLista()
 
     if (solicitudActual) {
         const actualizada = _solicitudesActuales.find(s => s.id === solicitudActual.id)
+            || _solicitudesCerradas.find(s => s.id === solicitudActual.id)
         if (actualizada) mostrarDetalle(actualizada)
     }
+}
+
+async function _cargarCerradas() {
+    const { data } = await supabase
+        .from('reservation_requests')
+        .select('*')
+        .in('status', ['convertida', 'descartada'])
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .range(_cerradasOffset, _cerradasOffset + BATCH_CERRADAS)
+
+    const lote = data ?? []
+    _hayMasCerradas = lote.length > BATCH_CERRADAS
+    const paraAgregar = _hayMasCerradas ? lote.slice(0, BATCH_CERRADAS) : lote
+    _solicitudesCerradas.push(...paraAgregar)
+    _cerradasOffset += paraAgregar.length
 }
 
 let _solicitudesActuales = []
@@ -287,63 +315,76 @@ async function _verificarTransicionesAutomaticas() {
     caducadas.forEach(s => { s.status = 'seguimiento_pendiente' })
 }
 
-function renderLista(solicitudes) {
-    const lista = document.getElementById('sol-lista')
+function _renderItem(s, apagada = false) {
+    const esSfcom    = _esSfcom(s.source)
+    const esEmail    = s.source === 'email'
+    const fecha      = s.created_at
+        ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
+        : '—'
+    const convStatus = s.status || 'nueva'
+    const badgeLabel = STATUS_LABELS[convStatus] || convStatus
+    const origenBadge = esSfcom
+        ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
+        : esEmail ? `<span class="sol-badge sol-badge--email">email</span>` : ''
+    const experiencia    = s.level || s.service_id || '—'
+    const notasPreview   = (() => {
+        if (!s.conversation_notes) return ''
+        const msgs   = _parsearLog(s.conversation_notes).filter(i => i.type === 'message')
+        const ultimo = msgs[msgs.length - 1]
+        const full   = ultimo ? `${ultimo.author}: ${ultimo.text}` : s.conversation_notes
+        return `<div class="sol-item-notes">${full.slice(0, 64)}${full.length > 64 ? '…' : ''}</div>`
+    })()
+    const esActiva = solicitudActual?.id === s.id
+    const clases   = ['sol-item', apagada ? 'sol-item--apagada' : '', esActiva ? 'active' : ''].filter(Boolean).join(' ')
+    return `<div class="${clases}" data-id="${s.id}">
+        <div class="sol-item-header">
+            <span class="sol-item-nombre">${s.client_name || '—'}</span>
+            <span class="sol-item-fecha">${fecha}</span>
+        </div>
+        <div class="sol-item-meta">
+            ${origenBadge}
+            <span class="sol-badge sol-badge--${convStatus}">${badgeLabel}</span>
+            <span class="sol-item-exp">${experiencia}</span>
+        </div>
+        ${notasPreview}
+    </div>`
+}
 
-    if (!solicitudes.length) {
-        lista.innerHTML = '<div class="sol-empty">No hay solicitudes activas.</div>'
+function renderLista() {
+    const lista    = document.getElementById('sol-lista')
+    const activas  = _solicitudesActuales
+    const cerradas = _solicitudesCerradas
+
+    if (!activas.length && !cerradas.length) {
+        lista.innerHTML = '<div class="sol-empty">No hay solicitudes.</div>'
         return
     }
 
-    lista.innerHTML = solicitudes.map(s => {
-        const esSfcom = _esSfcom(s.source)
-        const esEmail = s.source === 'email'
+    let html = activas.length
+        ? activas.map(s => _renderItem(s, false)).join('')
+        : '<div class="sol-empty">No hay solicitudes activas.</div>'
 
-        const fecha = s.created_at
-            ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
-            : '—'
+    if (cerradas.length) {
+        html += `<div class="sol-sep">Cerradas</div>`
+        html += cerradas.map(s => _renderItem(s, true)).join('')
+    }
 
-        const convStatus = s.status || 'nueva'
-        const badgeLabel = STATUS_LABELS[convStatus] || convStatus
+    if (_hayMasCerradas) {
+        html += `<div class="sol-cargar-mas"><button id="btnCargarMas">Cargar más</button></div>`
+    }
 
-        const origenBadge = esSfcom
-            ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
-            : esEmail
-            ? `<span class="sol-badge sol-badge--email">email</span>`
-            : ''
-
-        const experiencia = s.level || s.service_id || '—'
-
-        // Preview: último mensaje del log
-        const notasPreview = (() => {
-            if (!s.conversation_notes) return ''
-            const msgs   = _parsearLog(s.conversation_notes).filter(i => i.type === 'message')
-            const ultimo = msgs[msgs.length - 1]
-            const full   = ultimo ? `${ultimo.author}: ${ultimo.text}` : s.conversation_notes
-            return `<div class="sol-item-notes">${full.slice(0, 64)}${full.length > 64 ? '…' : ''}</div>`
-        })()
-
-        const esActiva = solicitudActual?.id === s.id
-
-        return `<div class="sol-item${esActiva ? ' active' : ''}" data-id="${s.id}">
-            <div class="sol-item-header">
-                <span class="sol-item-nombre">${s.client_name || '—'}</span>
-                <span class="sol-item-fecha">${fecha}</span>
-            </div>
-            <div class="sol-item-meta">
-                ${origenBadge}
-                <span class="sol-badge sol-badge--${convStatus}">${badgeLabel}</span>
-                <span class="sol-item-exp">${experiencia}</span>
-            </div>
-            ${notasPreview}
-        </div>`
-    }).join('')
+    lista.innerHTML = html
 
     lista.querySelectorAll('.sol-item').forEach(el => {
         el.addEventListener('click', () => {
-            const sol = _solicitudesActuales.find(s => String(s.id) === el.dataset.id)
+            const sol = [...activas, ...cerradas].find(s => String(s.id) === el.dataset.id)
             if (sol) mostrarDetalle(sol)
         })
+    })
+
+    document.getElementById('btnCargarMas')?.addEventListener('click', async () => {
+        await _cargarCerradas()
+        renderLista()
     })
 }
 
