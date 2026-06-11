@@ -26,12 +26,15 @@ initAsistente(supabase, {
 
 let solicitudActual = null
 
-const CONV_STATUS_LABELS = {
+const STATUS_LABELS = {
     nueva:                 'Nueva',
     en_conversacion:       'En conversación',
     respuesta_enviada:     'Respuesta enviada',
     seguimiento_pendiente: 'Seguimiento pendiente',
 }
+
+// Estados activos que pueden seleccionarse desde el desplegable
+const STATUS_ACTIVOS = Object.keys(STATUS_LABELS)
 
 // ===== LOG DE CONVERSACIÓN — HELPERS =====
 
@@ -218,12 +221,12 @@ async function _onRespuestaUsadaEnLog(texto, solicitud) {
 
     const { error } = await supabase
         .from('reservation_requests')
-        .update({ conversation_status: 'respuesta_enviada' })
+        .update({ status: 'respuesta_enviada' })
         .eq('id', solicitud.id)
     if (!error) {
-        solicitud.conversation_status = 'respuesta_enviada'
+        solicitud.status = 'respuesta_enviada'
         const idx = _solicitudesActuales.findIndex(s => s.id === solicitud.id)
-        if (idx !== -1) _solicitudesActuales[idx].conversation_status = 'respuesta_enviada'
+        if (idx !== -1) _solicitudesActuales[idx].status = 'respuesta_enviada'
     }
 
     if (solicitudActual?.id === solicitud.id) {
@@ -236,7 +239,7 @@ async function _onRespuestaUsadaEnLog(texto, solicitud) {
         const badgeEl = document.querySelector(`.sol-item[data-id="${solicitud.id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--email)`)
         if (badgeEl) {
             badgeEl.className   = 'sol-badge sol-badge--respuesta_enviada'
-            badgeEl.textContent = CONV_STATUS_LABELS.respuesta_enviada
+            badgeEl.textContent = STATUS_LABELS.respuesta_enviada
         }
         const selectEstado = document.getElementById('sol-select-estado')
         if (selectEstado) selectEstado.value = 'respuesta_enviada'
@@ -251,7 +254,7 @@ async function cargarSolicitudes() {
     const { data, error } = await supabase
         .from('reservation_requests')
         .select('*')
-        .or('conversation_status.is.null,conversation_status.neq.cerrada')
+        .not('status', 'in', '("convertida","descartada")')
         .order('updated_at', { ascending: false, nullsFirst: false })
 
     if (error) { console.error('Error cargando solicitudes:', error); return }
@@ -271,17 +274,17 @@ let _solicitudesActuales = []
 async function _verificarTransicionesAutomaticas() {
     const limite3dias = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     const caducadas   = _solicitudesActuales.filter(s =>
-        s.conversation_status === 'respuesta_enviada' &&
+        s.status === 'respuesta_enviada' &&
         s.updated_at && new Date(s.updated_at) < limite3dias
     )
     if (!caducadas.length) return
 
     await Promise.all(caducadas.map(s =>
         supabase.from('reservation_requests')
-            .update({ conversation_status: 'seguimiento_pendiente' })
+            .update({ status: 'seguimiento_pendiente' })
             .eq('id', s.id)
     ))
-    caducadas.forEach(s => { s.conversation_status = 'seguimiento_pendiente' })
+    caducadas.forEach(s => { s.status = 'seguimiento_pendiente' })
 }
 
 function renderLista(solicitudes) {
@@ -300,8 +303,8 @@ function renderLista(solicitudes) {
             ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
             : '—'
 
-        const convStatus = s.conversation_status || 'nueva'
-        const badgeLabel = CONV_STATUS_LABELS[convStatus] || convStatus
+        const convStatus = s.status || 'nueva'
+        const badgeLabel = STATUS_LABELS[convStatus] || convStatus
 
         const origenBadge = esSfcom
             ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
@@ -356,7 +359,7 @@ function mostrarDetalle(sol) {
     const detalle    = document.getElementById('sol-detalle')
     const esSfcom    = _esSfcom(sol.source)
     const esEmail    = sol.source === 'email'
-    const convStatus = sol.conversation_status || 'nueva'
+    const convStatus = sol.status || 'nueva'
 
     const contactoTel = sol.client_phone
         ? `<a href="tel:${sol.client_phone}">${sol.client_phone}</a>`
@@ -384,13 +387,14 @@ function mostrarDetalle(sol) {
         `<option value="${v.id}"${sol.assigned_venue_id === v.id ? ' selected' : ''}>${v.nombre} (${v.libres}/${v.total} libres)</option>`
     ).join('')
 
-    const estadoOptions = Object.entries(CONV_STATUS_LABELS).map(([v, l]) =>
+    const estadoOptions = Object.entries(STATUS_LABELS).map(([v, l]) =>
         `<option value="${v}"${convStatus === v ? ' selected' : ''}>${l}</option>`
     ).join('')
 
     const precioRef = serviceId ? _calcularPrecioRef(serviceId) : null
 
     const params = new URLSearchParams()
+    params.set('solicitud_id', sol.id)
     if (sol.client_name)       params.set('client_name',  sol.client_name)
     if (sol.client_email)      params.set('client_email', sol.client_email)
     if (sol.client_phone)      params.set('client_phone', sol.client_phone)
@@ -425,14 +429,12 @@ function mostrarDetalle(sol) {
                     </div>
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:8px;flex-shrink:0">
-                    <select id="sol-select-estado" class="sol-estado-select">
-                        ${estadoOptions}
-                    </select>
+                    ${!esSfcom ? `<select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>` : ''}
                     <button class="btn-cerrar-detalle" id="btnCerrarDetalle" title="Cerrar">✕</button>
                 </div>
             </div>
 
-            ${convStatus === 'seguimiento_pendiente' ? `
+            ${!esSfcom && convStatus === 'seguimiento_pendiente' ? `
             <div style="margin-bottom:16px">
                 <button class="btn btn-primary" id="btnEnviarRecordatorio" style="width:100%;min-height:44px">📩 Enviar recordatorio</button>
             </div>` : ''}
@@ -458,7 +460,7 @@ function mostrarDetalle(sol) {
                 </div>` : ''}
             </div>
 
-            ${venuesDisp.length > 0 ? `
+            ${!esSfcom && venuesDisp.length > 0 ? `
             <div class="form-field" style="margin-bottom:16px">
                 <label>Venue asignado</label>
                 <select id="sol-select-venue">
@@ -467,6 +469,7 @@ function mostrarDetalle(sol) {
                 </select>
             </div>` : ''}
 
+            ${!esSfcom ? `
             <div class="sol-log-section">
                 <span class="sol-log-label">
                     Log de conversación
@@ -489,12 +492,15 @@ function mostrarDetalle(sol) {
                     <button class="btn btn-secondary" id="sol-log-btn-paula" style="font-size:12px;min-height:36px">＋ Mi mensaje</button>
                     <button class="btn btn-secondary" id="sol-log-btn-cliente" style="font-size:12px;min-height:36px">＋ Mensaje del cliente</button>
                 </div>
-            </div>
+            </div>` : ''}
 
             <div class="sol-acciones">
-                <button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
-                <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reserva</a>
-                <button class="btn btn-danger" id="btnCerrarSolicitud">✅ Cerrar solicitud</button>
+                ${esSfcom
+                    ? `<a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>`
+                    : `<button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
+                       <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reserva</a>`
+                }
+                <button class="btn btn-danger" id="btnDescartarSolicitud">✕ Descartar</button>
             </div>
 
         </div>
@@ -502,25 +508,27 @@ function mostrarDetalle(sol) {
 
     detalle.classList.add('visible')
 
-    // Scroll log al final tras render
+    // Scroll log al final tras render (solo si existe — sfcom no tiene log)
     const logArea = document.getElementById('sol-log-area')
-    setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
-    _initEditListeners(sol, logArea)
+    if (logArea) {
+        setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
+        _initEditListeners(sol, logArea)
+    }
 
     // ── Estado ──────────────────────────────────────────────────────────────
-    document.getElementById('sol-select-estado').addEventListener('change', async e => {
+    document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
         const nuevoEstado = e.target.value
         const { error } = await supabase
             .from('reservation_requests')
-            .update({ conversation_status: nuevoEstado })
+            .update({ status: nuevoEstado })
             .eq('id', sol.id)
         if (error) { console.error('Error actualizando estado:', error); return }
-        sol.conversation_status = nuevoEstado
+        sol.status = nuevoEstado
 
         const badgeEl = document.querySelector(`.sol-item[data-id="${sol.id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--email)`)
         if (badgeEl) {
             badgeEl.className   = `sol-badge sol-badge--${nuevoEstado}`
-            badgeEl.textContent = CONV_STATUS_LABELS[nuevoEstado] || nuevoEstado
+            badgeEl.textContent = STATUS_LABELS[nuevoEstado] || nuevoEstado
         }
     })
 
@@ -538,45 +546,48 @@ function mostrarDetalle(sol) {
         })
     }
 
-    // ── Log de conversación ──────────────────────────────────────────────────
-    const logInput  = document.getElementById('sol-log-input')
-    const logTexto  = document.getElementById('sol-log-texto')
-    const logStatus = document.getElementById('sol-log-status')
-    let _logAutor   = null
+    // ── Log de conversación (solo solicitudes no-sfcom) ──────────────────────
+    if (!esSfcom) {
+        const logInput  = document.getElementById('sol-log-input')
+        const logTexto  = document.getElementById('sol-log-texto')
+        const logStatus = document.getElementById('sol-log-status')
+        let _logAutor   = null
 
-    document.getElementById('sol-log-btn-paula').addEventListener('click', () => {
-        _logAutor      = 'Paula'
-        logTexto.value = ''
-        logInput.style.display = 'block'
-        logTexto.focus()
-    })
-    document.getElementById('sol-log-btn-cliente').addEventListener('click', () => {
-        _logAutor      = 'Cliente'
-        logTexto.value = ''
-        logInput.style.display = 'block'
-        logTexto.focus()
-    })
-    document.getElementById('sol-log-cancelar').addEventListener('click', () => {
-        logInput.style.display = 'none'
-        _logAutor = null
-    })
-    document.getElementById('sol-log-guardar').addEventListener('click', async () => {
-        const texto = logTexto.value.trim()
-        if (!texto || !_logAutor) return
-        logStatus.textContent = 'Guardando…'
-        const ok = await _insertarMensaje(sol, _logAutor, texto)
-        if (ok) {
-            logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
-            _initEditListeners(sol, logArea)
-            setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
-            _actualizarPreviewLista(sol)
+        document.getElementById('sol-log-btn-paula').addEventListener('click', () => {
+            _logAutor      = 'Paula'
+            logTexto.value = ''
+            logInput.style.display = 'block'
+            logTexto.focus()
+        })
+        document.getElementById('sol-log-btn-cliente').addEventListener('click', () => {
+            _logAutor      = 'Cliente'
+            logTexto.value = ''
+            logInput.style.display = 'block'
+            logTexto.focus()
+        })
+        document.getElementById('sol-log-cancelar').addEventListener('click', () => {
             logInput.style.display = 'none'
             _logAutor = null
-            logStatus.textContent = ''
-        } else {
-            logStatus.textContent = '❌ Error al guardar'
-        }
-    })
+        })
+        document.getElementById('sol-log-guardar').addEventListener('click', async () => {
+            const texto = logTexto.value.trim()
+            if (!texto || !_logAutor) return
+            logStatus.textContent = 'Guardando…'
+            const logArea = document.getElementById('sol-log-area')
+            const ok = await _insertarMensaje(sol, _logAutor, texto)
+            if (ok) {
+                logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
+                _initEditListeners(sol, logArea)
+                setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
+                _actualizarPreviewLista(sol)
+                logInput.style.display = 'none'
+                _logAutor = null
+                logStatus.textContent = ''
+            } else {
+                logStatus.textContent = '❌ Error al guardar'
+            }
+        })
+    }
 
     // ── Recordatorio ────────────────────────────────────────────────────────
     document.getElementById('btnEnviarRecordatorio')?.addEventListener('click', () => {
@@ -584,18 +595,18 @@ function mostrarDetalle(sol) {
     })
 
     // ── Abrir asistente ──────────────────────────────────────────────────────
-    document.getElementById('btnAbrirAsistente').addEventListener('click', () => {
+    document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => {
         abrirAsistenteRespuesta(sol)
     })
 
-    // ── Cerrar solicitud ─────────────────────────────────────────────────────
-    document.getElementById('btnCerrarSolicitud').addEventListener('click', async () => {
-        if (!confirm('¿Cerrar esta solicitud? Se ocultará de la lista activa.')) return
+    // ── Descartar solicitud ──────────────────────────────────────────────────
+    document.getElementById('btnDescartarSolicitud').addEventListener('click', async () => {
+        if (!confirm('¿Descartar esta solicitud? Se marcará como descartada y dejará de aparecer en la lista activa.')) return
         const { error } = await supabase
             .from('reservation_requests')
-            .update({ conversation_status: 'cerrada' })
+            .update({ status: 'descartada' })
             .eq('id', sol.id)
-        if (error) { alert('Error al cerrar: ' + error.message); return }
+        if (error) { alert('Error al descartar: ' + error.message); return }
         detalle.classList.remove('visible')
         solicitudActual = null
         detalle.innerHTML = '<div class="sol-detalle-placeholder">Selecciona una solicitud para ver el detalle</div>'

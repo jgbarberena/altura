@@ -105,7 +105,7 @@ conversation_log: historial de la conversación con el cliente en formato de log
 
 assigned_venue_id: venue ya asignado a esta solicitud si Paula lo ha seleccionado en el panel. Si existe, prioriza ese venue en la respuesta salvo que Paula indique lo contrario.
 
-conversation_status: estado actual de la conversación ('nueva', 'en_conversacion', 'respuesta_enviada', 'seguimiento_pendiente').
+status: estado actual de la solicitud ('nueva', 'en_conversacion', 'respuesta_enviada', 'seguimiento_pendiente').
 
 modo: si es 'recordatorio', Paula quiere enviar un seguimiento porque el cliente no ha respondido. En ese caso: lee el conversation_log, entiende qué se ofreció y cuándo, y redacta directamente un mensaje de seguimiento cálido y sin presión excesiva. No hagas preguntas a Paula, genera el mensaje directamente listo para copiar y enviar.
 

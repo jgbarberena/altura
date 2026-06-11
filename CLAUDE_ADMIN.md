@@ -107,7 +107,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | comments | text |
 | proposal_number | text |
 | proposal_path | Ruta al PDF en Supabase Storage (bucket `proposals`) |
-| sfcom_order_ref | Referencia del pedido sfcom que originó la reserva (ej: `WEB123_456`). Null para reservas directas. |
+| origin_ref | Referencia de origen heterogénea: `WEB026_1090` (sfcom), UUID (solicitud web/email), null (reserva directa). Detección: `origin_ref LIKE 'WEB%'` para sfcom; `IS NOT NULL AND NOT LIKE 'WEB%'` para UUID. |
 
 **`charges`** — Hitos de cobro a clientes (por cliente, no por reserva)
 | Campo | Notas |
@@ -150,20 +150,20 @@ UNIQUE (provider_id, amount, due_date).
 | level | text — slug del tipo de experiencia (web) o nombre del producto (sfcom) |
 | day | integer — día de julio preferido |
 | comments | Para emails: prefijo `Días: X\nOtros servicios: Y\n\n` + resumen. Para web/sfcom: texto libre. |
-| status | `'nueva'`, `'email_parsed'`, `'atendida'`, `'descartada'`; default `'nueva'` |
+| status | `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`; default `'nueva'` |
 | created_at | timestamptz, default now() |
-| attended_at | timestamptz |
+| updated_at | timestamptz — actualizado por trigger en cada UPDATE |
 | source | null (web), `'email'` (procesado desde panel), ref del pedido sfcom (ej: `WEB123_456`) |
 | price_per_slot | numeric — solo en solicitudes sfcom (precio bruto) |
 | service_id | text — sin FK; se guarda como verificación, nunca como búsqueda primaria |
 | language | `'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'` — solo para emails |
 | email_raw | Texto completo del email original (referencia, no se muestra en panel) |
-| conversation_status | `'nueva'`, `'en_conversacion'`, `'respuesta_enviada'`, `'seguimiento_pendiente'`, `'cerrada'` |
 | conversation_notes | Log interno formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto` |
 | assigned_venue_id | FK→venues — venue asignado (opcional) |
-| updated_at | timestamptz — actualizado por trigger en cada UPDATE |
 
-Las solicitudes con `conversation_status = 'cerrada'` no aparecen en la lista activa de solicitudes.html.
+**Ciclo de vida de `status`:** las solicitudes con `status IN ('convertida','descartada')` no aparecen en ninguna lista activa. Auto-transición en solicitudes.js: `respuesta_enviada` → `seguimiento_pendiente` si `updated_at` supera 3 días sin respuesta.
+
+**Detección de origen por `source`:** `source LIKE 'WEB%'` → solicitud sfcom. `source = 'email'` → email procesado desde panel. `source IS NULL` → formulario web público.
 
 **`assistant_logs`**
 | Campo | Notas |
@@ -277,7 +277,7 @@ Lee al cargar: `clients`, `services`, `availability_panel`, `venues`, `sfcom_lis
 
 **6 bloques** (se muestran/ocultan según estado):
 
-**Bloque 0 — Solicitudes pendientes:** Lee `reservation_requests` con `status='nueva'`. Solicitudes sfcom (source con formato `WEB\d+_\d+`) en rojo, sin botón Descartar. Solicitudes web en naranja con botón Descartar. Click en fila → `cargarDesdeSolicitud`: limpia cliente previo, precarga datos, intenta inferir servicio y proveedor (sfcom con `_inferirDesdeSfcom`, web con `_inferirServiceId`). El admin confirma siempre. Botón "Procesado" cambia status a 'atendida'. Click en fila NO cambia el status.
+**Bloque 0 — Solicitudes pendientes sfcom:** Lee `reservation_requests` con status no `convertida`/`descartada`. Muestra solo las sfcom pendientes (source `WEB%` + status `nueva`) en tabla roja. Si hay otras activas (web/email), muestra un aviso con enlace a `solicitudes.html`. Se oculta el bloque completo si no hay nada. Botón "→ Solicitudes" redirige a `solicitudes.html`. Click en fila sfcom → `cargarDesdeSolicitud`: limpia cliente previo, precarga datos, infiere servicio+proveedor con `_inferirDesdeSfcom`. Botón "✅ Procesado" marca status `convertida`. Tras guardar reserva: si `solicitudOriginRef` está presente, ofrece marcar la solicitud como `convertida` via `_ofrecerCerrarSolicitud`. También acepta `?solicitud_id=uuid` en la URL (desde solicitudes.html) para precargar datos de una solicitud web/email.
 
 **Bloque 1 — Cliente:** Autocomplete en tiempo real contra `clients`. Cliente existente → carga datos + autosave por campo. Cliente nuevo → "Cliente nuevo".
 
@@ -294,25 +294,23 @@ Lee al cargar: `clients`, `services`, `availability_panel`, `venues`, `sfcom_lis
 **Secuencia de carga:** `checkSfcomOrders` primero; `ejecutarVerificacion(false)` encadenado en `.finally()` para evitar race condition (verificarCoherencia lee reservation_requests y necesita que los pedidos sfcom nuevos estén ya insertados).
 
 ### solicitudes.js
-Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
+Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js`, `initAsistente`, `abrirAsistenteRespuesta` de `asistente.js`.
 
 Lee al cargar: `availability_panel` (para calcular disponibilidad de venues) y `reservations`.
 
 **Layout:** dos columnas en desktop (lista 320px izquierda, detalle derecha). En mobile: bottom sheet (`position:fixed; bottom:0; transform:translateY(100%)` + clase `.visible`).
 
-**Sistema de dos ejes de estado:**
-- `status` (proceso): `'nueva'` / `'email_parsed'` / `'atendida'` / `'descartada'`
-- `conversation_status` (seguimiento comercial): `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'cerrada'`
+**Sistema de estado único (`status`):** `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`. Las solicitudes sfcom (source `WEB%`) tienen una vista simplificada: sin selector de estado, sin log, sin asistente; solo botón "→ Crear reserva" (va a formulario.html) y "✕ Descartar".
 
 Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `updated_at` supera 3 días. Se aplica al cargar la lista.
 
-**Lista:** nombre, fecha, badges de origen y de conversation_status, experiencia, preview del último mensaje del log (64 chars).
+**Lista:** nombre, fecha, badges de origen y de status, experiencia, preview del último mensaje del log (64 chars).
 
-**Detalle:** selector de conversation_status con autosave, botón "📩 Enviar recordatorio" (solo cuando `conversation_status === 'seguimiento_pendiente'`), grid de datos, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "📋 Convertir en reserva" (→ formulario.html con query params), botón "✅ Cerrar solicitud".
+**Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), grid de datos, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "→ Crear reserva" (→ `formulario.html?solicitud_id=uuid` + otros params), botón "✕ Descartar".
 
 **Log de conversación:** almacenado en `conversation_notes` como texto plano: `---DD/MM/AA---` como separador de fecha, `<Paula>` y `<Cliente>` como marcadores de autor. Los mensajes del día actual tienen botón de edición.
 
-**Integración con asistente:** `onRespuestaUsada: _onRespuestaUsadaEnLog`. Cuando Paula pulsa "✅ Usar respuesta": inserta el texto como entrada `<Paula>` en el log + cambia `conversation_status` a `'respuesta_enviada'` + refresca el detalle + actualiza badge.
+**Integración con asistente:** `onRespuestaUsada: _onRespuestaUsadaEnLog`. Cuando Paula pulsa "✅ Usar respuesta": inserta el texto como entrada `<Paula>` en el log + cambia `status` a `'respuesta_enviada'` + refresca el detalle + actualiza badge.
 
 ### proveedores.js
 Módulo ES6. Lee `availability_panel` al cargar. Los datos sfcom se obtienen en una segunda consulta a `sfcom_listings` y se mezclan en memoria por `availability_id`.
@@ -353,7 +351,7 @@ Módulo ES6. Toda la comunicación con tienda.sanfermin.com a través de la Edge
 **Fórmula de stock:**
 ```
 nuevoStock = Math.max(0, Math.min(
-    sfcom_slots_listed - SUM(slots WHERE sfcom_order_ref NOT NULL AND status != 'Cancelada'),
+    sfcom_slots_listed - SUM(slots WHERE origin_ref LIKE 'WEB%' AND status != 'Cancelada'),
     total_slots        - SUM(slots WHERE status != 'Cancelada')
 ))
 ```
@@ -435,7 +433,7 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
         comentario,          // comments sin prefijos Días:/Otros servicios:
         conversation_log,    // conversation_notes, truncado a 2000 chars si es mayor
         assigned_venue_id,
-        conversation_status,
+        status,
         modo
     },
     disponibilidad: [...]   // un objeto por venue (ver estructura abajo)
@@ -571,7 +569,7 @@ Producto 147 (Despedida de Gigantes) es de tipo `grouped`, stock null. Los PUTs 
 }
 ```
 
-`sfcom_order_ref` = `${order.number}_${order.id}` (ej: `WEB026_1090`).
+`origin_ref` en la reserva resultante = `${order.number}_${order.id}` (ej: `WEB026_1090`).
 
 ---
 

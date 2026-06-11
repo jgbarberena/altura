@@ -32,7 +32,7 @@ const TABLAS = {
         query:  () => supabase.from('reservation_requests').select('*').order('created_at', { ascending: false }),
         cols: [
             { label: 'Fecha',        campo: 'created_at',     fmt: v => v ? new Date(v).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—' },
-            { label: 'Estado',       campo: 'status',         clase: v => v === 'nueva' ? 'estado-pendiente' : v === 'atendida' ? 'estado-confirmada' : 'estado-cancelada' },
+            { label: 'Estado',       campo: 'status',         clase: v => v === 'nueva' || v === 'en_conversacion' || v === 'respuesta_enviada' || v === 'seguimiento_pendiente' ? 'estado-pendiente' : v === 'convertida' ? 'estado-confirmada' : 'estado-cancelada' },
             { label: 'Fuente',       campo: 'source',         fmt: v => v || 'web' },
             { label: 'Nombre',       campo: 'client_name' },
             { label: 'Email',        campo: 'client_email' },
@@ -43,7 +43,7 @@ const TABLAS = {
             { label: 'Experiencia',  campo: 'level' },
             { label: '€/plaza',      campo: 'price_per_slot', fmt: v => v ? fmt(v) : '—' },
             { label: 'Comentarios',  campo: 'comments' },
-            { label: 'Atendida',     campo: 'attended_at',    fmt: v => v ? new Date(v).toLocaleDateString('es-ES') : '—' },
+            { label: 'Actualizada',  campo: 'updated_at',     fmt: v => v ? new Date(v).toLocaleDateString('es-ES') : '—' },
         ]
     },
     charges:  {

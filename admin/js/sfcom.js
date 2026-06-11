@@ -125,7 +125,7 @@ export async function syncStockToSfcom(supabase, venueId, serviceId) {
     const [{ data: sfcomData, error: errSfcom }, { data: allData, error: errAll }] = await Promise.all([
         supabase.from('reservations').select('slots')
             .eq('venue_id', venueId).eq('service_id', serviceId)
-            .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
+            .like('origin_ref', 'WEB%').neq('status', 'Cancelada'),
         supabase.from('reservations').select('slots')
             .eq('venue_id', venueId).eq('service_id', serviceId)
             .neq('status', 'Cancelada')
@@ -168,7 +168,7 @@ export async function syncStockToSfcom(supabase, venueId, serviceId) {
 // ────────────────────────────────────────────────────────────────────────────
 // FLUJO A: checkSfcomOrders
 // Consulta pedidos completados en sfcom y devuelve los que no están
-// registrados en reservations (por sfcom_order_ref).
+// registrados en reservations (por origin_ref).
 // Se llama al cargar el panel y antes de guardar una reserva.
 //
 // Nota: el endpoint «orders» no está documentado en sf-api-paula.php (la
@@ -194,10 +194,10 @@ export async function checkSfcomOrders(supabase) {
 
     const { data: reservasConRef } = await supabase
         .from('reservations')
-        .select('sfcom_order_ref')
-        .not('sfcom_order_ref', 'is', null)
+        .select('origin_ref')
+        .like('origin_ref', 'WEB%')
 
-    const refsRegistradas = new Set((reservasConRef ?? []).map(r => r.sfcom_order_ref))
+    const refsRegistradas = new Set((reservasConRef ?? []).map(r => r.origin_ref))
 
     const nuevos = sfcomOrders
         .filter(order => {
@@ -211,7 +211,7 @@ export async function checkSfcomOrders(supabase) {
             return !yaExiste && esCompletado;
         })
         .map(order => ({
-            sfcom_order_ref: `${order.number}_${order.id}`,
+            origin_ref: `${order.number}_${order.id}`,
             sfcom_id:        order.id,
             sfcom_number:    order.number,
             fecha:           order.date_created,
@@ -274,7 +274,7 @@ export async function checkAvailabilityBeforeSave(supabase, venueId, serviceId, 
     const [{ data: sfcomData }, { data: allData }] = await Promise.all([
         supabase.from('reservations').select('slots')
             .eq('venue_id', venueId).eq('service_id', serviceId)
-            .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
+            .like('origin_ref', 'WEB%').neq('status', 'Cancelada'),
         supabase.from('reservations').select('slots')
             .eq('venue_id', venueId).eq('service_id', serviceId)
             .neq('status', 'Cancelada')
@@ -309,7 +309,7 @@ export async function checkAvailabilityBeforeSave(supabase, venueId, serviceId, 
 // Devuelve null si el par no tiene sfcom configurado y confirmado.
 // ────────────────────────────────────────────────────────────────────────────
 
-// sfcomDelta: plazas que se añaden/quitan con sfcom_order_ref (reservas de sfcom)
+// sfcomDelta: plazas que se añaden/quitan con origin_ref WEB% (reservas de sfcom)
 // allDelta:   plazas totales que se añaden/quitan (sfcom + propias)
 export async function computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta = 0, allDelta = 0 } = {}) {
     const { data: avail } = await supabase
@@ -325,7 +325,7 @@ export async function computeExpectedStock(supabase, venueId, serviceId, { sfcom
     const [{ data: sfcomData }, { data: allData }] = await Promise.all([
         supabase.from('reservations').select('slots')
             .eq('venue_id', venueId).eq('service_id', serviceId)
-            .not('sfcom_order_ref', 'is', null).neq('status', 'Cancelada'),
+            .like('origin_ref', 'WEB%').neq('status', 'Cancelada'),
         supabase.from('reservations').select('slots')
             .eq('venue_id', venueId).eq('service_id', serviceId)
             .neq('status', 'Cancelada')
@@ -556,7 +556,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         { data: services,     error: eServices },
         { data: solicitudes,  error: eSol }
     ] = await Promise.all([
-        supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, sfcom_order_ref'),
+        supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, origin_ref'),
         supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name'),
         supabase.from('clients').select('id, name'),
         supabase.from('venues').select('id'),
@@ -735,7 +735,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                 r.service_id === avail.service_id &&
                 r.status     !== 'Cancelada'
             )
-            const sfcomVendidas = resParProp.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+            const sfcomVendidas = resParProp.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
             const todasOcupadas = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
             const stockEsperado = Math.max(0, Math.min(
                 avail.sfcom_slots_listed - sfcomVendidas,
@@ -784,7 +784,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                         id:         r.id,
                         clientName: r.client_id,
                         slots:      r.slots ?? 0,
-                        sfcomRef:   r.sfcom_order_ref ?? null
+                        sfcomRef:   r.origin_ref?.startsWith('WEB') ? r.origin_ref : null
                     })),
                     pendingRequests: sfcomPendPar.map(s => ({
                         id:         s.id,

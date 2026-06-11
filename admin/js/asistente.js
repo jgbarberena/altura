@@ -292,6 +292,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                 }
             }
         } catch (err) {
+            mensajes.pop()
             spinner.remove()
             addMensaje('assistant', '❌ Error al conectar con el asistente. Inténtalo de nuevo.')
             console.error('[asistente] Error:', err)
@@ -356,7 +357,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             comentario:          comentarioLimpio,
             conversation_log:    conversationLog,
             assigned_venue_id:   solicitud.assigned_venue_id   || null,
-            conversation_status: solicitud.conversation_status || 'nueva',
+            conversation_status: solicitud.status || 'nueva',
             modo:                modo || null
         },
         disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null, solicitud.slots || null)

@@ -33,7 +33,7 @@ async function cargarDatos() {
         { data: proveedores,    error: errP },
         { data: clientes,       error: errC }
     ] = await Promise.all([
-        supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,sfcom_order_ref').order('id', { ascending: false }),
+        supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,origin_ref').order('id', { ascending: false }),
         supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status'),
         supabase.from('reservation_requests').select('id,client_name,client_email,source,service_id,level,day,slots,price_per_slot,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
         supabase.from('services').select('id,event_type,day,description'),
@@ -63,7 +63,7 @@ async function cargarDatos() {
 // ─── KPIs ─────────────────────────────────────────────────────────────────────
 
 function renderKpis() {
-    const sfcomActivas = todosLosDatos.reservas.filter(r => r.sfcom_order_ref && r.status !== 'Cancelada')
+    const sfcomActivas = todosLosDatos.reservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
     const nReservas  = sfcomActivas.length
     // price_per_slot en reservas sfcom es ya el precio neto (bruto / 1.15)
     const totalNeto  = sfcomActivas.reduce((s, r) => s + (parseFloat(r.total_amount) || (r.slots * parseFloat(r.price_per_slot))), 0)
@@ -132,7 +132,7 @@ function renderSolicitudes() {
 function renderReservas() {
     const tbody = document.getElementById('tbody-reservas-sfcom')
     const { reservas, servicios, venues, clientes } = todosLosDatos
-    const sfcom = reservas.filter(r => r.sfcom_order_ref)
+    const sfcom = reservas.filter(r => r.origin_ref?.startsWith('WEB'))
 
     if (!sfcom.length) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--subtle)">No hay reservas sfcom registradas</td></tr>'
@@ -147,7 +147,7 @@ function renderReservas() {
         const estadoClass = r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'
 
         return `<tr>
-            <td><code>${r.sfcom_order_ref}</code></td>
+            <td><code>${r.origin_ref}</code></td>
             <td>${cli?.name  ?? r.client_id   ?? '—'}</td>
             <td>${svc?.description ?? r.service_id  ?? '—'}</td>
             <td>${venue?.display_name ?? r.venue_id ?? '—'}</td>
@@ -181,8 +181,8 @@ function renderListings() {
         const svc = servicios[d.service_id]
 
         // Todas las reservas activas para este par (sfcom y propias)
-        const resSfcom  = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.sfcom_order_ref && r.status !== 'Cancelada')
-        const resPropia = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada')
+        const resSfcom  = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+        const resPropia = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && !r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
         const slotsSfcom   = resSfcom.reduce((s, r)  => s + r.slots, 0)
         const slotsPropios = resPropia.reduce((s, r) => s + r.slots, 0)
         const slotsTotales = slotsSfcom + slotsPropios
@@ -291,7 +291,7 @@ function actualizarStockDesdeVerificacion(resultado) {
         } else {
             // sin discrepancia → stockReal === stockEsperado, calculamos igual que renderListings
             const { reservas } = todosLosDatos
-            const slotsSfcom   = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+            const slotsSfcom   = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
             const slotsTotales = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
             stockSfcom.set(sfKey, Math.max(0, Math.min(
                 (d.sfcom_slots_listed ?? 0) - slotsSfcom,
@@ -318,8 +318,8 @@ document.getElementById('btnExportListings')?.addEventListener('click', () => {
     const { disponibilidad, reservas } = todosLosDatos
     const listings = disponibilidad.filter(d => d.sfcom_status !== null)
     const rows = listings.map(d => {
-        const resSfcom  = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.sfcom_order_ref  && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
-        const resPropia = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && !r.sfcom_order_ref && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+        const resSfcom  = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.origin_ref?.startsWith('WEB')  && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
+        const resPropia = reservas.filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && !r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada').reduce((s, r) => s + r.slots, 0)
         const esperado  = Math.max(0, Math.min(
             (d.sfcom_slots_listed ?? 0) - resSfcom,
             d.total_slots - resSfcom - resPropia
@@ -340,9 +340,9 @@ document.getElementById('btnExportListings')?.addEventListener('click', () => {
 })
 
 document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () => {
-    const sfcom = todosLosDatos.reservas.filter(r => r.sfcom_order_ref)
+    const sfcom = todosLosDatos.reservas.filter(r => r.origin_ref?.startsWith('WEB'))
     exportTable(sfcom, [
-        { key: 'sfcom_order_ref', label: 'Referencia sfcom' },
+        { key: 'origin_ref', label: 'Referencia sfcom' },
         { key: 'id',              label: 'ID reserva' },
         { key: 'client_id',       label: 'Cliente' },
         { key: 'service_id',      label: 'Servicio' },

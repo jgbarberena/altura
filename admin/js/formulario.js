@@ -6,7 +6,7 @@ import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
 import { crearModal } from './modal.js'
-import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
+import { initAsistente } from './asistente.js'
 
 await requireAuth()
 initFacturacion(supabase)
@@ -41,7 +41,7 @@ function _getProviderIdFromVenue(venueId) {
 
 let clienteActual      = null
 let reservaEditandoId  = null
-let solicitudSfcomRef  = null   // sfcom_order_ref de la solicitud activa (null si no es de sfcom)
+let solicitudOriginRef = null   // origin_ref de la solicitud activa: WEB-ref para sfcom, UUID para web/email
 let hitosClienteTemp   = []
 let _cargandoSolicitud = false
 const hoy             = new Date().toISOString().split('T')[0]
@@ -165,7 +165,7 @@ function limpiarCamposCliente() {
 
 function limpiarFormularioReserva() {
     reservaEditandoId = null
-    solicitudSfcomRef = null
+    solicitudOriginRef = null
     selectServicio.value      = ''
     selectServicio.disabled   = false
     selectProveedor.innerHTML = '<option value="">— Selecciona servicio primero —</option>'
@@ -616,7 +616,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         ).values()].map(p => {
             const activas    = todasReservas.filter(r => ids.includes(r.id) && r.venue_id === p.venueId && r.service_id === p.serviceId && r.status !== 'Cancelada')
             const allDelta   = -activas.reduce((s, r) => s + (r.slots ?? 0), 0)
-            const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+            const sfcomDelta = -activas.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
         if (pairsConCambio.length > 0) {
@@ -631,7 +631,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         ).values()].map(p => {
             const reactivadas = todasReservas.filter(r => ids.includes(r.id) && r.venue_id === p.venueId && r.service_id === p.serviceId && r.status === 'Cancelada')
             const allDelta    = reactivadas.reduce((s, r) => s + (r.slots ?? 0), 0)
-            const sfcomDelta  = reactivadas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+            const sfcomDelta  = reactivadas.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
         for (const p of pairsConCambio) {
@@ -678,7 +678,7 @@ async function eliminarSeleccionadas() {
     ).values()].map(p => {
         const activas    = todasReservas.filter(r => ids.includes(r.id) && r.venue_id === p.venueId && r.service_id === p.serviceId && r.status !== 'Cancelada')
         const allDelta   = -activas.reduce((s, r) => s + (r.slots ?? 0), 0)
-        const sfcomDelta = -activas.filter(r => r.sfcom_order_ref).reduce((s, r) => s + (r.slots ?? 0), 0)
+        const sfcomDelta = -activas.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
         return { ...p, sfcomDelta, allDelta }
     })
     let sfcomResultElim = 'sync'
@@ -791,7 +791,7 @@ btnAnadir.addEventListener('click', async () => {
         // Calcular deltas para el modal consultivo antes de guardar
         const pairsParaModal = []
         const parCambia  = venueId !== venueIdAnterior || servicioId !== servicioIdAnterior
-        const esSfcomRes = Boolean(reservaOriginal?.sfcom_order_ref)
+        const esSfcomRes = Boolean(reservaOriginal?.origin_ref?.startsWith('WEB'))
         if (parCambia) {
             const eraActiva  = reservaOriginal?.status !== 'Cancelada'
             const seraActiva = estado !== 'Cancelada'
@@ -866,7 +866,7 @@ btnAnadir.addEventListener('click', async () => {
 
         const sfcomResultNuevo = await confirmarStockSfcom(supabase, [{
             venueId, serviceId: servicioId,
-            sfcomDelta: solicitudSfcomRef ? plazas : 0,
+            sfcomDelta: solicitudOriginRef ? plazas : 0,
             allDelta:   plazas
         }])
         if (sfcomResultNuevo === 'cancel') return
@@ -900,7 +900,7 @@ btnAnadir.addEventListener('click', async () => {
             id: nuevaId, client_id: clienteActual.id,
             venue_id: venueId, service_id: servicioId,
             slots: plazas, price_per_slot: precio, status: estado, comments,
-            sfcom_order_ref: solicitudSfcomRef || null
+            origin_ref: solicitudOriginRef || null
         })
         if (errReserva) { alert('Error al crear reserva: ' + errReserva.message); return }
 
@@ -913,7 +913,9 @@ btnAnadir.addEventListener('click', async () => {
         if (sfcomResultNuevo === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
+        const _refParaCerrar = solicitudOriginRef
         limpiarFormularioReserva()
+        if (_refParaCerrar) await _ofrecerCerrarSolicitud(_refParaCerrar)
     }
     } finally {
         setGuardando(false)
@@ -1631,7 +1633,7 @@ window.confirmarReorganizacion = async function() {
         const newVenueId   = cambio.venue_id   ?? r.venue_id
         const newServiceId = cambio.service_id ?? r.service_id
         if (newVenueId === r.venue_id && newServiceId === r.service_id) return
-        const isSfcom = Boolean(r.sfcom_order_ref)
+        const isSfcom = Boolean(r.origin_ref?.startsWith('WEB'))
         const slots   = r.slots ?? 0
         const origKey = `${r.venue_id}|${r.service_id}`
         const newKey  = `${newVenueId}|${newServiceId}`
@@ -1788,52 +1790,51 @@ async function cargarSolicitudes() {
     const { data: solicitudes, error } = await supabase
         .from('reservation_requests')
         .select('*')
-        .in('status', ['nueva', 'email_parsed'])
+        .not('status', 'in', '("convertida","descartada")')
         .order('created_at', { ascending: true })
 
     if (error) { console.error('Error cargando solicitudes:', error); return }
 
+    const bloque    = document.getElementById('bloque-solicitudes')
     const tbody     = document.getElementById('tbody-solicitudes')
     const tablaWrap = document.getElementById('tabla-solicitudes-wrapper')
-    const emptyMsg  = document.getElementById('bloque-solicitudes-empty')
+    const avisoEl   = document.getElementById('bloque-solicitudes-empty')
 
-    if (!solicitudes || solicitudes.length === 0) {
-        if (tablaWrap) tablaWrap.style.display = 'none'
-        if (emptyMsg)  emptyMsg.style.display  = 'block'
+    const sfcomPendientes = (solicitudes ?? []).filter(s => _esSfcom(s.source) && s.status === 'nueva')
+    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source))
+
+    if (sfcomPendientes.length === 0 && otrasActivas.length === 0) {
+        if (bloque) bloque.style.display = 'none'
         return
     }
-    if (tablaWrap) tablaWrap.style.display = ''
-    if (emptyMsg)  emptyMsg.style.display  = 'none'
+    if (bloque) bloque.style.display = ''
 
-    // Separar sfcom de web para mostrar sfcom primero
-    const deSfcom  = solicitudes.filter(s => _esSfcom(s.source))
-    const deEmail  = solicitudes.filter(s => s.source === 'email')
-    const deWeb    = solicitudes.filter(s => !_esSfcom(s.source) && s.source !== 'email')
-    const ordenadas = [...deSfcom, ...deEmail, ...deWeb]
+    if (avisoEl) {
+        if (otrasActivas.length > 0) {
+            const n = otrasActivas.length
+            avisoEl.style.display = 'block'
+            avisoEl.innerHTML = `${n} solicitud${n > 1 ? 'es' : ''} web/email activa${n > 1 ? 's' : ''} — <a href="solicitudes.html">ver en solicitudes</a>`
+        } else {
+            avisoEl.style.display = 'none'
+        }
+    }
 
-    tbody.innerHTML = ordenadas.map(s => {
-        const esSfcom  = _esSfcom(s.source)
-        const esEmail  = s.source === 'email'
+    if (tablaWrap) tablaWrap.style.display = sfcomPendientes.length > 0 ? '' : 'none'
+    if (sfcomPendientes.length === 0) return
+
+    tbody.innerHTML = sfcomPendientes.map(s => {
         const fecha    = s.created_at
             ? new Date(s.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
             : '—'
-        const contacto = [s.client_email, s.client_phone].filter(Boolean).join(' / ') || '—'
-        const dia      = s.day ? s.day + '/jul' : '—'
+        const contacto   = [s.client_email, s.client_phone].filter(Boolean).join(' / ') || '—'
+        const dia        = s.day ? s.day + '/jul' : '—'
         const comentario = s.comments || '—'
-        const experiencia = esSfcom
-            ? (s.level || s.comments || '—')   // sfcom: usamos comments que guardamos el nombre del producto
-            : (s.level || '—')
-        const importe = esSfcom && s.price_per_slot && s.slots
+        const experiencia = s.level || s.comments || '—'
+        const importe = s.price_per_slot && s.slots
             ? `${(s.price_per_slot * s.slots).toFixed(0)}€ bruto<br><strong>${(s.price_per_slot * s.slots / 1.15).toFixed(0)}€ neto</strong>`
             : '—'
-        const rowStyle = esSfcom ? 'cursor:pointer;background:#fff0f0;border-left:3px solid #dc2626'
-                       : esEmail ? 'cursor:pointer;background:#eff6ff;border-left:3px solid #2563eb'
-                       : 'cursor:pointer'
-        const badge = esSfcom ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">sfcom</span>`
-                    : esEmail ? `<span style="font-size:10px;background:#2563eb;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">📧 email</span>`
-                    : ''
 
-        return `<tr class="fila-solicitud" style="${rowStyle}"
+        return `<tr class="fila-solicitud" style="cursor:pointer;background:#fff0f0;border-left:3px solid #dc2626"
             data-id="${s.id}"
             data-source="${(s.source || '').replace(/"/g, '&quot;')}"
             data-nombre="${(s.client_name || '').replace(/"/g, '&quot;')}"
@@ -1846,7 +1847,7 @@ async function cargarSolicitudes() {
             data-slots="${s.slots || ''}"
             data-price-per-slot="${s.price_per_slot || ''}"
             data-comments="${comentario.replace(/"/g, '&quot;')}">
-            <td>${badge}${fecha}</td>
+            <td><span style="font-size:10px;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">sfcom</span>${fecha}</td>
             <td>${s.client_name || '—'}</td>
             <td>${contacto}</td>
             <td>${experiencia}</td>
@@ -1855,9 +1856,7 @@ async function cargarSolicitudes() {
             <td style="font-size:12px">${importe}</td>
             <td>${comentario}</td>
             <td class="td-acciones" onclick="event.stopPropagation()">
-                <button class="btn-sm btn-responder" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:12px" data-id="${s.id}">💬 Responder</button>
                 <button class="btn-sm btn-ok btn-atendida" data-id="${s.id}">✅ Procesado</button>
-                ${!esSfcom ? `<button class="btn-sm btn-err btn-descartar" data-id="${s.id}">🗑️ Descartar</button>` : ''}
             </td>
         </tr>`
     }).join('')
@@ -1869,25 +1868,13 @@ async function cargarSolicitudes() {
     tbody.querySelectorAll('.btn-atendida').forEach(btn => {
         btn.addEventListener('click', () => marcarAtendida(btn.dataset.id))
     })
-
-    tbody.querySelectorAll('.btn-descartar').forEach(btn => {
-        btn.addEventListener('click', () => descartarSolicitud(btn.dataset.id))
-    })
-
-    tbody.querySelectorAll('.btn-responder').forEach(btn => {
-        btn.addEventListener('click', e => {
-            e.stopPropagation()
-            const sol = solicitudes.find(s => String(s.id) === String(btn.dataset.id))
-            if (sol) abrirAsistenteRespuesta(sol)
-        })
-    })
 }
 
 async function cargarDesdeSolicitud(data) {
     limpiarCamposCliente()
 
     const esSfcom = _esSfcom(data.source)
-    solicitudSfcomRef = esSfcom ? (data.source || null) : null
+    solicitudOriginRef = esSfcom ? (data.source || null) : null
 
     // Generar ID de cliente: NOMBRE_APELLIDO, con _2, _3... si ya existe
     const nombreBase = (data.nombre || 'CLIENTE')
@@ -2068,7 +2055,7 @@ async function registrarPedidosSfcom(pedidos) {
         .not('source', 'is', null)
 
     const sourcesRegistrados = new Set((existentes ?? []).map(r => r.source))
-    const nuevos = pedidos.filter(p => !sourcesRegistrados.has(p.sfcom_order_ref))
+    const nuevos = pedidos.filter(p => !sourcesRegistrados.has(p.origin_ref))
     if (!nuevos.length) return
 
     const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
@@ -2076,7 +2063,7 @@ async function registrarPedidosSfcom(pedidos) {
     for (const pedido of nuevos) {
         if ((pedido.productos?.length ?? 0) > 1) {
             _mostrarModalAvisoSolicitud(
-                `El pedido <strong>${pedido.sfcom_order_ref}</strong> contiene ${pedido.productos.length} productos — ` +
+                `El pedido <strong>${pedido.origin_ref}</strong> contiene ${pedido.productos.length} productos — ` +
                 `solo se procesa el primero automáticamente. Los demás requieren revisión manual.`
             )
         }
@@ -2142,7 +2129,7 @@ async function registrarPedidosSfcom(pedidos) {
 
         } else if (!filaByName && filaById) {
             // Caso 3: IDs apuntan a una fila pero el nombre no se reconoce
-            _mostrarModalNombreNoReconocido(li.nombre, pedido.sfcom_order_ref)
+            _mostrarModalNombreNoReconocido(li.nombre, pedido.origin_ref)
             levelToSave = li.nombre  // guardar nombre raw para revisión manual
         }
         // Caso 4 (ninguno encontrado): serviceId=null, levelToSave=li.nombre raw
@@ -2162,7 +2149,7 @@ async function registrarPedidosSfcom(pedidos) {
             service_id:     serviceId,
             comments:       pedido.cliente.comentarios || null,
             price_per_slot: precioSlotBruto,
-            source:         pedido.sfcom_order_ref,
+            source:         pedido.origin_ref,
             status:         'nueva'
         })
     }
@@ -2173,7 +2160,7 @@ async function registrarPedidosSfcom(pedidos) {
 async function marcarAtendida(id) {
     const { error } = await supabase
         .from('reservation_requests')
-        .update({ status: 'atendida', attended_at: new Date().toISOString() })
+        .update({ status: 'convertida' })
         .eq('id', id)
 
     if (error) console.error('Error marcando como atendida:', error)
@@ -2185,20 +2172,54 @@ async function descartarSolicitud(id) {
 
     const { error } = await supabase
         .from('reservation_requests')
-        .update({ status: 'descartada', attended_at: new Date().toISOString() })
+        .update({ status: 'descartada' })
         .eq('id', id)
 
     if (error) console.error('Error descartando solicitud:', error)
     await cargarSolicitudes()
 }
 
+async function _ofrecerCerrarSolicitud(ref) {
+    if (!confirm('¿Marcar la solicitud como convertida?')) return
+    const esSfcomRef = typeof ref === 'string' && ref.startsWith('WEB')
+    const filtro = esSfcomRef ? { source: ref } : { id: ref }
+    const { error } = await supabase.from('reservation_requests')
+        .update({ status: 'convertida' })
+        .match(filtro)
+    if (error) { console.error('Error al cerrar solicitud:', error); return }
+    await cargarSolicitudes()
+}
+
 document.getElementById('btnCerrarReorg').addEventListener('click', cerrarPanelReorganizar)
 document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPanelReorganizar)
 document.getElementById('btnConfirmarReorg').addEventListener('click', confirmarReorganizacion)
-document.getElementById('btnProcesarEmail').addEventListener('click', abrirProcesarEmail)
+document.getElementById('btnProcesarEmail').addEventListener('click', () => { location.href = 'solicitudes.html' })
 
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
+
+// Si venimos de solicitudes.html con ?solicitud_id=uuid, pre-cargar datos
+;(async () => {
+    const solicitudId = new URLSearchParams(location.search).get('solicitud_id')
+    if (!solicitudId) return
+    const { data: sol } = await supabase.from('reservation_requests').select('*').eq('id', solicitudId).single()
+    if (!sol) return
+    await cargarDesdeSolicitud({
+        id:            sol.id,
+        source:        sol.source || '',
+        nombre:        sol.client_name  || '',
+        email:         sol.client_email || '',
+        telefono:      sol.client_phone || '',
+        address:       sol.client_address || '',
+        level:         sol.level || '',
+        serviceId:     sol.service_id || '',
+        day:           String(sol.day || ''),
+        slots:         String(sol.slots || ''),
+        pricePerSlot:  String(sol.price_per_slot || ''),
+        comments:      sol.comments || ''
+    })
+    solicitudOriginRef = sol.id  // override: UUID para solicitud web/email
+})()
 
 // Comprobar pedidos nuevos en sfcom y luego verificar coherencia.
 // El orden es importante: los pedidos registrados por checkSfcomOrders influyen
@@ -2271,7 +2292,7 @@ document.getElementById('btnExportReservasCliente')?.addEventListener('click', (
         { key: 'total_amount',   label: 'Total',      fmt: v => fmt(v) },
         { key: 'status',         label: 'Estado' },
         { key: 'comments',       label: 'Comentarios' },
-        { key: 'sfcom_order_ref',label: 'Ref. sfcom' },
+        { key: 'origin_ref',label: 'Ref. sfcom' },
     ], `reservas_${id}.xlsx`)
 })
 
