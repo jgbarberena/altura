@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
@@ -1013,6 +1013,18 @@ sfcomNombreAutoList.addEventListener('click', e => {
     sfcomNombreAutoList.style.display = 'none'
 })
 
+function _mostrarUrlCatalogoServicio(url) {
+    const el = document.getElementById('url-catalogo-servicio')
+    if (!el) return
+    if (!url) { el.innerHTML = ''; return }
+    el.innerHTML = `<span style="word-break:break-all">${url}</span>
+        <button id="btn-copiar-url-servicio" class="btn btn-secondary" style="font-size:11px;padding:3px 8px;flex-shrink:0">📋 Copiar</button>`
+    document.getElementById('btn-copiar-url-servicio').addEventListener('click', async () => {
+        await navigator.clipboard.writeText(url)
+        mostrarToast('URL copiada')
+    })
+}
+
 function limpiarFormularioServicio() {
     servicioEditandoId   = null
     serviciosEditandoIds = []
@@ -1048,6 +1060,7 @@ function limpiarFormularioServicio() {
     sortServiciosCol = null
     sortServiciosDir = 'asc'
     actualizarSeccionSfcom(null)
+    _mostrarUrlCatalogoServicio(null)
 }
 
 // ===== GUARDAR SERVICIO(S) =====
@@ -1427,6 +1440,7 @@ function cargarServicioEnFormulario(dispIds) {
         document.getElementById('servicio-dia-warning').style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
         actualizarSeccionSfcom(disps[0])
+        _mostrarUrlCatalogoServicio(buildCatalogUrl(disps[0].venue_slug, disps[0].event_type))
     } else {
         servicioEditandoId       = null
         inputServicioId.value    = 'Varios servicios'
@@ -1462,6 +1476,10 @@ function cargarServicioEnFormulario(dispIds) {
         document.getElementById('titulo-bloque-servicio').textContent =
             `✏️ Editando ${disps.length} servicios`
         actualizarSeccionSfcom(null)
+        const urlComun = disps.every(d => d.venue_slug === disps[0].venue_slug && d.event_type === disps[0].event_type)
+            ? buildCatalogUrl(disps[0].venue_slug, disps[0].event_type)
+            : null
+        _mostrarUrlCatalogoServicio(urlComun)
     }
 
     actualizarCosteServicio()

@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar } from './utils.js'
+import { initSidebar, buildCatalogUrl } from './utils.js'
+import { mostrarToast } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 
 await requireAuth()
@@ -390,6 +391,21 @@ function renderLista() {
 
 // ===== DETALLE DE SOLICITUD =====
 
+function _actualizarUrlCatalogo(venueId, serviceId) {
+    const el = document.getElementById('sol-url-catalogo')
+    if (!el) return
+    if (!venueId || !serviceId) { el.innerHTML = ''; return }
+    const row = disponibilidad.find(d => d.venue_id === venueId && d.service_id === serviceId)
+    const url = buildCatalogUrl(row?.venue_slug, row?.event_type)
+    if (!url) { el.innerHTML = ''; return }
+    el.innerHTML = `<span style="word-break:break-all">${url}</span>
+        <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;flex-shrink:0" id="sol-btn-copiar-url">📋 Copiar</button>`
+    document.getElementById('sol-btn-copiar-url').addEventListener('click', async () => {
+        await navigator.clipboard.writeText(url)
+        mostrarToast('URL copiada')
+    })
+}
+
 function mostrarDetalle(sol) {
     solicitudActual = sol
 
@@ -508,6 +524,7 @@ function mostrarDetalle(sol) {
                     <option value="">— Sin asignar —</option>
                     ${venueOptions}
                 </select>
+                <div id="sol-url-catalogo" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--subtle)"></div>
             </div>` : ''}
 
             ${!esSfcom ? `
@@ -548,6 +565,7 @@ function mostrarDetalle(sol) {
     `
 
     detalle.classList.add('visible')
+    _actualizarUrlCatalogo(sol.assigned_venue_id, sol.service_id)
 
     // Scroll log al final tras render (solo si existe — sfcom no tiene log)
     const logArea = document.getElementById('sol-log-area')
@@ -583,7 +601,10 @@ function mostrarDetalle(sol) {
                 .update({ assigned_venue_id: venueId })
                 .eq('id', sol.id)
             if (error) console.error('Error actualizando venue asignado:', error)
-            else sol.assigned_venue_id = venueId
+            else {
+                sol.assigned_venue_id = venueId
+                _actualizarUrlCatalogo(venueId, sol.service_id)
+            }
         })
     }
 

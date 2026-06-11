@@ -251,3 +251,8 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
         console.log(`💸 Pago final actualizado para ${proveedorId}: ${hitoFinal.amount}€ → ${pagoFinal}€`)
     }
 }
+
+export function buildCatalogUrl(slug, eventType) {
+    if (!slug || !eventType) return null
+    return `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${slug}&et=${eventType}`
+}
