@@ -2,15 +2,16 @@ import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
-let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada
+let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado
 
-export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom, onRespuestaUsada }) {
-    _supabase           = supabase
-    _getDisponibilidad  = getDisponibilidad
-    _getTodasReservas   = getTodasReservas
-    _onEmailSaved       = onEmailSaved
-    _esSfcom            = esSfcom
-    _onRespuestaUsada   = onRespuestaUsada ?? null
+export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom, onRespuestaUsada, onBorradorActualizado }) {
+    _supabase                = supabase
+    _getDisponibilidad       = getDisponibilidad
+    _getTodasReservas        = getTodasReservas
+    _onEmailSaved            = onEmailSaved
+    _esSfcom                 = esSfcom
+    _onRespuestaUsada        = onRespuestaUsada        ?? null
+    _onBorradorActualizado   = onBorradorActualizado   ?? null
 }
 
 // ===== HELPERS DE CONTEXTO =====
@@ -180,7 +181,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             <h3 style="font-size:15px;font-weight:600;margin:0">💬 Asistente de respuesta</h3>
             <div style="display:flex;gap:10px;align-items:center">
                 <button id="btn-guardar-log" style="background:none;border:none;cursor:pointer;font-size:11px;color:#9ca3af;text-decoration:underline;padding:0" title="Guardar conversación en Supabase">Guardar log</button>
-                <button id="btn-asistente-cerrar" style="background:none;border:none;cursor:pointer;font-size:20px;color:#777;padding:0;line-height:1" title="Cerrar">✕</button>
+                <button id="btn-asistente-cerrar" style="background:none;border:none;cursor:pointer;font-size:15px;color:#777;padding:4px 8px;line-height:1;border-radius:4px" title="Cerrar">✕</button>
             </div>
         </div>
         <div style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:12px;color:#444;display:grid;grid-template-columns:1fr 1fr;gap:5px 16px">
@@ -205,10 +206,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             <textarea id="asistente-mensaje-final"
                 style="width:100%;min-height:140px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button id="btn-asistente-copiar" class="btn btn-secondary">📋 Copiar</button>
-                ${solicitud.client_email ? `<a id="btn-asistente-email" class="btn btn-secondary" style="text-decoration:none">📧 Email</a>` : ''}
-                ${solicitud.client_phone ? `<a id="btn-asistente-whatsapp" class="btn btn-secondary" style="text-decoration:none" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
-                ${_onRespuestaUsada ? `<button id="btn-asistente-usar" class="btn btn-primary">✅ Usar respuesta</button>` : ''}
+                <button id="btn-asistente-copiar" class="btn btn-secondary" style="min-height:48px">📋 Copiar</button>
+                ${solicitud.client_email ? `<a id="btn-asistente-email" class="btn btn-secondary" style="text-decoration:none;min-height:48px">📧 Email</a>` : ''}
+                ${solicitud.client_phone ? `<a id="btn-asistente-whatsapp" class="btn btn-secondary" style="text-decoration:none;min-height:48px" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
             </div>
         </div>
     `
@@ -218,6 +218,8 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     const elEnviar    = panel.querySelector('#asistente-enviar')
     const elResultado = panel.querySelector('#asistente-resultado')
     const elMsgFinal  = panel.querySelector('#asistente-mensaje-final')
+    const elCerrar    = panel.querySelector('#btn-asistente-cerrar')
+    let _ultimoBorrador = null
 
     function addMensaje(role, texto) {
         const el = document.createElement('div')
@@ -258,13 +260,22 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             const respuesta = data?.content?.[0]?.text ?? ''
             if (!respuesta) throw new Error('Respuesta vacía de Claude')
 
-            const MARKER    = '---MENSAJE_CLIENTE---'
-            const markerIdx = respuesta.indexOf(MARKER)
+            const MARKER         = '---MENSAJE_CLIENTE---'
+            const MARKER_BORRADOR = '---BORRADOR---'
+            const markerIdx      = respuesta.indexOf(MARKER)
 
-            let textoChat, mensajeFinal
+            let textoChat, mensajeFinal, borradorDraft = null
             if (markerIdx !== -1) {
-                textoChat    = respuesta.slice(0, markerIdx).trim()
-                mensajeFinal = respuesta.slice(markerIdx + MARKER.length).trim()
+                textoChat = respuesta.slice(0, markerIdx).trim()
+                const resto = respuesta.slice(markerIdx + MARKER.length)
+                const borradorIdx = resto.indexOf(MARKER_BORRADOR)
+                if (borradorIdx !== -1) {
+                    mensajeFinal = resto.slice(0, borradorIdx).trim()
+                    const jsonStr = resto.slice(borradorIdx + MARKER_BORRADOR.length).trim()
+                    try { borradorDraft = JSON.parse(jsonStr) } catch(e) { console.warn('[borrador] JSON inválido:', jsonStr) }
+                } else {
+                    mensajeFinal = resto.trim()
+                }
             } else {
                 textoChat    = respuesta
                 mensajeFinal = null
@@ -279,6 +290,8 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                 elResultado.style.display       = 'flex'
                 elResultado.style.flexDirection = 'column'
                 elResultado.style.gap           = '10px'
+
+                _ultimoBorrador = borradorDraft
 
                 const btnEmail = panel.querySelector('#btn-asistente-email')
                 const btnWA    = panel.querySelector('#btn-asistente-whatsapp')
@@ -302,8 +315,20 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         }
     }
 
+    // Acción compartida al usar cualquier botón de envío
+    async function _alEnviar() {
+        const texto = elMsgFinal.value.trim()
+        if (!texto) return
+        if (_onRespuestaUsada) await _onRespuestaUsada(texto, solicitud)
+        if (_ultimoBorrador !== null && _onBorradorActualizado) {
+            await _onBorradorActualizado(solicitud.id, _ultimoBorrador)
+        }
+        elCerrar.textContent = '✓ Cerrar'
+        elCerrar.style.cssText = 'background:#16a34a;color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:600;padding:6px 12px;border-radius:6px'
+    }
+
     // Event listeners del dialog
-    panel.querySelector('#btn-asistente-cerrar').addEventListener('click', () => overlay.close())
+    elCerrar.addEventListener('click', () => overlay.close())
 
     elEnviar.addEventListener('click', async () => {
         if (enviando) return
@@ -321,15 +346,28 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         }
     })
 
-    panel.querySelector('#btn-asistente-copiar')?.addEventListener('click', () => {
-        navigator.clipboard.writeText(elMsgFinal.value)
-            .then(() => mostrarToast('📋 Copiado al portapapeles'))
-            .catch(() => mostrarToast('❌ No se pudo copiar', '#991b1b'))
+    elInput.addEventListener('input', () => {
+        if (elResultado.style.display !== 'none' && elInput.value.trim()) {
+            elResultado.style.display = 'none'
+        }
     })
 
-    panel.querySelector('#btn-asistente-usar')?.addEventListener('click', async () => {
-        await _onRespuestaUsada(elMsgFinal.value, solicitud)
-        mostrarToast('✅ Respuesta añadida al log')
+    panel.querySelector('#btn-asistente-copiar')?.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(elMsgFinal.value)
+            mostrarToast('📋 Copiado al portapapeles')
+        } catch {
+            mostrarToast('❌ No se pudo copiar', '#991b1b')
+        }
+        await _alEnviar()
+    })
+
+    panel.querySelector('#btn-asistente-email')?.addEventListener('click', async () => {
+        await _alEnviar()
+    })
+
+    panel.querySelector('#btn-asistente-whatsapp')?.addEventListener('click', async () => {
+        await _alEnviar()
     })
 
     // Contexto inicial
@@ -358,7 +396,8 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             conversation_log:    conversationLog,
             assigned_venue_id:   solicitud.assigned_venue_id   || null,
             conversation_status: solicitud.status || 'nueva',
-            modo:                modo || null
+            modo:                modo || null,
+            proposal_draft:      solicitud.proposal_draft || []
         },
         disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null, solicitud.slots || null)
     }
@@ -398,7 +437,8 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         if (guardado) {
             try {
                 mensajes = JSON.parse(guardado)
-                const MARKER = '---MENSAJE_CLIENTE---'
+                const MARKER          = '---MENSAJE_CLIENTE---'
+                const MARKER_BORRADOR = '---BORRADOR---'
                 let lastFinal = null
                 // mensajes[0] is the context JSON payload, skip it for display
                 for (let i = 1; i < mensajes.length; i++) {
@@ -408,7 +448,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                         if (idx !== -1) {
                             const chat = msg.content.slice(0, idx).trim()
                             if (chat) addMensaje('assistant', chat)
-                            lastFinal = msg.content.slice(idx + MARKER.length).trim()
+                            const resto = msg.content.slice(idx + MARKER.length)
+                            const bIdx  = resto.indexOf(MARKER_BORRADOR)
+                            lastFinal = bIdx !== -1 ? resto.slice(0, bIdx).trim() : resto.trim()
                         } else {
                             addMensaje('assistant', msg.content)
                         }

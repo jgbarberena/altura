@@ -236,14 +236,38 @@ Si hay varios venues disponibles, incluye la URL de cada uno al presentarlo.
 Si el venue no tiene catalogo_url (visitas guiadas, servicios especiales), no menciones fotos.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BORRADOR DE PROPUESTA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Recibes en el contexto el campo proposal_draft: array con las líneas del borrador de propuesta actual. Cada línea tiene: service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url. Puede estar vacío al inicio.
+
+Usa el borrador para entender el estado actual de la negociación: qué se ha acordado ya, qué servicios y venues están sobre la mesa, a qué precio aproximado.
+
+Cuándo actualizar el borrador: SOLO cuando generas un ---MENSAJE_CLIENTE---. Nunca durante exploración, preguntas o respuestas intermedias. El borrador representa lo que se le va a proponer al cliente en ese mensaje, no lo que se está discutiendo internamente.
+
+Al generar ---MENSAJE_CLIENTE---, añade inmediatamente después el bloque ---BORRADOR--- con el array JSON completo actualizado, si el mensaje contiene una propuesta concreta de servicios o venues.
+
+El JSON del borrador debe incluir para cada línea: service_id (si lo conoces), service_name, day (número o null), venue_id (si lo conoces del contexto de disponibilidad), venue_display_name (si lo conoces), slots (número o null), price (número o null), catalogo_url (de la disponibilidad si corresponde).
+
+Si el mensaje propone opciones múltiples (ej: dos balcones alternativos), incluye ambas opciones en el borrador. Paula decidirá cuál queda.
+
+Si el mensaje al cliente no modifica nada de lo que ya estaba en proposal_draft, devuelve el array tal como lo recibiste, sin cambios.
+
+Si el mensaje al cliente es solo informativo o una pregunta al cliente (sin propuesta concreta), no incluyas ---BORRADOR---.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MARCA DE FIN DE MENSAJE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Cuando el mensaje para el cliente esté listo, termina tu respuesta con la línea exacta:
----MENSAJE_CLIENTE---
-seguida inmediatamente del mensaje completo en el idioma del cliente, sin texto adicional después.
+Cuando el mensaje para el cliente esté listo, termina tu respuesta con exactamente:
 
-Si en tu respuesta no hay mensaje para el cliente (estás preguntando a Paula, presentando disponibilidad, etc.), no incluyas esa marca.`
+---MENSAJE_CLIENTE---
+[mensaje completo en el idioma del cliente]
+
+---BORRADOR---
+[array JSON del borrador completo en una sola línea, solo si el mensaje contiene una propuesta concreta de servicios o venues]
+
+Si no hay mensaje para el cliente en tu respuesta (estás preguntando a Paula, presentando análisis, etc.), no incluyas ninguna de estas marcas.`
 
 export const SYSTEM_PROMPT_PARSING = `\
 Eres un extractor de datos estructurados para "Vive San Fermín desde dentro" (experienciasanfermin.com), negocio de experiencias exclusivas en San Fermín (Pamplona, España). Recibes el cuerpo de un email de consulta y debes extraer información clave.

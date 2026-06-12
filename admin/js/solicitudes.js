@@ -18,11 +18,12 @@ function _esSfcom(source) {
 }
 
 initAsistente(supabase, {
-    getDisponibilidad: () => disponibilidad,
-    getTodasReservas:  () => todasReservas,
-    onEmailSaved:      cargarSolicitudes,
-    esSfcom:           _esSfcom,
-    onRespuestaUsada:  _onRespuestaUsadaEnLog
+    getDisponibilidad:     () => disponibilidad,
+    getTodasReservas:      () => todasReservas,
+    onEmailSaved:          cargarSolicitudes,
+    esSfcom:               _esSfcom,
+    onRespuestaUsada:      _onRespuestaUsadaEnLog,
+    onBorradorActualizado: _onBorradorActualizado
 })
 
 let solicitudActual = null
@@ -256,6 +257,23 @@ async function _onRespuestaUsadaEnLog(texto, solicitud) {
     _actualizarPreviewLista(solicitud)
 }
 
+async function _onBorradorActualizado(solicitudId, draft) {
+    const { error } = await supabase
+        .from('reservation_requests')
+        .update({ proposal_draft: draft })
+        .eq('id', solicitudId)
+    if (error) { console.error('[borrador] Error guardando:', error); return }
+
+    const sol = [..._solicitudesActuales, ..._solicitudesCerradas].find(s => s.id === solicitudId)
+    if (sol) {
+        sol.proposal_draft = draft
+        if (solicitudActual?.id === solicitudId) {
+            const container = document.getElementById('sol-borrador-container')
+            if (container) _renderBorrador(sol, container)
+        }
+    }
+}
+
 // ===== CARGA Y RENDER DE LISTA =====
 
 async function cargarSolicitudes() {
@@ -389,6 +407,316 @@ function renderLista() {
     })
 }
 
+// ===== BORRADOR DE PROPUESTA =====
+
+function _serviciosUnicos() {
+    const vistos = new Set()
+    const lista  = []
+    for (const d of (disponibilidad || [])) {
+        if (!d.service_id || vistos.has(d.service_id)) continue
+        vistos.add(d.service_id)
+        const RE_DIA = /_(\d+)$/
+        const diaNum = parseInt(d.service_id.match(RE_DIA)?.[1]) || null
+        const etLabel = {
+            encierro: 'Encierro', chupinazo: 'Chupinazo', procesion: 'Procesión',
+            gigantes: 'Gigantes', pobre_de_mi: 'Pobre de Mí'
+        }[d.event_type] || d.event_type || d.service_id
+        const label = diaNum ? `${etLabel} - día ${diaNum}` : etLabel
+        lista.push({ service_id: d.service_id, label, event_type: d.event_type, day: diaNum })
+    }
+    lista.sort((a, b) => {
+        const order = ['chupinazo','procesion','encierro','gigantes','pobre_de_mi']
+        const ai = order.indexOf(a.event_type), bi = order.indexOf(b.event_type)
+        if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+        return (a.day || 0) - (b.day || 0)
+    })
+    return lista
+}
+
+function _venuesPorServicio(serviceId) {
+    if (!serviceId) return []
+    return (disponibilidad || [])
+        .filter(d => d.service_id === serviceId)
+        .map(d => {
+            const ocupadas = (todasReservas || [])
+                .filter(r => r.venue_id === d.venue_id && r.service_id === serviceId && r.status !== 'Cancelada')
+                .reduce((s, r) => s + (r.slots || 0), 0)
+            const libres = Math.max(0, d.total_slots - ocupadas)
+            return {
+                venue_id:           d.venue_id,
+                venue_display_name: d.venue_display_name || d.venue_id,
+                libres,
+                total:              d.total_slots,
+                catalogo_url:       d.venue_slug && d.event_type
+                    ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${d.venue_slug}&et=${d.event_type}`
+                    : null
+            }
+        })
+}
+
+let _borradorTimer = null
+
+async function _guardarBorrador(sol, draft) {
+    sol.proposal_draft = draft
+    const idx = _solicitudesActuales.findIndex(s => s.id === sol.id)
+    if (idx !== -1) _solicitudesActuales[idx].proposal_draft = draft
+    await supabase.from('reservation_requests').update({ proposal_draft: draft }).eq('id', sol.id)
+}
+
+function _debounceSave(sol, getDraft) {
+    clearTimeout(_borradorTimer)
+    const ind = document.getElementById('sol-borrador-saving')
+    if (ind) ind.style.visibility = 'visible'
+    _borradorTimer = setTimeout(async () => {
+        await _guardarBorrador(sol, getDraft())
+        if (ind) ind.style.visibility = 'hidden'
+    }, 800)
+}
+
+function _renderBorrador(sol, container) {
+    const servicios = _serviciosUnicos()
+    const draft     = Array.isArray(sol.proposal_draft) ? [...sol.proposal_draft] : []
+
+    const totalGeneral = draft.reduce((s, l) => s + ((l.slots || 0) * (l.price || 0)), 0)
+
+    const serviceOpts = servicios.map(s =>
+        `<option value="${s.service_id}">${s.label}</option>`
+    ).join('')
+
+    function filaHtml(linea, idx) {
+        const venues    = linea.service_id ? _venuesPorServicio(linea.service_id) : []
+        const venueOpts = venues.map(v => {
+            const aviso = v.libres === 0 ? ' ⚠️' : ''
+            return `<option value="${v.venue_id}"${linea.venue_id === v.venue_id ? ' selected' : ''}>${v.venue_display_name}${aviso} (${v.libres}/${v.total})</option>`
+        }).join('')
+        const total = (linea.slots || 0) * (linea.price || 0)
+        const catalogoBtn = linea.catalogo_url
+            ? `<a href="${linea.catalogo_url}" target="_blank" rel="noopener" style="color:var(--subtle);font-size:14px;text-decoration:none" title="Ver catálogo">🔗</a>`
+            : `<span style="color:var(--border);font-size:14px">🔗</span>`
+
+        return `<tr data-idx="${idx}">
+            <td style="padding:0 2px">
+                <button class="bor-up" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--subtle);padding:1px 3px" title="Subir">↑</button>
+                <button class="bor-dn" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--subtle);padding:1px 3px" title="Bajar">↓</button>
+            </td>
+            <td style="padding:2px">
+                <select class="bor-svc" data-idx="${idx}" style="font-size:12px;width:100%;min-height:36px">
+                    <option value="">— Servicio —</option>
+                    ${serviceOpts.replace(`value="${linea.service_id}"`, `value="${linea.service_id}" selected`)}
+                </select>
+            </td>
+            <td style="padding:2px">
+                <input class="bor-dia" data-idx="${idx}" type="number" min="6" max="14" value="${linea.day || ''}" placeholder="—" style="width:48px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px">
+            </td>
+            <td style="padding:2px">
+                <select class="bor-venue" data-idx="${idx}" style="font-size:12px;width:100%;min-height:36px"${!linea.service_id ? ' disabled' : ''}>
+                    <option value="">— Venue —</option>
+                    ${venueOpts}
+                </select>
+            </td>
+            <td style="padding:2px">
+                <input class="bor-slots" data-idx="${idx}" type="number" min="1" value="${linea.slots || ''}" placeholder="—" style="width:52px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px">
+                ${linea.slots && linea.venue_id ? (() => {
+                    const v = _venuesPorServicio(linea.service_id).find(v => v.venue_id === linea.venue_id)
+                    return v && linea.slots > v.libres ? `<div style="color:#dc2626;font-size:10px">>${v.libres} libres</div>` : ''
+                })() : ''}
+            </td>
+            <td style="padding:2px">
+                <input class="bor-price" data-idx="${idx}" type="number" min="0" value="${linea.price || ''}" placeholder="—" style="width:60px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px">
+            </td>
+            <td style="padding:2px;text-align:right;font-size:12px;white-space:nowrap">
+                ${total > 0 ? total.toLocaleString('es-ES') + '€' : '—'}
+            </td>
+            <td style="padding:2px;white-space:nowrap;text-align:center">
+                ${catalogoBtn}
+                <button class="bor-del" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--subtle);padding:1px 3px" title="Eliminar fila">🗑️</button>
+            </td>
+        </tr>`
+    }
+
+    const filaVacia = `<tr data-idx="new">
+        <td></td>
+        <td style="padding:2px">
+            <select class="bor-svc-new" style="font-size:12px;width:100%;min-height:36px;color:var(--subtle)">
+                <option value="">+ Añadir servicio…</option>
+                ${serviceOpts}
+            </select>
+        </td>
+        <td colspan="6" style="font-size:11px;color:var(--subtle);padding-left:6px">Toca para añadir</td>
+    </tr>`
+
+    container.innerHTML = `
+        <div style="margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--subtle)">Borrador de propuesta</span>
+                <span id="sol-borrador-saving" style="font-size:10px;color:var(--subtle);visibility:hidden">guardando…</span>
+            </div>
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:12px" id="sol-borrador-table">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border)">
+                            <th style="width:36px"></th>
+                            <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Servicio</th>
+                            <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Día</th>
+                            <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Venue</th>
+                            <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Plazas</th>
+                            <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">€/plaza</th>
+                            <th style="text-align:right;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Total</th>
+                            <th style="width:48px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sol-borrador-tbody">
+                        ${draft.map((l, i) => filaHtml(l, i)).join('')}
+                        ${filaVacia}
+                    </tbody>
+                </table>
+            </div>
+            ${totalGeneral > 0 ? `<div style="text-align:right;font-size:13px;font-weight:600;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">Total propuesta: ${totalGeneral.toLocaleString('es-ES')}€</div>` : ''}
+        </div>
+    `
+
+    const tbody = container.querySelector('#sol-borrador-tbody')
+
+    function getDraft() {
+        return draft.filter(l => l.service_id || l.venue_id || l.slots || l.price)
+    }
+
+    function rebind() {
+        _renderBorrador({ ...sol, proposal_draft: draft }, container)
+    }
+
+    // Fila nueva — al seleccionar servicio
+    container.querySelector('.bor-svc-new')?.addEventListener('change', e => {
+        const svcId = e.target.value
+        if (!svcId) return
+        const svc     = servicios.find(s => s.service_id === svcId)
+        const venues  = _venuesPorServicio(svcId)
+        const catUrl  = venues[0]?.catalogo_url || null
+        draft.push({
+            service_id:         svcId,
+            service_name:       svc?.label || svcId,
+            day:                svc?.day || null,
+            venue_id:           null,
+            venue_display_name: null,
+            slots:              null,
+            price:              null,
+            catalogo_url:       catUrl
+        })
+        _debounceSave(sol, getDraft)
+        rebind()
+    })
+
+    // Eventos en filas existentes
+    tbody.querySelectorAll('.bor-svc').forEach(sel => {
+        sel.addEventListener('change', e => {
+            const idx   = parseInt(e.target.dataset.idx)
+            const svcId = e.target.value
+            const svc   = servicios.find(s => s.service_id === svcId)
+            const venues = _venuesPorServicio(svcId)
+            draft[idx] = {
+                ...draft[idx],
+                service_id:         svcId,
+                service_name:       svc?.label || svcId,
+                day:                svc?.day || draft[idx].day,
+                venue_id:           null,
+                venue_display_name: null,
+                catalogo_url:       venues[0]?.catalogo_url || null
+            }
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+
+    tbody.querySelectorAll('.bor-dia').forEach(inp => {
+        inp.addEventListener('blur', e => {
+            const idx = parseInt(e.target.dataset.idx)
+            draft[idx].day = parseInt(e.target.value) || null
+            _debounceSave(sol, getDraft)
+        })
+    })
+
+    tbody.querySelectorAll('.bor-venue').forEach(sel => {
+        sel.addEventListener('change', e => {
+            const idx     = parseInt(e.target.dataset.idx)
+            const venueId = e.target.value
+            const venue   = _venuesPorServicio(draft[idx].service_id).find(v => v.venue_id === venueId)
+            draft[idx].venue_id           = venueId || null
+            draft[idx].venue_display_name = venue?.venue_display_name || null
+            draft[idx].catalogo_url       = venue?.catalogo_url || null
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+
+    tbody.querySelectorAll('.bor-slots').forEach(inp => {
+        inp.addEventListener('blur', e => {
+            const idx = parseInt(e.target.dataset.idx)
+            draft[idx].slots = parseInt(e.target.value) || null
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+
+    tbody.querySelectorAll('.bor-price').forEach(inp => {
+        inp.addEventListener('blur', e => {
+            const idx = parseInt(e.target.dataset.idx)
+            draft[idx].price = parseFloat(e.target.value) || null
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+
+    tbody.querySelectorAll('.bor-del').forEach(btn => {
+        btn.addEventListener('click', e => {
+            const idx = parseInt(e.currentTarget.dataset.idx)
+            draft.splice(idx, 1)
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+
+    tbody.querySelectorAll('.bor-up').forEach(btn => {
+        btn.addEventListener('click', e => {
+            const idx = parseInt(e.currentTarget.dataset.idx)
+            if (idx === 0) return
+            ;[draft[idx - 1], draft[idx]] = [draft[idx], draft[idx - 1]]
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+
+    tbody.querySelectorAll('.bor-dn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            const idx = parseInt(e.currentTarget.dataset.idx)
+            if (idx >= draft.length - 1) return
+            ;[draft[idx], draft[idx + 1]] = [draft[idx + 1], draft[idx]]
+            _debounceSave(sol, getDraft)
+            rebind()
+        })
+    })
+}
+
+async function _migrarConsultaAlLog(sol) {
+    const items = _parsearLog(sol.conversation_notes)
+    const tieneCliente = items.some(i => i.type === 'message' && i.author === 'Cliente')
+    if (tieneCliente) return
+
+    const comentarioLimpio = (sol.comments || '')
+        .replace(/^(Días|Otros servicios):[^\n]*\n?/gm, '').trim()
+
+    let texto = comentarioLimpio
+    if (!texto) {
+        const partes = []
+        if (sol.level)  partes.push(sol.level)
+        if (sol.day)    partes.push(`día ${sol.day}`)
+        if (sol.slots)  partes.push(`${sol.slots} personas`)
+        texto = partes.length ? `[Solicitud inicial] ${partes.join(' · ')}` : ''
+    }
+    if (!texto) return
+
+    await _insertarMensaje(sol, 'Cliente', texto)
+}
+
 // ===== DETALLE DE SOLICITUD =====
 
 function _actualizarUrlCatalogo(venueId, serviceId) {
@@ -448,7 +776,45 @@ function mostrarDetalle(sol) {
         `<option value="${v}"${convStatus === v ? ' selected' : ''}>${l}</option>`
     ).join('')
 
-    const precioRef = serviceId ? _calcularPrecioRef(serviceId) : null
+    // Pre-rellenar borrador si está vacío y la solicitud tiene datos de servicio
+    if (!esSfcom && (!Array.isArray(sol.proposal_draft) || sol.proposal_draft.length === 0)) {
+        if (sol.level || sol.service_id) {
+            const servicios = _serviciosUnicos()
+            const svcId     = sol.service_id || servicios.find(s => {
+                const et = sol.level
+                return et === 'chupinazo' ? s.service_id === 'CHUPINAZO_6'
+                     : et === 'procesion' ? s.service_id === 'PROCESION_7'
+                     : et === 'gigantes'  ? s.service_id === 'DESPEDIDA_GIGANTES_14'
+                     : et === 'pobre_de_mi' ? s.service_id === 'POBRE_DE_MI'
+                     : et === 'encierro' && sol.day ? s.service_id === `ENCIERRO_${sol.day}`
+                     : false
+            })?.service_id
+            if (svcId) {
+                const svc     = servicios.find(s => s.service_id === svcId)
+                const venues  = _venuesPorServicio(svcId)
+                const catUrl  = venues[0]?.catalogo_url || null
+                const precioR = _calcularPrecioRef(sol)
+                const precioN = (() => {
+                    if (!precioR) return null
+                    const nums = precioR.match(/\d+(?:\.\d+)?/g)?.map(Number)
+                    return nums?.length ? Math.max(...nums) : null
+                })()
+                sol.proposal_draft = [{
+                    service_id:         svcId,
+                    service_name:       svc?.label || svcId,
+                    day:                svc?.day || sol.day || null,
+                    venue_id:           sol.assigned_venue_id || null,
+                    venue_display_name: venues.find(v => v.venue_id === sol.assigned_venue_id)?.venue_display_name || null,
+                    slots:              sol.slots || null,
+                    price:              precioN,
+                    catalogo_url:       catUrl
+                }]
+                supabase.from('reservation_requests').update({ proposal_draft: sol.proposal_draft }).eq('id', sol.id)
+                const idx = _solicitudesActuales.findIndex(s => s.id === sol.id)
+                if (idx !== -1) _solicitudesActuales[idx].proposal_draft = sol.proposal_draft
+            }
+        }
+    }
 
     const params = new URLSearchParams()
     params.set('solicitud_id', sol.id)
@@ -496,6 +862,7 @@ function mostrarDetalle(sol) {
                 <button class="btn btn-primary" id="btnEnviarRecordatorio" style="width:100%;min-height:44px">📩 Enviar recordatorio</button>
             </div>` : ''}
 
+            ${!esSfcom ? `<div id="sol-borrador-container"></div>` : `
             <div class="sol-detalle-datos">
                 <div class="sol-dato">
                     <span class="sol-dato-label">Experiencia</span>
@@ -509,13 +876,12 @@ function mostrarDetalle(sol) {
                     <span class="sol-dato-label">Personas</span>
                     <span class="sol-dato-valor">${sol.slots || '—'}</span>
                 </div>
-                ${precioRef ? `<div class="sol-dato"><span class="sol-dato-label">Precio ref.</span><span class="sol-dato-valor">${precioRef}</span></div>` : ''}
                 ${sol.comments ? `
                 <div class="sol-dato sol-dato--full">
                     <span class="sol-dato-label">Consulta</span>
                     <span class="sol-dato-valor">${sol.comments}</span>
                 </div>` : ''}
-            </div>
+            </div>`}
 
             ${!esSfcom && venuesDisp.length > 0 ? `
             <div class="form-field" style="margin-bottom:16px">
@@ -566,6 +932,20 @@ function mostrarDetalle(sol) {
 
     detalle.classList.add('visible')
     _actualizarUrlCatalogo(sol.assigned_venue_id, sol.service_id)
+
+    // Borrador (solo solicitudes no-sfcom)
+    const borradorContainer = document.getElementById('sol-borrador-container')
+    if (borradorContainer) {
+        _renderBorrador(sol, borradorContainer)
+        _migrarConsultaAlLog(sol).then(() => {
+            const logArea = document.getElementById('sol-log-area')
+            if (logArea) {
+                logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
+                _initEditListeners(sol, logArea)
+                setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
+            }
+        })
+    }
 
     // Scroll log al final tras render (solo si existe — sfcom no tiene log)
     const logArea = document.getElementById('sol-log-area')
@@ -683,15 +1063,44 @@ function mostrarDetalle(sol) {
     })
 }
 
-function _calcularPrecioRef(serviceId) {
+function _inferirServiceIds(level) {
+    const FIJOS = {
+        chupinazo:   ['CHUPINAZO_6'],
+        procesion:   ['PROCESION_7'],
+        gigantes:    ['DESPEDIDA_GIGANTES_14'],
+        pobre_de_mi: ['POBRE_DE_MI']
+    }
+    if (FIJOS[level]) return FIJOS[level]
+    if (level === 'encierro') return [7, 8, 9, 10, 11, 12, 13, 14].map(d => `ENCIERRO_${d}`)
+    return []
+}
+
+function _calcularPrecioRef(sol) {
+    const serviceIds = sol.service_id
+        ? [sol.service_id]
+        : _inferirServiceIds(sol.level)
+    if (!serviceIds.length) return null
+
     const precios = (todasReservas || [])
-        .filter(r => r.service_id === serviceId && ['Confirmada', 'Pendiente'].includes(r.status))
+        .filter(r => serviceIds.includes(r.service_id) && ['Confirmada', 'Pendiente'].includes(r.status))
         .map(r => parseFloat(r.price_per_slot))
         .filter(p => p > 0)
-    if (!precios.length) return null
-    const min = Math.min(...precios)
-    const max = Math.max(...precios)
-    return min === max ? `${min}€/plaza` : `${min}–${max}€/plaza`
+
+    if (precios.length) {
+        const min = Math.min(...precios)
+        const max = Math.max(...precios)
+        return min === max ? `${min}€/plaza` : `${min}–${max}€/plaza`
+    }
+
+    // Fallback: coste proveedor en availability_panel + margen 20%
+    const preciosDisp = (disponibilidad || [])
+        .filter(d => serviceIds.includes(d.service_id))
+        .map(d => parseFloat(d.price_per_slot))
+        .filter(p => p > 0)
+
+    if (!preciosDisp.length) return null
+    const fallback = Math.round(Math.max(...preciosDisp) * 1.2)
+    return `~${fallback}€/plaza`
 }
 
 // ===== INICIALIZACIÓN =====
