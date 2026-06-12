@@ -160,7 +160,7 @@ UNIQUE (provider_id, amount, due_date).
 | email_raw | Texto completo del email original (referencia, no se muestra en panel) |
 | conversation_notes | Log interno formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto` |
 | assigned_venue_id | FK→venues — venue asignado (opcional) |
-| proposal_draft | jsonb, default `'[]'` — array de líneas del borrador de propuesta. Cada línea: `{ service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url }`. Todos los campos opcionales excepto `service_name`. Actualizado por la tabla del borrador en solicitudes.js y automáticamente cuando el asistente emite `---BORRADOR---`. |
+| proposal_draft | jsonb, default `'[]'` — array de líneas del borrador de propuesta. Cada línea: `{ service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url, estado }`. `estado`: `'pendiente'` (default), `'hecha'`, `'descartada'` — solo presente cuando la solicitud pasa por el bloque de conversión en formulario.html. Actualizado por la tabla del borrador en solicitudes.js, por `_persistirEstadoLineas()` en formulario.js, y automáticamente cuando el asistente emite `---BORRADOR---`. |
 
 **Ciclo de vida de `status`:** las solicitudes con `status IN ('convertida','descartada')` no aparecen en ninguna lista activa. Auto-transición en solicitudes.js: `respuesta_enviada` → `seguimiento_pendiente` si `updated_at` supera 3 días sin respuesta.
 
@@ -252,6 +252,7 @@ Utilidades compartidas. Exports:
 | `formatVenueLabel(venueId, venueProviderId)` | "PROV — VENUE" si distintos, solo venueId si iguales |
 | `persistirCobrosCliente(supabase, clienteId, todasReservas)` | Recalcula y persiste cobro final en charges. Si el hito ya tiene invoice_number, crea hito de ajuste. |
 | `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` | Recalcula y persiste pago final en payments. Primero busca todos los venues del proveedor para agregar disponibilidad y reservas de todos ellos. |
+| `resolverCliente(datos, todosClientes)` | **Punto de entrada obligatorio antes de generar un client_id nuevo.** `datos: { nombre, email, telefono }`. Devuelve `{ match: 'exacto'\|'ambiguo'\|'ninguno', cliente }`. Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar como subcadena de palabras (ambiguo). Evita la creación de duplicados (CLIENTE_2, CLIENTE_3) cuando llegan múltiples solicitudes de la misma persona. |
 
 ### modal.js
 `crearModal(id, { wide, narrow, scroll })` — único punto de creación de modales en el admin.
@@ -278,9 +279,27 @@ Lee al cargar: `clients`, `services`, `availability_panel`, `venues`, `sfcom_lis
 
 **6 bloques** (se muestran/ocultan según estado):
 
-**Bloque 0 — Solicitudes pendientes sfcom:** Lee `reservation_requests` con status no `convertida`/`descartada`. Muestra solo las sfcom pendientes (source `WEB%` + status `nueva`) en tabla roja. Si hay otras activas (web/email), muestra un aviso con enlace a `solicitudes.html`. Se oculta el bloque completo si no hay nada. Botón "→ Solicitudes" redirige a `solicitudes.html`. Click en fila sfcom → `cargarDesdeSolicitud`: limpia cliente previo, precarga datos, infiere servicio+proveedor con `_inferirDesdeSfcom`. Botón "✅ Procesado" marca status `convertida`. Tras guardar reserva: si `solicitudOriginRef` está presente, ofrece marcar la solicitud como `convertida` via `_ofrecerCerrarSolicitud`. También acepta `?solicitud_id=uuid` en la URL (desde solicitudes.html) para precargar datos de una solicitud web/email.
+**Bloque 0 — Solicitudes pendientes sfcom:** Lee `reservation_requests` con status no `convertida`/`descartada`. Muestra solo las sfcom pendientes (source `WEB%` + status `nueva`) en tabla roja. Si hay otras activas (web/email), muestra un aviso con enlace a `solicitudes.html`. Se oculta el bloque completo si no hay nada. Botón "→ Solicitudes" redirige a `solicitudes.html`. Click en fila sfcom → `cargarDesdeSolicitud`: limpia cliente previo, precarga datos, infiere servicio+proveedor con `_inferirDesdeSfcom`. Botón "✅ Procesado" marca status `convertida`. Tras guardar reserva sfcom: si `solicitudOriginRef` está presente, ofrece marcar la solicitud como `convertida` via `_ofrecerCerrarSolicitud`.
 
-**Bloque 1 — Cliente:** Autocomplete en tiempo real contra `clients`. Cliente existente → carga datos + autosave por campo. Cliente nuevo → "Cliente nuevo".
+**Bloque de conversión de propuesta (dinámico, insertado entre bloque 0 y bloque 1):** Visible solo cuando se navega desde `solicitudes.html` con `?solicitud_id=uuid` y la solicitud tiene `proposal_draft` con 2 o más líneas. Fondo azul claro. Título "Convirtiendo propuesta de {cliente} — {N} líneas".
+
+Tabla con una fila por línea del borrador. Columnas: resumen compacto (service_name · día · venue · plazas · precio · total), badge de estado, y botones de acción (solo si `estado === 'pendiente'`):
+- **↓ Cargar**: rellena bloque 2 (servicio, venue, plazas, precio) con los datos de esa línea. Establece `_lineaActualIndex`. El botón queda resaltado (rojo) para indicar la línea activa.
+- **✕ Descartar**: marca la línea como 'descartada' y persiste. Pide confirmación. Si era la línea activa, limpia bloque 2.
+
+Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (default), `'hecha'`, `'descartada'`. Se persiste inmediatamente en Supabase con cada cambio.
+
+**Flujo por línea:** Paula pulsa "↓ Cargar" → bloque 2 se rellena → Paula ajusta y pulsa "Guardar reserva" → `_onLineaGuardada()` marca la línea como 'hecha', persiste, limpia bloque 2, mantiene `solicitudOriginRef` para siguientes líneas. Si quedan líneas pendientes, la tabla se refresca. Si todas están resueltas, `_finalizarConversion()` marca la solicitud como `convertida` y colapsa el bloque a un resumen verde con botón "Volver a solicitudes".
+
+`_ofrecerCerrarSolicitud` está suprimido durante el modo conversión: el cierre de la solicitud lo gestiona exclusivamente `_finalizarConversion()` al completar todas las líneas.
+
+**Persistencia entre sesiones:** si Paula sale antes de terminar, el estado (`hecha`/`descartada`) de cada línea queda guardado en `proposal_draft`. Al volver a entrar con el mismo `solicitud_id`, el bloque se reconstruye con los estados guardados.
+
+**Estado del módulo:** 4 variables de módulo: `_modoConversionActivo`, `_solicitudConversionId`, `_draftConversion[]`, `_lineaActualIndex`.
+
+**También acepta `?solicitud_id=uuid`** para casos A: solicitud con 0 o 1 línea en el borrador.
+
+**Bloque 1 — Cliente:** Autocomplete en tiempo real contra `clients`. Cliente existente → carga datos + autosave por campo. Cliente nuevo → "Cliente nuevo". Al cargar desde solicitud (`cargarDesdeSolicitud`), llama primero a `resolverCliente` para detectar si el cliente ya existe por email/teléfono/nombre antes de generar un ID nuevo. En modo conversión (2+ líneas), el cliente se resuelve una sola vez al entrar — no se toca al cargar cada línea.
 
 **Bloque 2 — Reserva:** Selector de servicio → selector de proveedor (filtrado por service_id) → plazas → precio → total calculado (no editable) → estado → comentarios. Antes de guardar llama a `checkAvailabilityBeforeSave`. Al guardar en modo edición, si cambia proveedor/servicio sincroniza stock sfcom para par original y nuevo.
 
@@ -307,7 +326,7 @@ Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `update
 
 **Lista:** nombre, fecha, badges de origen y de status, experiencia, preview del último mensaje del log (64 chars).
 
-**Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), tabla de borrador de propuesta, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "→ Crear reserva" (→ `formulario.html?solicitud_id=uuid` + otros params), botón "✕ Descartar".
+**Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), tabla de borrador de propuesta, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "📋 Convertir en reservas" (→ `formulario.html?solicitud_id=uuid`), botón "✕ Descartar". La URL solo lleva `solicitud_id`; formulario.js lee el resto directamente de Supabase.
 
 **Borrador de propuesta (`proposal_draft`):** tabla editable que ocupa el espacio donde antes estaba el bloque de datos iniciales (`.sol-detalle-datos`). Columnas: Servicio (select desde `availability_panel`), Día, Venue (select dinámico dependiente del servicio), Plazas, €/plaza, Total (calculado, readonly), Acciones (enlace catálogo + papelera). Flechas ↑↓ para reordenar. Fila vacía al final para añadir. Guardado automático con debounce 800ms. Si el borrador está vacío al abrir una solicitud que tiene `level`/`day`/`slots`, se pre-rellena automáticamente la primera fila con esos datos y el precio máximo de `_calcularPrecioRef`. La consulta inicial (`sol.comments`) se migra como primer mensaje `<Cliente>` del log si el log no tenía mensajes de cliente.
 

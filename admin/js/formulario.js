@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
@@ -44,6 +44,12 @@ let reservaEditandoId  = null
 let solicitudOriginRef = null   // origin_ref de la solicitud activa: WEB-ref para sfcom, UUID para web/email
 let hitosClienteTemp   = []
 let _cargandoSolicitud = false
+
+// ===== ESTADO DEL BLOQUE DE CONVERSIÓN DE PROPUESTA =====
+let _modoConversionActivo  = false
+let _solicitudConversionId = null   // UUID de la solicitud en conversión
+let _draftConversion       = []     // líneas con campo estado ('pendiente'|'hecha'|'descartada')
+let _lineaActualIndex      = null   // índice de la línea cargada en bloque 2
 const hoy             = new Date().toISOString().split('T')[0]
 
 // ===== REFERENCIAS DOM =====
@@ -913,9 +919,13 @@ btnAnadir.addEventListener('click', async () => {
         if (sfcomResultNuevo === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
-        const _refParaCerrar = solicitudOriginRef
-        limpiarFormularioReserva()
-        if (_refParaCerrar) await _ofrecerCerrarSolicitud(_refParaCerrar)
+        if (_modoConversionActivo && _lineaActualIndex !== null) {
+            await _onLineaGuardada()
+        } else {
+            const _refParaCerrar = solicitudOriginRef
+            limpiarFormularioReserva()
+            if (_refParaCerrar) await _ofrecerCerrarSolicitud(_refParaCerrar)
+        }
     }
     } finally {
         setGuardando(false)
@@ -1874,46 +1884,79 @@ async function cargarSolicitudes() {
     })
 }
 
+function _confirmarClienteAmbiguo(clienteExistente) {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-resolver-cliente', { narrow: true })
+        panel.innerHTML = `
+            <div class="modal-header">
+                <span class="modal-header-icon">👤</span>
+                <div>
+                    <div class="modal-header-title">¿Es el mismo cliente?</div>
+                    <div class="modal-header-desc">Ya existe un cliente llamado <strong>${clienteExistente.id}</strong> con datos de contacto distintos.</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="btnClienteNoMismo" class="btn btn-secondary">No, es otra persona</button>
+                <button id="btnClienteSiMismo" class="btn btn-primary">Sí, es el mismo</button>
+            </div>`
+        panel.querySelector('#btnClienteSiMismo').onclick = () => { overlay.close(); resolve(true) }
+        panel.querySelector('#btnClienteNoMismo').onclick = () => { overlay.close(); resolve(false) }
+    })
+}
+
 async function cargarDesdeSolicitud(data) {
     limpiarCamposCliente()
 
-    const esSfcom = _esSfcom(data.source)
-    solicitudOriginRef = esSfcom ? (data.source || null) : null
+    const esSfcom   = _esSfcom(data.source)
+    const originRef = esSfcom ? (data.source || null) : null
 
-    // Generar ID de cliente: NOMBRE_APELLIDO, con _2, _3... si ya existe
     const nombreBase = (data.nombre || 'CLIENTE')
         .toUpperCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^A-Z0-9\s]/g, '')
         .trim()
         .replace(/\s+/g, '_')
 
-    let clienteId = nombreBase
-    let sufijo = 2
-    while (todosClientes.find(c => c.id === clienteId)) {
-        clienteId = nombreBase + '_' + sufijo
-        sufijo++
+    const resolucion = resolverCliente(
+        { nombre: data.nombre, email: data.email, telefono: data.telefono },
+        todosClientes
+    )
+
+    let clienteResuelto = null
+    if (resolucion.match === 'exacto') {
+        clienteResuelto = resolucion.cliente
+    } else if (resolucion.match === 'ambiguo') {
+        const esMismo = await _confirmarClienteAmbiguo(resolucion.cliente)
+        if (esMismo) clienteResuelto = resolucion.cliente
     }
 
     _cargandoSolicitud = true
 
-    // Rellenar bloque de cliente
-    inputId.value       = clienteId
-    inputName.value     = data.nombre   || ''
-    inputPhone.value    = data.telefono || ''
-    inputEmail.value    = data.email    || ''
-    inputAddress.value  = data.address  || ''
-    inputCompany.value  = ''
-    inputComments.value = data.comments || ''
+    if (clienteResuelto) {
+        inputId.value = clienteResuelto.id
+        cargarCliente(clienteResuelto)
+        solicitudOriginRef = originRef  // cargarCliente -> limpiarFormularioReserva lo resetea
+        mostrarToast(`Cliente existente: ${clienteResuelto.id}`)
+    } else {
+        let clienteId = nombreBase, sufijo = 2
+        while (todosClientes.find(c => c.id === clienteId)) { clienteId = nombreBase + '_' + sufijo; sufijo++ }
+        solicitudOriginRef = originRef
+        inputId.value       = clienteId
+        inputName.value     = data.nombre   || ''
+        inputPhone.value    = data.telefono || ''
+        inputEmail.value    = data.email    || ''
+        inputAddress.value  = data.address  || ''
+        inputCompany.value  = ''
+        inputComments.value = data.comments || ''
+        clienteActual = null
+        statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
+            + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+            + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
+            + ' o se guardará al añadir una reserva'
+        statusDiv.style.color = 'var(--accent-warn)'
+    }
 
-    clienteActual = null
-    statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
-        + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
-        + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
-        + ' o se guardará al añadir una reserva'
-    statusDiv.style.color = 'var(--accent-warn)'
-
-    // Rellenar bloque de reserva
+        // Rellenar bloque de reserva
     if (data.slots) inputPlazas.value = data.slots
 
     if (esSfcom) {
@@ -1952,27 +1995,66 @@ async function cargarDesdeSolicitud(data) {
             }
         }
     } else {
-        // Solicitud web: inferir servicio desde slug
-        const serviceIdInferido = _inferirServiceId(data.level, data.day)
-        if (serviceIdInferido) {
-            const existe = servicios.find(s => s.id === serviceIdInferido)
-            if (existe) {
+        // Solicitud web/email — determinar caso A (0 o 1 línea) o caso B (2+ líneas)
+        const draft      = Array.isArray(data.proposal_draft) ? data.proposal_draft : []
+        const nLineas    = draft.length
+
+        if (nLineas >= 2) {
+            // CASO B: bloque de conversión — no se rellena el bloque 2 ahora
+            const nombreMostrar = clienteResuelto?.name || clienteResuelto?.id || data.nombre || 'cliente'
+            _initBloqueConversion(data.id, draft, nombreMostrar)
+            // Si todas las líneas ya estaban resueltas (entrada desde sesión anterior), finalizar directamente
+            if (draft.every(l => l.estado === 'hecha' || l.estado === 'descartada')) {
+                await _finalizarConversion()
+            }
+        } else if (nLineas === 1) {
+            // CASO A con 1 línea: usar datos del borrador
+            const linea = draft[0]
+            if (linea.service_id && servicios.find(s => s.id === linea.service_id)) {
+                selectServicio.value = linea.service_id
+                selectServicio.dispatchEvent(new Event('change'))
+                if (linea.slots != null) inputPlazas.value = linea.slots
+                setTimeout(() => {
+                    if (linea.venue_id) {
+                        selectProveedor.value = linea.venue_id
+                        selectProveedor.dispatchEvent(new Event('change'))
+                    } else {
+                        const soloUno = disponibilidad.filter(d => d.service_id === linea.service_id)
+                        if (soloUno.length === 1) {
+                            selectProveedor.value = soloUno[0].venue_id
+                            selectProveedor.dispatchEvent(new Event('change'))
+                        }
+                    }
+                    if (linea.price != null) {
+                        inputPrecio.value = linea.price
+                        validarPrecio()
+                        actualizarTotal()
+                        actualizarBtnAnadir()
+                    }
+                }, 100)
+            }
+        } else {
+            // CASO A sin borrador: inferir servicio desde level/day (comportamiento anterior)
+            const serviceIdInferido = _inferirServiceId(data.level, data.day)
+            if (serviceIdInferido && servicios.find(s => s.id === serviceIdInferido)) {
                 selectServicio.value = serviceIdInferido
                 selectServicio.dispatchEvent(new Event('change'))
-                // Si solo hay un venue para este servicio, auto-seleccionarlo
-                const venuesServicio = disponibilidad.filter(d => d.service_id === serviceIdInferido)
-                if (venuesServicio.length === 1) {
+                const soloUno = disponibilidad.filter(d => d.service_id === serviceIdInferido)
+                if (soloUno.length === 1) {
                     setTimeout(() => {
-                        selectProveedor.value = venuesServicio[0].venue_id
+                        selectProveedor.value = soloUno[0].venue_id
                         selectProveedor.dispatchEvent(new Event('change'))
                     }, 100)
                 }
             }
         }
-        // Comentarios de reserva
-        const inputComentariosReserva = document.getElementById('inputReservaComments')
-        if (inputComentariosReserva && data.comments) {
-            inputComentariosReserva.value = data.comments
+
+        // Comentarios de reserva (solo si no hay bloque de conversión activo)
+        if (!_modoConversionActivo) {
+            const inputComentariosReserva = document.getElementById('inputReservaComments')
+            if (inputComentariosReserva && data.comments) {
+                inputComentariosReserva.value = data.comments
+            }
         }
     }
 
@@ -2199,6 +2281,201 @@ document.getElementById('btnCancelarReorg').addEventListener('click', cerrarPane
 document.getElementById('btnConfirmarReorg').addEventListener('click', confirmarReorganizacion)
 document.getElementById('btnProcesarEmail').addEventListener('click', () => { location.href = 'solicitudes.html' })
 
+// ===== BLOQUE DE CONVERSIÓN DE PROPUESTA =====
+
+function _resumeLinea(l) {
+    const partes = []
+    if (l.service_name)       partes.push(l.service_name)
+    if (l.day)                partes.push(`día ${l.day}`)
+    if (l.venue_display_name) partes.push(l.venue_display_name)
+    if (l.slots)              partes.push(`${l.slots} plazas`)
+    if (l.price)              partes.push(`${l.price}€/plaza`)
+    const total = (l.slots || 0) * (l.price || 0)
+    if (total > 0)            partes.push(`${total.toLocaleString('es-ES')}€`)
+    return partes.join(' · ') || '—'
+}
+
+function _initBloqueConversion(solicitudId, draft, nombreCliente) {
+    _modoConversionActivo  = true
+    _solicitudConversionId = solicitudId
+    _draftConversion       = draft.map(l => ({ ...l, estado: l.estado || 'pendiente' }))
+    _lineaActualIndex      = null
+
+    let bloque = document.getElementById('bloque-conversion-propuesta')
+    if (!bloque) {
+        bloque = document.createElement('div')
+        bloque.id        = 'bloque-conversion-propuesta'
+        bloque.className = 'bloque'
+        document.getElementById('bloque-cliente').before(bloque)
+    }
+    bloque.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:16px'
+
+    const n = _draftConversion.length
+    bloque.innerHTML = `
+        <h2 style="margin:0 0 12px;font-size:16px;color:#1d4ed8">
+            📋 Convirtiendo propuesta de ${nombreCliente} — ${n} línea${n !== 1 ? 's' : ''}
+        </h2>
+        <div id="conv-tabla-wrapper" style="overflow-x:auto"></div>
+    `
+    _renderTablaConversion()
+}
+
+function _renderTablaConversion() {
+    const wrapper = document.getElementById('conv-tabla-wrapper')
+    if (!wrapper) return
+
+    const filas = _draftConversion.map((l, idx) => {
+        const estado = l.estado || 'pendiente'
+        const resumen = _resumeLinea(l)
+
+        let badgeStyle, badgeText
+        if (estado === 'hecha') {
+            badgeStyle = 'color:#15803d;background:#dcfce7;border-radius:4px;padding:2px 8px;font-size:11px;white-space:nowrap'
+            badgeText  = '✅ Hecha'
+        } else if (estado === 'descartada') {
+            badgeStyle = 'color:#6b7280;background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:11px;white-space:nowrap;text-decoration:line-through'
+            badgeText  = '❌ Descartada'
+        } else {
+            badgeStyle = 'color:#92400e;background:#fef3c7;border-radius:4px;padding:2px 8px;font-size:11px;white-space:nowrap'
+            badgeText  = '⏳ Pendiente'
+        }
+
+        const esCargada     = idx === _lineaActualIndex
+        const btnCargarStyle = `font-size:12px;min-height:44px;padding:6px 12px${esCargada ? ';background:var(--accent);color:#fff;border-color:var(--accent)' : ''}`
+        const acciones = estado === 'pendiente'
+            ? `<div style="display:flex;gap:6px">
+                   <button class="btn btn-secondary conv-cargar" data-idx="${idx}" style="${btnCargarStyle}">↓ Cargar</button>
+                   <button class="btn btn-secondary conv-descartar" data-idx="${idx}" style="font-size:12px;min-height:44px;padding:6px 10px;color:var(--accent)">✕</button>
+               </div>`
+            : ''
+
+        return `<tr style="border-bottom:1px solid #dbeafe">
+            <td style="padding:8px;font-size:13px">${resumen}</td>
+            <td style="padding:8px;white-space:nowrap"><span style="${badgeStyle}">${badgeText}</span></td>
+            <td style="padding:8px;white-space:nowrap">${acciones}</td>
+        </tr>`
+    }).join('')
+
+    wrapper.innerHTML = `
+        <table style="width:100%;border-collapse:collapse">
+            <thead>
+                <tr style="border-bottom:2px solid #bfdbfe">
+                    <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3b82f6;font-weight:600;text-transform:uppercase">Línea</th>
+                    <th style="text-align:left;padding:6px 8px;font-size:11px;color:#3b82f6;font-weight:600;text-transform:uppercase;white-space:nowrap">Estado</th>
+                    <th style="padding:6px 8px;width:130px"></th>
+                </tr>
+            </thead>
+            <tbody>${filas}</tbody>
+        </table>
+    `
+
+    wrapper.querySelectorAll('.conv-cargar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.idx)
+            _lineaActualIndex = idx
+            _cargarLineaEnBloque2(_draftConversion[idx])
+            _renderTablaConversion()
+            document.getElementById('bloque-reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        })
+    })
+
+    wrapper.querySelectorAll('.conv-descartar').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const idx = parseInt(btn.dataset.idx)
+            if (!confirm('¿Descartar esta línea?')) return
+            _draftConversion[idx].estado = 'descartada'
+            if (_lineaActualIndex === idx) {
+                _lineaActualIndex = null
+                limpiarFormularioReserva()
+                solicitudOriginRef = _solicitudConversionId
+            }
+            await _persistirEstadoLineas()
+            const todasResueltas = _draftConversion.every(l => l.estado === 'hecha' || l.estado === 'descartada')
+            if (todasResueltas) {
+                await _finalizarConversion()
+            } else {
+                _renderTablaConversion()
+            }
+        })
+    })
+}
+
+function _cargarLineaEnBloque2(linea) {
+    limpiarFormularioReserva()
+    solicitudOriginRef = _solicitudConversionId  // restaurar tras limpiar
+
+    if (linea.service_id) {
+        selectServicio.value = linea.service_id
+        selectServicio.dispatchEvent(new Event('change'))
+    }
+    if (linea.slots != null) inputPlazas.value = linea.slots
+
+    setTimeout(() => {
+        if (linea.venue_id) {
+            selectProveedor.value = linea.venue_id
+            selectProveedor.dispatchEvent(new Event('change'))
+        }
+        if (linea.price != null) {
+            inputPrecio.value = linea.price
+            validarPrecio()
+            actualizarTotal()
+            actualizarBtnAnadir()
+        }
+    }, 100)
+}
+
+async function _persistirEstadoLineas() {
+    await supabase.from('reservation_requests')
+        .update({ proposal_draft: _draftConversion })
+        .eq('id', _solicitudConversionId)
+}
+
+async function _onLineaGuardada() {
+    _draftConversion[_lineaActualIndex].estado = 'hecha'
+    await _persistirEstadoLineas()
+
+    const todasResueltas = _draftConversion.every(l => l.estado === 'hecha' || l.estado === 'descartada')
+    limpiarFormularioReserva()
+    _lineaActualIndex = null
+
+    if (todasResueltas) {
+        solicitudOriginRef = null
+        await _finalizarConversion()
+    } else {
+        solicitudOriginRef = _solicitudConversionId  // mantener para próximas líneas
+        _renderTablaConversion()
+    }
+}
+
+async function _finalizarConversion() {
+    await supabase.from('reservation_requests')
+        .update({ status: 'convertida' })
+        .eq('id', _solicitudConversionId)
+
+    const hechas     = _draftConversion.filter(l => l.estado === 'hecha').length
+    const descartadas = _draftConversion.filter(l => l.estado === 'descartada').length
+    const sufHechas   = hechas !== 1 ? 's' : ''
+    const textoDesc   = descartadas > 0 ? `, ${descartadas} descartada${descartadas !== 1 ? 's' : ''}` : ''
+    const resumen     = `✅ Conversión completada — ${hechas} reserva${sufHechas} creada${sufHechas}${textoDesc}`
+
+    const bloque = document.getElementById('bloque-conversion-propuesta')
+    if (bloque) {
+        bloque.style.cssText = 'background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:16px'
+        bloque.innerHTML = `
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <span style="font-size:14px">${resumen}</span>
+                <a href="solicitudes.html" class="btn btn-secondary"
+                   style="font-size:13px;text-decoration:none;display:inline-flex;align-items:center;min-height:44px">
+                    Volver a solicitudes
+                </a>
+            </div>
+        `
+    }
+
+    _modoConversionActivo  = false
+    _solicitudConversionId = null
+}
+
 // Cargar solicitudes al iniciar
 cargarSolicitudes()
 
@@ -2209,20 +2486,23 @@ cargarSolicitudes()
     const { data: sol } = await supabase.from('reservation_requests').select('*').eq('id', solicitudId).single()
     if (!sol) return
     await cargarDesdeSolicitud({
-        id:            sol.id,
-        source:        sol.source || '',
-        nombre:        sol.client_name  || '',
-        email:         sol.client_email || '',
-        telefono:      sol.client_phone || '',
-        address:       sol.client_address || '',
-        level:         sol.level || '',
-        serviceId:     sol.service_id || '',
-        day:           String(sol.day || ''),
-        slots:         String(sol.slots || ''),
-        pricePerSlot:  String(sol.price_per_slot || ''),
-        comments:      sol.comments || ''
+        id:             sol.id,
+        source:         sol.source || '',
+        nombre:         sol.client_name   || '',
+        email:          sol.client_email  || '',
+        telefono:       sol.client_phone  || '',
+        address:        sol.client_address || '',
+        level:          sol.level || '',
+        serviceId:      sol.service_id || '',
+        day:            String(sol.day || ''),
+        slots:          String(sol.slots || ''),
+        pricePerSlot:   String(sol.price_per_slot || ''),
+        comments:       sol.comments || '',
+        proposal_draft: sol.proposal_draft || []
     })
-    solicitudOriginRef = sol.id  // override: UUID para solicitud web/email
+    // En modo conversión el UUID ya queda en solicitudOriginRef vía _initBloqueConversion.
+    // Para caso A (0-1 líneas) cargarDesdeSolicitud no lo establece, así que lo forzamos aquí.
+    if (!_modoConversionActivo) solicitudOriginRef = sol.id
 })()
 
 // Comprobar pedidos nuevos en sfcom y luego verificar coherencia.
@@ -2320,21 +2600,39 @@ if (!_clienteParam && (_solName || _solServiceId)) {
         const nombreBase = _solName.toUpperCase()
             .normalize('NFD').replace(/[̀-ͯ]/g, '')
             .replace(/[^A-Z0-9\s]/g, '').trim().replace(/\s+/g, '_')
-        let clienteId = nombreBase, sufijo = 2
-        while (todosClientes.find(c => c.id === clienteId)) { clienteId = nombreBase + '_' + sufijo; sufijo++ }
 
-        inputId.value      = clienteId
-        inputName.value    = _solName
-        inputEmail.value   = _solP.get('client_email') || ''
-        inputPhone.value   = _solP.get('client_phone') || ''
-        clienteActual = null
-        statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
-            + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
-            + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
-            + ' o se guardará al añadir una reserva'
-        statusDiv.style.color = 'var(--accent-warn)'
+        const resolucion = resolverCliente(
+            { nombre: _solName, email: _solP.get('client_email'), telefono: _solP.get('client_phone') },
+            todosClientes
+        )
+
+        let _clienteResuelto = null
+        if (resolucion.match === 'exacto') {
+            _clienteResuelto = resolucion.cliente
+        } else if (resolucion.match === 'ambiguo') {
+            const esMismo = await _confirmarClienteAmbiguo(resolucion.cliente)
+            if (esMismo) _clienteResuelto = resolucion.cliente
+        }
+
+        if (_clienteResuelto) {
+            inputId.value = _clienteResuelto.id
+            cargarCliente(_clienteResuelto)
+            mostrarToast(`Cliente existente: ${_clienteResuelto.id}`)
+        } else {
+            let clienteId = nombreBase, sufijo = 2
+            while (todosClientes.find(c => c.id === clienteId)) { clienteId = nombreBase + '_' + sufijo; sufijo++ }
+            inputId.value      = clienteId
+            inputName.value    = _solName
+            inputEmail.value   = _solP.get('client_email') || ''
+            inputPhone.value   = _solP.get('client_phone') || ''
+            clienteActual = null
+            statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; '
+                + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
+                + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
+                + ' o se guardará al añadir una reserva'
+            statusDiv.style.color = 'var(--accent-warn)'
+        }
     }
-
     if (_solServiceId) {
         const svcUpper = _solServiceId.toUpperCase()
         const existe   = servicios.find(s => s.id === svcUpper)

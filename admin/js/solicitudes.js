@@ -816,16 +816,7 @@ function mostrarDetalle(sol) {
         }
     }
 
-    const params = new URLSearchParams()
-    params.set('solicitud_id', sol.id)
-    if (sol.client_name)       params.set('client_name',  sol.client_name)
-    if (sol.client_email)      params.set('client_email', sol.client_email)
-    if (sol.client_phone)      params.set('client_phone', sol.client_phone)
-    if (sol.service_id)        params.set('service_id',   sol.service_id)
-    if (sol.day)               params.set('day',          sol.day)
-    if (sol.slots)             params.set('slots',        sol.slots)
-    if (sol.assigned_venue_id) params.set('venue_id',     sol.assigned_venue_id)
-    const urlReserva = `formulario.html?${params.toString()}`
+    const urlReserva = `formulario.html?solicitud_id=${sol.id}`
 
     const origenLabel = esSfcom ? '· <strong style="color:#dc2626">sfcom</strong>'
                       : esEmail ? '· email'
@@ -922,7 +913,7 @@ function mostrarDetalle(sol) {
                 ${esSfcom
                     ? `<a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>`
                     : `<button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
-                       <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reserva</a>`
+                       <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>`
                 }
                 <button class="btn btn-danger" id="btnDescartarSolicitud">✕ Descartar</button>
             </div>

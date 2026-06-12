@@ -252,6 +252,41 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
     }
 }
 
+// Resuelve si los datos de contacto de una solicitud corresponden a un cliente existente.
+// Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar (ambiguo).
+export function resolverCliente(datos, todosClientes) {
+    const email = (datos.email || '').trim().toLowerCase()
+    const tel   = (datos.telefono || '').replace(/\D/g, '')
+
+    if (email) {
+        const c = todosClientes.find(c => c.email && c.email.trim().toLowerCase() === email)
+        if (c) return { match: 'exacto', cliente: c }
+    }
+
+    if (tel && tel.length >= 9) {
+        const c = todosClientes.find(c => {
+            const ct = (c.phone || '').replace(/\D/g, '')
+            return ct && (ct === tel || ct === '34' + tel || tel === '34' + ct)
+        })
+        if (c) return { match: 'exacto', cliente: c }
+    }
+
+    const normNom = s => (s || '').toUpperCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Z0-9 ]/g, '').trim().replace(/\s+/g, ' ')
+
+    const dNom = normNom(datos.nombre)
+    if (dNom) {
+        const c = todosClientes.find(c => {
+            const cn = normNom(c.name) || normNom(c.id.replace(/_/g, ' '))
+            return cn && (dNom === cn || dNom.includes(cn) || cn.includes(dNom))
+        })
+        if (c) return { match: 'ambiguo', cliente: c }
+    }
+
+    return { match: 'ninguno', cliente: null }
+}
+
 export function buildCatalogUrl(slug, eventType) {
     if (!slug || !eventType) return null
     return `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${slug}&et=${eventType}`
