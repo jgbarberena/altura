@@ -160,6 +160,7 @@ UNIQUE (provider_id, amount, due_date).
 | email_raw | Texto completo del email original (referencia, no se muestra en panel) |
 | conversation_notes | Log interno formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto` |
 | assigned_venue_id | FK→venues — venue asignado (opcional) |
+| proposal_draft | jsonb, default `'[]'` — array de líneas del borrador de propuesta. Cada línea: `{ service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url }`. Todos los campos opcionales excepto `service_name`. Actualizado por la tabla del borrador en solicitudes.js y automáticamente cuando el asistente emite `---BORRADOR---`. |
 
 **Ciclo de vida de `status`:** las solicitudes con `status IN ('convertida','descartada')` no aparecen en ninguna lista activa. Auto-transición en solicitudes.js: `respuesta_enviada` → `seguimiento_pendiente` si `updated_at` supera 3 días sin respuesta.
 
@@ -306,11 +307,13 @@ Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `update
 
 **Lista:** nombre, fecha, badges de origen y de status, experiencia, preview del último mensaje del log (64 chars).
 
-**Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), grid de datos, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "→ Crear reserva" (→ `formulario.html?solicitud_id=uuid` + otros params), botón "✕ Descartar".
+**Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), tabla de borrador de propuesta, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "→ Crear reserva" (→ `formulario.html?solicitud_id=uuid` + otros params), botón "✕ Descartar".
+
+**Borrador de propuesta (`proposal_draft`):** tabla editable que ocupa el espacio donde antes estaba el bloque de datos iniciales (`.sol-detalle-datos`). Columnas: Servicio (select desde `availability_panel`), Día, Venue (select dinámico dependiente del servicio), Plazas, €/plaza, Total (calculado, readonly), Acciones (enlace catálogo + papelera). Flechas ↑↓ para reordenar. Fila vacía al final para añadir. Guardado automático con debounce 800ms. Si el borrador está vacío al abrir una solicitud que tiene `level`/`day`/`slots`, se pre-rellena automáticamente la primera fila con esos datos y el precio máximo de `_calcularPrecioRef`. La consulta inicial (`sol.comments`) se migra como primer mensaje `<Cliente>` del log si el log no tenía mensajes de cliente.
 
 **Log de conversación:** almacenado en `conversation_notes` como texto plano: `---DD/MM/AA---` como separador de fecha, `<Paula>` y `<Cliente>` como marcadores de autor. Los mensajes del día actual tienen botón de edición.
 
-**Integración con asistente:** `onRespuestaUsada: _onRespuestaUsadaEnLog`. Cuando Paula pulsa "✅ Usar respuesta": inserta el texto como entrada `<Paula>` en el log + cambia `status` a `'respuesta_enviada'` + refresca el detalle + actualiza badge.
+**Integración con asistente:** callbacks registrados en `initAsistente`: `onRespuestaUsada: _onRespuestaUsadaEnLog` (inserta mensaje en log + cambia status + actualiza badge) y `onBorradorActualizado: _onBorradorActualizado` (persiste `proposal_draft` en Supabase + refresca la tabla del borrador si la solicitud está abierta). Los botones Copiar/Email/WhatsApp del asistente integran ambas acciones al pulsarse: ya no existe el botón "✅ Usar respuesta".
 
 ### proveedores.js
 Módulo ES6. Lee `availability_panel` al cargar. Los datos sfcom se obtienen en una segunda consulta a `sfcom_listings` y se mezclan en memoria por `availability_id`.
@@ -405,11 +408,12 @@ Módulo ES6. Módulo reutilizable. Importado por formulario.js y solicitudes.js.
 **Inicialización:**
 ```js
 initAsistente(supabase, {
-    getDisponibilidad,  // () => array disponibilidad en memoria
-    getTodasReservas,   // () => array reservas en memoria
-    onEmailSaved,       // () => callback tras insertar email parseado
-    esSfcom,            // (source) => boolean
-    onRespuestaUsada    // (texto, solicitud) => void — opcional
+    getDisponibilidad,      // () => array disponibilidad en memoria
+    getTodasReservas,       // () => array reservas en memoria
+    onEmailSaved,           // () => callback tras insertar email parseado
+    esSfcom,                // (source) => boolean
+    onRespuestaUsada,       // (texto, solicitud) => void — opcional
+    onBorradorActualizado   // (solicitudId, draft) => void — opcional
 })
 ```
 
@@ -434,7 +438,8 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
         conversation_log,    // conversation_notes, truncado a 2000 chars si es mayor
         assigned_venue_id,
         status,
-        modo
+        modo,
+        proposal_draft       // array de líneas del borrador actual
     },
     disponibilidad: [...]   // un objeto por venue (ver estructura abajo)
 }
@@ -479,7 +484,7 @@ Estructura para eventos de día único (chupinazo, procesion, gigantes, pobre_de
 
 `catalogo_url` se construye solo si hay `venue_slug` Y `event_type`; null si falta alguno. Ordenadas: capacity primero (venues con plazas libres antes de los que solo tienen pendientes), luego consumption.
 
-**Marcador `---MENSAJE_CLIENTE---`:** cuando Claude incluye este marcador, el texto posterior aparece en un textarea editable con botones Copiar / Email / WhatsApp. El botón "✅ Usar respuesta" aparece solo si `onRespuestaUsada` fue pasado en `initAsistente`.
+**Marcadores de respuesta:** cuando Claude incluye `---MENSAJE_CLIENTE---`, el texto entre ese marcador y el siguiente (o el fin de la respuesta) aparece en un textarea editable. Si Claude incluye además `---BORRADOR---` seguido de un array JSON, ese JSON se extrae y nunca llega al textarea (el cliente no lo ve). Los botones Copiar / Email / WhatsApp tienen `min-height:48px` y al pulsarse: (1) ejecutan su acción principal, (2) insertan el mensaje en el log como `<Paula>`, (3) guardan el borrador si había `---BORRADOR---`, (4) cambian el estado de la solicitud a `respuesta_enviada`, (5) convierten la X de cierre en "✓ Cerrar" (verde). Si Paula escribe un nuevo mensaje en el textarea de input, el área de resultado se oculta y se vuelve al modo conversación. No existe el botón "✅ Usar respuesta".
 
 **Guardar log:** botón visible pero discreto. Guarda `messages` y `context_snapshot` en `assistant_logs`.
 
@@ -493,6 +498,8 @@ Estructura para eventos de día único (chupinazo, procesion, gigantes, pobre_de
 
 ### asistente-config.js
 Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de asistente.js para poder actualizar los prompts subiendo solo este archivo por FTP, sin tocar la lógica.
+
+El system prompt incluye una sección **BORRADOR DE PROPUESTA** que instruye a Claude sobre cuándo emitir el bloque `---BORRADOR---` (solo junto a `---MENSAJE_CLIENTE---` y solo cuando el mensaje contiene una propuesta concreta), qué campos incluir en el JSON, y cómo usar el borrador recibido en el contexto para entender el estado actual de la negociación.
 
 Si se actualiza el prompt: revisar que los nombres de campo son coherentes con la estructura del contexto documentada en la sección `disponibilidadParaAsistente` de este documento. El prompt de caching tiene TTL de 5 minutos en la Edge Function — solo ahorra tokens dentro de la misma sesión del navegador.
 
