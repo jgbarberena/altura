@@ -1956,10 +1956,8 @@ async function cargarDesdeSolicitud(data) {
         statusDiv.style.color = 'var(--accent-warn)'
     }
 
-        // Rellenar bloque de reserva
-    if (data.slots) inputPlazas.value = data.slots
-
     if (esSfcom) {
+        if (data.slots) inputPlazas.value = data.slots
         // Nombre como búsqueda primaria; service_id almacenado solo como verificación
         const { serviceId, venueId: venueInferido } = _inferirDesdeSfcom(data.level, data.day)
 
@@ -2035,6 +2033,7 @@ async function cargarDesdeSolicitud(data) {
             }
         } else {
             // CASO A sin borrador: inferir servicio desde level/day (comportamiento anterior)
+            if (data.slots) inputPlazas.value = data.slots
             const serviceIdInferido = _inferirServiceId(data.level, data.day)
             if (serviceIdInferido && servicios.find(s => s.id === serviceIdInferido)) {
                 selectServicio.value = serviceIdInferido
