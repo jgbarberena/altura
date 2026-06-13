@@ -9,6 +9,13 @@ initSidebar()
 // ===== DATOS =====
 const hoy = new Date().toISOString().split('T')[0]
 
+// Temporada = el año de julio al que pertenece esta campaña.
+// Antes del 15 de agosto → temporada del año en curso. Después → ya empieza la siguiente.
+const _anioHoy       = parseInt(hoy.substring(0, 4))
+const _anioTemporada = hoy >= `${_anioHoy}-08-15` ? _anioHoy + 1 : _anioHoy
+const _seasonStart   = `${_anioTemporada - 1}-08-15`
+const _seasonEnd     = `${_anioTemporada}-08-15`
+
 const [
     { data: reservas },
     { data: disponibilidad },
@@ -236,6 +243,16 @@ function barraOcupacion(pct, colorFill) {
     </div>`
 }
 
+// Devuelve el color CSS del indicador de margen, o null si no hay actividad.
+// ingreso/coste en euros. Rojo < 0; naranja < 15% de ingreso; verde ≥ 15%.
+function _margenIndicador(ingreso, coste) {
+    if (ingreso === 0 && coste === 0) return null
+    const margen = ingreso - coste
+    if (margen < 0) return 'var(--accent)'
+    if (ingreso > 0 && margen / ingreso < 0.15) return 'var(--accent-warn)'
+    return 'var(--accent-ok)'
+}
+
 // ===== BLOQUE 3: DISPONIBILIDAD POR EVENTO =====
 let eventosFilas = []
 let sortEventosCol = null, sortEventosDir = 'asc'
@@ -268,8 +285,9 @@ function eventosDetSortKey(d, col) {
 }
 
 function filaEvento(f, destacada) {
+    const dotE = f.dot ? `<span style="color:${f.dot};font-size:10px;margin-right:4px">●</span>` : ''
     return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
-        <td>${f.id}</td>
+        <td>${dotE}${f.id}</td>
         <td>${f.dia ?? '—'}</td>
         <td>${f.totalPlazas}</td>
         <td class="ok">${f.confirmadas}</td>
@@ -282,7 +300,7 @@ function filaEvento(f, destacada) {
 
 function filaDetalleProveedor(d) {
     return `<tr style="background:#fafafa">
-        <td style="padding-left:24px;color:var(--subtle)">↳ ${d.id}</td>
+        <td style="padding-left:24px;color:var(--subtle)">↳ ${d.dot ? `<span style="color:${d.dot};font-size:10px;margin-right:4px">●</span>` : ''}${d.id}</td>
         <td>—</td>
         <td>${d.total}</td>
         <td class="ok">${d.confirmadas}</td>
@@ -338,12 +356,22 @@ function calcularEventos() {
             const colP  = pctP >= 90 ? 'var(--accent)' : pctP >= 60 ? 'var(--accent-warn)' : 'var(--accent-ok)'
             const clientesP     = [...new Set(resP.map(r => r.client_id))].join(', ')
             const clientesHTMLP = renderClientChips(resP)
-            return { id: d.venue_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP }
+            const ingresoP = resP.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+            const costeP   = d.billing_model === 'fixed'
+                ? ((confP + pendP) > 0 ? parseFloat(d.price_per_slot ?? 0) : 0)
+                : d.billing_model === 'capacity'
+                    ? (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+                    : (confP + pendP) * parseFloat(d.price_per_slot ?? 0)
+            const dotP = _margenIndicador(ingresoP, costeP)
+            return { id: d.venue_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP, ingreso: ingresoP, coste: costeP, dot: dotP }
         })
 
         const clientesEvento     = [...new Set(reservasS.map(r => r.client_id))].join(', ')
         const clientesEventoHTML = renderClientChips(reservasS)
-        return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento, clientesHTML: clientesEventoHTML }
+        const ingresoEvento      = detalleProveedores.reduce((s, d) => s + d.ingreso, 0)
+        const costeEvento        = detalleProveedores.reduce((s, d) => s + d.coste, 0)
+        const dotEvento          = _margenIndicador(ingresoEvento, costeEvento)
+        return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento, clientesHTML: clientesEventoHTML, dot: dotEvento }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los eventos —</option>' +
@@ -387,8 +415,9 @@ function provDetSortKey(d, col) {
 }
 
 function filaProveedor(f, destacada) {
+    const dotP = f.dot ? `<span style="color:${f.dot};font-size:10px;margin-right:4px">●</span>` : ''
     return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
-        <td>${f.id}</td>
+        <td>${dotP}${f.id}</td>
         <td>${f.capacidad}</td>
         <td class="ok">${f.confirmadas}</td>
         <td class="warn">${f.pendientes}</td>
@@ -401,7 +430,7 @@ function filaProveedor(f, destacada) {
 function filaDetalleServicio(d) {
     return `<tr style="background:#fafafa">
         <td style="padding-left:24px;color:var(--subtle)">
-            ↳ ${d.id}${d.esConsumption ? ' <span style="font-size:10px;color:var(--accent-warn)">(consumo)</span>' : ''}${d.esFixed ? ' <span style="font-size:10px;color:var(--subtle)">(cuota fija)</span>' : ''}
+            ↳ ${d.dot ? `<span style="color:${d.dot};font-size:10px;margin-right:4px">●</span>` : ''}${d.id}${d.esConsumption ? ' <span style="font-size:10px;color:var(--accent-warn)">(consumo)</span>' : ''}${d.esFixed ? ' <span style="font-size:10px;color:var(--subtle)">(cuota fija)</span>' : ''}
         </td>
         <td>${d.total}</td>
         <td class="ok">${d.confirmadas}</td>
@@ -460,12 +489,22 @@ function calcularProveedores() {
             const esFixed       = d.billing_model === 'fixed'
             const clientesS     = [...new Set(resS.map(r => r.client_id))].join(', ')
             const clientesHTMLS = renderClientChips(resS)
-            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS, clientesHTML: clientesHTMLS }
+            const ingresoS = resS.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+            const costeS   = d.billing_model === 'fixed'
+                ? ((confS + pendS) > 0 ? parseFloat(d.price_per_slot ?? 0) : 0)
+                : d.billing_model === 'capacity'
+                    ? (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+                    : (confS + pendS) * parseFloat(d.price_per_slot ?? 0)
+            const dotS = _margenIndicador(ingresoS, costeS)
+            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS, clientesHTML: clientesHTMLS, ingreso: ingresoS, coste: costeS, dot: dotS }
         })
 
         const clientesProv     = [...new Set(reservasP.map(r => r.client_id))].join(', ')
         const clientesProvHTML = renderClientChips(reservasP)
-        return { id: venueId, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv, clientesHTML: clientesProvHTML }
+        const ingresoProv      = detalleServicios.reduce((s, d) => s + d.ingreso, 0)
+        const costeProv        = detalleServicios.reduce((s, d) => s + d.coste, 0)
+        const dotProv          = _margenIndicador(ingresoProv, costeProv)
+        return { id: venueId, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv, clientesHTML: clientesProvHTML, dot: dotProv }
     }).filter(Boolean)
 
     selector.innerHTML = '<option value="">— Todos los proveedores —</option>' +
@@ -551,29 +590,27 @@ function calcularResumen() {
 // ===== BLOQUE 2: CASHFLOW =====
 function calcularCashflow() {
     const eventos = []
+    const enTemporada = f => f && f >= _seasonStart && f < _seasonEnd
 
     payments.forEach(p => {
-        const fecha = p.due_date
-        if (!fecha) return
-        eventos.push({ fecha, importe: -parseFloat(p.amount || 0), tipo: 'previsto' })
+        if (!enTemporada(p.due_date)) return
+        eventos.push({ fecha: p.due_date, importe: -parseFloat(p.amount || 0), tipo: 'previsto' })
     })
 
-    // Entradas previstas: charges por cliente (ya no hay join a reservations)
     charges.forEach(c => {
-        const fecha = c.due_date
-        if (!fecha) return
-        eventos.push({ fecha, importe: parseFloat(c.amount || 0), tipo: 'previsto' })
+        if (!enTemporada(c.due_date)) return
+        eventos.push({ fecha: c.due_date, importe: parseFloat(c.amount || 0), tipo: 'previsto' })
     })
 
     payments.filter(p => p.paid).forEach(p => {
         const fecha = p.paid_date ?? p.due_date
-        if (!fecha || fecha > hoy) return
+        if (!enTemporada(fecha) || fecha > hoy) return
         eventos.push({ fecha, importe: -parseFloat(p.amount || 0), tipo: 'real' })
     })
 
     charges.filter(c => c.collected).forEach(c => {
         const fecha = c.collected_date ?? c.due_date
-        if (!fecha || fecha > hoy) return
+        if (!enTemporada(fecha) || fecha > hoy) return
         eventos.push({ fecha, importe: parseFloat(c.amount || 0), tipo: 'real' })
     })
 
@@ -627,8 +664,8 @@ function calcularCashflow() {
                 x: {
                     type: 'time',
                     time: { unit: 'week', displayFormats: { week: 'dd MMM' } },
-                    min: new Date('2026-03-01T12:00:00'),
-                    max: new Date('2026-08-01T12:00:00'),
+                    min: new Date(`${_anioTemporada}-03-01T12:00:00`),
+                    max: new Date(`${_anioTemporada}-08-15T12:00:00`),
                     grid: { display: false }
                 },
                 y: {

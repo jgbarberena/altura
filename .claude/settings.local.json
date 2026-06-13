@@ -88,7 +88,9 @@
       "Bash(pwsh deploy.ps1 -SkipScripts -Message \"sfcom: exportar tabla de publicaciones a Excel\")",
       "Bash([ -f \"/Users/pauladiaz/altura/img/cards/$f\" ])",
       "Bash(pwsh deploy.ps1 -SkipScripts -Message \"servicios: campo name en UI, propuestas y tablas\")",
-      "Bash(pwsh deploy.ps1 -SkipScripts -SkipFtp -Message \"doc: dos opciones arquitectura facturacion sfcom \\(12.27\\)\")"
+      "Bash(pwsh deploy.ps1 -SkipScripts -SkipFtp -Message \"doc: dos opciones arquitectura facturacion sfcom \\(12.27\\)\")",
+      "Bash(git pull *)",
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: indicador de margen en tablas eventos y proveedores; cashflow dinámico\" -SkipScripts)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"
