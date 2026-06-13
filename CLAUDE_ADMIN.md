@@ -311,6 +311,8 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 **Bloque 5 — Cobros al cliente:** Hitos de cobro. Botón de facturación por hito. Hito final (`is_final: true`) recalculado automáticamente vía `persistirCobrosCliente`.
 
+**Orden de borrado de reservas (`eliminarSeleccionadas`):** al eliminar reservas del cliente activo, el sistema comprueba si quedan reservas con `status !== 'Cancelada'`. Si quedan → `persistirCobrosCliente` recalcula el cobro final. Si no quedan reservas activas → se eliminan todos los charges del cliente: los que no tienen `collected=true` ni `invoice_number` se borran sin preguntar; si hay alguno con historial (cobrado o facturado) se muestra un modal con **Cancelar como botón por defecto** antes de proceder. Tras limpiar charges, se ofrece opcionalmente eliminar también el cliente (en este punto ya no hay FK pendiente).
+
 **Secuencia de carga:** `checkSfcomOrders` primero; `ejecutarVerificacion(false)` encadenado en `.finally()` para evitar race condition (verificarCoherencia lee reservation_requests y necesita que los pedidos sfcom nuevos estén ya insertados).
 
 ### solicitudes.js
@@ -362,6 +364,8 @@ Bloques: alertas críticas (sobrereservas, pagos/cobros vencidos, solicitudes pe
 **Indicador de margen (`_margenIndicador`):** punto de color `●` delante del ID en las tablas de eventos y de proveedores. Verde = margen ≥ 15% del ingreso; naranja = 0–15%; rojo = pérdida; sin punto = sin actividad (ingreso y coste a 0). Ingreso = `SUM(total_amount)` reservas no canceladas; coste según `billing_model` (`capacity`: total_slots×precio, `consumption`: slots_activos×precio, `fixed`: precio si hay alguna reserva, 0 si no). Las filas padre (evento o venue agregado) muestran el margen del conjunto, no el peor hijo. Implementado en `calcularEventos`/`calcularProveedores`; `filaEvento`/`filaDetalleProveedor`/`filaProveedor`/`filaDetalleServicio`.
 
 **Cashflow dinámico:** el gráfico de cashflow filtra pagos/cobros a la temporada actual y usa fechas dinámicas (`_anioTemporada`, `_seasonStart`, `_seasonEnd`) en lugar de años hardcodeados.
+
+**Verificación de consistencia financiera (`verificarConsistenciaFinanciera`):** se ejecuta al cargar el panel, usando los datos ya cargados en memoria (sin consulta adicional). Detecta dos casos: (a) clientes con charges pero sin ninguna reserva con `status !== 'Cancelada'` — cobros huérfanos; (b) clientes donde `SUM(charges) ≠ SUM(total_amount reservas activas)` en más de €0.01 — cobro final desajustado. Si hay inconsistencias, muestra una alerta `alerta-consistencia` con el botón "Corregir →". La corrección para (a) elimina los charges de esos clientes (con modal de confirmación si tienen historial — cobrado o facturado); para (b) llama a `persistirCobrosCliente`. La misma regla de historial aplica aquí: `collected=false` y `invoice_number=null` se borran sin confirmación; si hay historial, el modal muestra **Cancelar como botón por defecto**.
 
 ### sfcom.js
 Módulo ES6. Toda la comunicación con tienda.sanfermin.com a través de la Edge Function `sfcom-bridge` (proxy transparente que reenvía server-to-server, resuelve CORS). El JS nunca llama directamente a sf-api-paula.php.

@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable } from './utils.js'
+import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente } from './utils.js'
+import { crearModal } from './modal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -686,6 +687,112 @@ function calcularCashflow() {
     })
 }
 
+// ===== CONSISTENCIA FINANCIERA =====
+let _consistenciaHuerfanos = []
+let _consistenciaDesviados = []
+
+function verificarConsistenciaFinanciera() {
+    const chargesByClient = {}
+    for (const c of (charges ?? [])) {
+        if (!chargesByClient[c.client_id])
+            chargesByClient[c.client_id] = { total: 0, tieneHistorial: false }
+        chargesByClient[c.client_id].total += parseFloat(c.amount || 0)
+        if (c.collected || c.invoice_number) chargesByClient[c.client_id].tieneHistorial = true
+    }
+
+    const reservasByClient = {}
+    for (const r of (reservas ?? [])) {
+        if (r.status === 'Cancelada') continue
+        reservasByClient[r.client_id] = (reservasByClient[r.client_id] ?? 0) + parseFloat(r.total_amount || 0)
+    }
+
+    _consistenciaHuerfanos = []
+    _consistenciaDesviados = []
+
+    for (const [clientId, info] of Object.entries(chargesByClient)) {
+        const totalCharges  = Math.round(info.total * 100) / 100
+        const totalReservas = Math.round((reservasByClient[clientId] ?? 0) * 100) / 100
+        if (totalReservas === 0 && totalCharges !== 0) {
+            _consistenciaHuerfanos.push({ clientId, total: totalCharges, tieneHistorial: info.tieneHistorial })
+        } else if (Math.abs(totalCharges - totalReservas) > 0.01) {
+            _consistenciaDesviados.push({
+                clientId,
+                enCharges: totalCharges,
+                enReservas: totalReservas,
+                diff: Math.round((totalCharges - totalReservas) * 100) / 100
+            })
+        }
+    }
+
+    if (_consistenciaHuerfanos.length === 0 && _consistenciaDesviados.length === 0) return
+
+    const partes = []
+    if (_consistenciaHuerfanos.length > 0) {
+        const tot = _consistenciaHuerfanos.reduce((s, h) => s + h.total, 0)
+        partes.push(`${_consistenciaHuerfanos.length} cliente(s) con cobros sin reserva activa (${fmt(tot)})`)
+    }
+    if (_consistenciaDesviados.length > 0)
+        partes.push(`${_consistenciaDesviados.length} cliente(s) con cobro final desajustado`)
+
+    document.getElementById('txt-consistencia').textContent = partes.join(' · ')
+    document.getElementById('lista-inconsistencias').innerHTML = [
+        ..._consistenciaHuerfanos.map(h =>
+            `<li>${h.clientId}: ${fmt(h.total)} en cobros, sin reservas activas${h.tieneHistorial ? ' · ⚠ tiene cobros cobrados o facturados' : ''}</li>`),
+        ..._consistenciaDesviados.map(d =>
+            `<li>${d.clientId}: cobros ${fmt(d.enCharges)}, reservas ${fmt(d.enReservas)}, diff ${d.diff > 0 ? '+' : ''}${fmt(d.diff)}</li>`)
+    ].join('')
+
+    document.getElementById('alerta-consistencia').style.display = 'flex'
+    document.getElementById('bloque-alertas').style.display = 'block'
+}
+
+document.getElementById('btn-corregir-consistencia')?.addEventListener('click', async () => {
+    if (_consistenciaHuerfanos.length === 0 && _consistenciaDesviados.length === 0) return
+
+    const hayHistorial = _consistenciaHuerfanos.some(h => h.tieneHistorial)
+    const lineas = [
+        ..._consistenciaHuerfanos.map(h =>
+            h.tieneHistorial
+                ? `• ${h.clientId}: eliminar todos sus cobros (tiene cobros/facturas con historial — revisar antes)`
+                : `• ${h.clientId}: eliminar cobros huérfanos (${fmt(h.total)})`),
+        ..._consistenciaDesviados.map(d => `• ${d.clientId}: recalcular cobro final`)
+    ]
+
+    const confirmar = await new Promise(resolve => {
+        if (hayHistorial) {
+            const { overlay, panel } = crearModal('modal-corr-consistencia', { narrow: true, scroll: true })
+            panel.innerHTML = `
+                <h2 style="color:var(--accent);margin-bottom:12px">⚠️ Correcciones de consistencia</h2>
+                <p style="font-size:13px;margin-bottom:12px">Algunos clientes tienen cobros cobrados o facturados. Se recomienda revisarlos antes de confirmar la eliminación.</p>
+                <ul style="font-size:13px;margin:0 0 16px 16px">${lineas.map(l => `<li style="margin-bottom:4px">${l.slice(2)}</li>`).join('')}</ul>
+                <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button id="btn-corr-cancelar" class="btn btn-primary" autofocus>Cancelar</button>
+                    <button id="btn-corr-confirmar" class="btn btn-secondary" style="border-color:var(--accent);color:var(--accent)">Confirmar correcciones</button>
+                </div>`
+            panel.querySelector('#btn-corr-cancelar').addEventListener('click', () => { overlay.close(); resolve(false) })
+            panel.querySelector('#btn-corr-confirmar').addEventListener('click', () => { overlay.close(); resolve(true) })
+        } else {
+            resolve(confirm(`Se realizarán las siguientes correcciones:\n\n${lineas.join('\n')}\n\n¿Continuar?`))
+        }
+    })
+    if (!confirmar) return
+
+    const btn = document.getElementById('btn-corregir-consistencia')
+    btn.disabled = true
+    btn.textContent = 'Corrigiendo…'
+
+    for (const h of _consistenciaHuerfanos) {
+        const { error } = await supabase.from('charges').delete().eq('client_id', h.clientId)
+        if (error) alert(`Error al eliminar cobros de ${h.clientId}: ${error.message}`)
+    }
+    for (const d of _consistenciaDesviados) {
+        await persistirCobrosCliente(supabase, d.clientId, reservas)
+    }
+
+    btn.textContent = '✓ Hecho — recargando…'
+    setTimeout(() => location.reload(), 1500)
+})
+
 // ===== INICIALIZAR TODO =====
 calcularAlertas()
 calcularCalendario()
@@ -694,6 +801,7 @@ calcularEventos()
 calcularProveedores()
 calcularResumen()
 calcularCashflow()
+verificarConsistenciaFinanciera()
 
 // ===== EXPORT CSV =====
 document.getElementById('btnExportPagos')?.addEventListener('click', () => {

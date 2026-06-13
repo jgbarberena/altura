@@ -712,9 +712,43 @@ async function eliminarSeleccionadas() {
     todasReservas = todasReservas.filter(r => !ids.includes(r.id))
 
     if (clienteActual) {
-        const reservasRestantes = todasReservas.filter(r => r.client_id === clienteActual.id)
-        if (reservasRestantes.length === 0) {
-            const borrar = confirm(`${clienteActual.id} no tiene más reservas. ¿Deseas eliminar también el cliente?`)
+        const reservasActivas = todasReservas.filter(r => r.client_id === clienteActual.id && r.status !== 'Cancelada')
+        if (reservasActivas.length === 0) {
+            // Sin reservas activas: cobros sin cobrar y sin factura → borrar.
+            // Cobros con dinero real (collected) o con factura emitida → requieren confirmación.
+            const { data: cargosCliente } = await supabase
+                .from('charges').select('id, collected, invoice_number').eq('client_id', clienteActual.id)
+            const conHistorial = (cargosCliente ?? []).filter(c => c.collected || c.invoice_number)
+
+            if (conHistorial.length > 0) {
+                const facturas = conHistorial.filter(c => c.invoice_number).length
+                const cobrados = conHistorial.filter(c => c.collected && !c.invoice_number).length
+                const desc = [
+                    facturas > 0 && `${facturas} cobro(s) facturado(s)`,
+                    cobrados > 0 && `${cobrados} cobro(s) recibido(s) sin facturar`
+                ].filter(Boolean).join(' y ')
+                const ok = await new Promise(resolve => {
+                    const { overlay, panel } = crearModal('modal-elim-historial', { narrow: true })
+                    panel.innerHTML = `
+                        <h2 style="color:var(--accent);margin-bottom:12px">⚠️ Cobros con historial</h2>
+                        <p style="margin-bottom:8px"><strong>${clienteActual.id}</strong> tiene ${desc}.</p>
+                        <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+                            Se recomienda resolver el historial antes de continuar (ej: nota de crédito).<br>
+                            Si confirmas, se eliminarán <strong>todos</strong> los cobros, incluidas las facturas.
+                        </p>
+                        <div style="display:flex;gap:8px;justify-content:flex-end">
+                            <button id="btn-hist-cancelar" class="btn btn-primary" autofocus>Cancelar</button>
+                            <button id="btn-hist-confirmar" class="btn btn-secondary" style="border-color:var(--accent);color:var(--accent)">Confirmar eliminación</button>
+                        </div>`
+                    panel.querySelector('#btn-hist-cancelar').addEventListener('click', () => { overlay.close(); resolve(false) })
+                    panel.querySelector('#btn-hist-confirmar').addEventListener('click', () => { overlay.close(); resolve(true) })
+                })
+                if (!ok) return
+            }
+
+            await supabase.from('charges').delete().eq('client_id', clienteActual.id)
+
+            const borrar = confirm(`${clienteActual.id} ya no tiene reservas activas. ¿Deseas eliminar también el cliente?`)
             if (borrar) {
                 await supabase.from('clients').delete().eq('id', clienteActual.id)
                 todosClientes.splice(todosClientes.findIndex(c => c.id === clienteActual.id), 1)
@@ -722,8 +756,9 @@ async function eliminarSeleccionadas() {
                 inputId.value = ''
                 return
             }
+        } else {
+            await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         }
-        await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
     }
 
     for (const { venueId, servicioId, cancelada } of afectadas) {
