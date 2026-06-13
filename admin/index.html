@@ -22,7 +22,7 @@
 
         // Si ya hay sesión activa, redirige directamente
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) window.location.href = 'formulario.html'
+        if (session) window.location.href = 'panel.html'
 
         document.getElementById('btnLogin').addEventListener('click', async () => {
             const email = document.getElementById('email').value
@@ -33,7 +33,7 @@
             if (error) {
                 document.getElementById('error').style.display = 'block'
             } else {
-                window.location.href = 'formulario.html'
+                window.location.href = 'panel.html'
             }
         })
     </script>

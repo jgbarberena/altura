@@ -90,7 +90,9 @@
       "Bash(pwsh deploy.ps1 -SkipScripts -Message \"servicios: campo name en UI, propuestas y tablas\")",
       "Bash(pwsh deploy.ps1 -SkipScripts -SkipFtp -Message \"doc: dos opciones arquitectura facturacion sfcom \\(12.27\\)\")",
       "Bash(git pull *)",
-      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: indicador de margen en tablas eventos y proveedores; cashflow dinámico\" -SkipScripts)"
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: indicador de margen en tablas eventos y proveedores; cashflow dinámico\" -SkipScripts)",
+      "Bash(git push *)",
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"admin: entrada por panel de control en lugar de formulario\" -SkipScripts)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"
