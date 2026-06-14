@@ -34,6 +34,8 @@ Dos clientes Supabase:
 | id | text PK, mayúsculas |
 | name | Nombre del propietario |
 | address | Dirección de contacto/personal (NO la dirección del balcón) |
+| email | text — email de contacto del proveedor |
+| phone | text — teléfono de contacto del proveedor |
 | payment_method | text |
 | invoice | boolean — si emite factura |
 | comments | text |
@@ -341,6 +343,7 @@ Módulo ES6. Lee `availability_panel` al cargar. Los datos sfcom se obtienen en 
 
 Gestiona:
 - CRUD de proveedores con autocomplete. Al crear un proveedor nuevo se crea automáticamente un venue con el mismo ID.
+- Campos del proveedor con autosave: `name`, `address` (contacto/personal), `email`, `phone`, `comments`. El formulario incluye también `payment_method` e `invoice` (boolean), guardados en sus propios listeners.
 - Dos campos de dirección: `providers.address` (contacto) y `venues.address` (física del balcón). Autosave en ambos.
 - Campo `venue_type` con autosave en `venues`.
 - Disponibilidad: añadir/editar/eliminar entradas en `availability` y `sfcom_listings`. Tras guardar o editar llama a `syncStockToSfcom`.

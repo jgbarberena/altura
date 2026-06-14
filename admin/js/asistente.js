@@ -374,7 +374,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     const meta       = parsearMetaComments(solicitud.comments)
     const svcPrinc   = expandirServiceIds(solicitud.level || null, solicitud.day, meta)
     const svcExtra   = meta.extra.flatMap(h => expandirServiceIds(h, null, { dias: null, flexible: true, extra: [] }))
-    const serviceIds = [...new Set([...svcPrinc, ...svcExtra])]
+    // Si level es null pero hay service_id directo (ej. solicitudes sfcom o email sin level), lo usamos como fallback
+    const svcFromId  = (!svcPrinc.length && !svcExtra.length && solicitud.service_id) ? [solicitud.service_id] : []
+    const serviceIds = [...new Set([...svcPrinc, ...svcExtra, ...svcFromId])]
 
     const comentarioLimpio = (solicitud.comments || '')
         .replace(/^(Días|Otros servicios):[^\n]*\n?/gm, '').trim() || null

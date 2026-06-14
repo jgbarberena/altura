@@ -1846,7 +1846,7 @@ async function cargarSolicitudes() {
     const avisoEl   = document.getElementById('bloque-solicitudes-empty')
 
     const sfcomPendientes = (solicitudes ?? []).filter(s => _esSfcom(s.source) && s.status === 'nueva')
-    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source))
+    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source) && s.status !== 'respuesta_enviada')
 
     if (sfcomPendientes.length === 0 && otrasActivas.length === 0) {
         if (bloque) bloque.style.display = 'none'

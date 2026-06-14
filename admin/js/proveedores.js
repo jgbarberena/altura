@@ -57,6 +57,8 @@ const inputVenueComments       = document.getElementById('inputVenueComments')
 const selectVenueType          = document.getElementById('selectVenueType')
 const selectFormaPago          = document.getElementById('selectFormaPago')
 const checkFactura             = document.getElementById('checkFactura')
+const inputProveedorEmail      = document.getElementById('inputProveedorEmail')
+const inputProveedorPhone      = document.getElementById('inputProveedorPhone')
 const inputProveedorComments   = document.getElementById('inputProveedorComments')
 const autoProvList             = document.getElementById('autocompleteProveedorList')
 const proveedorStatus          = document.getElementById('proveedor-status')
@@ -412,7 +414,9 @@ function cargarProveedor(p) {
     inputDireccion.value         = p.address        ?? ''
     selectFormaPago.value        = p.payment_method ?? ''
     checkFactura.checked         = p.invoice        ?? false
-    inputProveedorComments.value = p.comments       ?? ''
+    inputProveedorEmail.value    = p.email           ?? ''
+    inputProveedorPhone.value    = p.phone           ?? ''
+    inputProveedorComments.value = p.comments        ?? ''
     venuesDelProveedor = todosVenues.filter(v => v.provider_id === p.id)
     venueActual        = venuesDelProveedor[0] ?? null
     inputVenueDireccion.value   = venueActual?.address      ?? ''
@@ -449,14 +453,16 @@ function limpiarCamposProveedor() {
     selectVenueType.value          = 'balcon'
     selectFormaPago.value          = ''
     checkFactura.checked           = false
+    inputProveedorEmail.value      = ''
+    inputProveedorPhone.value      = ''
     inputProveedorComments.value   = ''
     venuesDelProveedor = []
     venueActual        = null
     renderVenueTabs([], null)
 }
 
-const camposProveedor = [inputNombre, inputDireccion, inputProveedorComments]
-const camposProvDB    = ['name', 'address', 'comments']
+const camposProveedor = [inputNombre, inputDireccion, inputProveedorEmail, inputProveedorPhone, inputProveedorComments]
+const camposProvDB    = ['name', 'address', 'email', 'phone', 'comments']
 initAutoSave(supabase, camposProveedor, camposProvDB, 'providers', () => proveedorActual, {
     onSaved: mostrarGuardado
 })
@@ -591,9 +597,11 @@ window.guardarProveedorNuevo = async function(e) {
     if (!proveedorId) return
     const { error } = await supabase.from('providers').insert({
         id:       proveedorId,
-        name:     document.getElementById('inputNombre').value.trim()    || null,
-        address:  document.getElementById('inputDireccion').value.trim() || null,
-        comments: document.getElementById('inputProveedorComments').value.trim() || null
+        name:     document.getElementById('inputNombre').value.trim()              || null,
+        address:  document.getElementById('inputDireccion').value.trim()           || null,
+        email:    document.getElementById('inputProveedorEmail').value.trim()      || null,
+        phone:    document.getElementById('inputProveedorPhone').value.trim()      || null,
+        comments: document.getElementById('inputProveedorComments').value.trim()   || null
     })
     if (error) { alert('Error al guardar el proveedor: ' + error.message); return }
     const venueAddress = inputVenueDireccion.value.trim() || null
@@ -2324,32 +2332,35 @@ function _actualizarDiaChips() {
     })
 }
 
-function _actualizarBtnNuevo(nuevoCount) {
+function _actualizarBtnNuevo(accionCount) {
     const btn = document.getElementById('btnNuevoCrear')
     if (!btn) return
-    btn.disabled    = nuevoCount === 0
-    btn.textContent = nuevoCount <= 0  ? 'Crear servicios'
-        : nuevoCount === 1 ? 'Crear 1 servicio'
-        : `Crear ${nuevoCount} servicios`
+    btn.disabled    = accionCount === 0
+    btn.textContent = accionCount <= 0 ? 'Crear servicios'
+        : accionCount === 1 ? 'Crear/asignar 1 servicio'
+        : `Crear/asignar ${accionCount} servicios`
 }
 
 function _actualizarNuevoAsignacion() {
-    const allIds      = _computeNuevosIds()
-    const provNombre  = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
-    const hayNuevos   = allIds.some(id => !todosServicios.find(s => s.id === id))
-    const hayChecked  = allIds.some(id => !todosServicios.find(s => s.id === id) && !nuevoDlgUnchecked.has(id))
-    const mostrar     = hayNuevos && hayChecked && !!provNombre
-    document.getElementById('nuevo-asignacion').style.display = mostrar ? 'block' : 'none'
+    const allIds           = _computeNuevosIds()
+    const provNombre       = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    const candidateVenueId = venueActual?.id ?? (proveedorActual?.id ?? provNombre)
+    const hayAccion = !!provNombre && allIds.some(id => {
+        const esNuevo = !todosServicios.find(s => s.id === id)
+        if (esNuevo) return !nuevoDlgUnchecked.has(id)
+        return !!candidateVenueId && !todaDisponibilidad.find(d => d.venue_id === candidateVenueId && d.service_id === id)
+    })
+    document.getElementById('nuevo-asignacion').style.display = hayAccion ? 'block' : 'none'
 }
 
 function renderNuevoPreview() {
     const preview = document.getElementById('nuevo-preview')
     if (!preview) return
 
-    const allIds     = _computeNuevosIds()
-    const provNombre = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    const allIds           = _computeNuevosIds()
+    const provNombre       = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    const candidateVenueId = venueActual?.id ?? (proveedorActual?.id ?? provNombre)
 
-    // Limpiar unchecked de IDs que ya no están en la lista
     const allSet = new Set(allIds)
     for (const id of nuevoDlgUnchecked) {
         if (!allSet.has(id)) nuevoDlgUnchecked.delete(id)
@@ -2362,24 +2373,31 @@ function renderNuevoPreview() {
         return
     }
 
-    let nuevoCount = 0
+    let accionCount = 0
     let html = `<div style="font-size:12px;font-weight:600;color:var(--subtle);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Servicios</div>
     <div style="display:flex;flex-direction:column;gap:4px">`
 
     for (const id of allIds) {
-        const existe    = !!todosServicios.find(s => s.id === id)
-        if (!existe) nuevoCount++
-        const isChecked = !existe && !nuevoDlgUnchecked.has(id)
+        const existe     = !!todosServicios.find(s => s.id === id)
+        const tieneAvail = existe && !!candidateVenueId &&
+            !!todaDisponibilidad.find(d => d.venue_id === candidateVenueId && d.service_id === id)
+        const esNuevo    = !existe
+        const esSinAvail = existe && !tieneAvail && !!provNombre
+        const isChecked  = esNuevo && !nuevoDlgUnchecked.has(id)
+
+        if (isChecked)   accionCount++
+        if (esSinAvail)  accionCount++
+
+        const label = esNuevo ? 'nuevo' : esSinAvail ? 'sin asignar' : 'ya asignado'
+        const color = esNuevo ? 'var(--accent-ok)' : esSinAvail ? '#b45309' : 'var(--subtle)'
 
         html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px">
-            ${!existe && provNombre
+            ${esNuevo && provNombre
                 ? `<input type="checkbox" class="chk-nuevo-asig" data-id="${id}" ${isChecked ? 'checked' : ''} style="flex-shrink:0;width:14px;height:14px">`
                 : `<span style="display:inline-block;width:14px;flex-shrink:0"></span>`
             }
             <span style="font-family:monospace;font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id}</span>
-            <span style="font-size:11px;color:${!existe ? 'var(--accent-ok)' : 'var(--subtle)'};flex-shrink:0;white-space:nowrap">
-                ${!existe ? 'nuevo' : 'ya existe'}
-            </span>
+            <span style="font-size:11px;color:${color};flex-shrink:0;white-space:nowrap">${label}</span>
         </div>`
     }
     html += '</div>'
@@ -2389,11 +2407,19 @@ function renderNuevoPreview() {
         chk.addEventListener('change', () => {
             if (chk.checked) nuevoDlgUnchecked.delete(chk.dataset.id)
             else             nuevoDlgUnchecked.add(chk.dataset.id)
+            _actualizarBtnNuevo(
+                [...allIds].filter(id => {
+                    const ex = !!todosServicios.find(s => s.id === id)
+                    const tv = ex && !!candidateVenueId && !!todaDisponibilidad.find(d => d.venue_id === candidateVenueId && d.service_id === id)
+                    if (!ex) return !nuevoDlgUnchecked.has(id)
+                    return !tv && !!provNombre
+                }).length
+            )
             _actualizarNuevoAsignacion()
         })
     })
 
-    _actualizarBtnNuevo(nuevoCount)
+    _actualizarBtnNuevo(accionCount)
     _actualizarNuevoAsignacion()
 }
 
@@ -2550,18 +2576,30 @@ function _mostrarModalNuevoProveedor(proveedorId) {
 
 // Crear servicios
 document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
-    const allIds  = _computeNuevosIds()
-    const nuevos  = allIds.filter(id => !todosServicios.find(s => s.id === id))
-    if (nuevos.length === 0) { mostrarToast('⚠ Todos los servicios ya existen', '#b45309'); return }
+    const allIds     = _computeNuevosIds()
+    const provNombre = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
+    const nuevos     = allIds.filter(id => !todosServicios.find(s => s.id === id))
 
-    const provNombre  = proveedorActual?.id ?? (inputProveedorId.value.trim() ? normalizarId(inputProveedorId.value) : null)
-    const paraAsignar = nuevos.filter(id => !nuevoDlgUnchecked.has(id) && !!provNombre)
-    const modelo      = document.getElementById('dlgNuevoModelo').value
-    const plazas      = parseInt(document.getElementById('dlgNuevoPlazas').value) || 0
-    const precio      = modelo === 'fixed'
+    // Candidate venue ID (best estimate before potential provider creation)
+    const _candidateVenueId = venueActual?.id ?? (proveedorActual?.id ?? provNombre)
+
+    // Todos los IDs seleccionados (nuevos o existentes) sin entrada en availability para este venue
+    const idsSinAvail = allIds.filter(id =>
+        !nuevoDlgUnchecked.has(id) &&
+        !!provNombre &&
+        !todaDisponibilidad.find(d => d.venue_id === _candidateVenueId && d.service_id === id)
+    )
+
+    if (nuevos.length === 0 && idsSinAvail.length === 0) {
+        mostrarToast('⚠ Todos los servicios ya tienen disponibilidad asignada', '#b45309')
+        return
+    }
+
+    const modelo = document.getElementById('dlgNuevoModelo').value
+    const plazas = parseInt(document.getElementById('dlgNuevoPlazas').value) || 0
+    const precio = modelo === 'fixed'
         ? parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
         : parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
-
     const hora = document.getElementById('dlgNuevoHora').value || null
     const img  = document.getElementById('dlgNuevoImg').value.trim() || null
     const name = document.getElementById('dlgNuevoNombre').value.trim() || null
@@ -2570,19 +2608,19 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
     let crearProveedor = false
     let soloServicios  = false
 
-    if (paraAsignar.length > 0 && !proveedorActual && provNombre) {
+    if (idsSinAvail.length > 0 && !proveedorActual && provNombre) {
         const result = await _mostrarModalNuevoProveedor(provNombre)
         if (result === 'cancel') return
-        if (result === 'services-only') soloServicios  = true
+        if (result === 'services-only') soloServicios = true
         if (result === 'create-all')    crearProveedor = true
     }
 
     if (crearProveedor && provNombre) {
         const { error } = await supabase.from('providers').insert({
             id:       provNombre,
-            name:     inputNombre.value.trim()              || null,
-            address:  inputDireccion.value.trim()           || null,
-            comments: inputProveedorComments.value.trim()   || null
+            name:     inputNombre.value.trim()            || null,
+            address:  inputDireccion.value.trim()         || null,
+            comments: inputProveedorComments.value.trim() || null
         })
         if (error) { alert('Error al crear proveedor: ' + error.message); return }
         const venueAddress = inputVenueDireccion.value.trim() || null
@@ -2608,44 +2646,51 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
         proveedorStatus.style.color = 'var(--accent-ok)'
     }
 
-    // Crear servicios nuevos
+    // Crear los registros de servicio que no existen aún
     const errores = []
     for (const id of nuevos) {
         const dia = _extraerDiaDeId(id)
         const { error } = await supabase.from('services')
             .insert({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
         if (error) errores.push(`${id}: ${error.message}`)
-        else       todosServicios.push({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
+        else todosServicios.push({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
     }
     if (errores.length > 0) alert('Errores al crear servicios:\n' + errores.join('\n'))
 
-    const creados = nuevos.filter(id => todosServicios.find(s => s.id === id))
-
-    // Crear entradas de availability para los marcados
-    if (!soloServicios && proveedorActual && creados.length > 0 && paraAsignar.length > 0) {
-        const _nuevoVenueId = venueActual?.id ?? proveedorActual.id
-        for (const id of paraAsignar.filter(id => creados.includes(id))) {
-            if (todaDisponibilidad.find(d => d.venue_id === _nuevoVenueId && d.service_id === id)) continue
+    // Crear entradas de availability para TODOS los IDs seleccionados sin availability (nuevos y existentes)
+    let asignados = 0
+    if (!soloServicios && proveedorActual) {
+        const _venueIdFinal = venueActual?.id ?? proveedorActual.id
+        for (const id of idsSinAvail) {
+            if (nuevos.includes(id) && !todosServicios.find(s => s.id === id)) continue
+            if (todaDisponibilidad.find(d => d.venue_id === _venueIdFinal && d.service_id === id)) continue
             const { data: nd, error } = await supabase.from('availability').insert({
-                venue_id:       _nuevoVenueId,
+                venue_id:       _venueIdFinal,
                 service_id:     id,
                 total_slots:    plazas,
                 price_per_slot: isNaN(precio) ? 0 : precio,
                 billing_model:  modelo
             }).select().single()
             if (error) console.error('Error al asignar', id, ':', error.message)
-            else       todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null })
+            else {
+                todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, event_type: null, sfcom_status: null, sfcom_slots_listed: null, sfcom_service_name: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null })
+                asignados++
+            }
         }
-        await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
+        if (asignados > 0) await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
     }
 
+    const creados = nuevos.filter(id => todosServicios.find(s => s.id === id))
     document.getElementById('dlgNuevoServicio').close()
     limpiarFormularioServicio()
     if (proveedorActual) {
         cargarServiciosProveedor(proveedorActual.id)
         cargarPagosProveedor(proveedorActual.id)
     }
-    mostrarToast(`✅ ${creados.length} servicio${creados.length !== 1 ? 's' : ''} creado${creados.length !== 1 ? 's' : ''}`)
+    const msg = []
+    if (creados.length) msg.push(`${creados.length} servicio${creados.length !== 1 ? 's' : ''} creado${creados.length !== 1 ? 's' : ''}`)
+    if (asignados)      msg.push(`${asignados} disponibilidad${asignados !== 1 ? 'es' : ''} asignada${asignados !== 1 ? 's' : ''}`)
+    mostrarToast(`✅ ${msg.length ? msg.join(', ') : 'Sin cambios'}`)
 })
 
 document.getElementById('btnExportServicios')?.addEventListener('click', () => {

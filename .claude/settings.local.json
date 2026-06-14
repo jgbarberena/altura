@@ -94,7 +94,8 @@
       "Bash(git push *)",
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"admin: entrada por panel de control en lugar de formulario\" -SkipScripts)",
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: verificación consistencia financiera; fix borrado charges al eliminar reservas\")",
-      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: verificación consistencia financiera profunda; modal directo; cobertura proveedores\" -SkipScripts)"
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: verificación consistencia financiera profunda; modal directo; cobertura proveedores\" -SkipScripts)",
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"proveedores: email y phone en tabla y formulario\")"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"

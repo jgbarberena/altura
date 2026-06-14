@@ -44,7 +44,7 @@
             <!-- BLOQUE 1: PROVEEDOR -->
             <div class="bloque" id="bloque-proveedor">
                 <h2>🏠 Proveedor</h2>
-                <div class="form-grid">
+                <div class="form-grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr))">
                     <div class="form-field autocomplete-wrap">
                         <label>ID Proveedor</label>
                         <input type="text" id="inputProveedorId" placeholder="ID_PROVEEDOR" autocomplete="off">
@@ -72,6 +72,14 @@
                         </label>
                     </div>
                     <div class="form-field">
+                        <label>Email</label>
+                        <input type="text" id="inputProveedorEmail" placeholder="Email del proveedor">
+                    </div>
+                    <div class="form-field">
+                        <label>Teléfono</label>
+                        <input type="text" id="inputProveedorPhone" placeholder="Teléfono del proveedor">
+                    </div>
+                    <div class="form-field" style="grid-column: 1 / -1">
                         <label>Comentarios</label>
                         <input type="text" id="inputProveedorComments" placeholder="Comentarios">
                     </div>
