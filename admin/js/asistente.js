@@ -683,7 +683,7 @@ async function _insertarEmailParseado(campos) {
             level:        campos.service_hint || null,
             comments:     finalComments,
             source:       'email',
-            status:       'email_parsed',
+            status:       'nueva',
             language:     campos.language     || 'es',
             email_raw:    campos._emailRaw    || null
         })

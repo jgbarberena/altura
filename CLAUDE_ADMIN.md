@@ -529,7 +529,7 @@ Estructura para eventos de día único (chupinazo, procesion, gigantes, pobre_de
 1. Paula pega el texto del email (con cabeceras, firmas, etc.)
 2. Claude Haiku (especificado explícitamente) parsea con `SYSTEM_PROMPT_PARSING` → JSON estructurado
 3. Modal de revisión con campos editables precargados
-4. "Guardar" → INSERT en reservation_requests con `source='email', status='email_parsed'`; "Guardar y responder" → lo mismo + abre el asistente
+4. "Guardar" → INSERT en reservation_requests con `source='email', status='nueva'`; "Guardar y responder" → lo mismo + abre el asistente
 
 ### asistente-config.js
 Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de asistente.js para poder actualizar los prompts subiendo solo este archivo por FTP, sin tocar la lógica.

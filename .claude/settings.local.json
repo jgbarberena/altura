@@ -95,7 +95,8 @@
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"admin: entrada por panel de control en lugar de formulario\" -SkipScripts)",
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: verificación consistencia financiera; fix borrado charges al eliminar reservas\")",
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: verificación consistencia financiera profunda; modal directo; cobertura proveedores\" -SkipScripts)",
-      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"proveedores: email y phone en tabla y formulario\")"
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"proveedores: email y phone en tabla y formulario\")",
+      "Bash(pwsh -ExecutionPolicy Bypass -File /Users/pauladiaz/altura/deploy.ps1 -Message \"solicitudes: fix status al guardar email parseado\")"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"
