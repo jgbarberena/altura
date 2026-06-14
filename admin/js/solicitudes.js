@@ -987,6 +987,8 @@ function mostrarDetalle(sol) {
                     sol.status = nuevoEstado
                     const badgeEl = document.querySelector(`.sol-item[data-id="${sol.id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--email)`)
                     if (badgeEl) { badgeEl.className = `sol-badge sol-badge--${nuevoEstado}`; badgeEl.textContent = STATUS_LABELS[nuevoEstado] || nuevoEstado }
+                    const itemEl = document.querySelector(`.sol-item[data-id="${sol.id}"]`)
+                    if (itemEl) itemEl.classList.toggle('sol-item--apagada', ['convertida', 'descartada'].includes(nuevoEstado))
                 })
                 document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => abrirAsistenteRespuesta(sol))
             }
@@ -1002,6 +1004,8 @@ function mostrarDetalle(sol) {
             sol.status = nuevoEstado
             const badgeEl = document.querySelector(`.sol-item[data-id="${sol.id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--email)`)
             if (badgeEl) { badgeEl.className = `sol-badge sol-badge--${nuevoEstado}`; badgeEl.textContent = STATUS_LABELS[nuevoEstado] || nuevoEstado }
+            const itemEl = document.querySelector(`.sol-item[data-id="${sol.id}"]`)
+            if (itemEl) itemEl.classList.toggle('sol-item--apagada', ['convertida', 'descartada'].includes(nuevoEstado))
         })
     }
 
