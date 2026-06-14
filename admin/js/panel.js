@@ -1,7 +1,8 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente } from './utils.js'
+import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { crearModal } from './modal.js'
+import { mostrarToast } from './verificacion.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -23,14 +24,16 @@ const [
     { data: servicios },
     { data: payments },
     { data: charges },
-    { data: solicitudesNuevas }
+    { data: solicitudesNuevas },
+    { data: venues }
 ] = await Promise.all([
     supabase.from('reservations').select('*'),
     supabase.from('availability').select('*'),
     supabase.from('services').select('*').order('day'),
     supabase.from('payments').select('*').order('due_date'),
     supabase.from('charges').select('*').order('due_date'),
-    supabase.from('reservation_requests').select('id, source, status').not('status', 'in', '("convertida","descartada")')
+    supabase.from('reservation_requests').select('id, source, status').not('status', 'in', '("convertida","descartada")'),
+    supabase.from('venues').select('id, provider_id')
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -688,110 +691,117 @@ function calcularCashflow() {
 }
 
 // ===== CONSISTENCIA FINANCIERA =====
-let _consistenciaHuerfanos = []
-let _consistenciaDesviados = []
-
+// Comprueba por cliente (charges vs reservas activas) y por proveedor (payments vs coste teórico
+// según billing_model). Si todo cuadra → toast verde. Si hay discrepancias → modal directo con
+// tabla de errores y botón de corrección automática.
 function verificarConsistenciaFinanciera() {
-    const chargesByClient = {}
-    for (const c of (charges ?? [])) {
-        if (!chargesByClient[c.client_id])
-            chargesByClient[c.client_id] = { total: 0, tieneHistorial: false }
-        chargesByClient[c.client_id].total += parseFloat(c.amount || 0)
-        if (c.collected || c.invoice_number) chargesByClient[c.client_id].tieneHistorial = true
-    }
 
-    const reservasByClient = {}
+    // --- Clientes: SUM(charges) debe coincidir con SUM(reservas no canceladas) ---
+    const chargesTotales  = new Map()
+    const chargesHistorial = new Map()
+    for (const c of (charges ?? [])) {
+        chargesTotales.set(c.client_id, (chargesTotales.get(c.client_id) ?? 0) + parseFloat(c.amount || 0))
+        if (c.collected || c.invoice_number) chargesHistorial.set(c.client_id, true)
+    }
+    const reservasTotales = new Map()
     for (const r of (reservas ?? [])) {
         if (r.status === 'Cancelada') continue
-        reservasByClient[r.client_id] = (reservasByClient[r.client_id] ?? 0) + parseFloat(r.total_amount || 0)
+        reservasTotales.set(r.client_id, (reservasTotales.get(r.client_id) ?? 0) + parseFloat(r.total_amount || 0))
+    }
+    const problemasClientes = []
+    for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
+        const c = Math.round((chargesTotales.get(id) ?? 0) * 100) / 100
+        const r = Math.round((reservasTotales.get(id) ?? 0) * 100) / 100
+        if (Math.abs(c - r) < 0.01) continue
+        problemasClientes.push({ id, enBD: c, deberiasSer: r,
+            diff: Math.round((c - r) * 100) / 100,
+            esHuerfano: r === 0 && c > 0,
+            tieneHistorial: chargesHistorial.get(id) ?? false })
     }
 
-    _consistenciaHuerfanos = []
-    _consistenciaDesviados = []
+    // --- Proveedores: SUM(payments) debe coincidir con el coste teórico por billing_model ---
+    const venueAProveedor = new Map((venues ?? []).map(v => [v.id, v.provider_id]))
+    const pagosTotales    = new Map()
+    for (const p of (payments ?? []))
+        pagosTotales.set(p.provider_id, (pagosTotales.get(p.provider_id) ?? 0) + parseFloat(p.amount || 0))
 
-    for (const [clientId, info] of Object.entries(chargesByClient)) {
-        const totalCharges  = Math.round(info.total * 100) / 100
-        const totalReservas = Math.round((reservasByClient[clientId] ?? 0) * 100) / 100
-        if (totalReservas === 0 && totalCharges !== 0) {
-            _consistenciaHuerfanos.push({ clientId, total: totalCharges, tieneHistorial: info.tieneHistorial })
-        } else if (Math.abs(totalCharges - totalReservas) > 0.01) {
-            _consistenciaDesviados.push({
-                clientId,
-                enCharges: totalCharges,
-                enReservas: totalReservas,
-                diff: Math.round((totalCharges - totalReservas) * 100) / 100
-            })
-        }
-    }
-
-    if (_consistenciaHuerfanos.length === 0 && _consistenciaDesviados.length === 0) return
-
-    const partes = []
-    if (_consistenciaHuerfanos.length > 0) {
-        const tot = _consistenciaHuerfanos.reduce((s, h) => s + h.total, 0)
-        partes.push(`${_consistenciaHuerfanos.length} cliente(s) con cobros sin reserva activa (${fmt(tot)})`)
-    }
-    if (_consistenciaDesviados.length > 0)
-        partes.push(`${_consistenciaDesviados.length} cliente(s) con cobro final desajustado`)
-
-    document.getElementById('txt-consistencia').textContent = partes.join(' · ')
-    document.getElementById('lista-inconsistencias').innerHTML = [
-        ..._consistenciaHuerfanos.map(h =>
-            `<li>${h.clientId}: ${fmt(h.total)} en cobros, sin reservas activas${h.tieneHistorial ? ' · ⚠ tiene cobros cobrados o facturados' : ''}</li>`),
-        ..._consistenciaDesviados.map(d =>
-            `<li>${d.clientId}: cobros ${fmt(d.enCharges)}, reservas ${fmt(d.enReservas)}, diff ${d.diff > 0 ? '+' : ''}${fmt(d.diff)}</li>`)
-    ].join('')
-
-    document.getElementById('alerta-consistencia').style.display = 'flex'
-    document.getElementById('bloque-alertas').style.display = 'block'
-}
-
-document.getElementById('btn-corregir-consistencia')?.addEventListener('click', async () => {
-    if (_consistenciaHuerfanos.length === 0 && _consistenciaDesviados.length === 0) return
-
-    const hayHistorial = _consistenciaHuerfanos.some(h => h.tieneHistorial)
-    const lineas = [
-        ..._consistenciaHuerfanos.map(h =>
-            h.tieneHistorial
-                ? `• ${h.clientId}: eliminar todos sus cobros (tiene cobros/facturas con historial — revisar antes)`
-                : `• ${h.clientId}: eliminar cobros huérfanos (${fmt(h.total)})`),
-        ..._consistenciaDesviados.map(d => `• ${d.clientId}: recalcular cobro final`)
-    ]
-
-    const confirmar = await new Promise(resolve => {
-        if (hayHistorial) {
-            const { overlay, panel } = crearModal('modal-corr-consistencia', { narrow: true, scroll: true })
-            panel.innerHTML = `
-                <h2 style="color:var(--accent);margin-bottom:12px">⚠️ Correcciones de consistencia</h2>
-                <p style="font-size:13px;margin-bottom:12px">Algunos clientes tienen cobros cobrados o facturados. Se recomienda revisarlos antes de confirmar la eliminación.</p>
-                <ul style="font-size:13px;margin:0 0 16px 16px">${lineas.map(l => `<li style="margin-bottom:4px">${l.slice(2)}</li>`).join('')}</ul>
-                <div style="display:flex;gap:8px;justify-content:flex-end">
-                    <button id="btn-corr-cancelar" class="btn btn-primary" autofocus>Cancelar</button>
-                    <button id="btn-corr-confirmar" class="btn btn-secondary" style="border-color:var(--accent);color:var(--accent)">Confirmar correcciones</button>
-                </div>`
-            panel.querySelector('#btn-corr-cancelar').addEventListener('click', () => { overlay.close(); resolve(false) })
-            panel.querySelector('#btn-corr-confirmar').addEventListener('click', () => { overlay.close(); resolve(true) })
+    const costeTeorico = new Map()
+    for (const d of (disponibilidad ?? [])) {
+        const provId = venueAProveedor.get(d.venue_id)
+        if (!provId) continue
+        let coste = 0
+        if (d.billing_model === 'capacity') {
+            coste = (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneRes = (reservas ?? []).some(r =>
+                r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+            coste = tieneRes ? parseFloat(d.price_per_slot ?? 0) : 0
         } else {
-            resolve(confirm(`Se realizarán las siguientes correcciones:\n\n${lineas.join('\n')}\n\n¿Continuar?`))
+            const slots = (reservas ?? [])
+                .filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+                .reduce((s, r) => s + r.slots, 0)
+            coste = slots * parseFloat(d.price_per_slot ?? 0)
         }
+        costeTeorico.set(provId, (costeTeorico.get(provId) ?? 0) + coste)
+    }
+    const problemasProveedores = []
+    for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
+        const p = Math.round((pagosTotales.get(id) ?? 0) * 100) / 100
+        const t = Math.round((costeTeorico.get(id) ?? 0) * 100) / 100
+        if (Math.abs(p - t) < 0.01) continue
+        problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 100) / 100 })
+    }
+
+    // --- Output ---
+    if (problemasClientes.length === 0 && problemasProveedores.length === 0) {
+        mostrarToast('✓ Consistencia financiera verificada', 'var(--accent-ok)')
+        return
+    }
+
+    const hayHistorial = problemasClientes.some(p => p.tieneHistorial)
+    const fila = ({ tipo, id, enBD, deberiasSer, diff, tieneHistorial }) => `<tr>
+        <td>${tipo}</td>
+        <td>${id}${tieneHistorial ? ' <span title="Tiene cobros cobrados o facturados" style="color:var(--accent)">⚠️</span>' : ''}</td>
+        <td>${fmt(enBD)}</td><td>${fmt(deberiasSer)}</td>
+        <td class="${diff > 0 ? 'warn' : 'error'}">${diff > 0 ? '+' : ''}${fmt(diff)}</td>
+    </tr>`
+
+    const { overlay, panel } = crearModal('modal-consistencia', { wide: true, scroll: true })
+    panel.innerHTML = `
+        <h2 style="margin-top:0;color:var(--accent)">⚠ Inconsistencias financieras</h2>
+        <p style="color:var(--subtle);margin-bottom:16px">Registros que no cuadran entre la BD (charges/payments) y las reservas activas.</p>
+        <table class="tabla-admin" style="width:100%;margin-bottom:16px">
+            <thead><tr><th>Tipo</th><th>ID</th><th>En BD</th><th>Debería ser</th><th>Diferencia</th></tr></thead>
+            <tbody>
+                ${problemasClientes.map(p => fila({ ...p, tipo: 'Cliente' })).join('')}
+                ${problemasProveedores.map(p => fila({ ...p, tipo: 'Proveedor' })).join('')}
+            </tbody>
+        </table>
+        ${hayHistorial ? `<p style="font-size:12px;color:var(--accent);margin-bottom:12px">⚠️ Algunos clientes tienen cobros ya cobrados o facturados — revisa antes de corregir.</p>` : ''}
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="btn-cons-cerrar" class="btn btn-secondary">Cerrar</button>
+            <button id="btn-cons-corregir" class="btn btn-primary">Corregir automáticamente</button>
+        </div>`
+    panel.querySelector('#btn-cons-cerrar').addEventListener('click', () => overlay.close())
+    panel.querySelector('#btn-cons-corregir').addEventListener('click', async () => {
+        const btn = panel.querySelector('#btn-cons-corregir')
+        btn.disabled = true
+        btn.textContent = 'Corrigiendo…'
+        for (const p of problemasClientes) {
+            if (p.esHuerfano) {
+                const { error } = await supabase.from('charges').delete().eq('client_id', p.id)
+                if (error) console.error('Error eliminando charges de', p.id, error)
+            } else {
+                await persistirCobrosCliente(supabase, p.id, reservas)
+            }
+        }
+        for (const p of problemasProveedores) {
+            await persistirPagosProveedor(supabase, p.id, reservas, disponibilidad)
+        }
+        btn.textContent = '✓ Hecho — recargando…'
+        setTimeout(() => location.reload(), 1500)
     })
-    if (!confirmar) return
-
-    const btn = document.getElementById('btn-corregir-consistencia')
-    btn.disabled = true
-    btn.textContent = 'Corrigiendo…'
-
-    for (const h of _consistenciaHuerfanos) {
-        const { error } = await supabase.from('charges').delete().eq('client_id', h.clientId)
-        if (error) alert(`Error al eliminar cobros de ${h.clientId}: ${error.message}`)
-    }
-    for (const d of _consistenciaDesviados) {
-        await persistirCobrosCliente(supabase, d.clientId, reservas)
-    }
-
-    btn.textContent = '✓ Hecho — recargando…'
-    setTimeout(() => location.reload(), 1500)
-})
+}
 
 // ===== INICIALIZAR TODO =====
 calcularAlertas()
