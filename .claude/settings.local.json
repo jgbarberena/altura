@@ -97,7 +97,8 @@
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"panel: verificación consistencia financiera profunda; modal directo; cobertura proveedores\" -SkipScripts)",
       "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"proveedores: email y phone en tabla y formulario\")",
       "Bash(pwsh -ExecutionPolicy Bypass -File /Users/pauladiaz/altura/deploy.ps1 -Message \"solicitudes: fix status al guardar email parseado\")",
-      "Bash(pwsh -ExecutionPolicy Bypass -File /Users/pauladiaz/altura/deploy.ps1 -Message \"solicitudes: apagar item en lista al cerrar estado en sesión\" -SkipScripts)"
+      "Bash(pwsh -ExecutionPolicy Bypass -File /Users/pauladiaz/altura/deploy.ps1 -Message \"solicitudes: apagar item en lista al cerrar estado en sesión\" -SkipScripts)",
+      "Bash(pwsh -ExecutionPolicy Bypass -File deploy.ps1 -Message \"docs: event_type no está en availability; deuda técnica\" -SkipFtp)"
     ],
     "additionalDirectories": [
       "d:\\Projects\\Web\\Altura\\supabase\\functions"

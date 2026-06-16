@@ -73,7 +73,6 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 | total_slots | integer NOT NULL |
 | price_per_slot | decimal — coste que se paga al proveedor por plaza (o importe fijo total si billing_model='fixed') |
 | billing_model | `'capacity'`, `'consumption'` o `'fixed'`; default `'capacity'` |
-| event_type | text — tipo de experiencia derivado del servicio (ej: `'encierro'`, `'chupinazo'`). Usado para agrupar en el catálogo y en el trigger de sincronización de fotos. |
 | description | text — descripción específica del par venue/servicio |
 | access_instructions | text — instrucciones de acceso el día del evento |
 | photos | text[] ARRAY — URLs de fotos del balcón para este par |
@@ -641,6 +640,8 @@ El obstáculo es el estado compartido (`todasReservas`, `clienteActual`, etc.). 
 **Falsos positivos en verificación sfcom por TTL de stock-all** (cosmético) — stock-all en sf-api-paula.php trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola cuando el TTL expira.
 
 **Datos de servicios incompletos** — los campos `name`, `description`, `image_url` y `start_time` de varios servicios están vacíos en Supabase. Rellenar desde el panel de proveedores. No es tarea de código.
+
+**`event_type` — origen real desconocido (documentación incorrecta)** — Este campo aparece en las vistas `availability_panel` y `catalogo_publico`, y el trigger `trg_sync_availability_event_type` lo usa para sincronizar fotos/descripción entre filas del mismo venue. Sin embargo, `event_type` NO existe como columna en la tabla `availability` (confirmado en Supabase). Tampoco está documentado en `services`. El origen real (columna en `services`, columna oculta en `availability`, o campo calculado en la vista) no se ha verificado. Impacto inmediato: no se puede consultar `event_type` directamente sobre `availability`; hay que usar siempre la vista `availability_panel`. Pendiente: verificar con `\d availability` en psql o inspeccionando la definición de la vista en Supabase y actualizar esta documentación.
 
 ---
 
