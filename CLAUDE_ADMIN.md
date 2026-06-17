@@ -69,7 +69,7 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 | Campo | Notas |
 |---|---|
 | id | integer PK |
-| venue_id | FK→venues — nullable en el esquema actual (pendiente añadir NOT NULL, ver deuda 7.1) |
+| venue_id | FK→venues NOT NULL (añadido jun 2026) |
 | service_id | FK→services NOT NULL |
 | total_slots | integer NOT NULL |
 | price_per_slot | decimal — coste que se paga al proveedor por plaza (o importe fijo total si billing_model='fixed'); default 0 |
@@ -79,7 +79,7 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 | photos | text[] ARRAY — URLs de fotos del balcón para este par |
 | comments | text |
 
-No existe constraint ni índice UNIQUE(venue_id, service_id) en la BD actual (pendiente añadir, ver deuda 7.1). El comportamiento de unicidad lo garantiza solo el JS.
+Constraint UNIQUE(venue_id, service_id) (`uq_availability_venue_service`) añadido en jun 2026. La BD refuerza la unicidad además del JS.
 
 **`sfcom_listings`** — Configuración de publicación en sfcom
 | Campo | Notas |
@@ -226,9 +226,9 @@ Todas las tablas tienen RLS habilitado excepto `assistant_logs` (desactivado, ve
 | `sfcom_listings` | sin política (denegado implícito) | ALL permitido | |
 | `venues` | SELECT permitido | ALL permitido | La política de authenticated usa rol `{authenticated}`; la de anon es solo SELECT |
 
-**Atención:** La política de `venues` originalmente usaba `{public}` (bug de configuración que daba acceso de escritura a anon). Debe estar corregida a `{authenticated}` para escritura y `{anon}` para SELECT.
+**Atención:** La política de `venues` originalmente usaba `{public}` (bug que daba acceso de escritura a cualquier usuario anon). Corregida en jun 2026: ALL para `{authenticated}`, SELECT para `{anon}`.
 
-Las vistas `service_availability` y `catalogo_publico` deben definirse con `WITH (security_invoker = false)` para que sean accesibles por anon a pesar de que la tabla `availability` tenga SELECT bloqueado para anon. Sin este atributo, ambas vistas devuelven 0 filas para usuarios no autenticados.
+Las vistas `service_availability` y `catalogo_publico` deben estar definidas con `WITH (security_invoker = false)` (o `SECURITY DEFINER`) para que sean accesibles por anon aunque `availability` tenga SELECT bloqueado para anon. Verificado jun 2026: ambas funcionan correctamente (`service_availability` devuelve 63 filas, `catalogo_publico` devuelve 54).
 
 ### Storage
 
@@ -368,6 +368,8 @@ Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `update
 **Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), tabla de borrador de propuesta, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "📋 Convertir en reservas" (→ `formulario.html?solicitud_id=uuid`), botón "✕ Descartar". La URL solo lleva `solicitud_id`; formulario.js lee el resto directamente de Supabase.
 
 **Borrador de propuesta (`proposal_draft`):** tabla editable que ocupa el espacio donde antes estaba el bloque de datos iniciales (`.sol-detalle-datos`). Columnas: Servicio (select desde `availability_panel`), Día, Venue (select dinámico dependiente del servicio), Plazas, €/plaza, Total (calculado, readonly), Acciones (enlace catálogo + papelera). Flechas ↑↓ para reordenar. Fila vacía al final para añadir. Guardado automático con debounce 800ms. Si el borrador está vacío al abrir una solicitud que tiene `level`/`day`/`slots`, se pre-rellena automáticamente la primera fila con esos datos y el precio máximo de `_calcularPrecioRef`. La consulta inicial (`sol.comments`) se migra como primer mensaje `<Cliente>` del log si el log no tenía mensajes de cliente.
+
+**`_preFillBorradorSiVacio(sol)`:** función interna de pre-relleno. Infiere `service_id` desde `sol.level` con enfoque split-by-dash (`sol.level.toLowerCase().split('-')` + `partes.includes('encierro')`, etc.), igual que `_inferirServiceId` en formulario.js. **No usa coincidencia exacta de string** porque `sol.level` desde el formulario web es un slug completo (`'vivir-el-chupinazo'`, `'disfrutar-del-encierro'`), no el tipo corto (`'chupinazo'`). Si se usan coincidencias exactas, las solicitudes web no encuentran servicio y el borrador queda vacío (bug confirmado y corregido jun 2026 con el caso de Sara).
 
 **Log de conversación:** almacenado en `conversation_notes` como texto plano: `---DD/MM/AA---` como separador de fecha, `<Paula>` y `<Cliente>` como marcadores de autor. Los mensajes del día actual tienen botón de edición.
 
@@ -658,6 +660,12 @@ Las deudas están organizadas por tipo de impacto. Los bugs (7.1) son los único
 
 ### 7.1 Bugs — producen comportamiento incorrecto ahora mismo
 
+**✅ RESUELTO — Borrador vacío en solicitudes web con `level` en formato slug completo.**
+
+`_preFillBorradorSiVacio` en `solicitudes.js` usaba coincidencia exacta (`sol.level === 'chupinazo'`) pero el formulario web envía slugs completos (`'vivir-el-chupinazo'`). Resultado: el borrador quedaba vacío para todas las solicitudes web con tipo de experiencia. Corregido en jun 2026 adoptando enfoque split-by-dash (igual que `_inferirServiceId` en formulario.js). Caso que lo evidenció: solicitud de Sara.
+
+---
+
 **✅ RESUELTO — Solicitudes ya atendidas aparecían como pendientes en panel y formulario.**
 
 Dos cambios aplicados (jun 2026):
@@ -688,29 +696,27 @@ Auditado (jun 2026): la única FK con CASCADE es `sfcom_listings.availability_id
 
 ---
 
-**`availability` sin UNIQUE(venue_id, service_id) y venue_id nullable.**
+**✅ RESUELTO — `availability` sin UNIQUE(venue_id, service_id) y venue_id nullable.**
 
-La tabla `availability` no tiene ningún constraint ni índice UNIQUE sobre `(venue_id, service_id)`, a pesar de que la documentación lo indicaba. Tampoco tiene NOT NULL en `venue_id` (aunque en los datos actuales no hay NULLs ni duplicados). El JS garantiza unicidad implícitamente, pero la BD no la refuerza.
-
-Fix (SQL Editor): (1) verificar con `SELECT venue_id, service_id, COUNT(*) FROM availability GROUP BY venue_id, service_id HAVING COUNT(*) > 1` que no hay duplicados, luego `ALTER TABLE availability ADD CONSTRAINT uq_availability_venue_service UNIQUE (venue_id, service_id);` y `ALTER TABLE availability ALTER COLUMN venue_id SET NOT NULL;`.
+Ambos aplicados en jun 2026: `ALTER TABLE availability ADD CONSTRAINT uq_availability_venue_service UNIQUE (venue_id, service_id);` y `ALTER TABLE availability ALTER COLUMN venue_id SET NOT NULL;`. Verificado previamente que no existían duplicados ni NULLs en los datos.
 
 ---
 
-**6 reservas activas con total_amount = 0.**
+**✅ INVESTIGADO Y ACEPTADO — 6 reservas activas con total_amount = 0.**
 
-Las reservas R0120, R0074, R0063, R0064, R0102, R0108 están activas (no canceladas) con `price_per_slot = 0`. Dado que `total_amount` es `GENERATED ALWAYS AS (slots * price_per_slot)`, total_amount = 0 implica necesariamente price_per_slot = 0. Posible error de entrada de datos. Revisar y corregir manualmente en Dashboard si corresponde.
-
----
-
-**2 clientes con cobros pero sin reservas activas: MARTIKO y NACHO_GALLARDO.**
-
-Pueden ser residuos de reservas canceladas o eliminadas sin limpiar los charges. Investigar con `SELECT * FROM charges WHERE client_id IN ('MARTIKO', 'NACHO_GALLARDO')` y decidir si se eliminan.
+Las reservas R0120, R0074, R0063, R0064, R0102, R0108 tienen `price_per_slot = 0` y están activas. Investigado en jun 2026: son invitaciones o servicios sin coste (intencionados). No son errores de entrada de datos.
 
 ---
 
-**Email duplicado: giovanni.soliman@gmail.com aparece en dos registros de `clients`.**
+**✅ INVESTIGADO Y ACEPTADO — MARTIKO y NACHO_GALLARDO con cobros pero sin reservas activas.**
 
-Posible duplicado de cliente. Investigar con `SELECT id, name, email, phone FROM clients WHERE email = 'giovanni.soliman@gmail.com'`. Si son la misma persona, fusionar manualmente (actualizar FK en reservations/charges y borrar el duplicado).
+Investigado en jun 2026: los charges de estos clientes son a importe 0 (intencionados). La verificación de consistencia financiera no los detecta como error porque `SUM(charges) = 0 = SUM(reservas activas)`, que es la situación correcta para estos casos. Situación aceptada; no requiere acción.
+
+---
+
+**✅ RESUELTO — Email duplicado: giovanni.soliman@gmail.com.**
+
+El registro duplicado fue eliminado en jun 2026. No tenía reservas ni charges activos — era un residuo de un intento de borrado incompleto previo.
 
 ---
 
@@ -807,17 +813,13 @@ El trigger propaga `photos`, `description` y `access_instructions` a todas las f
 
 Verificación: editar las fotos de un par venue/event_type con varias filas y comprobar que todas las demás se actualizan.
 
-Nota: existe también una función huérfana `sync_photos_by_event_type()` que solo sincronizaba fotos (versión anterior). No está adjunta a ningún trigger. Se puede borrar con `DROP FUNCTION public.sync_photos_by_event_type();`.
+Nota: existía una función huérfana `sync_photos_by_event_type()` (versión anterior que solo sincronizaba fotos). Eliminada en jun 2026 con `DROP FUNCTION public.sync_photos_by_event_type();`.
 
 ---
 
-**`service_availability` y `catalogo_publico` pueden estar rotas para usuarios anon.**
+**✅ VERIFICADO — `service_availability` y `catalogo_publico` funcionan para usuarios anon.**
 
-Las vistas usan `SECURITY INVOKER` por defecto. Como `availability` tiene SELECT bloqueado para anon, al consultar estas vistas desde el frontend público (anon) se obtienen 0 filas en lugar de los datos reales. Esto afecta a los badges de disponibilidad y al catálogo de balcones.
-
-Fix: recrear ambas vistas con `WITH (security_invoker = false)` para que usen los permisos del owner (postgres) al acceder a las tablas base, sin exponer la tabla availability directamente a anon.
-
-Verificar estado actual: `SET ROLE anon; SELECT COUNT(*) FROM service_availability; SELECT COUNT(*) FROM catalogo_publico; RESET ROLE;`. Si alguno devuelve 0 con datos presentes, aplicar el fix.
+Verificado en jun 2026 con `SET ROLE anon; SELECT COUNT(*) ...`: `service_availability` devuelve 63 filas y `catalogo_publico` devuelve 54. Las vistas ya estaban correctamente configuradas (con permisos del owner o `security_invoker = false`). No requieren acción.
 
 ---
 
@@ -930,3 +932,143 @@ Productos con configuración incompleta o pendiente de aclarar con Hilario:
 **`invoiced` en charges es redundante** con `invoice_number IS NOT NULL`, pero se mantiene por conveniencia en filtros de consulta.
 
 **`payments`: el hito final se identifica por `comments === 'Pago final'`**, no por un campo `is_final` (que sí existe en charges). Esta inconsistencia es conocida.
+
+---
+
+## 9. Plan de fases para ejecutar la deuda técnica
+
+Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma sesión de trabajo, sin abrir el mismo archivo dos veces entre fases.
+
+### Estado de cada fase (jun 2026)
+
+| Fase | Estado | Descripción |
+|---|---|---|
+| -1 | ✅ Completa | Auditoría completa de Supabase |
+| 0 | 🔲 Parcial | Auditorías sin código (ver detalles abajo) |
+| 1 | ✅ Completa | Bugs simples (4 cambios quirúrgicos) |
+| 2 | 🔲 Pendiente | Esquema BD: cascada de borrados |
+| 3 | 🔲 Pendiente | Sistema de borrador completo |
+| 4 | 🔲 Pendiente | Flujo sfcom: leads cancelados + modales |
+| 5 | 🔲 Pendiente | Panel: UX de navegación y edición |
+| 6 | 🔲 Pendiente | Mejoras de propuestas |
+| 7 | 🔲 Pendiente | Funcionalidades mayores (requieren diseño previo) |
+| 8 | 🔲 Pendiente | Refactors y cierre |
+
+### Dependencias duras entre fases
+
+```
+0 → 2 (la auditoría FK define qué migrar)
+0a → 5 (verificar trigger antes de tocar proveedores.js)
+2 → 5, 6, 7, 8 (borrados correctos antes de construir encima)
+3 → 6 (borrador limpio antes de mejoras en propuestas)
+5 → 6 (image_url auto-fill antes de usarlo en propuestas)
+todas → 8 (refactors de archivos grandes van últimos)
+```
+
+La Fase 1 es independiente de todo: se puede hacer incluso antes que la 0.
+
+---
+
+### Fase -1 — ✅ Auditoría completa de Supabase (jun 2026)
+
+**SQL ejecutados:** 8 queries (A1: columnas, A2: generadas/índices, B1: triggers, B2: funciones, B3: vistas, C1: RLS y políticas, C2: storage, D1: FKs, D2: consistencia de datos).
+
+**Hallazgos y acciones:**
+
+| # | Hallazgo | Acción | Estado |
+|---|---|---|---|
+| 1 | Bug de seguridad: `venues` RLS usaba `{public}` (acceso escritura a anon) | DROP + recrear políticas | ✅ Aplicado |
+| 2 | `service_availability` y `catalogo_publico` podrían no funcionar para anon | Verificar con `SET ROLE anon` | ✅ Verificado: funcionan (63, 54 filas) |
+| 3 | `availability` sin UNIQUE(venue_id, service_id) | Verificar duplicados + `ADD CONSTRAINT` | ✅ Aplicado |
+| 4 | `availability.venue_id` nullable | `ALTER COLUMN venue_id SET NOT NULL` | ✅ Aplicado |
+| 5 | `sync_photos_by_event_type` función huérfana | `DROP FUNCTION` | ✅ Aplicado |
+| 6 | 6 reservas activas con total_amount = 0 | Investigar | ✅ Investigado: son invitaciones/0€ intencionados |
+| 7 | Email duplicado (giovanni.soliman@gmail.com) | Fusionar o eliminar | ✅ Eliminado (no tenía reservas) |
+| 8 | MARTIKO y NACHO_GALLARDO: cobros sin reservas activas | Investigar | ✅ Investigado: cobros a 0€ intencionados |
+| 9 | `assistant_logs` sin RLS | Evaluar | 🔲 Conocido, baja prioridad |
+| 10 | 55 servicios en `services` (solo 12-14 activos documentados) | Revisar en Dashboard | 🔲 Pendiente revisión visual |
+
+**`event_type` confirmado:** es columna directa en `services` (posición 3). Las vistas simplemente la leen desde ahí. Cierra la deuda 7.6 que lo describía como pendiente de verificar.
+
+---
+
+### Fase 0 — 🔲 Parcial: Auditorías sin código
+
+**0a — Verificar trigger `trg_sync_availability_event_type`:** editar fotos de un venue con varios días de encierro y confirmar que todas las filas del mismo event_type se actualizan. **Pendiente** (la función está auditada y es correcta; falta la prueba end-to-end desde la UI).
+
+**0b — Verificar origen de `event_type`:** ✅ Cerrada en Fase -1. Es columna directa en `services`.
+
+**0c — Auditoría de FK cascada:** ✅ Hecha en Fase -1 (D1). La única FK con CASCADE es `sfcom_listings.availability_id → availability`. Todas las demás son NO ACTION. Resultado: la Fase 2 incluirá añadir CASCADE en FKs seleccionadas.
+
+**0d — Auditoría del ciclo de facturación:** 🔲 Pendiente. Recorrido manual por cada flujo completo (crear reserva → cobrar → facturar → pagar proveedor → eliminar) anotando residuos.
+
+**Deudas operativas sfcom:** Contactar a Hilario sobre Pobre de Mí, Barrera Encierro, Visitas guiadas, Despedida Gigantes. Independiente de todas las fases.
+
+---
+
+### Fase 1 — ✅ Bugs simples (jun 2026)
+
+1. **`panel.js` alertas** — `calcularAlertas()`: `solicitudesSfcom` filtra `status === 'nueva'`; web dividida en nuevas y `seguimiento_pendiente` con etiquetas separadas. ✅
+2. **`formulario.js` bloque 0** — `otrasActivas` usa `status === 'nueva'`. ✅
+3. **`utils.js` `resolverCliente`** — Umbral mínimo 5 chars para `.includes()`. Fix parcial (ver deuda pendiente en 7.1). ✅
+4. **`formulario.js` doble `cargarSolicitudes`** — Eliminada llamada incondicional; el chain de `checkSfcomOrders` garantiza una sola llamada. ✅
+
+---
+
+### Fase 2 — 🔲 Esquema BD: cascada de borrados
+
+Basada en los hallazgos del D1 (Fase -1). Solo la FK `sfcom_listings → availability` tiene CASCADE. Todas las demás son NO ACTION.
+
+Decidir por cada FK si conviene CASCADE (limpieza automática) o NO ACTION (el JS controla el flujo con confirmación del usuario). Implementar migraciones en Supabase SQL Editor. Revisar después si el código JS de borrado manual necesita ajustes.
+
+---
+
+### Fase 3 — 🔲 Sistema de borrador completo
+
+Tres cambios en el mismo sistema (`proposal_draft`). Orden interno:
+
+1. Unificar formato de `service_name` al construir líneas del borrador (solicitudes.js y formulario.js).
+2. Bug `_onBorradorActualizado`: emparejar por `service_id + venue_id` y preservar `estado` antes de sobreescribir.
+3. Actualizar `SYSTEM_PROMPT_ASISTENTE`: explicar qué significa cada valor de `estado` (`'pendiente'`, `'hecha'`, `'descartada'`). Valorar filtrar `'descartada'` del contexto.
+
+---
+
+### Fase 4 — 🔲 Flujo sfcom: leads cancelados + reducción de modales
+
+Ambos cambios tocan `sfcom.js` y bloque 0 de `formulario.js`.
+
+1. Leads cancelados: importar pedidos sfcom con `status='cancelled'` como solicitudes con `source: 'sfcom_c:WEB026_1090'`. Requiere segundo `.filter()` en `checkSfcomOrders` y caso adicional en `registrarPedidosSfcom`. Sin cambio de esquema.
+2. Reducción de modales: identificar pasos evitables cuando los datos son unívocos (cliente detectado, servicio inferido, un solo venue posible). No es rediseño, es saltarse pasos en el camino principal.
+
+---
+
+### Fase 5 — 🔲 Panel: UX de navegación y edición
+
+1. Tablas del panel navegables: listener `click` en `<tr>` → actualizar select → disparar render del detalle. Bidireccional.
+2. `services.image_url` auto-fill: al guardar la primera foto de un par venue/event_type, escribir `services.image_url` si está vacío.
+
+---
+
+### Fase 6 — 🔲 Mejoras de propuestas
+
+Usar datos ya disponibles en propuesta.js: `venues.display_name` como nombre del venue, `availability.photos[0]` como imagen principal, `availability.access_instructions` si existe.
+
+---
+
+### Fase 7 — 🔲 Funcionalidades mayores (requieren diseño previo en claude.ai)
+
+- Comunicaciones semi-automáticas: confirmar qué canal, si hace falta un `modo` nuevo en `abrirAsistenteRespuesta`, si el envío es manual o automático (Resend API).
+- Facturación canal sfcom: decidir entre cliente `SFCOM` en `clients` solo para facturación, o migrar reservas sfcom existentes.
+
+Ambas requieren conversación de diseño en claude.ai antes de escribir código.
+
+---
+
+### Fase 8 — 🔲 Refactors y cierre
+
+- Inferencia `level → service_id` unificada en `utils.js` (extraer de formulario.js, solicitudes.js, asistente.js).
+- Documentar reglas de nombres venue/evento en CLAUDE_ADMIN.md.
+- Rellenar datos incompletos de servicios (tarea manual en Dashboard).
+- Evaluar granularidad caché sfcom en sfcom.js.
+- Tablas.js edición directa + Supabase Storage (funcionalidad nueva grande).
+- Split de formulario.js (solo si el tamaño es problema práctico, siempre al final).
