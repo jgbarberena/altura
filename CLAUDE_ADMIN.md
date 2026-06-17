@@ -273,14 +273,14 @@ Módulo ES6. Importa `syncStockToSfcom` de sfcom.js y `crearModal` de modal.js. 
 - `mostrarModalVerificacion(resultado, supabase, onReverify, opts)` — modal completo de resultados. Cuatro estados visuales: rojo (errores BD), naranja (discrepancias sfcom reales), azul (discrepancias explicadas por pedidos pendientes), verde (OK). `opts.sinBotonCorregir` evita el bucle infinito de corrección.
 - `mostrarModalPreCorreccion(mismatches)` — modal previo cuando hay IDs de variación incorrectos. Devuelve `Promise<'corregir'|'continuar'>`.
 
-### formulario.js (~1680 líneas)
-Módulo ES6. Importa de `supabase.js`, `utils.js`, `factura.js`, `propuesta.js`, `sfcom.js`, `verificacion.js`, `modal.js`, `asistente.js`.
+### formulario.js (~2600 líneas)
+Módulo ES6. Importa de `supabase.js`, `auth.js`, `utils.js`, `factura.js`, `propuesta.js`, `sfcom.js`, `verificacion.js`, `modal.js`, `asistente.js`.
 
 Lee al cargar: `clients`, `services`, `availability_panel`, `venues`, `sfcom_listings` (con join a availability), `reservations`.
 
 **6 bloques** (se muestran/ocultan según estado):
 
-**Bloque 0 — Solicitudes pendientes sfcom:** Lee `reservation_requests` con status no `convertida`/`descartada`. Muestra solo las sfcom pendientes (source `WEB%` + status `nueva`) en tabla roja. Si hay otras activas (web/email), muestra un aviso con enlace a `solicitudes.html`. Se oculta el bloque completo si no hay nada. Botón "→ Solicitudes" redirige a `solicitudes.html`. Click en fila sfcom → `cargarDesdeSolicitud`: limpia cliente previo, precarga datos, infiere servicio+proveedor con `_inferirDesdeSfcom`. Botón "✅ Procesado" marca status `convertida`. Tras guardar reserva sfcom: si `solicitudOriginRef` está presente, ofrece marcar la solicitud como `convertida` via `_ofrecerCerrarSolicitud`.
+**Bloque 0 — Solicitudes pendientes sfcom:** Lee `reservation_requests` con status no `convertida`/`descartada`. Muestra solo las sfcom pendientes (source `WEB%` + status `nueva`) en tabla roja. Si hay otras web/email con status distinto de `respuesta_enviada` (en_conversacion, seguimiento_pendiente…), muestra un aviso con enlace a `solicitudes.html`. Se oculta el bloque completo si no hay nada. Botón "→ Solicitudes" redirige a `solicitudes.html`. Click en fila sfcom → `cargarDesdeSolicitud`: limpia cliente previo, precarga datos, infiere servicio+proveedor con `_inferirDesdeSfcom`. Botón "✅ Procesado" marca status `convertida`. Tras guardar reserva sfcom: si `solicitudOriginRef` está presente, ofrece marcar la solicitud como `convertida` via `_ofrecerCerrarSolicitud`.
 
 **Bloque de conversión de propuesta (dinámico, insertado entre bloque 0 y bloque 1):** Visible solo cuando se navega desde `solicitudes.html` con `?solicitud_id=uuid` y la solicitud tiene `proposal_draft` con 2 o más líneas. Fondo azul claro. Título "Convirtiendo propuesta de {cliente} — {N} líneas".
 
@@ -317,9 +317,9 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 **Secuencia de carga:** `checkSfcomOrders` primero; `ejecutarVerificacion(false)` encadenado en `.finally()` para evitar race condition (verificarCoherencia lee reservation_requests y necesita que los pedidos sfcom nuevos estén ya insertados).
 
 ### solicitudes.js
-Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js`, `initAsistente`, `abrirAsistenteRespuesta` de `asistente.js`.
+Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js` (`initSidebar`, `buildCatalogUrl`, `resolverCliente`), `mostrarToast` de `verificacion.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
 
-Lee al cargar: `availability_panel` (para calcular disponibilidad de venues) y `reservations`.
+Lee al cargar: `availability_panel` (para calcular disponibilidad en el borrador), `reservations` (para calcular plazas libres) y `clients` (para `resolverCliente` en `mostrarDetalle`).
 
 **Layout:** dos columnas en desktop (lista 320px izquierda, detalle derecha). En mobile: bottom sheet (`position:fixed; bottom:0; transform:translateY(100%)` + clase `.visible`).
 
@@ -616,41 +616,224 @@ Producto 147 (Despedida de Gigantes) es de tipo `grouped`, stock null. Los PUTs 
 
 ## 7. Deuda técnica activa
 
-**Propuestas PDF** — necesitan usar correctamente `services.name` + `venues.display_name` y añadir fotos desde `availability.photos[0]` (con `services.image_url` como fallback). Pendiente antes de la próxima temporada.
+Las deudas están organizadas por tipo de impacto. Los bugs (7.1) son los únicos que producen resultados incorrectos ahora mismo; el resto son mejoras de calidad, funcionalidades pendientes, o tareas de investigación.
 
-**Comunicaciones semi-automáticas** — confirmación de reserva y recordatorio previo al evento. Pendiente de implementar antes de la próxima temporada. El asistente ya puede redactar los mensajes; falta el flujo de envío.
+---
 
-**Phase 4 de formulario.js** — el archivo tiene ~1680 líneas. Tres candidatos para extracción:
-- `solicitudes.js` interno (~300 líneas): Bloque 0 + `registrarPedidosSfcom` + modales de solicitudes sfcom
-- `reorganizar.js` (~200 líneas): panel de reorganización (`abrirPanelReorganizar`, `confirmarReorg`, variables de estado). El más autocontenido.
-- `cobros.js` (~300 líneas): Bloque 5 + `persistirHitosCliente` + `cargarCobrosCliente`
+### 7.1 Bugs — producen comportamiento incorrecto ahora mismo
 
-El obstáculo es el estado compartido (`todasReservas`, `clienteActual`, etc.). Extraer requiere pasar ese estado como parámetros o crear un objeto compartido, lo que añade fontanería que actualmente no existe. **No hacer hasta que el tamaño sea un problema práctico.** Si se decide, empezar por `reorganizar.js`.
+**Solicitudes ya atendidas aparecen como pendientes en panel y formulario.**
 
-**sfcom — leads de pedidos cancelados** — `checkSfcomOrders` recibe todos los pedidos de la API (sf-api-paula.php no filtra por status) y descarta los que no son `completed`. Los pedidos con `status === 'cancelled'` se ignoran actualmente pero son leads valiosos para seguimiento (contactar si hubo un error, si quieren completar la reserva, etc.).
+En `panel.js`, `calcularAlertas()` toma todas las solicitudes no cerradas y las muestra en los contadores de alertas del panel de control, sin filtrar por estado. Las solicitudes con `status: 'en_conversacion'`, `'respuesta_enviada'` o `'seguimiento_pendiente'` aparecen junto con las `'nueva'`, como si estuvieran sin atender. Comportamiento correcto: el contador de alertas debería mostrar solo `'nueva'` (y, de forma secundaria, `'seguimiento_pendiente'` con su propia etiqueta).
 
-Plan acordado: importarlos como solicitudes en `reservation_requests` con `source: 'sfcom_c:WEB026_1090'` (prefijo `sfcom_c:`, no `WEB\d+_\d+`). Esto hace que `_esSfcom()` devuelva `false` y reciban tratamiento completo de lead en `solicitudes.js` (log, asistente, borrador visibles directamente; sin "→ Crear reserva" como acción principal). El campo `comments` llevaría el texto `"Pedido cancelado en tienda.sanfermin.com."`. El mecanismo de deduplicación existente en `registrarPedidosSfcom` cubre estos casos sin cambios en el esquema.
+En `formulario.js`, `cargarSolicitudes()` del bloque 0 usa `status !== 'respuesta_enviada'` para el filtro de `otrasActivas`, lo que incluye solicitudes con `status: 'en_conversacion'` que ya tienen conversación abierta. Correcto sería filtrar solo `status === 'nueva'`.
 
-Cambios necesarios:
-- `sfcom.js` `checkSfcomOrders`: segundo `.filter()` sobre la misma respuesta para `order.status === 'cancelled'`; devolver `{ ok, nuevos, cancelados }`.
-- `formulario.js` `registrarPedidosSfcom`: segundo parámetro `cancelados = []`; check de duplicados con `'sfcom_c:' + p.origin_ref`; INSERT con ese source y `price_per_slot: null`.
-- Call site en `formulario.js`: pasar `resultado.cancelados`.
+Fix: dos cambios independientes — (1) en `panel.js` `calcularAlertas()`, filtrar `solicitudesSfcom` y `solicitudesWeb` por `status === 'nueva'`; (2) en `formulario.js`, cambiar `status !== 'respuesta_enviada'` por `status === 'nueva'`.
 
-**sfcom — deudas operativas:**
-- Pobre de Mí (producto 142): ownership/mapeo pendiente de aclarar
-- Barrera Encierro (producto 140, stock null): no sincronizar hasta aclarar modelo de stock
-- Visitas guiadas: sin filas en availability ni mapeo sfcom
-- Despedida Gigantes (producto 147): stock agrupado pendiente de gestión (usar hijos 215/216)
+---
 
-**Facturación canal sfcom** — cuando sfcom gestiona una venta, ellos facturan al cliente final y nos liquidan el neto. No hay mecanismo para generar facturas a sfcom ni gestionar el calendario de cobros a ese canal. Dos opciones en análisis:
-- Opción A: cliente `SFCOM` en clients solo para facturación, las reservas quedan donde están (mínimo cambio, inconsistencia conceptual)
-- Opción B: migrar todas las reservas con `sfcom_order_ref IS NOT NULL` al cliente `SFCOM` (datos limpios, pérdida de visibilidad del comprador final en las reservas)
+**`resolverCliente` en `utils.js` hace matching de nombre demasiado permisivo.**
 
-**Falsos positivos en verificación sfcom por TTL de stock-all** (cosmético) — stock-all en sf-api-paula.php trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola cuando el TTL expira.
+La comparación usa `.includes()` en ambas direcciones: `dNom.includes(cn) || cn.includes(dNom)`. Si el cliente almacenado tiene un nombre corto (ej. `"LUIS"` → id `RODRIGUEZ_LUIS`), cualquier solicitud nueva con nombre `"Luis Ángel Reglero"` activa el match porque `"LUIS ANGEL REGLERO".includes("LUIS")` es `true`. Resultado: Paula ve el modal de cliente existente apuntando a la persona equivocada.
 
-**Datos de servicios incompletos** — los campos `name`, `description`, `image_url` y `start_time` de varios servicios están vacíos en Supabase. Rellenar desde el panel de proveedores. No es tarea de código.
+Fix: añadir un umbral mínimo (ej. ignorar strings de menos de 5 caracteres para el `.includes()`) o requerir que coincidan al menos dos palabras completas. El match por email y teléfono no tiene este problema.
 
-**`event_type` — origen real desconocido (documentación incorrecta)** — Este campo aparece en las vistas `availability_panel` y `catalogo_publico`, y el trigger `trg_sync_availability_event_type` lo usa para sincronizar fotos/descripción entre filas del mismo venue. Sin embargo, `event_type` NO existe como columna en la tabla `availability` (confirmado en Supabase). Tampoco está documentado en `services`. El origen real (columna en `services`, columna oculta en `availability`, o campo calculado en la vista) no se ha verificado. Impacto inmediato: no se puede consultar `event_type` directamente sobre `availability`; hay que usar siempre la vista `availability_panel`. Pendiente: verificar con `\d availability` en psql o inspeccionando la definición de la vista en Supabase y actualizar esta documentación.
+---
+
+**`_onBorradorActualizado` no preserva el campo `estado` al actualizar desde el asistente.**
+
+Cuando Claude emite un `---BORRADOR---`, `_onBorradorActualizado` en `solicitudes.js` sobreescribe todo el array `proposal_draft`. Si Paula ya había empezado la conversión (alguna línea con `estado: 'hecha'` o `'descartada'`) y luego vuelve a abrir el asistente, esos estados se pierden y las líneas vuelven a `'pendiente'`.
+
+Fix: al actualizar el borrador desde el asistente, emparejar líneas por `service_id + venue_id` y preservar el campo `estado` de las existentes antes de sobreescribir.
+
+---
+
+**Borrado en cascada incompleto — residuos tras eliminar reservas, clientes o proveedores.**
+
+Al eliminar una reserva, los `charges` y `payments` asociados pueden no eliminarse si las FK no tienen `ON DELETE CASCADE`. Mismo riesgo al eliminar un cliente (reservas huérfanas) o un proveedor (venues y availability huérfanos). La deuda es de esquema, no de código JS.
+
+Investigación pendiente: revisar en Supabase Dashboard todas las FK de las tablas `charges`, `payments`, `reservations`, `venues`, `availability`, `sfcom_listings` y confirmar qué tiene CASCADE y qué no. Corregir las que falten mediante migraciones.
+
+---
+
+### 7.2 UX — puntos de fricción en el uso diario
+
+**Exceso de modales en el flujo sfcom normal.**
+
+Un pedido sfcom normal llega ya con todos los datos → Paula hace 6 clics/confirmaciones antes de que la reserva esté guardada (modal de nuevo pedido → confirmar cliente → confirmar servicio → seleccionar venue → confirmar bloque → guardar). La mayor parte de esos pasos son para casos de excepción (datos incompletos, varios venues posibles) pero se presentan en el camino principal.
+
+Plan: revisar los modales del flujo sfcom en `formulario.js` bloque 0 e identificar cuáles pueden fusionarse o suprimirse cuando los datos son completos. No es un rediseño completo; basta con saltarse pasos cuando la información es unívoca.
+
+---
+
+**Tablas del panel de control no son navegables.**
+
+En `panel.html`, las tablas de "Disponibilidad por evento" y "Disponibilidad por proveedor" no tienen interacción: hacer clic en una fila no hace nada. El comportamiento esperado: clic en una fila → selecciona ese evento/proveedor en el dropdown correspondiente y despliega el detalle. La navegación debería ser bidireccional (cambiar el dropdown también actualiza qué fila está marcada).
+
+Implementación: listener `click` en `<tr>` de cada tabla → actualizar el `<select>` → disparar el evento `change` del select (o llamar directamente a la función de render del detalle).
+
+---
+
+**`services.image_url` no se puede editar desde el admin.**
+
+`propuesta.js` usa como imagen de fallback `disp?.photos?.[0] ?? svc.image_url`. El primer término (`availability.photos`) se puede editar desde `proveedores.js`. Pero si no hay foto en `availability`, cae al `svc.image_url` (`services.image_url`), que no tiene ningún campo de edición en el panel.
+
+Tres opciones:
+- (A) Añadir un campo de URL de imagen en la pantalla de edición de servicios dentro de `tablas.js`.
+- (B) Al guardar la primera foto en un par venue/event_type, escribir también `services.image_url` si está vacío (auto-fill).
+- (C) Eliminar el fallback a `svc.image_url` de `propuesta.js` y exigir que cada availability tenga fotos.
+
+Opción preferida a analizar: (B) por ser no destructiva y eliminar el problema a futuro sin requerir trabajo manual.
+
+---
+
+### 7.3 Funcionalidades pendientes
+
+**sfcom — leads de pedidos cancelados.**
+
+`checkSfcomOrders` descarta los pedidos con `status === 'cancelled'`, pero son leads valiosos (el cliente intentó comprar). Plan acordado: importarlos como solicitudes con `source: 'sfcom_c:WEB026_1090'` (prefijo `sfcom_c:`). Esto hace que `_esSfcom()` devuelva `false` y reciban tratamiento completo de lead. El campo `comments` llevaría `"Pedido cancelado en tienda.sanfermin.com."`. La deduplicación existente en `registrarPedidosSfcom` cubre estos casos sin cambios de esquema.
+
+Cambios:
+- `sfcom.js` → `checkSfcomOrders`: segundo `.filter()` para `cancelled`; devolver `{ ok, nuevos, cancelados }`.
+- `formulario.js` → `registrarPedidosSfcom`: parámetro `cancelados = []`; deduplicación con `'sfcom_c:' + p.origin_ref`; INSERT con ese source y `price_per_slot: null`.
+
+---
+
+**Comunicaciones semi-automáticas.**
+
+El asistente ya puede redactar confirmaciones de reserva y recordatorios previos al evento. Falta el flujo de envío: un botón en la ficha de reserva que abra el asistente en modo `'confirmacion'` o `'recordatorio'`, genere el mensaje y lo envíe vía WhatsApp o email (Resend). Pendiente de diseñar: qué canal usar, si se necesita un nuevo `modo` en `abrirAsistenteRespuesta`, y si el envío es manual (copy-paste) o automático (Resend API).
+
+---
+
+**Facturación canal sfcom.**
+
+Cuando sfcom vende, liquidan el neto. No hay mecanismo para generar facturas a sfcom ni gestionar el calendario de esos cobros. Dos opciones en análisis:
+- Opción A: cliente `SFCOM` en `clients` solo para facturación; las reservas quedan donde están.
+- Opción B: migrar todas las reservas con `origin_ref LIKE 'WEB%'` al cliente `SFCOM`.
+
+---
+
+**Mejoras en la calidad de las propuestas.**
+
+Las propuestas tienen más datos disponibles ahora de los que usan. Mejoras identificadas:
+- Usar `venues.display_name` como nombre del venue (en lugar del id).
+- Incluir `availability.photos[0]` como imagen principal de cada línea.
+- Mostrar `availability.access_instructions` si está relleno.
+- Mejorar el contexto que recibe Claude para el borrador (más datos de disponibilidad = propuestas más concretas).
+
+---
+
+**Edición directa en `tablas.js` con gestión de Supabase Storage.**
+
+Actualmente `tablas.js` es solo lectura con algunas acciones puntuales. Objetivo: poder editar directamente cualquier campo de cualquier tabla desde la UI, con un modal de advertencia cuando el cambio tiene impacto en otras tablas (ej. cambiar `venue_id` de una fila de `availability`). Adicionalmente, gestionar los buckets de Supabase Storage desde el panel (ver qué ficheros hay, cuáles están huérfanos, borrar).
+
+---
+
+### 7.4 Auditorías pendientes (investigar primero, luego decidir)
+
+**Bloqueos y residuos en el ciclo de facturación/cobros/pagos.**
+
+Situaciones conocidas o sospechadas que pueden dejar el sistema en estado inconsistente o impedir cambios:
+- **Cambio de ID de cliente imposible:** `clients.id` es PK y texto libre; si se equivoca al crearlo, no hay forma de renombrarlo desde el panel (habría que hacer UPDATE + reasignar FK manualmente en Supabase).
+- **Factura parcialmente emitida:** si se genera el PDF de una factura pero luego se añaden más cobros a la misma reserva, la factura queda desfasada pero no hay mecanismo de "anular y regenerar".
+- **PDFs de propuestas/facturas sin UI de acceso:** los PDF generados con `window.print()` no se guardan en ningún sitio accesible desde el panel. Si Paula pierde el PDF, no puede recuperarlo.
+- **Cobros y pagos tras eliminar una reserva:** ver bug de cascada en 7.1.
+
+Tarea: hacer un recorrido manual por cada flujo (crear reserva → facturar → cobrar → pagar proveedor → cerrar) anotando todos los puntos donde un error o cambio de opinión deja residuos. Documentar qué está cubierto por triggers/FK y qué requiere limpieza manual.
+
+---
+
+**Verificar el trigger `trg_sync_availability_event_type`.**
+
+El trigger debería propagar `photos`, `description` y `access_instructions` a todas las filas con el mismo `venue_id + event_type` cuando se edita una de ellas desde `proveedores.js`. No se ha verificado empíricamente que funcione: que el campo editado en Supabase sea el que desencadena el trigger, que el trigger apunte a las columnas correctas, y que los cambios se reflejen inmediatamente en otras filas al recargar.
+
+Verificación: editar las fotos de un par venue/event_type con varias filas y comprobar que todas las demás se actualizan.
+
+---
+
+**Caché de sfcom: evaluar granularidad.**
+
+Actualmente `_stockCache` en `sfcom.js` almacena todo lo que llega de `stock-all` al cargar la página. Después, `checkAvailabilityBeforeSave` no hace GET individuales si el item está en caché. La caché se actualiza tras cada PUT. El riesgo: si dos pestañas del panel están abiertas, o si sfcom actualiza el stock externamente, la caché de una pestaña queda desfasada.
+
+Evaluar si merece la pena invalidar por item (borrar el item de caché tras cada PUT y hacer GET la próxima vez que se consulte ese item) en lugar de confiar en la actualización post-PUT que se hace ahora.
+
+---
+
+### 7.5 Mejoras de código
+
+**Exceso de "nombres" para venue/evento.**
+
+Cada lugar físico puede tener hasta cuatro identificadores distintos: `venues.id` (PK técnico, ej. `BALCON_ESTAFETA_1`), `venues.display_name` (nombre visible en el panel), `services.name` (nombre del servicio en ese venue, ej. `"Balcón encierro"`), y `sfcom_listings.sfcom_service_name` (nombre en la tienda sfcom). A esto se suman los slugs de URL del catálogo público. La proliferación genera confusión sobre qué mostrar en qué contexto.
+
+Aclaración de reglas a documentar: `id` solo en BD/código; `display_name` en toda UI interna; `services.name` en documentos al cliente (propuestas, confirmaciones); `sfcom_service_name` solo para sincronización con sfcom.
+
+---
+
+**Contexto del asistente incluye líneas del borrador ya resueltas.**
+
+Si hay líneas con `estado: 'hecha'` o `'descartada'` y Paula abre el asistente, Claude las ve y puede proponer cosas ya procesadas. Fix: filtrar en `asistente.js` las líneas con `estado !== 'pendiente'` antes de incluir `proposal_draft` en el contexto.
+
+---
+
+**Lógica de inferencia `level → service_id` duplicada.**
+
+Existe en `_inferirServiceId` (formulario.js), `_preFillBorradorSiVacio` (solicitudes.js) y `expandirServiceIds` (asistente.js), con pequeñas variaciones. Candidato natural para `utils.js`. Riesgo de divergencia si se añaden servicios nuevos.
+
+---
+
+**Doble `cargarSolicitudes()` al inicio de `formulario.html`.**
+
+Se llama una vez incondicionalmente y otra dentro de `registrarPedidosSfcom`. Si hay pedidos nuevos, el DOM se pinta dos veces. Fix: quitar la llamada incondicional; `registrarPedidosSfcom` siempre llama a `cargarSolicitudes()` en su `.then()`.
+
+---
+
+**`service_name` en el borrador con formato inconsistente.**
+
+Desde `solicitudes.js` se genera como `"Encierro - día 7"`; desde `formulario.js` usa `svc.name` sin el día. El bloque de conversión funciona porque usa `service_name` y `day` por separado, pero el contexto que ve el asistente puede quedar incompleto. Fix: unificar el formato de `service_name` al construir las líneas del borrador.
+
+---
+
+**`formulario.js` demasiado grande (~2600 líneas).**
+
+Tres candidatos para extracción si el tamaño se convierte en problema práctico:
+- `sfcom-solicitudes.js` (~300 líneas): Bloque 0 + `registrarPedidosSfcom` + modales sfcom.
+- `reorganizar.js` (~200 líneas): panel de reorganización (el más autocontenido, sin estado compartido relevante).
+- `cobros.js` (~300 líneas): Bloque 5 + `persistirHitosCliente` + `cargarCobrosCliente`.
+
+No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar por `reorganizar.js`.
+
+---
+
+### 7.6 Deuda de datos (no es tarea de código)
+
+**Datos de servicios incompletos** — los campos `name`, `description`, `image_url` y `start_time` de varios servicios están vacíos en Supabase. Afecta a propuestas y al contexto del asistente. Rellenar desde Supabase Dashboard o desde el panel de tablas.
+
+**`event_type` — origen real no documentado** — El campo aparece en las vistas `availability_panel` y `catalogo_publico` y es usado por el trigger de sincronización. Sin embargo, no existe como columna directa en `availability`. Verificar con `\d availability` en psql o inspeccionando la definición de la vista en Supabase Dashboard. Mientras no se verifique, consultar siempre `event_type` a través de `availability_panel`, nunca directamente sobre `availability`.
+
+---
+
+### 7.7 Deudas operativas sfcom
+
+Productos con configuración incompleta o pendiente de aclarar con Hilario:
+
+- **Pobre de Mí (prod 142):** ownership/mapeo pendiente de aclarar.
+- **Barrera Encierro (prod 140, stock null):** no sincronizar hasta aclarar modelo de stock.
+- **Visitas guiadas:** sin filas en `availability` ni mapeo en `sfcom_listings`.
+- **Despedida Gigantes (prod 147, agrupado):** usar los productos hijo 215 (adulto) y 216 (niño) para PUTs de stock. Nunca usar 147 directamente.
+
+---
+
+### 7.8 Conocido y aceptado
+
+**Falsos positivos en verificación sfcom por TTL de caché del servidor.** `stock-all` en `sf-api-paula.php` trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola; no requiere acción.
+
+**`payments` sin campo `is_final`.** El hito final de pago al proveedor se identifica por `comments === 'Pago final'`. Inconsistencia con `charges` (que sí tiene `is_final`). Bajo riesgo mientras no se añadan hitos con ese comentario de forma manual.
+
+**`invoiced` en `charges` es redundante** con `invoice_number IS NOT NULL`. Se mantiene por conveniencia en filtros de consulta.
+
+**Auto-transición `respuesta_enviada → seguimiento_pendiente` solo se evalúa al cargar `solicitudes.html`.** Si la sesión lleva días abierta, el badge en pantalla puede quedar desfasado. En la práctica no es problema porque la página se recarga con frecuencia.
+
+**Las vistas de Supabase son siempre en tiempo real.** No hay caché a nivel de vista en PostgreSQL: cada vez que el JS hace una query sobre `availability_panel` o `catalogo_publico`, Supabase ejecuta la vista en ese momento con los datos actuales de las tablas base. No hay riesgo de ver datos obsoletos por este motivo. El único caché relevante es `_stockCache` en `sfcom.js` (cliente JS, en memoria, solo para llamadas a la API sfcom).
 
 ---
 
