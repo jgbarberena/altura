@@ -298,7 +298,7 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 **Estado del módulo:** 4 variables de módulo: `_modoConversionActivo`, `_solicitudConversionId`, `_draftConversion[]`, `_lineaActualIndex`.
 
-**También acepta `?solicitud_id=uuid`** para casos A: solicitud con 0 o 1 línea en el borrador.
+**También acepta `?solicitud_id=uuid`** para casos A (0 o 1 línea en el borrador). Si el borrador llega vacío pero la solicitud tiene `level`/`day`/`service_id`, `cargarDesdeSolicitud` construye la línea de borrador en el momento y la persiste en Supabase antes de proceder como Caso A. El borrador es la fuente de verdad única para todo flujo no-sfcom: `_inferirServiceId` solo se usa para construir esa línea cuando falta, nunca para rellenar directamente el bloque 2.
 
 **Bloque 1 — Cliente:** Autocomplete en tiempo real contra `clients`. Cliente existente → carga datos + autosave por campo. Cliente nuevo → "Cliente nuevo". Al cargar desde solicitud (`cargarDesdeSolicitud`), llama primero a `resolverCliente` para detectar si el cliente ya existe por email/teléfono/nombre antes de generar un ID nuevo. En modo conversión (2+ líneas), el cliente se resuelve una sola vez al entrar — no se toca al cargar cada línea.
 

@@ -2029,10 +2029,34 @@ async function cargarDesdeSolicitud(data) {
         }
     } else {
         // Solicitud web/email — determinar caso A (0 o 1 línea) o caso B (2+ líneas)
-        const draft      = Array.isArray(data.proposal_draft) ? data.proposal_draft : []
-        const nLineas    = draft.length
+        let draft = Array.isArray(data.proposal_draft) ? data.proposal_draft : []
 
-        if (nLineas >= 2) {
+        // Si el borrador llega vacío pero hay datos para inferir, construir la línea aquí
+        // y persistirla — el borrador es la fuente de verdad única para solicitudes no-sfcom
+        if (draft.length === 0) {
+            const serviceIdInferido = _inferirServiceId(data.level, data.day) || data.serviceId || null
+            if (serviceIdInferido && servicios.find(s => s.id === serviceIdInferido)) {
+                const svc          = servicios.find(s => s.id === serviceIdInferido)
+                const dispServicio = disponibilidad.filter(d => d.service_id === serviceIdInferido)
+                const venueDisp    = dispServicio.find(d => d.venue_id === data.venueId)
+                const catUrl       = dispServicio[0]?.venue_slug && dispServicio[0]?.event_type
+                    ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${dispServicio[0].venue_slug}&et=${dispServicio[0].event_type}`
+                    : null
+                draft = [{
+                    service_id:         serviceIdInferido,
+                    service_name:       svc?.name || serviceIdInferido,
+                    day:                svc?.day || parseInt(data.day) || null,
+                    venue_id:           data.venueId || null,
+                    venue_display_name: venueDisp?.venue_display_name || null,
+                    slots:              parseInt(data.slots) || null,
+                    price:              null,
+                    catalogo_url:       catUrl
+                }]
+                supabase.from('reservation_requests').update({ proposal_draft: draft }).eq('id', data.id)
+            }
+        }
+
+        if (draft.length >= 2) {
             // CASO B: bloque de conversión — no se rellena el bloque 2 ahora
             const nombreMostrar = clienteResuelto?.name || clienteResuelto?.id || data.nombre || 'cliente'
             _initBloqueConversion(data.id, draft, nombreMostrar)
@@ -2040,8 +2064,8 @@ async function cargarDesdeSolicitud(data) {
             if (draft.every(l => l.estado === 'hecha' || l.estado === 'descartada')) {
                 await _finalizarConversion()
             }
-        } else if (nLineas === 1) {
-            // CASO A con 1 línea: usar datos del borrador
+        } else if (draft.length === 1) {
+            // CASO A: rellenar bloque 2 desde el borrador (única fuente de verdad)
             const linea = draft[0]
             if (linea.service_id && servicios.find(s => s.id === linea.service_id)) {
                 selectServicio.value = linea.service_id
@@ -2066,22 +2090,9 @@ async function cargarDesdeSolicitud(data) {
                     }
                 }, 100)
             }
-        } else {
-            // CASO A sin borrador: inferir servicio desde level/day (comportamiento anterior)
-            if (data.slots) inputPlazas.value = data.slots
-            const serviceIdInferido = _inferirServiceId(data.level, data.day)
-            if (serviceIdInferido && servicios.find(s => s.id === serviceIdInferido)) {
-                selectServicio.value = serviceIdInferido
-                selectServicio.dispatchEvent(new Event('change'))
-                const soloUno = disponibilidad.filter(d => d.service_id === serviceIdInferido)
-                if (soloUno.length === 1) {
-                    setTimeout(() => {
-                        selectProveedor.value = soloUno[0].venue_id
-                        selectProveedor.dispatchEvent(new Event('change'))
-                    }, 100)
-                }
-            }
         }
+        // draft.length === 0 tras el intento de auto-creación: solicitud sin datos de servicio,
+        // bloque 2 queda en blanco para relleno manual
 
         // Comentarios de reserva (solo si no hay bloque de conversión activo)
         if (!_modoConversionActivo) {
