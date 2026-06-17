@@ -658,13 +658,11 @@ Las deudas están organizadas por tipo de impacto. Los bugs (7.1) son los único
 
 ### 7.1 Bugs — producen comportamiento incorrecto ahora mismo
 
-**Solicitudes ya atendidas aparecen como pendientes en panel y formulario.**
+**✅ RESUELTO — Solicitudes ya atendidas aparecían como pendientes en panel y formulario.**
 
-En `panel.js`, `calcularAlertas()` toma todas las solicitudes no cerradas y las muestra en los contadores de alertas del panel de control, sin filtrar por estado. Las solicitudes con `status: 'en_conversacion'`, `'respuesta_enviada'` o `'seguimiento_pendiente'` aparecen junto con las `'nueva'`, como si estuvieran sin atender. Comportamiento correcto: el contador de alertas debería mostrar solo `'nueva'` (y, de forma secundaria, `'seguimiento_pendiente'` con su propia etiqueta).
-
-En `formulario.js`, `cargarSolicitudes()` del bloque 0 usa `status !== 'respuesta_enviada'` para el filtro de `otrasActivas`, lo que incluye solicitudes con `status: 'en_conversacion'` que ya tienen conversación abierta. Correcto sería filtrar solo `status === 'nueva'`.
-
-Fix: dos cambios independientes — (1) en `panel.js` `calcularAlertas()`, filtrar `solicitudesSfcom` y `solicitudesWeb` por `status === 'nueva'`; (2) en `formulario.js`, cambiar `status !== 'respuesta_enviada'` por `status === 'nueva'`.
+Dos cambios aplicados (jun 2026):
+- `panel.js` `calcularAlertas()`: `solicitudesSfcom` filtra `status === 'nueva'`; las web se dividen en `solicitudesWebNuevas` (`status === 'nueva'`) y `solicitudesWebSeguimiento` (`status === 'seguimiento_pendiente'`), mostradas en la misma alerta con etiquetas separadas ("X nuevas sin atender, Y en seguimiento pendiente").
+- `formulario.js` `cargarSolicitudes()`: `otrasActivas` usa `status === 'nueva'` (antes `status !== 'respuesta_enviada'`).
 
 ---
 
@@ -672,7 +670,7 @@ Fix: dos cambios independientes — (1) en `panel.js` `calcularAlertas()`, filtr
 
 La comparación usa `.includes()` en ambas direcciones: `dNom.includes(cn) || cn.includes(dNom)`. Si el cliente almacenado tiene un nombre corto (ej. `"LUIS"` → id `RODRIGUEZ_LUIS`), cualquier solicitud nueva con nombre `"Luis Ángel Reglero"` activa el match porque `"LUIS ANGEL REGLERO".includes("LUIS")` es `true`. Resultado: Paula ve el modal de cliente existente apuntando a la persona equivocada.
 
-Fix: añadir un umbral mínimo (ej. ignorar strings de menos de 5 caracteres para el `.includes()`) o requerir que coincidan al menos dos palabras completas. El match por email y teléfono no tiene este problema.
+Fix parcial aplicado (jun 2026): se añadió umbral mínimo de 5 caracteres para el `.includes()` en ambas direcciones. Pendiente: la comparación sigue siendo frágil cuando dos clientes comparten parte del nombre (p.ej. `"GARCIA PEDRO"` vs `"GARCIA MARIA"`). La solución completa requeriría coincidir al menos dos palabras completas o usar distancia de edición. El match por email y teléfono no tiene este problema.
 
 ---
 
@@ -843,7 +841,7 @@ Aclaración de reglas a documentar: `id` solo en BD/código; `display_name` en t
 
 **Contexto del asistente incluye líneas del borrador ya resueltas.**
 
-Si hay líneas con `estado: 'hecha'` o `'descartada'` y Paula abre el asistente, Claude las ve y puede proponer cosas ya procesadas. Fix: filtrar en `asistente.js` las líneas con `estado !== 'pendiente'` antes de incluir `proposal_draft` en el contexto.
+Si hay líneas con `estado: 'hecha'` o `'descartada'` y Paula abre el asistente, Claude las ve en el contexto. Las líneas `'hecha'` son útiles porque confirman qué ya tiene reserva; las `'descartada'` son menos relevantes pero no causan confusión. Fix correcto: actualizar `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js` para explicar el significado de cada valor de `estado` (`'pendiente'` = negociando, `'hecha'` = ya convertida en reserva, `'descartada'` = descartada). Filtrar `'descartada'` del contexto es opcional y de bajo impacto.
 
 ---
 
@@ -853,9 +851,15 @@ Existe en `_inferirServiceId` (formulario.js), `_preFillBorradorSiVacio` (solici
 
 ---
 
-**Doble `cargarSolicitudes()` al inicio de `formulario.html`.**
+**✅ RESUELTO — Doble `cargarSolicitudes()` al inicio de `formulario.html`.**
 
-Se llama una vez incondicionalmente y otra dentro de `registrarPedidosSfcom`. Si hay pedidos nuevos, el DOM se pinta dos veces. Fix: quitar la llamada incondicional; `registrarPedidosSfcom` siempre llama a `cargarSolicitudes()` en su `.then()`.
+Se quitó la llamada incondicional de startup (jun 2026). El chain de `checkSfcomOrders` garantiza una sola llamada: si hay pedidos nuevos → `registrarPedidosSfcom` la llama; si no → se llama directamente en el `.else`; si falla → se llama en el `.catch`.
+
+---
+
+**Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio.**
+
+Cuando Paula pulsa "📩 Enviar recordatorio" o responde a una solicitud en `seguimiento_pendiente`, el status debería volver automáticamente a `'respuesta_enviada'` (el cliente ya tiene respuesta y el contador de 3 días vuelve a correr desde ese momento). Actualmente el status no cambia al enviar. Fix: en la función que gestiona el envío del recordatorio en `solicitudes.js`, añadir `status: 'respuesta_enviada'` al UPDATE de Supabase si el status actual es `'seguimiento_pendiente'`.
 
 ---
 

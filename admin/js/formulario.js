@@ -1846,7 +1846,7 @@ async function cargarSolicitudes() {
     const avisoEl   = document.getElementById('bloque-solicitudes-empty')
 
     const sfcomPendientes = (solicitudes ?? []).filter(s => _esSfcom(s.source) && s.status === 'nueva')
-    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source) && s.status !== 'respuesta_enviada')
+    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source) && s.status === 'nueva')
 
     if (sfcomPendientes.length === 0 && otrasActivas.length === 0) {
         if (bloque) bloque.style.display = 'none'
@@ -2521,9 +2521,6 @@ async function _finalizarConversion() {
     _solicitudConversionId = null
 }
 
-// Cargar solicitudes al iniciar
-cargarSolicitudes()
-
 // Si venimos de solicitudes.html con ?solicitud_id=uuid, pre-cargar datos
 ;(async () => {
     const solicitudId = new URLSearchParams(location.search).get('solicitud_id')
@@ -2560,9 +2557,14 @@ checkSfcomOrders(supabase, 90)
     .then(async resultado => {
         if (resultado.ok && resultado.nuevos?.length) {
             await registrarPedidosSfcom(resultado.nuevos)
+        } else {
+            await cargarSolicitudes()
         }
     })
-    .catch(e => console.warn('[sfcom] checkSfcomOrders al inicio:', e.message))
+    .catch(e => {
+        console.warn('[sfcom] checkSfcomOrders al inicio:', e.message)
+        cargarSolicitudes()
+    })
     .finally(() => {
         ejecutarVerificacion(false).catch(e => console.error('[verificacion] Error al inicio:', e.message))
     })

@@ -83,9 +83,10 @@ function calcularAlertas() {
 
     // Solicitudes pendientes desde la web
     // Separar solicitudes sfcom (source tipo WEBxxx_nnnn) de solicitudes web; excluir cerradas
-    const solicitudesActivas = solicitudesNuevas ?? []
-    const solicitudesSfcom = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source))
-    const solicitudesWeb   = solicitudesActivas.filter(s => !s.source || !/^WEB\d+_\d+$/.test(s.source))
+    const solicitudesActivas        = solicitudesNuevas ?? []
+    const solicitudesSfcom          = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source) && s.status === 'nueva')
+    const solicitudesWebNuevas      = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'nueva')
+    const solicitudesWebSeguimiento = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'seguimiento_pendiente')
 
     const alertaSfcom = document.getElementById('alerta-sfcom')
     if (solicitudesSfcom.length > 0) {
@@ -95,15 +96,20 @@ function calcularAlertas() {
     }
 
     const alertaSolicitudes = document.getElementById('alerta-solicitudes')
-    if (solicitudesWeb.length > 0) {
+    const hayWeb = solicitudesWebNuevas.length > 0 || solicitudesWebSeguimiento.length > 0
+    if (hayWeb) {
         alertaSolicitudes.style.display = 'flex'
-        document.getElementById('txt-solicitudes').textContent =
-            `${solicitudesWeb.length} solicitud(es) pendiente(s) de atender desde la web`
+        const partes = []
+        if (solicitudesWebNuevas.length > 0)
+            partes.push(`${solicitudesWebNuevas.length} nueva${solicitudesWebNuevas.length > 1 ? 's' : ''} sin atender`)
+        if (solicitudesWebSeguimiento.length > 0)
+            partes.push(`${solicitudesWebSeguimiento.length} en seguimiento pendiente`)
+        document.getElementById('txt-solicitudes').textContent = `Solicitudes web — ${partes.join(', ')}`
     }
 
     bloqueAlertas.style.display =
         (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
-        || solicitudesSfcom.length > 0 || solicitudesWeb.length > 0) ? 'block' : 'none'
+        || solicitudesSfcom.length > 0 || hayWeb) ? 'block' : 'none'
 }
 
 // ===== BLOQUE 1: CALENDARIO =====

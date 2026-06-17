@@ -279,7 +279,10 @@ export function resolverCliente(datos, todosClientes) {
     if (dNom) {
         const c = todosClientes.find(c => {
             const cn = normNom(c.name) || normNom(c.id.replace(/_/g, ' '))
-            return cn && (dNom === cn || dNom.includes(cn) || cn.includes(dNom))
+            if (!cn) return false
+            if (dNom === cn) return true
+            if (dNom.length < 5 || cn.length < 5) return false
+            return dNom.includes(cn) || cn.includes(dNom)
         })
         if (c) return { match: 'ambiguo', cliente: c }
     }
