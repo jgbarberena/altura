@@ -799,15 +799,15 @@ function _preFillBorradorSiVacio(sol) {
     if (Array.isArray(sol.proposal_draft) && sol.proposal_draft.length > 0) return
     if (!sol.level && !sol.service_id) return
     const servicios = _serviciosUnicos()
-    const svcId = sol.service_id || servicios.find(s => {
-        const et = sol.level
-        return et === 'chupinazo'   ? s.service_id === 'CHUPINAZO_6'
-             : et === 'procesion'   ? s.service_id === 'PROCESION_7'
-             : et === 'gigantes'    ? s.service_id === 'DESPEDIDA_GIGANTES_14'
-             : et === 'pobre_de_mi' ? s.service_id === 'POBRE_DE_MI'
-             : et === 'encierro' && sol.day ? s.service_id === `ENCIERRO_${sol.day}`
-             : false
-    })?.service_id
+    let svcId = sol.service_id || null
+    if (!svcId && sol.level) {
+        const partes = sol.level.toLowerCase().split('-')
+        if (partes.includes('encierro') && sol.day)  svcId = `ENCIERRO_${sol.day}`
+        else if (partes.includes('chupinazo'))        svcId = 'CHUPINAZO_6'
+        else if (partes.includes('procesion'))        svcId = 'PROCESION_7'
+        else if (partes.includes('gigantes'))         svcId = 'DESPEDIDA_GIGANTES_14'
+        else if (partes.includes('pobre'))            svcId = 'POBRE_DE_MI'
+    }
     if (!svcId) return
     const svc    = servicios.find(s => s.service_id === svcId)
     const venues = _venuesPorServicio(svcId)
