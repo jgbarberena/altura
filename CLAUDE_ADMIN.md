@@ -627,6 +627,15 @@ Producto 147 (Despedida de Gigantes) es de tipo `grouped`, stock null. Los PUTs 
 
 El obstáculo es el estado compartido (`todasReservas`, `clienteActual`, etc.). Extraer requiere pasar ese estado como parámetros o crear un objeto compartido, lo que añade fontanería que actualmente no existe. **No hacer hasta que el tamaño sea un problema práctico.** Si se decide, empezar por `reorganizar.js`.
 
+**sfcom — leads de pedidos cancelados** — `checkSfcomOrders` recibe todos los pedidos de la API (sf-api-paula.php no filtra por status) y descarta los que no son `completed`. Los pedidos con `status === 'cancelled'` se ignoran actualmente pero son leads valiosos para seguimiento (contactar si hubo un error, si quieren completar la reserva, etc.).
+
+Plan acordado: importarlos como solicitudes en `reservation_requests` con `source: 'sfcom_c:WEB026_1090'` (prefijo `sfcom_c:`, no `WEB\d+_\d+`). Esto hace que `_esSfcom()` devuelva `false` y reciban tratamiento completo de lead en `solicitudes.js` (log, asistente, borrador visibles directamente; sin "→ Crear reserva" como acción principal). El campo `comments` llevaría el texto `"Pedido cancelado en tienda.sanfermin.com."`. El mecanismo de deduplicación existente en `registrarPedidosSfcom` cubre estos casos sin cambios en el esquema.
+
+Cambios necesarios:
+- `sfcom.js` `checkSfcomOrders`: segundo `.filter()` sobre la misma respuesta para `order.status === 'cancelled'`; devolver `{ ok, nuevos, cancelados }`.
+- `formulario.js` `registrarPedidosSfcom`: segundo parámetro `cancelados = []`; check de duplicados con `'sfcom_c:' + p.origin_ref`; INSERT con ese source y `price_per_slot: null`.
+- Call site en `formulario.js`: pasar `resultado.cancelados`.
+
 **sfcom — deudas operativas:**
 - Pobre de Mí (producto 142): ownership/mapeo pendiente de aclarar
 - Barrera Encierro (producto 140, stock null): no sincronizar hasta aclarar modelo de stock
