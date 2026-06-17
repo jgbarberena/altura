@@ -58,6 +58,7 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 |---|---|
 | id | text PK, mayúsculas (ej: `ENCIERRO_7`, `CHUPINAZO_6`) |
 | day | integer — día de julio |
+| event_type | text — categoría del evento: `encierro`, `chupinazo`, `procesion`, `despedida_gigantes`, `pobre_de_mi`, `visita_guiada`, `otro`. Columna directa en la tabla (no derivada). Fuente de verdad para el trigger de sincronización y para las vistas. |
 | name | text — nombre comercial corto (ej: `"Balcón encierro"`). Se usa en propuestas como etiqueta principal. |
 | description | text — descripción larga |
 | start_time | text — hora de inicio (ej: `'08:00'`) |
@@ -68,17 +69,17 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 | Campo | Notas |
 |---|---|
 | id | integer PK |
-| venue_id | FK→venues |
-| service_id | FK→services |
+| venue_id | FK→venues — nullable en el esquema actual (pendiente añadir NOT NULL, ver deuda 7.1) |
+| service_id | FK→services NOT NULL |
 | total_slots | integer NOT NULL |
-| price_per_slot | decimal — coste que se paga al proveedor por plaza (o importe fijo total si billing_model='fixed') |
+| price_per_slot | decimal — coste que se paga al proveedor por plaza (o importe fijo total si billing_model='fixed'); default 0 |
 | billing_model | `'capacity'`, `'consumption'` o `'fixed'`; default `'capacity'` |
 | description | text — descripción específica del par venue/servicio |
 | access_instructions | text — instrucciones de acceso el día del evento |
 | photos | text[] ARRAY — URLs de fotos del balcón para este par |
 | comments | text |
 
-UNIQUE (venue_id, service_id).
+No existe constraint ni índice UNIQUE(venue_id, service_id) en la BD actual (pendiente añadir, ver deuda 7.1). El comportamiento de unicidad lo garantiza solo el JS.
 
 **`sfcom_listings`** — Configuración de publicación en sfcom
 | Campo | Notas |
@@ -103,7 +104,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | venue_id | FK→venues |
 | slots | integer NOT NULL |
 | price_per_slot | decimal NOT NULL — precio de venta al cliente |
-| total_amount | decimal GENERATED — slots × price_per_slot. El JS no la calcula ni envía. |
+| total_amount | decimal GENERATED ALWAYS AS `((slots)::numeric * price_per_slot)` — calculado por PostgreSQL. El JS no la calcula ni envía. |
 | status | `'Confirmada'`, `'Pendiente'`, `'Cancelada'`; default `'Pendiente'` |
 | comments | text |
 | proposal_number | text |
@@ -187,13 +188,15 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 ### Triggers activos
 
-**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en todas las tablas con IDs de texto. Convierte a mayúsculas los campos relevantes. El JS no necesita hacerlo.
+**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en `availability`, `charges`, `clients`, `payments`, `providers`, `reservations`, `services`. Todos usan la función compartida `uppercase_ids()`, que aplica `UPPER()` sobre los IDs de texto relevantes de cada tabla según `TG_TABLE_NAME`.
 
-**`notificar-solicitud`** — AFTER INSERT en `reservation_requests`. Llama a la Edge Function del mismo nombre. Se dispara en cada INSERT (desde la web pública y desde `checkSfcomOrders`). Transparente para el JS.
+**`trg_uppercase_venues`** — BEFORE INSERT OR UPDATE en `venues`. Usa su propia función `trg_uppercase_venues_fn()`, separada de `uppercase_ids`. Además de `UPPER()`, normaliza espacios a guiones bajos en `id` y `provider_id` (`REPLACE(NEW.id, ' ', '_')`).
 
-**`trg_reservation_requests_updated_at`** — BEFORE UPDATE en `reservation_requests`. Actualiza automáticamente el campo `updated_at` en cada cambio.
+**`notificar-solicitud`** — AFTER INSERT en `reservation_requests`. Usa la función interna de Supabase `http_request()` (vía `net.http_post`) para llamar a la Edge Function del mismo nombre con los datos del INSERT. Se dispara en cada INSERT (desde la web pública y desde `checkSfcomOrders`). Transparente para el JS.
 
-**`trg_sync_availability_event_type`** — AFTER UPDATE en `availability`. Cuando se editan `photos`, `description` o `access_instructions` en una fila, sincroniza el mismo cambio a todas las filas con el mismo `venue_id` y `event_type`. Garantiza que los datos de marketing son consistentes entre todos los días de encierro de un mismo balcón. Transparente para el JS: editar una fila sincroniza todas.
+**`trg_reservation_requests_updated_at`** — BEFORE UPDATE en `reservation_requests`. Función `update_reservation_requests_updated_at()`. Actualiza automáticamente el campo `updated_at` en cada cambio.
+
+**`trg_sync_availability_event_type`** — AFTER UPDATE en `availability`. Función `sync_availability_by_event_type()`. Cuando se editan `photos`, `description` o `access_instructions` en una fila, sincroniza los tres campos a todas las filas con el mismo `venue_id` y `event_type` (el `event_type` se obtiene de la tabla `services`). Transparente para el JS: editar una fila sincroniza todas las del mismo venue+event_type.
 
 ### Vistas
 
@@ -204,6 +207,39 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 **`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id`. Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js` y `sfcom-panel.js`. No usar para operaciones que no necesiten campos sfcom.
 
 **`catalogo_publico`** — Acceso anon. Campos: `slug, display_name, address, venue_type, service_id, description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`. Usada por `catalogo/catalogo.js`.
+
+### Seguridad (RLS)
+
+Todas las tablas tienen RLS habilitado excepto `assistant_logs` (desactivado, ver deuda 7.1).
+
+| Tabla | anon | authenticated | Notas |
+|---|---|---|---|
+| `assistant_logs` | sin RLS | sin RLS | RLS desactivado |
+| `availability` | SELECT bloqueado | ALL permitido | Las vistas `service_availability` y `catalogo_publico` usan `security_invoker=false` para poder ser leídas por anon sin exponer la tabla directamente |
+| `charges` | ALL bloqueado | ALL permitido | |
+| `clients` | SELECT bloqueado | ALL permitido | |
+| `payments` | ALL bloqueado | ALL permitido | |
+| `providers` | sin política (denegado implícito) | ALL permitido | |
+| `reservation_requests` | SELECT bloqueado, INSERT permitido | ALL permitido | El INSERT anon permite enviar solicitudes desde el formulario público |
+| `reservations` | SELECT bloqueado | ALL permitido | |
+| `services` | SELECT permitido | ALL permitido | Necesario para el frontend público |
+| `sfcom_listings` | sin política (denegado implícito) | ALL permitido | |
+| `venues` | SELECT permitido | ALL permitido | La política de authenticated usa rol `{authenticated}`; la de anon es solo SELECT |
+
+**Atención:** La política de `venues` originalmente usaba `{public}` (bug de configuración que daba acceso de escritura a anon). Debe estar corregida a `{authenticated}` para escritura y `{anon}` para SELECT.
+
+Las vistas `service_availability` y `catalogo_publico` deben definirse con `WITH (security_invoker = false)` para que sean accesibles por anon a pesar de que la tabla `availability` tenga SELECT bloqueado para anon. Sin este atributo, ambas vistas devuelven 0 filas para usuarios no autenticados.
+
+### Storage
+
+Dos buckets privados (sin acceso público directo):
+
+| Bucket | Uso |
+|---|---|
+| `proposals` | PDFs de propuestas generados desde `propuesta.js` |
+| `invoices` | PDFs de facturas generados desde `factura.js` |
+
+Ninguno tiene `file_size_limit` ni `allowed_mime_types` configurados. El acceso es solo a través de URLs firmadas generadas desde el panel autenticado.
 
 ---
 
@@ -650,9 +686,33 @@ Fix: al actualizar el borrador desde el asistente, emparejar líneas por `servic
 
 **Borrado en cascada incompleto — residuos tras eliminar reservas, clientes o proveedores.**
 
-Al eliminar una reserva, los `charges` y `payments` asociados pueden no eliminarse si las FK no tienen `ON DELETE CASCADE`. Mismo riesgo al eliminar un cliente (reservas huérfanas) o un proveedor (venues y availability huérfanos). La deuda es de esquema, no de código JS.
+Auditado (jun 2026): la única FK con CASCADE es `sfcom_listings.availability_id → availability`. Todas las demás son NO ACTION en ambas direcciones. Esto significa que el JS debe gestionar manualmente el orden de borrado en cascada (lo hace, pero con riesgos si falla a medias). Pendiente decidir cuáles merecen CASCADE a nivel de BD vs. mantenerlas como NO ACTION para que el JS pueda controlar el flujo con confirmaciones del usuario.
 
-Investigación pendiente: revisar en Supabase Dashboard todas las FK de las tablas `charges`, `payments`, `reservations`, `venues`, `availability`, `sfcom_listings` y confirmar qué tiene CASCADE y qué no. Corregir las que falten mediante migraciones.
+---
+
+**`availability` sin UNIQUE(venue_id, service_id) y venue_id nullable.**
+
+La tabla `availability` no tiene ningún constraint ni índice UNIQUE sobre `(venue_id, service_id)`, a pesar de que la documentación lo indicaba. Tampoco tiene NOT NULL en `venue_id` (aunque en los datos actuales no hay NULLs ni duplicados). El JS garantiza unicidad implícitamente, pero la BD no la refuerza.
+
+Fix (SQL Editor): (1) verificar con `SELECT venue_id, service_id, COUNT(*) FROM availability GROUP BY venue_id, service_id HAVING COUNT(*) > 1` que no hay duplicados, luego `ALTER TABLE availability ADD CONSTRAINT uq_availability_venue_service UNIQUE (venue_id, service_id);` y `ALTER TABLE availability ALTER COLUMN venue_id SET NOT NULL;`.
+
+---
+
+**6 reservas activas con total_amount = 0.**
+
+Las reservas R0120, R0074, R0063, R0064, R0102, R0108 están activas (no canceladas) con `price_per_slot = 0`. Dado que `total_amount` es `GENERATED ALWAYS AS (slots * price_per_slot)`, total_amount = 0 implica necesariamente price_per_slot = 0. Posible error de entrada de datos. Revisar y corregir manualmente en Dashboard si corresponde.
+
+---
+
+**2 clientes con cobros pero sin reservas activas: MARTIKO y NACHO_GALLARDO.**
+
+Pueden ser residuos de reservas canceladas o eliminadas sin limpiar los charges. Investigar con `SELECT * FROM charges WHERE client_id IN ('MARTIKO', 'NACHO_GALLARDO')` y decidir si se eliminan.
+
+---
+
+**Email duplicado: giovanni.soliman@gmail.com aparece en dos registros de `clients`.**
+
+Posible duplicado de cliente. Investigar con `SELECT id, name, email, phone FROM clients WHERE email = 'giovanni.soliman@gmail.com'`. Si son la misma persona, fusionar manualmente (actualizar FK en reservations/charges y borrar el duplicado).
 
 ---
 
@@ -745,9 +805,21 @@ Tarea: hacer un recorrido manual por cada flujo (crear reserva → facturar → 
 
 **Verificar el trigger `trg_sync_availability_event_type`.**
 
-El trigger debería propagar `photos`, `description` y `access_instructions` a todas las filas con el mismo `venue_id + event_type` cuando se edita una de ellas desde `proveedores.js`. No se ha verificado empíricamente que funcione: que el campo editado en Supabase sea el que desencadena el trigger, que el trigger apunte a las columnas correctas, y que los cambios se reflejen inmediatamente en otras filas al recargar.
+El trigger propaga `photos`, `description` y `access_instructions` a todas las filas con el mismo `venue_id + event_type` cuando se edita una de ellas desde `proveedores.js`. El código de la función `sync_availability_by_event_type` está auditado y es correcto (usa `services.event_type` como referencia). No se ha verificado empíricamente que funcione end-to-end desde la UI.
 
 Verificación: editar las fotos de un par venue/event_type con varias filas y comprobar que todas las demás se actualizan.
+
+Nota: existe también una función huérfana `sync_photos_by_event_type()` que solo sincronizaba fotos (versión anterior). No está adjunta a ningún trigger. Se puede borrar con `DROP FUNCTION public.sync_photos_by_event_type();`.
+
+---
+
+**`service_availability` y `catalogo_publico` pueden estar rotas para usuarios anon.**
+
+Las vistas usan `SECURITY INVOKER` por defecto. Como `availability` tiene SELECT bloqueado para anon, al consultar estas vistas desde el frontend público (anon) se obtienen 0 filas en lugar de los datos reales. Esto afecta a los badges de disponibilidad y al catálogo de balcones.
+
+Fix: recrear ambas vistas con `WITH (security_invoker = false)` para que usen los permisos del owner (postgres) al acceder a las tablas base, sin exponer la tabla availability directamente a anon.
+
+Verificar estado actual: `SET ROLE anon; SELECT COUNT(*) FROM service_availability; SELECT COUNT(*) FROM catalogo_publico; RESET ROLE;`. Si alguno devuelve 0 con datos presentes, aplicar el fix.
 
 ---
 
@@ -808,7 +880,9 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 **Datos de servicios incompletos** — los campos `name`, `description`, `image_url` y `start_time` de varios servicios están vacíos en Supabase. Afecta a propuestas y al contexto del asistente. Rellenar desde Supabase Dashboard o desde el panel de tablas.
 
-**`event_type` — origen real no documentado** — El campo aparece en las vistas `availability_panel` y `catalogo_publico` y es usado por el trigger de sincronización. Sin embargo, no existe como columna directa en `availability`. Verificar con `\d availability` en psql o inspeccionando la definición de la vista en Supabase Dashboard. Mientras no se verifique, consultar siempre `event_type` a través de `availability_panel`, nunca directamente sobre `availability`.
+**55 servicios en la tabla `services`** — Solo hay 12-14 activos documentados. El exceso puede ser servicios de prueba, de temporadas anteriores, o creados por el asistente de lote. Revisar en Dashboard (Table Editor → services, ordenados por event_type) e identificar cuáles están activos y cuáles son residuos.
+
+**`event_type` — ✅ RESUELTO** — Es una columna directa en `services` (pos 3, texto). Las vistas la leen de `services.event_type`. No hay nada que investigar. Se puede acceder directamente desde `availability_panel` (que ya lo expone) sin riesgo de datos obsoletos.
 
 ---
 
