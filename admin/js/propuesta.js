@@ -309,7 +309,7 @@ async function _generarPDF() {
         const svc     = _servicios.find(s => s.id === r.service_id) ?? {}
         const disp    = _getDisponibilidad?.()?.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
         const imgUrl  = disp?.photos?.[0] ?? svc.image_url
-        if (imgUrl) imgCache[r.service_id] = await _imgToBase64(imgUrl)
+        if (imgUrl) imgCache[`${r.venue_id}__${r.service_id}`] = await _imgToBase64(imgUrl)
     }
 
     // ── Constantes ────────────────────────────────────────────────────────────
@@ -483,7 +483,7 @@ async function _generarPDF() {
         const yFila = y
 
         // Imagen
-        const imgB64 = imgCache[r.service_id] ?? _logoBase64
+        const imgB64 = imgCache[`${r.venue_id}__${r.service_id}`] ?? _logoBase64
         if (imgB64) {
             try { doc.addImage(imgB64, 'PNG', M, yFila + 1, COL_IMG - 2, IMG_H) } catch {}
         }

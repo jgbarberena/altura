@@ -892,7 +892,7 @@ Cuando sfcom vende, liquidan el neto. No hay mecanismo para generar facturas a s
 
 Las propuestas tienen más datos disponibles ahora de los que usan. Mejoras identificadas:
 - Usar `venues.display_name` como nombre del venue (en lugar del id).
-- Incluir `availability.photos[0]` como imagen principal de cada línea.
+- ✅ `availability.photos[0]` como imagen principal de cada línea — ya funciona. El campo `photos` debe estar incluido en el `.select()` de `availability_panel` en `formulario.js` (imprescindible; si se omite, `disp.photos` es siempre `undefined` y cae al fallback `svc.image_url`).
 - Mostrar `availability.access_instructions` si está relleno.
 - Mejorar el contexto que recibe Claude para el borrador (más datos de disponibilidad = propuestas más concretas).
 
@@ -1293,7 +1293,7 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ### Fase 7 — 🔲 Mejoras de propuestas
 
-Usar datos ya disponibles en propuesta.js: `venues.display_name` como nombre del venue, `availability.photos[0]` como imagen principal, `availability.access_instructions` si existe.
+Usar datos ya disponibles en propuesta.js: `venues.display_name` como nombre del venue, `availability.access_instructions` si existe. (`availability.photos[0]` ya funciona — ✅.)
 
 ---
 
