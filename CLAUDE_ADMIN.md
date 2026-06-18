@@ -1154,7 +1154,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 1b | ✅ Completa | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
 | 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
 | 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
-| 4 | 🔲 Pendiente | Sistema de borrador y asistente |
+| 4 | 🟡 Parcial | Sistema de borrador y asistente (código implementado; pendiente: tabla session_context en Supabase + verificar EF claude-proxy) |
 | 5 | 🟡 Parcial | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales 🔲 |
 | 6 | 🟡 Parcial | Panel: navegación tablas ✅ · image_url auto-fill 🔲 |
 | 7 | 🔲 Pendiente | Mejoras de propuestas |
@@ -1311,22 +1311,13 @@ Combinación de los fixes de borrador/asistente (antes "sesión B") y la feature
    // usar draftNuevo en el INSERT, no draft
    ```
 
-4. 🔲 **Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio (`solicitudes.js`).**
+4. ✅ **Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio.**
 
-   En el handler del botón "📩 Enviar recordatorio", después de ejecutar la acción principal, añadir:
-   ```javascript
-   if (sol.status === 'seguimiento_pendiente') {
-       await supabase.from('reservation_requests')
-           .update({ status: 'respuesta_enviada' })
-           .eq('id', sol.id)
-       sol.status = 'respuesta_enviada'
-       // actualizar badge en la lista
-   }
-   ```
+   Ya cubierto por `_onRespuestaUsadaEnLog` en `solicitudes.js`, que transiciona a `respuesta_enviada` incondicionalmente cada vez que Paula usa cualquier botón de envío del asistente, independientemente del estado previo. También actualiza el badge, el select y elimina el botón de recordatorio.
 
-5. 🔲 **Mejora asistente: venue en lugar de balcón (`asistente-config.js`).**
+5. ✅ **Mejora asistente: venue en lugar de balcón (`asistente-config.js`).**
 
-   Verificar con el bug 1 ya corregido (disponibilidad vacía) qué nombre usa el asistente al hablar de opciones. La clave en el contexto es `venue_display_name`. Si el asistente ignora ese campo y menciona el `id` técnico, añadir instrucción explícita en `SYSTEM_PROMPT_ASISTENTE` para que use `venue_display_name` como referencia principal.
+   Ya estaba en `SYSTEM_PROMPT_ASISTENTE`: "venue_display_name: nombre público del balcón. Úsalo siempre al presentar el venue al cliente." y "Nunca menciones venue_id, provider IDs ni identificadores internos al cliente." No requería cambio adicional.
 
 6. 🔲 **`SYSTEM_PROMPT_ASISTENTE` — significado de `estado` en el borrador (`asistente-config.js`).**
 
@@ -1338,9 +1329,9 @@ Combinación de los fixes de borrador/asistente (antes "sesión B") y la feature
 
 7. 🔲 **Unificar formato de `service_name` en líneas del borrador.**
 
-   `solicitudes.js` genera `"Encierro - día 7"`; `formulario.js` usa `svc.name` sin el día. El bloque de conversión funciona porque usa `service_name` y `day` por separado, pero el contexto del asistente puede quedar incompleto. Fix: decidir un formato canónico y aplicarlo en ambos sitios al construir las líneas del borrador.
+   Formato canónico decidido (jun 2026): `"Encierro - día 7"` (lo que genera `solicitudes.js` desde su campo `label`). `formulario.js` usa `svc?.name` desde la tabla `services` al pre-rellenar el borrador — puede diferir. Como `service_name` es solo descriptivo (no es clave de matching) y `formulario.js` lo usa raramente (solo cuando el borrador llega vacío), el impacto es mínimo. Pendiente de alinear en Fase 9 cuando se aborden las reglas de nombres de venue/evento (ver Fase 9 — "Documentar reglas de nombres venue/evento").
 
-8. 🔲 **Paso previo — crear tabla `session_context` en Supabase SQL Editor:**
+8. 🔲 **Paso previo — crear tabla `session_context` en Supabase SQL Editor (acción manual de Javier):**
    ```sql
    CREATE TABLE session_context (
      id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1349,7 +1340,7 @@ Combinación de los fixes de borrador/asistente (antes "sesión B") y la feature
    );
    GRANT SELECT, INSERT ON session_context TO authenticated;
    ```
-   Verificar con un INSERT+SELECT desde una sesión autenticada que los permisos funcionan. RLS: si está habilitado en el proyecto, crear políticas equivalentes a las de otras tablas del panel.
+   Verificar con un INSERT+SELECT desde una sesión autenticada que los permisos funcionan. RLS: si está habilitado en el proyecto, crear políticas equivalentes a las de otras tablas del panel. Sin esta tabla, los pasos 9-12 están implementados pero los pasos de notas fallan silenciosamente (console.warn, sin romper la página).
 
 9. 🔲 **Notas de sesión — UI en `solicitudes.html` / `solicitudes.js`.**
 
@@ -1360,9 +1351,9 @@ Combinación de los fixes de borrador/asistente (antes "sesión B") y la feature
    - Al perder el foco (`blur`) sobre el textarea: si el contenido cambió → `INSERT INTO session_context (texto) VALUES (...)`. Toast de feedback: "guardando…" / "guardado".
    - Exponer el valor actual con una función o variable de módulo para que `asistente.js` lo lea en cada llamada. Revisar el patrón de comunicación existente entre los dos módulos (ver cómo `initAsistente` recibe callbacks actualmente) y elegir la forma más coherente — lo más probable es añadir un parámetro `getNotasSesion` al objeto de callbacks de `initAsistente`.
 
-10. 🔲 **Verificar Edge Function `claude-proxy` — soporte para `system` como array.**
+10. 🔲 **Verificar Edge Function `claude-proxy` — soporte para `system` como array (acción manual de Javier).**
 
-    En Supabase Dashboard → Edge Functions → claude-proxy → editor de código: buscar cómo se pasa `body.system` a la Claude API. Si el código hace `system: body.system` sin transformación, ya funciona con array. Si asume string (p.ej. concatena o hace `.trim()`), actualizarlo para que pase `system` tal cual cuando es array, o string si es string.
+    En Supabase Dashboard → Edge Functions → claude-proxy → editor de código: buscar cómo se pasa `body.system` a la Claude API. Si el código hace `system: body.system` sin transformación, ya funciona con array (la Claude API acepta system tanto como string como como array de bloques). Si asume string (p.ej. concatena o hace `.trim()`), actualizarlo para que pase `system` tal cual. También verificar que el header `anthropic-beta: prompt-caching-2024-07-31` está presente — sin él, `cache_control` se ignora pero no causa errores.
 
 11. 🔲 **`system` como array de bloques con caché en `asistente.js`.**
 

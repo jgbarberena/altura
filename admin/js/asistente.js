@@ -2,9 +2,9 @@ import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
-let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado
+let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
 
-export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom, onRespuestaUsada, onBorradorActualizado }) {
+export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, onEmailSaved, esSfcom, onRespuestaUsada, onBorradorActualizado, getNotasSesion }) {
     _supabase                = supabase
     _getDisponibilidad       = getDisponibilidad
     _getTodasReservas        = getTodasReservas
@@ -12,6 +12,7 @@ export function initAsistente(supabase, { getDisponibilidad, getTodasReservas, o
     _esSfcom                 = esSfcom
     _onRespuestaUsada        = onRespuestaUsada        ?? null
     _onBorradorActualizado   = onBorradorActualizado   ?? null
+    _getNotasSesion          = getNotasSesion          ?? null
 }
 
 // ===== HELPERS DE CONTEXTO =====
@@ -257,8 +258,33 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         enviando = true
 
         try {
+            const notasSesion = _getNotasSesion?.() || ''
+            const system = [
+                { type: 'text', text: SYSTEM_PROMPT_ASISTENTE, cache_control: { type: 'ephemeral' } }
+            ]
+            if (notasSesion.trim()) {
+                system.push({
+                    type: 'text',
+                    text: `CONTEXTO DE SESIÓN (notas de Paula):\n${notasSesion}`,
+                    cache_control: { type: 'ephemeral' }
+                })
+            }
+
+            const mensajesParaEnviar = [...mensajes]
+            if (mensajesParaEnviar.length >= 2) {
+                const penultimo = mensajesParaEnviar[mensajesParaEnviar.length - 2]
+                const content = typeof penultimo.content === 'string'
+                    ? [{ type: 'text', text: penultimo.content, cache_control: { type: 'ephemeral' } }]
+                    : penultimo.content.map((b, i) =>
+                        i === penultimo.content.length - 1
+                            ? { ...b, cache_control: { type: 'ephemeral' } }
+                            : b
+                      )
+                mensajesParaEnviar[mensajesParaEnviar.length - 2] = { ...penultimo, content }
+            }
+
             const { data, error } = await _supabase.functions.invoke('claude-proxy', {
-                body: { messages: mensajes, system: SYSTEM_PROMPT_ASISTENTE, max_tokens: 1000 }
+                body: { messages: mensajesParaEnviar, system, max_tokens: 1000 }
             })
 
             spinner.remove()

@@ -246,7 +246,12 @@ Si el venue no tiene catalogo_url (visitas guiadas, servicios especiales), no me
 BORRADOR DE PROPUESTA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Recibes en el contexto el campo proposal_draft: array con las líneas del borrador de propuesta actual. Cada línea tiene: service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url. Puede estar vacío al inicio.
+Recibes en el contexto el campo proposal_draft: array con las líneas del borrador de propuesta actual. Cada línea tiene: service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url, estado. Puede estar vacío al inicio.
+
+El campo estado indica el estado de cada línea:
+- 'pendiente': aún en negociación, sin reserva creada. Estado inicial.
+- 'hecha': ya convertida en reserva. Si el tema sale en la conversación, confirma que esa parte ya está cerrada; no la ofrezcas como opción nueva.
+- 'descartada': el cliente indicó que no la quería. No vuelvas a ofrecerla, aunque puedes tenerla presente para entender el contexto de la negociación.
 
 Usa el borrador para entender el estado actual de la negociación: qué se ha acordado ya, qué servicios y venues están sobre la mesa, a qué precio aproximado.
 
@@ -254,7 +259,7 @@ Cuándo actualizar el borrador: SOLO cuando generas un ---MENSAJE_CLIENTE---. Nu
 
 Al generar ---MENSAJE_CLIENTE---, añade inmediatamente después el bloque ---BORRADOR--- con el array JSON completo actualizado, si el mensaje contiene una propuesta concreta de servicios o venues.
 
-El JSON del borrador debe incluir para cada línea: service_id (si lo conoces), service_name, day (número o null), venue_id (si lo conoces del contexto de disponibilidad), venue_display_name (si lo conoces), slots (número o null), price (número o null), catalogo_url (de la disponibilidad si corresponde).
+El JSON del borrador debe incluir para cada línea: service_id (si lo conoces), service_name, day (número o null), venue_id (si lo conoces del contexto de disponibilidad), venue_display_name (si lo conoces), slots (número o null), price (número o null), catalogo_url (de la disponibilidad si corresponde). No incluyas el campo estado en el JSON que generas — el sistema lo gestiona automáticamente.
 
 Si el mensaje propone opciones múltiples (ej: dos balcones alternativos), incluye ambas opciones en el borrador. Paula decidirá cuál queda.
 

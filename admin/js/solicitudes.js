@@ -25,7 +25,8 @@ initAsistente(supabase, {
     onEmailSaved:          cargarSolicitudes,
     esSfcom:               _esSfcom,
     onRespuestaUsada:      _onRespuestaUsadaEnLog,
-    onBorradorActualizado: _onBorradorActualizado
+    onBorradorActualizado: _onBorradorActualizado,
+    getNotasSesion:        () => _notasSesion
 })
 
 let solicitudActual = null
@@ -261,15 +262,23 @@ async function _onRespuestaUsadaEnLog(texto, solicitud) {
 }
 
 async function _onBorradorActualizado(solicitudId, draft) {
+    const sol = [..._solicitudesActuales, ..._solicitudesCerradas].find(s => s.id === solicitudId)
+    const draftActual = Array.isArray(sol?.proposal_draft) ? sol.proposal_draft : []
+    const draftConEstado = draft.map(linea => {
+        const existente = draftActual.find(
+            e => e.service_id === linea.service_id && e.venue_id === linea.venue_id
+        )
+        return existente?.estado ? { ...linea, estado: existente.estado } : linea
+    })
+
     const { error } = await supabase
         .from('reservation_requests')
-        .update({ proposal_draft: draft })
+        .update({ proposal_draft: draftConEstado })
         .eq('id', solicitudId)
     if (error) { console.error('[borrador] Error guardando:', error); return }
 
-    const sol = [..._solicitudesActuales, ..._solicitudesCerradas].find(s => s.id === solicitudId)
     if (sol) {
-        sol.proposal_draft = draft
+        sol.proposal_draft = draftConEstado
         if (solicitudActual?.id === solicitudId) {
             const container = document.getElementById('sol-borrador-container')
             if (container) _renderBorrador(sol, container)
@@ -504,7 +513,19 @@ function _renderBorrador(sol, container) {
             ? `<a href="${linea.catalogo_url}" target="_blank" rel="noopener" style="color:var(--subtle);font-size:14px;text-decoration:none" title="Ver catálogo">🔗</a>`
             : `<span style="color:var(--border);font-size:14px">🔗</span>`
 
-        return `<tr data-idx="${idx}">
+        const estadoLinea = linea.estado || 'pendiente'
+        const rowStyle = estadoLinea === 'hecha'
+            ? ' style="background:#f0fdf4"'
+            : estadoLinea === 'descartada'
+            ? ' style="background:#f9fafb;opacity:0.65"'
+            : ''
+        const estadoBadge = estadoLinea === 'hecha'
+            ? `<span style="font-size:9px;color:#16a34a;font-weight:700;margin-right:3px" title="Convertida en reserva">✓</span>`
+            : estadoLinea === 'descartada'
+            ? `<span style="font-size:9px;color:#9ca3af;font-weight:700;margin-right:3px" title="Descartada">✗</span>`
+            : ''
+
+        return `<tr data-idx="${idx}"${rowStyle}>
             <td style="padding:0 2px">
                 <button class="bor-up" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--subtle);padding:1px 3px" title="Subir">↑</button>
                 <button class="bor-dn" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--subtle);padding:1px 3px" title="Bajar">↓</button>
@@ -538,7 +559,7 @@ function _renderBorrador(sol, container) {
                 ${total > 0 ? total.toLocaleString('es-ES') + '€' : '—'}
             </td>
             <td style="padding:2px;white-space:nowrap;text-align:center">
-                ${catalogoBtn}
+                ${estadoBadge}${catalogoBtn}
                 <button class="bor-del" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--subtle);padding:1px 3px" title="Eliminar fila">🗑️</button>
             </td>
         </tr>`
@@ -1115,9 +1136,71 @@ function _calcularPrecioRef(sol) {
     return `~${fallback}€/plaza`
 }
 
+// ===== NOTAS DE SESIÓN =====
+
+let _notasSesion = ''
+
+function _actualizarPreviewNotas() {
+    const el = document.getElementById('notasTexto')
+    if (!el) return
+    if (_notasSesion.trim()) {
+        el.textContent   = _notasSesion
+        el.style.fontStyle = ''
+    } else {
+        el.textContent   = 'Notas para el asistente… (clic para editar)'
+        el.style.fontStyle = 'italic'
+    }
+}
+
+function _initNotas() {
+    const preview = document.getElementById('notasPreview')
+    const edit    = document.getElementById('notasEdit')
+    if (!preview || !edit) return
+
+    preview.addEventListener('click', () => {
+        edit.value = _notasSesion
+        preview.style.display = 'none'
+        edit.style.display = 'block'
+        edit.focus()
+    })
+
+    let _guardadoAnterior = ''
+    edit.addEventListener('focus', () => { _guardadoAnterior = edit.value })
+    edit.addEventListener('blur', async () => {
+        const nuevo = edit.value
+        edit.style.display = 'none'
+        preview.style.display = ''
+        _notasSesion = nuevo
+        _actualizarPreviewNotas()
+        if (nuevo !== _guardadoAnterior) {
+            await supabase.from('session_context').insert({ texto: nuevo })
+                .catch(e => console.warn('[notas] Error guardando:', e))
+        }
+    })
+}
+
+async function _cargarNotasSesion() {
+    try {
+        const { data } = await supabase
+            .from('session_context')
+            .select('texto')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        _notasSesion = data?.texto || ''
+    } catch (e) {
+        console.warn('[notas] tabla session_context no disponible:', e)
+    }
+    _actualizarPreviewNotas()
+}
+
 // ===== INICIALIZACIÓN =====
 
 document.getElementById('btnProcesarEmail').addEventListener('click', abrirProcesarEmail)
+
+_initNotas()
+_actualizarPreviewNotas()
+_cargarNotasSesion()
 
 // Importar cancelados de sfcom antes de cargar la lista para que aparezcan al abrir la página
 const _sfcomListings = await loadSfcomListings(supabase)
