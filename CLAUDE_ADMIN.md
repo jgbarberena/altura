@@ -290,6 +290,7 @@ Utilidades compartidas. Exports:
 | `persistirCobrosCliente(supabase, clienteId, todasReservas)` | Recalcula y persiste cobro final en charges. Si el hito ya tiene invoice_number, crea hito de ajuste. |
 | `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` | Recalcula y persiste pago final en payments. Primero busca todos los venues del proveedor para agregar disponibilidad y reservas de todos ellos. |
 | `resolverCliente(datos, todosClientes)` | **Punto de entrada obligatorio antes de generar un client_id nuevo.** `datos: { nombre, email, telefono }`. Devuelve `{ match: 'exacto'\|'ambiguo'\|'ninguno', cliente }`. Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar como subcadena de palabras (ambiguo). Evita la creación de duplicados (CLIENTE_2, CLIENTE_3) cuando llegan múltiples solicitudes de la misma persona. |
+| `mostrarOpcionesEnvio({ email, telefono, asunto, getTexto, container, onUsado })` | Renderiza los botones de envío (📋 Copiar / 📧 Email / 💬 WhatsApp) en un contenedor DOM. `getTexto` es una función llamada en el momento del clic (no en el render), lo que garantiza que siempre se usa el texto actual del textarea o closure. Los botones `Email` y `WhatsApp` solo aparecen si `email`/`telefono` son truthy. `asunto` es opcional (solo para el `mailto:`). `onUsado` es un callback opcional que recibe el texto final al pulsar cualquier botón. Usado por `asistente.js`, `propuesta.js` y `factura.js`. Importa `mostrarToast` de `verificacion.js` internamente. |
 
 ### modal.js
 `crearModal(id, { wide, narrow, scroll })` — único punto de creación de modales en el admin.
@@ -479,19 +480,20 @@ KPIs incluyen: total neto de ventas sfcom, coste de proveedores, y margen neto (
 ### factura.js
 Módulo ES6, importado por formulario.js. `initFacturacion(supabase)`.
 
-Genera facturas PDF (via `window.print()`) para hitos de cobro. Tres tipos:
-- `adelanto`: pago parcial
-- `liquidacion`: pago final con adelantos previos ya facturados
-- `unico`: pago único sin adelantos
+Genera facturas PDF (via jsPDF) para hitos de cobro. Tres tipos: `adelanto` (pago parcial), `liquidacion` (pago final con adelantos previos ya facturados), `unico` (pago único sin adelantos).
 
 Emisor: Paula Díaz Echalecu, NIF 72694758S. IVA: 21%. IRPF: 15%. Serie: VSF. Número correlativo por ejercicio (calcula consultando invoice_number en charges del año en curso). Campos editables con `contenteditable`. Persiste `invoice_number` e `invoiced: true` en charges.
 
 El nombre del receptor usa `_cliente.company ?? _cliente.name ?? _cliente.id`.
 
+**Flujo de envío:** tras generar el PDF y persistir en Supabase, `emitirFactura()` llama a `mostrarOpcionesEnvio` con el asunto y cuerpo del template `FACTURA_CONFIG.email_asunto_tpl / email_cuerpo_tpl`. Los botones aparecen en `#factura-botones-envio` (dentro del `<dialog id="dialogFactura">`, entre el contenido y el footer). El diálogo no se cierra automáticamente — Paula lo cierra cuando ha elegido canal. Los templates de asunto/cuerpo están en `FACTURA_CONFIG` (constante al inicio del módulo); editarlos ahí si cambia el texto estándar.
+
 ### propuesta.js
 Módulo ES6, importado por formulario.js. `initPropuesta(supabase, servicios, venues, getDisponibilidad)`.
 
 Genera propuestas PDF para reservas seleccionadas. Serie PRP. Textos editables en el mock-up. Logo en base64 cargado al inicializar. Nombre del servicio: `svc.name ?? svc.description ?? r.service_id`.
+
+**Flujo de envío:** igual que `factura.js` — tras generar el PDF, `generarYDescargar()` llama a `mostrarOpcionesEnvio` con `PROPUESTA_CONFIG.email_asunto_tpl` / `email_cuerpo_tpl`. Los botones aparecen en `#propuesta-botones-envio` (dentro del `<dialog id="dialogPropuesta">`). El botón "⬇ Generar PDF y preparar correo" sigue visible y es re-clicable para regenerar.
 
 ### tablas.js
 Módulo ES6. Vista de solo lectura de todas las tablas. Selector de tabla, búsqueda en tiempo real, sort por columna, botón "⬇ Excel" usando `exportTable`.
@@ -507,9 +509,12 @@ initAsistente(supabase, {
     onEmailSaved,           // () => callback tras insertar email parseado
     esSfcom,                // (source) => boolean
     onRespuestaUsada,       // (texto, solicitud) => void — opcional
-    onBorradorActualizado   // (solicitudId, draft) => void — opcional
+    onBorradorActualizado,  // (solicitudId, draft) => void — opcional
+    getNotasSesion          // () => string — notas de sesión actuales; opcional
 })
 ```
+
+`formulario.js` llama a `initAsistente` sin `onRespuestaUsada`, `onBorradorActualizado` ni `getNotasSesion` (parámetros con default `null`), lo que es seguro porque la firma usa `?? null` en la destructuración.
 
 **Exports:**
 - `initAsistente(supabase, callbacks)` — inicialización
@@ -578,11 +583,18 @@ Estructura para eventos de día único (chupinazo, procesion, gigantes, pobre_de
 
 `catalogo_url` se construye solo si hay `venue_slug` Y `event_type`; null si falta alguno. Ordenadas: capacity primero (venues con plazas libres antes de los que solo tienen pendientes), luego consumption.
 
-**Marcadores de respuesta:** cuando Claude incluye `---MENSAJE_CLIENTE---`, el texto entre ese marcador y el siguiente (o el fin de la respuesta) aparece en un textarea editable. Si Claude incluye además `---BORRADOR---` seguido de un array JSON, ese JSON se extrae y nunca llega al textarea (el cliente no lo ve). Los botones Copiar / Email / WhatsApp tienen `min-height:48px` y al pulsarse: (1) ejecutan su acción principal, (2) insertan el mensaje en el log como `<Paula>`, (3) guardan el borrador si había `---BORRADOR---`, (4) cambian el estado de la solicitud a `respuesta_enviada`, (5) convierten la X de cierre en "✓ Cerrar" (verde). Si Paula escribe un nuevo mensaje en el textarea de input, el área de resultado se oculta y se vuelve al modo conversación. No existe el botón "✅ Usar respuesta".
+**Marcadores de respuesta:** cuando Claude incluye `---MENSAJE_CLIENTE---`, el texto entre ese marcador y el siguiente (o el fin de la respuesta) aparece en un textarea editable. Si Claude incluye además `---BORRADOR---` seguido de un array JSON, ese JSON se extrae y nunca llega al textarea (el cliente no lo ve).
+
+**Botones de envío:** renderizados por `mostrarOpcionesEnvio` (de `utils.js`) en `#asistente-botones` cada vez que Claude completa una respuesta con mensaje final. `getTexto: () => elMsgFinal.value` — siempre lee el valor actual del textarea, por lo que el texto enviado/copiado refleja las ediciones manuales de Paula. Al pulsar cualquier botón: (1) ejecutan su acción principal (copiar al portapapeles / abrir mailto / abrir wa.me), (2) el callback `onUsado` llama a `_alUsarBoton(texto)` que: inserta el mensaje en el log como `<Paula>` vía `_onRespuestaUsada`, guarda el borrador si había `---BORRADOR---` vía `_onBorradorActualizado`, cambia el estado de la solicitud a `respuesta_enviada`, convierte la X de cierre en "✓ Cerrar" (verde). Si Paula escribe un nuevo mensaje en el textarea de input, el área de resultado se oculta y se vuelve al modo conversación. No existe el botón "✅ Usar respuesta". Los botones Email y WhatsApp solo aparecen si `solicitud.client_email` / `solicitud.client_phone` tienen valor.
 
 **Guardar log:** botón visible pero discreto. Guarda `messages` y `context_snapshot` en `assistant_logs`.
 
-**Edge Function `claude-proxy`:** único punto de entrada a la Claude API. Verifica JWT. Acepta `{ messages, system?, max_tokens?, model? }`. Modelo por defecto: `claude-sonnet-4-6`. Lista blanca: `claude-sonnet-4-6`, `claude-opus-4-7`, `claude-haiku-4-5-20251001`. Aplica prompt caching en el system prompt.
+**Edge Function `claude-proxy`:** único punto de entrada a la Claude API. Verifica JWT. Acepta `{ messages, system?, max_tokens?, model? }`. `system` puede ser `string` o `array` de bloques (`{ type, text, cache_control? }`). Modelo por defecto: `claude-sonnet-4-6`. Lista blanca: `claude-sonnet-4-6`, `claude-opus-4-7`, `claude-haiku-4-5-20251001`. Header `anthropic-beta: prompt-caching-2024-07-31` activo — aplica prompt caching si los bloques llevan `cache_control: { type: 'ephemeral' }`.
+
+**Prompt caching implementado:** `asistente.js` pasa `system` como array de bloques con caché:
+1. `SYSTEM_PROMPT_ASISTENTE` — siempre presente, marcado `cache_control: ephemeral`.
+2. Notas de sesión de Paula — segundo bloque, solo si `_getNotasSesion()` devuelve texto no vacío, también marcado `cache_control: ephemeral`.
+Además, el penúltimo mensaje del historial también lleva `cache_control: ephemeral` para cachear el historial acumulado en conversaciones largas. El email parser (`abrirProcesarEmail`) sigue pasando `system` como string (compatible porque la EF detecta el tipo con `Array.isArray`).
 
 **`abrirProcesarEmail()`:**
 1. Paula pega el texto del email (con cabeceras, firmas, etc.)
@@ -595,7 +607,9 @@ Exporta `SYSTEM_PROMPT_ASISTENTE` y `SYSTEM_PROMPT_PARSING`. Separado de asisten
 
 El system prompt incluye una sección **BORRADOR DE PROPUESTA** que instruye a Claude sobre cuándo emitir el bloque `---BORRADOR---` (solo junto a `---MENSAJE_CLIENTE---` y solo cuando el mensaje contiene una propuesta concreta), qué campos incluir en el JSON, y cómo usar el borrador recibido en el contexto para entender el estado actual de la negociación.
 
-Si se actualiza el prompt: revisar que los nombres de campo son coherentes con la estructura del contexto documentada en la sección `disponibilidadParaAsistente` de este documento. El prompt de caching tiene TTL de 5 minutos en la Edge Function — solo ahorra tokens dentro de la misma sesión del navegador.
+La sección de borrador también documenta el campo `estado` de cada línea: `'pendiente'` (en negociación, sin reserva — estado inicial), `'hecha'` (ya convertida en reserva — confirmar que esa parte está cerrada, no volver a ofrecerla), `'descartada'` (el cliente no quiso — no ofrecer de nuevo, pero útil para entender el contexto). Claude **no genera** el campo `estado` — el sistema lo gestiona automáticamente.
+
+Si se actualiza el prompt: revisar que los nombres de campo son coherentes con la estructura del contexto documentada en la sección `disponibilidadParaAsistente` de este documento. El prompt de caching tiene TTL de 5 minutos — solo ahorra tokens dentro de la misma sesión del navegador.
 
 ---
 
@@ -736,11 +750,9 @@ Al confirmar la eliminación de una reserva con cobros facturados, el JS elimina
 
 ---
 
-**`_onBorradorActualizado` no preserva el campo `estado` al actualizar desde el asistente.**
+**✅ RESUELTO — `_onBorradorActualizado` preserva ahora el campo `estado` al actualizar desde el asistente.**
 
-Cuando Claude emite un `---BORRADOR---`, `_onBorradorActualizado` en `solicitudes.js` sobreescribe todo el array `proposal_draft`. Si Paula ya había empezado la conversión (alguna línea con `estado: 'hecha'` o `'descartada'`) y luego vuelve a abrir el asistente, esos estados se pierden y las líneas vuelven a `'pendiente'`.
-
-Fix: al actualizar el borrador desde el asistente, emparejar líneas por `service_id + venue_id` y preservar el campo `estado` de las existentes antes de sobreescribir.
+Fix en `solicitudes.js`: antes de persistir el nuevo draft recibido del asistente, cada línea nueva se empareja con la existente por `service_id + venue_id` y copia el campo `estado` de la versión en memoria. Las líneas nuevas (sin pareja) quedan sin `estado` (interpretado como `'pendiente'`). El array resultante se persiste en Supabase y se usa para refrescar la tabla del borrador.
 
 ---
 
@@ -836,23 +848,15 @@ Opción preferida a analizar: (B) por ser no destructiva y eliminar el problema 
 
 ---
 
-**No hay UI de envío unificada: propuestas, facturas y asistente funcionan de forma diferente.**
+**✅ RESUELTO — UI de envío unificada (`mostrarOpcionesEnvio` en `utils.js`).**
 
-Cada contexto implementa el envío de forma distinta y con limitaciones:
+Implementado como paso 0 de Fase 2. La función `mostrarOpcionesEnvio({ email, telefono, asunto, getTexto, container, onUsado })` en `utils.js` renderiza los tres botones en cualquier contenedor DOM. Ver detalle en la tabla de exports de `utils.js` (§4). Usada por:
 
-- `asistente.js`: tiene botones de email y WhatsApp (condicionales al dato disponible) más un botón "Copiar". Pero "Copiar" llama internamente a `_alEnviar()` además de copiar; no existe una opción de copiar/descargar sin disparar nada; y no hay foco automático en el botón más relevante según el contacto.
-- `propuesta.js`: al generar la propuesta llama automáticamente a `_abrirMailto()`. Sin opción de WhatsApp, sin descarga silenciosa.
-- `factura.js`: mismo patrón: `abrirMailto()` inmediato, sin WhatsApp, sin descarga silenciosa.
+- `asistente.js`: se llama cada vez que Claude completa una respuesta con `---MENSAJE_CLIENTE---`. `getTexto: () => elMsgFinal.value` lee el textarea en el momento del clic.
+- `propuesta.js`: llamada en `generarYDescargar()` tras generar el PDF. Los botones aparecen en `#propuesta-botones-envio` (dentro del dialog). El diálogo no se cierra solo.
+- `factura.js`: llamada en `emitirFactura()` tras persistir en Supabase. Los botones aparecen en `#factura-botones-envio`. El diálogo no se cierra solo (antes se cerraba automáticamente — cambio de UX intencional).
 
-Comportamiento objetivo en cualquier contexto de envío (propuesta, factura, confirmación de reserva, mensaje del asistente):
-
-1. 💬 WhatsApp — abre `wa.me` con el mensaje. Solo visible si hay teléfono disponible.
-2. ✉️ Email — abre `mailto:` con asunto y cuerpo. Solo visible si hay email disponible.
-3. 📋 Copiar / 📥 Descargar — copia texto al portapapeles (mensajes) o descarga el PDF (documentos), sin abrir ningún canal externo.
-
-La opción con foco por defecto sigue esta prioridad: WhatsApp si hay teléfono → email si solo hay email → copiar/descargar si no hay ninguno de los dos. Opciones sin datos de contacto no aparecen.
-
-Fix: extraer una función utilitaria `mostrarOpcionesEnvio({ telefono, email, texto, pdfPath })` en `utils.js` (o un nuevo `envio.js` si la lógica crece) que renderice el conjunto de botones y pueda ser llamada desde `asistente.js`, `propuesta.js`, `factura.js` y `formulario.js`. El botón "Copiar" del asistente deja de llamar a `_alEnviar()` como efecto secundario. Esta deuda va en **Fase 2** como paso previo al botón de confirmación, para que la confirmación use ya la UI unificada.
+La futura confirmación de reserva (Fase 2, paso 1) usará la misma función.
 
 ---
 
@@ -913,78 +917,15 @@ Actualmente `tablas.js` es solo lectura con algunas acciones puntuales. Objetivo
 
 ---
 
-**Notas de sesión para el asistente (`session_context`) — diseño completo, listo para implementar.**
+**✅ RESUELTO — Notas de sesión para el asistente (`session_context`).**
 
-Paula puede editar un texto libre desde `solicitudes.html` que se envía a Claude en cada llamada al asistente como bloque de contexto adicional con caché independiente. El histórico de cambios se preserva en Supabase.
+Paula puede editar un texto libre en la barra superior de `solicitudes.html` (antes del listado) que se envía a Claude en cada llamada como segundo bloque del system prompt con caché independiente.
 
-**1. Tabla `session_context` en Supabase**
+**Tabla `session_context` en Supabase:** append-only log (cada cambio es un INSERT). Para leer: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1`. RLS igual que el resto de tablas del panel.
 
-```sql
-CREATE TABLE session_context (
-  id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  texto      text        NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-```
+**UI en `solicitudes.js`:** campo de una línea que expande al hacer clic (inline, no modal). Al perder foco con contenido nuevo → INSERT silencioso (sin feedback visual explícito). Variable módulo `_notasSesion` con `_cargarNotasSesion()` al inicio.
 
-Sin upsert, sin fila única. Cada cambio de Paula es un INSERT. Para leer el valor actual: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1`. Preserva histórico completo para revisión futura.
-
-Crear en SQL Editor de Supabase. Verificar que el rol `authenticated` tiene permisos de `SELECT` e `INSERT` — puede requerir `GRANT` explícito dependiendo de la configuración RLS del proyecto (revisar si está habilitado RLS en la tabla y crear políticas, o simplemente hacer `GRANT SELECT, INSERT ON session_context TO authenticated`).
-
-**2. UI en `solicitudes.html` / `solicitudes.js`**
-
-Añadir un `<textarea>` visible siempre en `solicitudes.html`, en la zona superior de la página, antes del listado de solicitudes. Debe ser discreto visualmente (no protagonista), con una etiqueta clara tipo "Notas para el asistente". Seguir las convenciones CSS del proyecto: clases existentes, sin estilos inline salvo puntuales, sin bloques `<style>` en el HTML.
-
-Comportamiento en `solicitudes.js`:
-- Al cargar la página: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1` y rellenar el textarea.
-- Al perder el foco (`blur`) sobre el textarea: si el contenido ha cambiado respecto al valor cargado, hacer `INSERT INTO session_context (texto) VALUES (...)`. Mostrar feedback visual mínimo (indicador de estado: "guardando..." / "guardado") usando el sistema de toasts o el patrón ya existente en el proyecto para esto.
-- El texto leído debe quedar accesible para que `asistente.js` pueda consumirlo en cada llamada. La forma concreta depende de cómo estén comunicados actualmente `solicitudes.js` y `asistente.js` — puede ser una variable exportada, un getter, o un parámetro adicional en la función de inicialización del asistente. Revisar el código actual y elegir la forma más coherente con los patrones existentes.
-
-**3. Integración en `asistente.js`**
-
-El system prompt se pasa a `claude-proxy` como array de bloques (formato que admite la API de Anthropic), no como string plano. Verificar si `claude-proxy` ya admite `system` como array o solo como string — si solo admite string, actualizar la Edge Function para que funcione con array (simplemente pasar `body.system` tal cual a la API de Anthropic sin asumir que es string).
-
-La llamada debe quedar así:
-
-```javascript
-system: [
-  {
-    type: 'text',
-    text: SYSTEM_PROMPT_ASISTENTE,
-    cache_control: { type: 'ephemeral' }
-  },
-  {
-    type: 'text',
-    text: `CONTEXTO DE SESIÓN (notas de Paula):\n${notasSesion}`,
-    cache_control: { type: 'ephemeral' }
-  }
-]
-```
-
-El segundo bloque solo se incluye si `notasSesion` tiene contenido (no vacío, no solo espacios). Si está vacío, `system` es solo el primer bloque (sin cambios respecto al comportamiento actual).
-
-El segundo bloque tiene su propio `cache_control: ephemeral`, independiente del primero. Cuando Paula no cambia las notas, ambos bloques se cachean y se pagan al 10%. Cuando cambia las notas, solo el segundo bloque se invalida; el primero sigue cacheado.
-
-**4. `cache_control` en mensajes para conversaciones largas**
-
-En cada llamada a Claude, el penúltimo mensaje del array (el último intercambio completo antes del mensaje nuevo) debe llevar `cache_control: { type: 'ephemeral' }`. Esto permite que Anthropic cachee el historial acumulado y no lo cobre al 100% en cada turno. Solo tiene efecto real cuando la conversación supera ~1.024 tokens (mínimo facturable por bloque cacheado en Sonnet), pero implementarlo tiene coste de desarrollo mínimo y funcionará automáticamente cuando sea relevante.
-
-Implementación: al construir el array `messages` antes de invocar `claude-proxy`, añadir `cache_control` al `content` del mensaje en posición `messages.length - 2` (el último mensaje completo, no el que se acaba de añadir). Revisar si `content` es string o array de bloques en el código actual, y adaptar al formato que acepta la API (si es string, convertirlo a `[{ type: 'text', text: ..., cache_control: { type: 'ephemeral' } }]`).
-
-**5. Verificaciones antes de implementar**
-
-- Comprobar que `claude-proxy` (Edge Function en Supabase) pasa `system` a la API de Anthropic tal como lo recibe, sin asumir que es string. Si hace `body.system` esperando string, hay que actualizarlo para que acepte también array.
-- Comprobar los permisos RLS de `session_context` tras crearla.
-- Verificar el patrón de comunicación entre `solicitudes.js` y `asistente.js` para pasar las notas de sesión sin romper la interfaz actual.
-
-**6. Lo que no debe cambiar**
-
-- El comportamiento actual del asistente en todos los demás aspectos.
-- La estructura de `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js`.
-- El sistema de persistencia de conversación en `sessionStorage` si ya está implementado.
-- Las convenciones del proyecto: sin código duplicado, sin estilos inline innecesarios, sin lógica en la BD que deba estar en JS.
-
-Esta feature va en **Fase 4** (ver sección 9).
+**Integración en `asistente.js`:** `getNotasSesion` como parámetro opcional de `initAsistente`. `asistente.js` construye `system` como array con dos bloques con `cache_control: ephemeral`: el primero con `SYSTEM_PROMPT_ASISTENTE`, el segundo (solo si hay notas) con las notas de Paula. El penúltimo mensaje del historial también lleva `cache_control: ephemeral` para conversaciones largas. Ver detalle en la sección `asistente.js` (§4) y en la sección Edge Function `claude-proxy`.
 
 ---
 
@@ -1309,117 +1250,22 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 4 — 🔲 Asistente: borrador, notas de sesión y caché de prompts
+### Fase 4 — ✅ Completa: Asistente: borrador, notas de sesión y caché de prompts (jun 2026)
 
-Combinación de los fixes de borrador/asistente (antes "sesión B") y la feature de notas de sesión + caché (antes "sesión C"). Se unifican porque tocan los mismos archivos y el diseño de notas de sesión depende de verificar primero cómo funciona el asistente tras los fixes de borrador.
+**Archivos modificados:** `asistente.js`, `asistente-config.js`, `solicitudes.js`, `solicitudes.html`, `solicitudes.css`, Edge Function `claude-proxy` (Supabase Dashboard).
 
-**Archivos afectados:** `asistente.js`, `asistente-config.js`, `solicitudes.js`, `solicitudes.html`, Edge Function `claude-proxy` (Supabase Dashboard).
-
-**Estado de los pasos:**
-
-1. ✅ **Bug asistente: disponibilidad vacía** — `expandirServiceIds` en `asistente.js` normaliza ahora slugs con `split('-')`. También corregido `_inferirServiceIds` en `solicitudes.js`.
-2. ✅ **Mejora asistente: precios siempre por persona** — instrucción explícita añadida en `SYSTEM_PROMPT_ASISTENTE`.
-3. 🔲 **Bug `_onBorradorActualizado` — preservar `estado` al actualizar desde el asistente (`solicitudes.js`).**
-
-   Cuando Claude emite `---BORRADOR---`, `_onBorradorActualizado` sobreescribe todo el array `proposal_draft`. Si Paula ya había marcado líneas como `'hecha'` o `'descartada'`, esos estados se pierden. Fix: antes de persistir el nuevo draft, emparejar cada línea nueva con la existente por `service_id + venue_id` y copiar el campo `estado` de la versión existente:
-   ```javascript
-   const draftActual = solicitudAbierta.proposal_draft || []
-   const draftNuevo = draft.map(linea => {
-       const existente = draftActual.find(
-           e => e.service_id === linea.service_id && e.venue_id === linea.venue_id
-       )
-       return existente ? { ...linea, estado: existente.estado } : linea
-   })
-   // usar draftNuevo en el INSERT, no draft
-   ```
-
-4. ✅ **Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio.**
-
-   Ya cubierto por `_onRespuestaUsadaEnLog` en `solicitudes.js`, que transiciona a `respuesta_enviada` incondicionalmente cada vez que Paula usa cualquier botón de envío del asistente, independientemente del estado previo. También actualiza el badge, el select y elimina el botón de recordatorio.
-
-5. ✅ **Mejora asistente: venue en lugar de balcón (`asistente-config.js`).**
-
-   Ya estaba en `SYSTEM_PROMPT_ASISTENTE`: "venue_display_name: nombre público del balcón. Úsalo siempre al presentar el venue al cliente." y "Nunca menciones venue_id, provider IDs ni identificadores internos al cliente." No requería cambio adicional.
-
-6. 🔲 **`SYSTEM_PROMPT_ASISTENTE` — significado de `estado` en el borrador (`asistente-config.js`).**
-
-   Añadir en la sección BORRADOR DE PROPUESTA la explicación de cada valor:
-   - `'pendiente'`: aún en negociación, sin reserva creada.
-   - `'hecha'`: ya convertida en reserva — confirmar al cliente que esta línea está cerrada.
-   - `'descartada'`: descartada por el admin — no mencionar ni ofrecer de nuevo.
-   Valorar filtrar las líneas `'descartada'` del contexto antes de enviarlas a Claude (bajo impacto).
-
-7. 🔲 **Unificar formato de `service_name` en líneas del borrador.**
-
-   Formato canónico decidido (jun 2026): `"Encierro - día 7"` (lo que genera `solicitudes.js` desde su campo `label`). `formulario.js` usa `svc?.name` desde la tabla `services` al pre-rellenar el borrador — puede diferir. Como `service_name` es solo descriptivo (no es clave de matching) y `formulario.js` lo usa raramente (solo cuando el borrador llega vacío), el impacto es mínimo. Pendiente de alinear en Fase 9 cuando se aborden las reglas de nombres de venue/evento (ver Fase 9 — "Documentar reglas de nombres venue/evento").
-
-8. 🔲 **Paso previo — crear tabla `session_context` en Supabase SQL Editor (acción manual de Javier):**
-   ```sql
-   CREATE TABLE session_context (
-     id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-     texto      text        NOT NULL,
-     created_at timestamptz NOT NULL DEFAULT now()
-   );
-   GRANT SELECT, INSERT ON session_context TO authenticated;
-   ```
-   Verificar con un INSERT+SELECT desde una sesión autenticada que los permisos funcionan. RLS: si está habilitado en el proyecto, crear políticas equivalentes a las de otras tablas del panel. Sin esta tabla, los pasos 9-12 están implementados pero los pasos de notas fallan silenciosamente (console.warn, sin romper la página).
-
-9. 🔲 **Notas de sesión — UI en `solicitudes.html` / `solicitudes.js`.**
-
-   `solicitudes.html`: añadir un `<textarea>` con label "Notas para el asistente" en la zona superior, antes del listado. Seguir las clases CSS del proyecto; sin estilos inline salvo puntuales.
-
-   `solicitudes.js`:
-   - Al cargar la página: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1` → rellenar el textarea.
-   - Al perder el foco (`blur`) sobre el textarea: si el contenido cambió → `INSERT INTO session_context (texto) VALUES (...)`. Toast de feedback: "guardando…" / "guardado".
-   - Exponer el valor actual con una función o variable de módulo para que `asistente.js` lo lea en cada llamada. Revisar el patrón de comunicación existente entre los dos módulos (ver cómo `initAsistente` recibe callbacks actualmente) y elegir la forma más coherente — lo más probable es añadir un parámetro `getNotasSesion` al objeto de callbacks de `initAsistente`.
-
-10. 🔲 **Verificar Edge Function `claude-proxy` — soporte para `system` como array (acción manual de Javier).**
-
-    En Supabase Dashboard → Edge Functions → claude-proxy → editor de código: buscar cómo se pasa `body.system` a la Claude API. Si el código hace `system: body.system` sin transformación, ya funciona con array (la Claude API acepta system tanto como string como como array de bloques). Si asume string (p.ej. concatena o hace `.trim()`), actualizarlo para que pase `system` tal cual. También verificar que el header `anthropic-beta: prompt-caching-2024-07-31` está presente — sin él, `cache_control` se ignora pero no causa errores.
-
-11. 🔲 **`system` como array de bloques con caché en `asistente.js`.**
-
-    Modificar la llamada a `claude-proxy` para pasar `system` como array:
-    ```javascript
-    const notasSesion = getNotasSesion?.() || ''
-    const system = [
-        { type: 'text', text: SYSTEM_PROMPT_ASISTENTE, cache_control: { type: 'ephemeral' } }
-    ]
-    if (notasSesion.trim()) {
-        system.push({
-            type: 'text',
-            text: `CONTEXTO DE SESIÓN (notas de Paula):\n${notasSesion}`,
-            cache_control: { type: 'ephemeral' }
-        })
-    }
-    // pasar system en el body de la llamada a claude-proxy
-    ```
-    El segundo bloque solo se incluye cuando hay notas. Cuando Paula no cambia las notas, ambos bloques se cachean (10% del coste). Cuando cambia las notas, solo el segundo se invalida.
-
-12. 🔲 **`cache_control` en el penúltimo mensaje del historial (`asistente.js`).**
-
-    Al construir el array `messages` antes de invocar `claude-proxy`, añadir `cache_control` al content del penúltimo mensaje (el último intercambio completo antes del mensaje nuevo). Solo aplica si hay al menos 2 mensajes previos:
-    ```javascript
-    if (messages.length >= 2) {
-        const penultimo = messages[messages.length - 2]
-        const content = typeof penultimo.content === 'string'
-            ? [{ type: 'text', text: penultimo.content, cache_control: { type: 'ephemeral' } }]
-            : penultimo.content.map((b, i) =>
-                i === penultimo.content.length - 1
-                    ? { ...b, cache_control: { type: 'ephemeral' } }
-                    : b
-              )
-        messages[messages.length - 2] = { ...penultimo, content }
-    }
-    ```
-    Solo tiene efecto real cuando la conversación supera ~1.024 tokens, pero implementarlo no tiene coste práctico.
-
-**Verificación al terminar la sesión:**
-1. Abrir el asistente para una solicitud web → disponibilidad no vacía (ya corregido en Fase 3).
-2. Con borrador parcialmente convertido (líneas `'hecha'`), pedir al asistente nueva propuesta → las líneas `'hecha'` mantienen su `estado`.
-3. Escribir notas en el textarea, perder el foco → toast "guardado". Recargar → las notas persisten.
-4. Abrir el asistente con notas → en Network tab verificar que la llamada a `claude-proxy` lleva `system` como array con 2 elementos.
-5. Enviar recordatorio desde status `'seguimiento_pendiente'` → el status cambia a `'respuesta_enviada'`.
+1. ✅ **Bug asistente: disponibilidad vacía** — `expandirServiceIds` normaliza slugs con `split('-')`. Corregido también `_inferirServiceIds` en `solicitudes.js`.
+2. ✅ **Precios siempre por persona** — instrucción explícita en `SYSTEM_PROMPT_ASISTENTE`.
+3. ✅ **Bug `_onBorradorActualizado`** — al recibir `---BORRADOR---`, empareja líneas por `service_id + venue_id` y preserva `estado` de las existentes antes de persistir.
+4. ✅ **Auto-transición al enviar** — cubierto por `_onRespuestaUsadaEnLog` (transiciona a `respuesta_enviada` independientemente del estado previo, actualiza badge/select/botón recordatorio).
+5. ✅ **`venue_display_name` en asistente** — ya estaba en el system prompt.
+6. ✅ **`estado` en borrador explicado al asistente** — sección BORRADOR DE PROPUESTA de `SYSTEM_PROMPT_ASISTENTE` ampliada con el significado de `'pendiente'`/`'hecha'`/`'descartada'` e instrucción de que Claude no genera ese campo.
+7. 🔲 **Formato de `service_name` en borrador** — diferencia entre `solicitudes.js` ("Encierro - día 7") y `formulario.js` (`svc.name`). Impacto mínimo (campo descriptivo, no clave). Diferido a Fase 9 junto con las reglas de nombres de venue/evento.
+8. ✅ **Tabla `session_context` en Supabase** — creada con `id`, `texto`, `created_at`. RLS habilitado, políticas equivalentes al resto de tablas del panel. Verificada INSERT+SELECT desde sesión autenticada.
+9. ✅ **Notas de sesión UI** — campo de una línea en `solicitudes.html` (encima del listado, `.notas-sesion`). Click expande inline (`.notas-sesion-preview` / `.notas-sesion-edit`). Blur con cambio → INSERT silencioso en `session_context`. Variable `_notasSesion` en módulo; callback `getNotasSesion: () => _notasSesion` pasado a `initAsistente`.
+10. ✅ **Edge Function `claude-proxy` actualizada** — acepta `system` como `string | array`. `Array.isArray(system)` distingue los dos casos. Header `anthropic-beta: prompt-caching-2024-07-31` activo.
+11. ✅ **`system` como array con caché en `asistente.js`** — dos bloques `cache_control: ephemeral`: system prompt principal + notas de sesión (solo si hay contenido). Penúltimo mensaje del historial también marcado con `cache_control: ephemeral`.
+12. ✅ **Indicador visual de `estado` en la tabla del borrador** (`solicitudes.js`) — fondo verde claro para `'hecha'`, opacidad reducida para `'descartada'`, badge ✓/✗ delante del nombre del servicio.
 
 ---
 
