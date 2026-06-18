@@ -3,6 +3,7 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, buildCatalogUrl, resolverCliente } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
+import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -34,6 +35,7 @@ const STATUS_LABELS = {
     en_conversacion:       'En conversación',
     respuesta_enviada:     'Respuesta enviada',
     seguimiento_pendiente: 'Seguimiento pendiente',
+    cancelada_sfcom:       'Cancelada sfcom',
     convertida:            'Convertida',
     descartada:            'Descartada',
 }
@@ -336,14 +338,15 @@ async function _verificarTransicionesAutomaticas() {
 }
 
 function _renderItem(s, apagada = false) {
-    const esSfcom    = _esSfcom(s.source)
-    const esEmail    = s.source === 'email'
+    const esSfcom     = _esSfcom(s.source)
+    const esCancelada = s.status === 'cancelada_sfcom'
+    const esEmail     = s.source === 'email'
     const fecha      = s.created_at
         ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
         : '—'
     const convStatus = s.status || 'nueva'
     const badgeLabel = STATUS_LABELS[convStatus] || convStatus
-    const origenBadge = esSfcom
+    const origenBadge = (esSfcom || esCancelada)
         ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
         : esEmail ? `<span class="sol-badge sol-badge--email">email</span>` : ''
     const experiencia    = s.level || s.service_id || '—'
@@ -371,11 +374,12 @@ function _renderItem(s, apagada = false) {
 }
 
 function renderLista() {
-    const lista    = document.getElementById('sol-lista')
-    const activas  = _solicitudesActuales
-    const cerradas = _solicitudesCerradas
+    const lista      = document.getElementById('sol-lista')
+    const activas    = _solicitudesActuales.filter(s => s.status !== 'cancelada_sfcom')
+    const canceladas = _solicitudesActuales.filter(s => s.status === 'cancelada_sfcom')
+    const cerradas   = _solicitudesCerradas
 
-    if (!activas.length && !cerradas.length) {
+    if (!activas.length && !canceladas.length && !cerradas.length) {
         lista.innerHTML = '<div class="sol-empty">No hay solicitudes.</div>'
         return
     }
@@ -383,6 +387,11 @@ function renderLista() {
     let html = activas.length
         ? activas.map(s => _renderItem(s, false)).join('')
         : '<div class="sol-empty">No hay solicitudes activas.</div>'
+
+    if (canceladas.length) {
+        html += `<div class="sol-sep">Leads cancelados sfcom</div>`
+        html += canceladas.map(s => _renderItem(s, false)).join('')
+    }
 
     if (cerradas.length) {
         html += `<div class="sol-sep">Cerradas</div>`
@@ -397,7 +406,7 @@ function renderLista() {
 
     lista.querySelectorAll('.sol-item').forEach(el => {
         el.addEventListener('click', () => {
-            const sol = [...activas, ...cerradas].find(s => String(s.id) === el.dataset.id)
+            const sol = [...activas, ...canceladas, ...cerradas].find(s => String(s.id) === el.dataset.id)
             if (sol) mostrarDetalle(sol)
         })
     })
@@ -840,10 +849,11 @@ function mostrarDetalle(sol) {
         el.classList.toggle('active', el.dataset.id === String(sol.id))
     })
 
-    const detalle    = document.getElementById('sol-detalle')
-    const esSfcom    = _esSfcom(sol.source)
-    const esEmail    = sol.source === 'email'
-    const convStatus = sol.status || 'nueva'
+    const detalle     = document.getElementById('sol-detalle')
+    const esSfcom     = _esSfcom(sol.source)
+    const esCancelada = sol.status === 'cancelada_sfcom'
+    const esEmail     = sol.source === 'email'
+    const convStatus  = sol.status || 'nueva'
 
     const contactoTel   = sol.client_phone ? `<a href="tel:${sol.client_phone}">${sol.client_phone}</a>` : null
     const contactoEmail = sol.client_email ? `<a href="mailto:${sol.client_email}">${sol.client_email}</a>` : null
@@ -862,7 +872,7 @@ function mostrarDetalle(sol) {
 
     const urlReserva = `formulario.html?solicitud_id=${sol.id}`
 
-    const origenLabel = esSfcom ? '· <strong style="color:#dc2626">sfcom</strong>'
+    const origenLabel = (esSfcom || esCancelada) ? '· <strong style="color:#dc2626">sfcom</strong>'
                       : esEmail ? '· email'
                       : '· web'
 
@@ -924,7 +934,10 @@ function mostrarDetalle(sol) {
             ${!esSfcom ? _logSection(logItems) : ''}
 
             <div class="sol-acciones">
-                ${esSfcom
+                ${esCancelada
+                    ? `<button class="btn btn-primary" id="btnIntentarRecuperar" style="min-height:44px">🔄 Intentar recuperar</button>
+                       <button class="btn btn-secondary" id="btnMarcarNueva" style="min-height:40px">↩ Marcar como nueva</button>`
+                    : esSfcom
                     ? `<a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>`
                     : `<button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
                        <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>`
@@ -942,14 +955,16 @@ function mostrarDetalle(sol) {
         const borradorContainer = document.getElementById('sol-borrador-container')
         if (borradorContainer) {
             _renderBorrador(sol, borradorContainer)
-            _migrarConsultaAlLog(sol).then(() => {
-                const logArea = document.getElementById('sol-log-area')
-                if (logArea) {
-                    logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
-                    _initEditListeners(sol, logArea)
-                    setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
-                }
-            })
+            if (!esCancelada) {
+                _migrarConsultaAlLog(sol).then(() => {
+                    const logArea = document.getElementById('sol-log-area')
+                    if (logArea) {
+                        logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
+                        _initEditListeners(sol, logArea)
+                        setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
+                    }
+                })
+            }
         }
         const logArea = document.getElementById('sol-log-area')
         if (logArea) {
@@ -992,6 +1007,18 @@ function mostrarDetalle(sol) {
                 })
                 document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => abrirAsistenteRespuesta(sol))
             }
+        })
+    }
+
+    // ── Leads cancelados sfcom ────────────────────────────────────────────────
+    if (esCancelada) {
+        document.getElementById('btnIntentarRecuperar')?.addEventListener('click', () => {
+            abrirAsistenteRespuesta(sol, 'recuperar_sfcom')
+        })
+        document.getElementById('btnMarcarNueva')?.addEventListener('click', async () => {
+            const { error } = await supabase.from('reservation_requests').update({ status: 'nueva' }).eq('id', sol.id)
+            if (error) { console.error('Error marcando como nueva:', error); return }
+            await cargarSolicitudes()
         })
     }
 
@@ -1092,4 +1119,10 @@ function _calcularPrecioRef(sol) {
 
 document.getElementById('btnProcesarEmail').addEventListener('click', abrirProcesarEmail)
 
+// Importar cancelados de sfcom antes de cargar la lista para que aparezcan al abrir la página
+const _sfcomListings = await loadSfcomListings(supabase)
+const _sfcomResult   = await checkSfcomOrders(supabase).catch(() => ({ ok: false }))
+if (_sfcomResult.ok && _sfcomResult.cancelados?.length) {
+    await importarCanceladosSfcom(supabase, _sfcomListings, _sfcomResult.cancelados)
+}
 await cargarSolicitudes()

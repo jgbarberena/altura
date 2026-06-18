@@ -3,7 +3,7 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
-import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom } from './sfcom.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { initAsistente } from './asistente.js'
@@ -1091,7 +1091,19 @@ async function persistirHitosCliente(clienteId) {
 
     // Actualizar o insertar cada hito de memoria
     for (const h of hitosClienteTemp) {
-        if (h.invoice_number) continue  // facturado — no tocar nunca
+        if (h.invoice_number) {
+            // Facturado: actualizar solo el estado de cobro; nunca tocar importe ni campos de facturación.
+            // Sin este bloque, toggleCobroCliente actualizaría la UI pero el cambio nunca llegaría a Supabase.
+            if (!h.id) continue
+            const { data: updRows, error } = await supabase
+                .from('charges')
+                .update({ collected: h.collected ?? false, collected_date: h.collected_date ?? null })
+                .eq('id', h.id)
+                .select('id')
+            if (error) throw new Error(`Error al actualizar cobro facturado ${h.id}: ` + error.message)
+            if (!updRows || updRows.length === 0) throw new Error(`Sin permiso para modificar cobro ${h.id} (comprueba RLS en charges)`)
+            continue
+        }
 
         const payload = {
             client_id:      clienteId,
@@ -1105,9 +1117,10 @@ async function persistirHitosCliente(clienteId) {
 
         if (h.id) {
             // Hito existente no facturado — actualizar
-            const { error } = await supabase
-                .from('charges').update(payload).eq('id', h.id)
+            const { data: updRows, error } = await supabase
+                .from('charges').update(payload).eq('id', h.id).select('id')
             if (error) throw new Error(`Error al actualizar cobro ${h.id}: ` + error.message)
+            if (!updRows || updRows.length === 0) throw new Error(`Sin permiso para modificar cobro ${h.id} (comprueba RLS en charges)`)
         } else {
             // Hito nuevo — insertar y capturar el id devuelto
             const { data, error } = await supabase
@@ -1340,6 +1353,7 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', async 
 
     try {
         await persistirHitosCliente(clienteActual.id)
+        renderCobrosCliente()  // re-render para mostrar el botón Facturar, que requiere h.id asignado por el INSERT
     } catch (err) {
         // Revertir: eliminar el hito recién insertado de memoria
         hitosClienteTemp.splice(posInsercion, 1)
@@ -2192,6 +2206,7 @@ async function registrarPedidosSfcom(pedidos) {
     const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
 
     for (const pedido of nuevos) {
+
         if ((pedido.productos?.length ?? 0) > 1) {
             _mostrarModalAvisoSolicitud(
                 `El pedido <strong>${pedido.origin_ref}</strong> contiene ${pedido.productos.length} productos — ` +
@@ -2553,8 +2568,11 @@ async function _finalizarConversion() {
 // explican discrepancias de stock). Si se ejecutaran en paralelo, la verificación
 // podría reportar discrepancias reales que en realidad están explicadas por pedidos
 // que aún no se habían registrado.
-checkSfcomOrders(supabase, 90)
+checkSfcomOrders(supabase)
     .then(async resultado => {
+        if (resultado.ok && resultado.cancelados?.length) {
+            await importarCanceladosSfcom(supabase, sfcomListings, resultado.cancelados)
+        }
         if (resultado.ok && resultado.nuevos?.length) {
             await registrarPedidosSfcom(resultado.nuevos)
         } else {

@@ -775,9 +775,11 @@ Plan: revisar los modales del flujo sfcom en `formulario.js` bloque 0 e identifi
 
 ---
 
-**Cálculo de margen en panel.js incluye tipos de servicio sin actividad comercial relevante.**
+**✅ RESUELTO — Cálculo de margen en panel.js incluye tipos de servicio sin actividad comercial relevante.**
 
-Las tablas "Disponibilidad por evento" y "Disponibilidad por proveedor" del panel muestran filas para todos los `event_type`, incluidos `visita_guiada` y `otro`. Estos servicios tienen un modelo de negocio distinto (guías a precio fijo, sin margen de balcón) y distorsionan la lectura del margen global. Solo interesa ver el margen para balcones: `encierro`, `chupinazo`, `procesion`, `pobre_de_mi`, `despedida_gigantes`. Fix: en `calcularEventos()` de `panel.js`, filtrar `servicios` para excluir `event_type IN ('visita_guiada', 'otro')` antes de calcular filas y márgenes.
+Resuelto en jun 2026. Dos ajustes en `panel.js`:
+- **Tablas** (`calcularEventos`, `calcularProveedores`): tipos no-balcón (`visita_guiada`, `otro`) solo aparecen si tienen reservas activas o al menos un row con `billing_model = 'capacity'`. Balcones aparecen siempre (si tienen plazas).
+- **Sección potencial** (`calcularResumen`): `plazasLibres`, `costeAdicional`, `ingresoPotencial` y `margenNoCapturado` calculados solo sobre `TIPOS_BALCON = ['encierro', 'chupinazo', 'procesion', 'despedida_gigantes', 'pobre_de_mi']`. `precioMedioVenta` también filtrado a balcones confirmados.
 
 ---
 
@@ -793,11 +795,9 @@ Si hay que reasignar una venue a un proveedor diferente (p.ej. cambio de propiet
 
 ---
 
-**Tablas del panel de control no son navegables.**
+**✅ RESUELTO — Tablas del panel de control no son navegables.**
 
-En `panel.html`, las tablas de "Disponibilidad por evento" y "Disponibilidad por proveedor" no tienen interacción: hacer clic en una fila no hace nada. El comportamiento esperado: clic en una fila → selecciona ese evento/proveedor en el dropdown correspondiente y despliega el detalle. La navegación debería ser bidireccional (cambiar el dropdown también actualiza qué fila está marcada).
-
-Implementación: listener `click` en `<tr>` de cada tabla → actualizar el `<select>` → disparar el evento `change` del select (o llamar directamente a la función de render del detalle).
+Resuelto en jun 2026. `filaEvento` y `filaProveedor` en `panel.js` tienen ahora `onclick="_seleccionarEvento(id)"` / `onclick="_seleccionarProveedor(id)"` y `cursor:pointer`. Las funciones `window._seleccionarEvento` y `window._seleccionarProveedor` actualizan el `<select>` y llaman a `renderEventos`/`renderProveedores`. Segundo clic sobre la misma fila la deselecciona (vuelve a vista de todas las filas). Bidireccional: cambiar el dropdown también actualiza la vista (ya funcionaba via el `change` listener existente).
 
 ---
 
@@ -816,13 +816,15 @@ Opción preferida a analizar: (B) por ser no destructiva y eliminar el problema 
 
 ### 7.3 Funcionalidades pendientes
 
-**sfcom — leads de pedidos cancelados.**
+**sfcom — leads de pedidos cancelados.** ✅ Implementado jun 2026. Ver Fase 5 §9 para el detalle completo.
 
-`checkSfcomOrders` descarta los pedidos con `status === 'cancelled'`, pero son leads valiosos (el cliente intentó comprar). Plan acordado: importarlos como solicitudes con `source: 'sfcom_c:WEB026_1090'` (prefijo `sfcom_c:`). Esto hace que `_esSfcom()` devuelva `false` y reciban tratamiento completo de lead. El campo `comments` llevaría `"Pedido cancelado en tienda.sanfermin.com."`. La deduplicación existente en `registrarPedidosSfcom` cubre estos casos sin cambios de esquema.
+**Pendiente — dedup multi-venue/multi-día:** si un mismo cliente cancela el mismo encierro en venue A y venue B (o el mismo venue en días distintos), hoy se crean dos leads por separado. Plan: detectar en la importación y fusionar `proposal_draft` en la solicitud existente, o mostrar un aviso manual. No hay urgencia hasta que ocurra en producción.
 
-Cambios:
-- `sfcom.js` → `checkSfcomOrders`: segundo `.filter()` para `cancelled`; devolver `{ ok, nuevos, cancelados }`.
-- `formulario.js` → `registrarPedidosSfcom`: parámetro `cancelados = []`; deduplicación con `'sfcom_c:' + p.origin_ref`; INSERT con ese source y `price_per_slot: null`.
+**Pendiente — consolidar lógica de matching sfcom:** `importarCanceladosSfcom` en `sfcom.js` duplica el matching de producto de `registrarPedidosSfcom` en `formulario.js` (búsqueda por nombre, desambiguación por día, búsqueda por IDs). La diferencia real es el status, el tratamiento del lead y la ausencia de modales. Objetivo: extraer el matching a `_resolverProductoSfcom(li, sfcomListings)` → `{ serviceId, venueId, levelToSave }` y que ambas lo consuman.
+
+**Pendiente — `created_at` con fecha real del pedido para sfcom confirmados:** los cancelados ya usan `pedido.fecha` (`order.date_created`). Los confirmados (`registrarPedidosSfcom` en `formulario.js`) siguen usando la fecha de importación. Añadir `created_at: pedido.fecha || undefined` al INSERT de `registrarPedidosSfcom`.
+
+**Pendiente — fecha de solicitud en leads web:** las solicitudes que entran por el formulario web tienen `created_at = NOW()` (momento de inserción), no la fecha en que el cliente lo envió. Evaluar si el webhook/edge function puede pasar la fecha de envío, o si la diferencia es siempre despreciable.
 
 ---
 
@@ -1137,12 +1139,12 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | -1 | ✅ Completa | Auditoría completa de Supabase |
 | 0 | ✅ Completa | Auditorías sin código (deudas operativas sfcom son independientes, ver §0) |
 | 1 | ✅ Completa | Bugs simples (4 cambios quirúrgicos) |
-| 1b | 🔲 Pendiente | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
+| 1b | ✅ Completa | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
 | 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
 | 3 | 🔲 Pendiente | Esquema BD: cascada de borrados y renombrado de IDs |
 | 4 | 🔲 Pendiente | Sistema de borrador y asistente |
-| 5 | 🔲 Pendiente | Flujo sfcom: leads cancelados + modales |
-| 6 | 🔲 Pendiente | Panel: UX de navegación y edición |
+| 5 | 🟡 Parcial | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales 🔲 |
+| 6 | 🟡 Parcial | Panel: navegación tablas ✅ · image_url auto-fill 🔲 |
 | 7 | 🔲 Pendiente | Mejoras de propuestas |
 | 8 | 🔲 Pendiente | Facturación canal sfcom |
 | 9 | 🔲 Pendiente | Refactors y cierre |
@@ -1223,9 +1225,10 @@ Hallazgo colateral de la prueba: `proveedores.js` llama a `persistirPagosProveed
 
 Tres fixes en `panel.js` y `formulario.js` bloque 5. Independientes entre sí y de cualquier otra fase.
 
-1. **Cálculo de margen en `panel.js`** — en `calcularEventos()`, filtrar `servicios` para excluir `event_type IN ('visita_guiada', 'otro')` antes de calcular filas y márgenes. Una línea.
-2. **Bug cobro no guardado** — investigar el handler de "marcar cobrado" en bloque 5 de `formulario.js`: añadir log de error visible y verificar que el listener no desaparece por un re-render previo al clic.
-3. **Cobros facturados no editables** — en `formulario.js` bloque 5, cambiar el criterio de editabilidad de `invoice_number IS NULL` a `collected = false`. Añadir aviso visible de que la factura emitida ha quedado desfasada si se modifica el importe.
+1. ✅ **Cálculo de margen en `panel.js`** — tablas con filtro condicional (no-balcón solo si tienen reservas o billing capacity); sección potencial de `calcularResumen` acotada a `TIPOS_BALCON`.
+2. ✅ **Bug cobro no guardado** — root cause: `persistirHitosCliente` saltaba completamente los cobros con `invoice_number` (incluido el UPDATE de `collected`). Fix: para facturados no cobrados, se hace UPDATE parcial de `collected`/`collected_date`. También se añade `.select('id')` para detectar fallos silenciosos de RLS.
+3. ✅ **Botón "Facturar" no aparece** — se añade `renderCobrosCliente()` tras el INSERT en `btnGuardarNuevoCobro`, cuando ya se tiene el `h.id` asignado. (La deuda 7.1 describe esto como "Facturar button no aparece hasta recargar".)
+4. ✅ **Cobros facturados no editables** — resuelto como consecuencia directa del fix 2: `persistirHitosCliente` ya actualiza cobros facturados no cobrados en lugar de ignorarlos.
 
 ---
 
@@ -1271,12 +1274,18 @@ Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todo
 
 ---
 
-### Fase 5 — 🔲 Flujo sfcom: leads cancelados + reducción de modales
+### Fase 5 — 🟡 Flujo sfcom: leads cancelados + reducción de modales
 
-Ambos cambios tocan `sfcom.js` y bloque 0 de `formulario.js`.
-
-1. Leads cancelados: importar pedidos sfcom con `status='cancelled'` como solicitudes con `source: 'sfcom_c:WEB026_1090'`. Requiere segundo `.filter()` en `checkSfcomOrders` y caso adicional en `registrarPedidosSfcom`. Sin cambio de esquema.
-2. Reducción de modales: identificar pasos evitables cuando los datos son unívocos (cliente detectado, servicio inferido, un solo venue posible). No es rediseño, es saltarse pasos en el camino principal.
+1. ✅ **Leads cancelados sfcom** — implementación completa jun 2026:
+   - `checkSfcomOrders` (sfcom.js) devuelve `{ ok, nuevos, cancelados }` separados. El caller en `formulario.js` llama `importarCanceladosSfcom` para cancelados y `registrarPedidosSfcom` solo para nuevos.
+   - `importarCanceladosSfcom(supabase, sfcomListings, cancelados)` exportada desde `sfcom.js` — lógica compartida sin duplicar: matching silencioso de producto (nombre → día → IDs, sin modales en casos 2/3/4), dedup por cliente (email/teléfono/nombre) + service_id, INSERT con `status: 'cancelada_sfcom'`, `proposal_draft` pre-rellenado con `service_id + venue_id + day + price`, `conversation_notes` con nota inicial como `<Cliente>`, `created_at` con fecha real del pedido sfcom.
+   - `loadSfcomListings(supabase)` exportada desde `sfcom.js` — carga el mapeo WooCommerce→servicio/venue. Necesaria en las páginas que no son formulario.html.
+   - El check sfcom se ejecuta al inicio de **formulario.html**, **solicitudes.html** y **panel.html** (solo los dos últimos necesitan `loadSfcomListings`).
+   - `solicitudes.js`: sección "Leads cancelados sfcom" entre activas y cerradas; botones "🔄 Intentar recuperar" (→ asistente modo `recuperar_sfcom`) y "↩ Marcar como nueva"; badge ámbar `cancelada_sfcom`.
+   - `panel.js` / `panel.html`: nueva alerta `alerta-cancelados-sfcom` "N leads sfcom cancelados — posibles ventas a recuperar" con enlace a `solicitudes.html`.
+   - `asistente-config.js`: modo `recuperar_sfcom` — comprueba disponibilidad del venue/servicio cancelado, redacta email de recuperación, sugiere alternativas si no hay plaza, tono resolutivo sin mencionar "cancelado".
+   - **Supabase**: CHECK constraint `reservation_requests_status_check` ampliado para incluir `'cancelada_sfcom'`.
+2. 🔲 Reducción de modales: identificar pasos evitables cuando los datos son unívocos (cliente detectado, servicio inferido, un solo venue posible). No es rediseño, es saltarse pasos en el camino principal.
 
 ---
 

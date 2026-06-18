@@ -478,5 +478,6 @@
 }
 .sol-cargar-mas button:hover { background: var(--bg); }
 
+.sol-badge--cancelada_sfcom { background: #fef3c7; color: #92400e; }
 .sol-badge--convertida { background: #dcfce7; color: #166534; }
 .sol-badge--descartada { background: #f3f4f6; color: #6b7280; }

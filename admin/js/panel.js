@@ -3,12 +3,23 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
+import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
 
 // ===== DATOS =====
+
+// Importar cancelados sfcom antes de cargar datos para que las alertas estén actualizadas
+{
+    const _sfcomResult = await checkSfcomOrders(supabase).catch(() => ({ ok: false }))
+    if (_sfcomResult.ok && _sfcomResult.cancelados?.length) {
+        const _sfcomListings = await loadSfcomListings(supabase)
+        await importarCanceladosSfcom(supabase, _sfcomListings, _sfcomResult.cancelados)
+    }
+}
+
 const hoy = new Date().toISOString().split('T')[0]
 
 // Temporada = el año de julio al que pertenece esta campaña.
@@ -87,12 +98,20 @@ function calcularAlertas() {
     const solicitudesSfcom          = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source) && s.status === 'nueva')
     const solicitudesWebNuevas      = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'nueva')
     const solicitudesWebSeguimiento = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'seguimiento_pendiente')
+    const leadsCancelados           = solicitudesActivas.filter(s => s.status === 'cancelada_sfcom')
 
     const alertaSfcom = document.getElementById('alerta-sfcom')
     if (solicitudesSfcom.length > 0) {
         alertaSfcom.style.display = 'flex'
         document.getElementById('txt-sfcom').textContent =
             `${solicitudesSfcom.length} reserva(s) nueva(s) recibida(s) desde sfcom sin registrar`
+    }
+
+    const alertaCancelados = document.getElementById('alerta-cancelados-sfcom')
+    if (alertaCancelados && leadsCancelados.length > 0) {
+        alertaCancelados.style.display = 'flex'
+        document.getElementById('txt-cancelados-sfcom').textContent =
+            `${leadsCancelados.length} lead${leadsCancelados.length !== 1 ? 's' : ''} de sfcom cancelado${leadsCancelados.length !== 1 ? 's' : ''} — posibles ventas a recuperar`
     }
 
     const alertaSolicitudes = document.getElementById('alerta-solicitudes')
@@ -264,6 +283,10 @@ function _margenIndicador(ingreso, coste) {
 }
 
 // ===== BLOQUE 3: DISPONIBILIDAD POR EVENTO =====
+// Tipos "balcón": los únicos que tienen margen de reventa relevante.
+// visita_guiada y otro tienen un modelo de coste fijo distinto y se tratan aparte.
+const TIPOS_BALCON = ['encierro', 'chupinazo', 'procesion', 'despedida_gigantes', 'pobre_de_mi']
+
 let eventosFilas = []
 let sortEventosCol = null, sortEventosDir = 'asc'
 let _eventoFiltroActual = ''
@@ -296,7 +319,7 @@ function eventosDetSortKey(d, col) {
 
 function filaEvento(f, destacada) {
     const dotE = f.dot ? `<span style="color:${f.dot};font-size:10px;margin-right:4px">●</span>` : ''
-    return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
+    return `<tr style="${destacada ? 'background:var(--bg);font-weight:600;' : ''}cursor:pointer" onclick="_seleccionarEvento('${f.id}')">
         <td>${dotE}${f.id}</td>
         <td>${f.dia ?? '—'}</td>
         <td>${f.totalPlazas}</td>
@@ -350,7 +373,12 @@ function calcularEventos() {
         const totalPlazas = dispS.reduce((sum, d) => sum + (d.total_slots ?? 0), 0)
         if (totalPlazas === 0) return null
 
-        const reservasS   = reservas.filter(r => r.service_id === s.id && r.status !== 'Cancelada')
+        const reservasS = reservas.filter(r => r.service_id === s.id && r.status !== 'Cancelada')
+
+        // Tipos no-balcón solo aparecen si tienen reservas activas o al menos un row con billing capacity
+        if (!TIPOS_BALCON.includes(s.event_type)) {
+            if (!reservasS.length && !dispS.some(d => d.billing_model === 'capacity')) return null
+        }
         const confirmadas = reservasS.filter(r => r.status === 'Confirmada').reduce((sum, r) => sum + r.slots, 0)
         const pendientes  = reservasS.filter(r => r.status === 'Pendiente').reduce((sum, r) => sum + r.slots, 0)
         const libres      = totalPlazas - confirmadas - pendientes
@@ -395,6 +423,15 @@ function calcularEventos() {
     })
 }
 
+// Clic en fila de evento: selecciona en el selector y muestra el detalle. Segundo clic deselecciona.
+window._seleccionarEvento = function(id) {
+    const selector = document.getElementById('selector-evento')
+    const nuevo = selector.value === id ? '' : id
+    selector.value = nuevo
+    sortEventosCol = null; sortEventosDir = 'asc'
+    renderEventos(nuevo)
+}
+
 // ===== BLOQUE 4: DISPONIBILIDAD POR PROVEEDOR =====
 let provFilas = []
 let sortProvCol = null, sortProvDir = 'asc'
@@ -426,7 +463,7 @@ function provDetSortKey(d, col) {
 
 function filaProveedor(f, destacada) {
     const dotP = f.dot ? `<span style="color:${f.dot};font-size:10px;margin-right:4px">●</span>` : ''
-    return `<tr style="${destacada ? 'background:var(--bg);font-weight:600' : ''}">
+    return `<tr style="${destacada ? 'background:var(--bg);font-weight:600;' : ''}cursor:pointer" onclick="_seleccionarProveedor('${f.id}')">
         <td>${dotP}${f.id}</td>
         <td>${f.capacidad}</td>
         <td class="ok">${f.confirmadas}</td>
@@ -481,7 +518,12 @@ function calcularProveedores() {
         const capacidad = dispP.reduce((sum, d) => sum + (d.total_slots ?? 0), 0)
         if (capacidad === 0) return null
 
-        const reservasP   = reservas.filter(r => r.venue_id === venueId && r.status !== 'Cancelada')
+        const reservasP = reservas.filter(r => r.venue_id === venueId && r.status !== 'Cancelada')
+
+        // Venues de tipos no-balcón solo aparecen si tienen reservas activas o billing capacity
+        const esBalcon = dispP.some(d => TIPOS_BALCON.includes(servicios.find(s => s.id === d.service_id)?.event_type))
+        if (!esBalcon && !reservasP.length && !dispP.some(d => d.billing_model === 'capacity')) return null
+
         const confirmadas = reservasP.filter(r => r.status === 'Confirmada').reduce((sum, r) => sum + r.slots, 0)
         const pendientes  = reservasP.filter(r => r.status === 'Pendiente').reduce((sum, r) => sum + r.slots, 0)
         const libres      = capacidad - confirmadas - pendientes
@@ -528,6 +570,15 @@ function calcularProveedores() {
     })
 }
 
+// Clic en fila de proveedor: selecciona en el selector y muestra el detalle. Segundo clic deselecciona.
+window._seleccionarProveedor = function(id) {
+    const selector = document.getElementById('selector-proveedor')
+    const nuevo = selector.value === id ? '' : id
+    selector.value = nuevo
+    sortProvCol = null; sortProvDir = 'asc'
+    renderProveedores(nuevo)
+}
+
 // ===== BLOQUE 5: RESUMEN DE NEGOCIO =====
 function calcularResumen() {
     const confirmadas   = reservas.filter(r => r.status === 'Confirmada')
@@ -559,11 +610,19 @@ function calcularResumen() {
     }
 
     // ===== FILA POTENCIAL =====
-    const precioMedioVenta = plazasConf > 0 ? ingresos / plazasConf : 0
+    // Solo tipos balcón: visita_guiada y otro tienen modelo de coste fijo
+    // y distorsionarían el precio medio de venta y el margen potencial.
+    const svcMap = new Map(servicios.map(s => [s.id, s]))
+    const dispBalcon        = disponibilidad.filter(d => TIPOS_BALCON.includes(svcMap.get(d.service_id)?.event_type))
+    const confirmadasBalcon = confirmadas.filter(r => TIPOS_BALCON.includes(svcMap.get(r.service_id)?.event_type))
+    const plazasConfBalcon  = confirmadasBalcon.reduce((s, r) => s + r.slots, 0)
+    const ingresosBalcon    = confirmadasBalcon.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+
+    const precioMedioVenta = plazasConfBalcon > 0 ? ingresosBalcon / plazasConfBalcon : 0
     const margenPorPlaza   = plazasConf > 0 ? margen / plazasConf : 0
 
-    // Plazas libres totales (sin canceladas)
-    const plazasLibres = disponibilidad.reduce((s, d) => {
+    // Plazas libres: solo balcones
+    const plazasLibres = dispBalcon.reduce((s, d) => {
         const reservadas = reservas.filter(r =>
             r.venue_id   === d.venue_id   &&
             r.service_id === d.service_id &&
@@ -572,8 +631,8 @@ function calcularResumen() {
         return s + Math.max(0, (d.total_slots ?? 0) - reservadas)
     }, 0)
 
-    // Coste adicional: solo plazas libres en proveedores consumption
-    const costeAdicional = disponibilidad
+    // Coste adicional: plazas libres en balcones con billing consumption
+    const costeAdicional = dispBalcon
         .filter(d => d.billing_model === 'consumption')
         .reduce((s, d) => {
             const reservadas = reservas.filter(r =>

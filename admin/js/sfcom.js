@@ -199,40 +199,48 @@ export async function checkSfcomOrders(supabase) {
 
     const refsRegistradas = new Set((reservasConRef ?? []).map(r => r.origin_ref))
 
-    const nuevos = sfcomOrders
-        .filter(order => {
-            // 1. Comprobamos si ya lo tenemos registrado
-            const yaExiste = refsRegistradas.has(`${order.number}_${order.id}`);
-            
-            // 2. Comprobamos el estado (WooCommerce suele usar 'completed')
-            // Si el estado NO es 'completed', lo descartamos (false)
-            const esCompletado = order.status === 'completed';
-            
-            return !yaExiste && esCompletado;
-        })
-        .map(order => ({
-            origin_ref: `${order.number}_${order.id}`,
-            sfcom_id:        order.id,
-            sfcom_number:    order.number,
-            fecha:           order.date_created,
-            total:           order.total,
-            cliente: {
-                nombre:      `${order.billing?.first_name ?? ''} ${order.billing?.last_name ?? ''}`.trim(),
-                email:       order.billing?.email    ?? '',
-                telefono:    order.billing?.phone    ?? '',
-                direccion:   [order.billing?.address_1, order.billing?.address_2, order.billing?.city, order.billing?.country].filter(Boolean).join(', ') || null,
-                comentarios: order.customer_note     || null
-            },
-            productos: (order.line_items ?? []).map(li => ({
-                nombre:       (li.name ?? '').replace(/<[^>]*>/g, '').trim(),
-                product_id:   li.product_id,
-                variation_id: li.variation_id || null,
-                cantidad:     li.quantity,
-                precio:       li.total
-            }))
+    const _mapOrder = order => ({
+        sfcom_id:        order.id,
+        sfcom_number:    order.number,
+        fecha:           order.date_created,
+        total:           order.total,
+        cliente: {
+            nombre:      `${order.billing?.first_name ?? ''} ${order.billing?.last_name ?? ''}`.trim(),
+            email:       order.billing?.email    ?? '',
+            telefono:    order.billing?.phone    ?? '',
+            direccion:   [order.billing?.address_1, order.billing?.address_2, order.billing?.city, order.billing?.country].filter(Boolean).join(', ') || null,
+            comentarios: order.customer_note     || null
+        },
+        productos: (order.line_items ?? []).map(li => ({
+            nombre:       (li.name ?? '').replace(/<[^>]*>/g, '').trim(),
+            product_id:   li.product_id,
+            variation_id: li.variation_id || null,
+            cantidad:     li.quantity,
+            precio:       li.total
         }))
+    })
 
-    return { ok: true, nuevos }
+    const nuevos = sfcomOrders
+        .filter(order => !refsRegistradas.has(`${order.number}_${order.id}`) && order.status === 'completed')
+        .map(order => ({ origin_ref: `${order.number}_${order.id}`, ..._mapOrder(order) }))
+
+    // Pedidos cancelados: se importan como solicitudes con prefijo sfcom_c: para distinguirlos.
+    // Comprobamos contra reservation_requests.source (nunca pasan a reservations).
+    const { data: canceladosExistentes } = await supabase
+        .from('reservation_requests')
+        .select('source')
+        .like('source', 'sfcom_c:%')
+
+    const canceladosRegistrados = new Set((canceladosExistentes ?? []).map(r => r.source))
+
+    const cancelados = sfcomOrders
+        .filter(order => {
+            const ref = `sfcom_c:${order.number}_${order.id}`
+            return !canceladosRegistrados.has(ref) && order.status === 'cancelled'
+        })
+        .map(order => ({ origin_ref: `sfcom_c:${order.number}_${order.id}`, cancelled: true, ..._mapOrder(order) }))
+
+    return { ok: true, nuevos, cancelados }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1273,4 +1281,132 @@ export function mostrarModalCorreoHilario(nombreProducto, variaciones, proveedor
         panel.querySelector('#sfcom-correo-cerrar').addEventListener('click',   () => { overlay.remove(); resolve('closed') })
     }
     }) // end Promise
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helpers compartidos para importar cancelados sfcom desde cualquier página
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function loadSfcomListings(supabase) {
+    const { data } = await supabase.from('sfcom_listings')
+        .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id)')
+    return (data ?? []).map(r => ({
+        id:                 r.availability_id,
+        sfcom_service_name: r.sfcom_service_name,
+        sfcom_product_id:   r.sfcom_product_id,
+        sfcom_variation_id: r.sfcom_variation_id,
+        venue_id:           r.availability?.venue_id,
+        service_id:         r.availability?.service_id
+    })).filter(r => r.venue_id)
+}
+
+// Registra pedidos cancelados de sfcom como leads cancelada_sfcom.
+// Matching silencioso (sin modales), dedup por cliente+servicio.
+export async function importarCanceladosSfcom(supabase, sfcomListings, cancelados) {
+    if (!cancelados?.length) return
+
+    const { data: existentes } = await supabase
+        .from('reservation_requests')
+        .select('source')
+        .not('source', 'is', null)
+    const sourcesRegistrados = new Set((existentes ?? []).map(r => r.source))
+
+    const pedidos = cancelados.filter(p => !sourcesRegistrados.has(p.origin_ref))
+    if (!pedidos.length) return
+
+    const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
+
+    for (const pedido of pedidos) {
+        const li = pedido.productos?.[0]
+
+        let serviceId   = null
+        let venueId     = null
+        let levelToSave = li?.nombre ?? null
+
+        if (li) {
+            const nombreExtraido = extraerNombreProducto(li.nombre, nombresConocidos)
+            let filaByName = null
+            if (nombreExtraido) {
+                const candidatos = sfcomListings.filter(d => d.sfcom_service_name === nombreExtraido)
+                if (candidatos.length === 1) {
+                    filaByName = candidatos[0]
+                } else if (candidatos.length > 1) {
+                    const diaExtraid = extraerDia(li.nombre)
+                    filaByName = diaExtraid !== null
+                        ? (candidatos.find(c => { const m = /^ENCIERRO_(\d+)$/.exec(c.service_id); return m ? parseInt(m[1]) === diaExtraid : false }) ?? candidatos[0])
+                        : candidatos[0]
+                }
+            }
+            const filaById = sfcomListings.find(d =>
+                d.sfcom_product_id == li.product_id &&
+                (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
+            )
+            const filaResolved = filaByName ?? filaById ?? null
+            if (filaResolved) {
+                serviceId = filaResolved.service_id
+                venueId   = filaResolved.venue_id ?? null
+            }
+            levelToSave = nombreExtraido || li.nombre || null
+        }
+
+        if (serviceId) {
+            const { data: existsCheck } = await supabase
+                .from('reservation_requests')
+                .select('client_email, client_phone, client_name')
+                .eq('service_id', serviceId)
+                .eq('status', 'cancelada_sfcom')
+            const email  = (pedido.cliente.email   || '').toLowerCase()
+            const phone  = pedido.cliente.telefono || ''
+            const nombre = pedido.cliente.nombre   || ''
+            const esDupe = (existsCheck ?? []).some(r =>
+                (email  && r.client_email?.toLowerCase() === email)  ||
+                (phone  && r.client_phone               === phone)   ||
+                (nombre && r.client_name                === nombre)
+            )
+            if (esDupe) {
+                console.log(`[sfcom_c] Dedup: ${pedido.origin_ref} omitido (mismo cliente + servicio ${serviceId})`)
+                continue
+            }
+        }
+
+        const totalBruto      = parseFloat(pedido.total ?? 0)
+        const slots           = li?.cantidad ?? 1
+        const precioSlotBruto = slots > 0 ? totalBruto / slots : totalBruto
+        const hoy = new Date()
+        const dd  = String(hoy.getDate()).padStart(2, '0')
+        const mm  = String(hoy.getMonth() + 1).padStart(2, '0')
+        const yy  = String(hoy.getFullYear()).slice(-2)
+        const detalleProd = [
+            levelToSave         && `Producto: ${levelToSave}`,
+                                   `Personas: ${slots}`,
+            precioSlotBruto > 0 && `Precio: ${Math.round(precioSlotBruto)}€/p`
+        ].filter(Boolean).join(' · ')
+
+        const dia = li ? extraerDia(li.nombre) : null
+        const proposal_draft = (serviceId || venueId) ? [{
+            service_id: serviceId,
+            venue_id:   venueId,
+            day:        dia,
+            slots:      slots || null,
+            price:      precioSlotBruto || null
+        }] : null
+
+        const { error } = await supabase.from('reservation_requests').insert({
+            client_name:        pedido.cliente.nombre    || 'Sin nombre',
+            client_email:       pedido.cliente.email     || null,
+            client_phone:       pedido.cliente.telefono  || null,
+            client_address:     pedido.cliente.direccion || null,
+            slots,
+            day:                dia,
+            level:              levelToSave,
+            service_id:         serviceId,
+            price_per_slot:     precioSlotBruto,
+            proposal_draft,
+            created_at:         pedido.fecha || undefined,
+            conversation_notes: `---${dd}/${mm}/${yy}---\n<Cliente>\n[Sfcom cancelado] ${detalleProd}`,
+            source:             pedido.origin_ref,
+            status:             'cancelada_sfcom'
+        })
+        if (error) console.error('[sfcom_c] Error registrando:', error.message, pedido.origin_ref)
+    }
 }
