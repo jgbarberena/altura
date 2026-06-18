@@ -846,6 +846,81 @@ Actualmente `tablas.js` es solo lectura con algunas acciones puntuales. Objetivo
 
 ---
 
+**Notas de sesión para el asistente (`session_context`) — diseño completo, listo para implementar.**
+
+Paula puede editar un texto libre desde `solicitudes.html` que se envía a Claude en cada llamada al asistente como bloque de contexto adicional con caché independiente. El histórico de cambios se preserva en Supabase.
+
+**1. Tabla `session_context` en Supabase**
+
+```sql
+CREATE TABLE session_context (
+  id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  texto      text        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
+Sin upsert, sin fila única. Cada cambio de Paula es un INSERT. Para leer el valor actual: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1`. Preserva histórico completo para revisión futura.
+
+Crear en SQL Editor de Supabase. Verificar que el rol `authenticated` tiene permisos de `SELECT` e `INSERT` — puede requerir `GRANT` explícito dependiendo de la configuración RLS del proyecto (revisar si está habilitado RLS en la tabla y crear políticas, o simplemente hacer `GRANT SELECT, INSERT ON session_context TO authenticated`).
+
+**2. UI en `solicitudes.html` / `solicitudes.js`**
+
+Añadir un `<textarea>` visible siempre en `solicitudes.html`, en la zona superior de la página, antes del listado de solicitudes. Debe ser discreto visualmente (no protagonista), con una etiqueta clara tipo "Notas para el asistente". Seguir las convenciones CSS del proyecto: clases existentes, sin estilos inline salvo puntuales, sin bloques `<style>` en el HTML.
+
+Comportamiento en `solicitudes.js`:
+- Al cargar la página: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1` y rellenar el textarea.
+- Al perder el foco (`blur`) sobre el textarea: si el contenido ha cambiado respecto al valor cargado, hacer `INSERT INTO session_context (texto) VALUES (...)`. Mostrar feedback visual mínimo (indicador de estado: "guardando..." / "guardado") usando el sistema de toasts o el patrón ya existente en el proyecto para esto.
+- El texto leído debe quedar accesible para que `asistente.js` pueda consumirlo en cada llamada. La forma concreta depende de cómo estén comunicados actualmente `solicitudes.js` y `asistente.js` — puede ser una variable exportada, un getter, o un parámetro adicional en la función de inicialización del asistente. Revisar el código actual y elegir la forma más coherente con los patrones existentes.
+
+**3. Integración en `asistente.js`**
+
+El system prompt se pasa a `claude-proxy` como array de bloques (formato que admite la API de Anthropic), no como string plano. Verificar si `claude-proxy` ya admite `system` como array o solo como string — si solo admite string, actualizar la Edge Function para que funcione con array (simplemente pasar `body.system` tal cual a la API de Anthropic sin asumir que es string).
+
+La llamada debe quedar así:
+
+```javascript
+system: [
+  {
+    type: 'text',
+    text: SYSTEM_PROMPT_ASISTENTE,
+    cache_control: { type: 'ephemeral' }
+  },
+  {
+    type: 'text',
+    text: `CONTEXTO DE SESIÓN (notas de Paula):\n${notasSesion}`,
+    cache_control: { type: 'ephemeral' }
+  }
+]
+```
+
+El segundo bloque solo se incluye si `notasSesion` tiene contenido (no vacío, no solo espacios). Si está vacío, `system` es solo el primer bloque (sin cambios respecto al comportamiento actual).
+
+El segundo bloque tiene su propio `cache_control: ephemeral`, independiente del primero. Cuando Paula no cambia las notas, ambos bloques se cachean y se pagan al 10%. Cuando cambia las notas, solo el segundo bloque se invalida; el primero sigue cacheado.
+
+**4. `cache_control` en mensajes para conversaciones largas**
+
+En cada llamada a Claude, el penúltimo mensaje del array (el último intercambio completo antes del mensaje nuevo) debe llevar `cache_control: { type: 'ephemeral' }`. Esto permite que Anthropic cachee el historial acumulado y no lo cobre al 100% en cada turno. Solo tiene efecto real cuando la conversación supera ~1.024 tokens (mínimo facturable por bloque cacheado en Sonnet), pero implementarlo tiene coste de desarrollo mínimo y funcionará automáticamente cuando sea relevante.
+
+Implementación: al construir el array `messages` antes de invocar `claude-proxy`, añadir `cache_control` al `content` del mensaje en posición `messages.length - 2` (el último mensaje completo, no el que se acaba de añadir). Revisar si `content` es string o array de bloques en el código actual, y adaptar al formato que acepta la API (si es string, convertirlo a `[{ type: 'text', text: ..., cache_control: { type: 'ephemeral' } }]`).
+
+**5. Verificaciones antes de implementar**
+
+- Comprobar que `claude-proxy` (Edge Function en Supabase) pasa `system` a la API de Anthropic tal como lo recibe, sin asumir que es string. Si hace `body.system` esperando string, hay que actualizarlo para que acepte también array.
+- Comprobar los permisos RLS de `session_context` tras crearla.
+- Verificar el patrón de comunicación entre `solicitudes.js` y `asistente.js` para pasar las notas de sesión sin romper la interfaz actual.
+
+**6. Lo que no debe cambiar**
+
+- El comportamiento actual del asistente en todos los demás aspectos.
+- La estructura de `SYSTEM_PROMPT_ASISTENTE` en `asistente-config.js`.
+- El sistema de persistencia de conversación en `sessionStorage` si ya está implementado.
+- Las convenciones del proyecto: sin código duplicado, sin estilos inline innecesarios, sin lógica en la BD que deba estar en JS.
+
+Esta feature va en **Fase 4** (ver sección 9).
+
+---
+
 ### 7.4 Auditorías pendientes (investigar primero, luego decidir)
 
 **Bloqueos y residuos en el ciclo de facturación/cobros/pagos.**
@@ -1130,6 +1205,7 @@ Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todo
 4. 🔲 Unificar formato de `service_name` al construir líneas del borrador (solicitudes.js y formulario.js).
 5. 🔲 Bug `_onBorradorActualizado`: emparejar por `service_id + venue_id` y preservar `estado` antes de sobreescribir.
 6. 🔲 Actualizar `SYSTEM_PROMPT_ASISTENTE`: explicar qué significa cada valor de `estado` (`'pendiente'`, `'hecha'`, `'descartada'`). Valorar filtrar `'descartada'` del contexto.
+7. 🔲 **Notas de sesión (`session_context`)** — nueva tabla Supabase + textarea en `solicitudes.html` + segundo bloque de system prompt con `cache_control` propio + `cache_control` en el penúltimo mensaje del historial. Diseño completo en sección 7.3. Requiere verificar si `claude-proxy` ya admite `system` como array antes de tocar `asistente.js`.
 
 ---
 
