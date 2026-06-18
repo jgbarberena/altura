@@ -814,6 +814,26 @@ Opción preferida a analizar: (B) por ser no destructiva y eliminar el problema 
 
 ---
 
+**No hay UI de envío unificada: propuestas, facturas y asistente funcionan de forma diferente.**
+
+Cada contexto implementa el envío de forma distinta y con limitaciones:
+
+- `asistente.js`: tiene botones de email y WhatsApp (condicionales al dato disponible) más un botón "Copiar". Pero "Copiar" llama internamente a `_alEnviar()` además de copiar; no existe una opción de copiar/descargar sin disparar nada; y no hay foco automático en el botón más relevante según el contacto.
+- `propuesta.js`: al generar la propuesta llama automáticamente a `_abrirMailto()`. Sin opción de WhatsApp, sin descarga silenciosa.
+- `factura.js`: mismo patrón: `abrirMailto()` inmediato, sin WhatsApp, sin descarga silenciosa.
+
+Comportamiento objetivo en cualquier contexto de envío (propuesta, factura, confirmación de reserva, mensaje del asistente):
+
+1. 💬 WhatsApp — abre `wa.me` con el mensaje. Solo visible si hay teléfono disponible.
+2. ✉️ Email — abre `mailto:` con asunto y cuerpo. Solo visible si hay email disponible.
+3. 📋 Copiar / 📥 Descargar — copia texto al portapapeles (mensajes) o descarga el PDF (documentos), sin abrir ningún canal externo.
+
+La opción con foco por defecto sigue esta prioridad: WhatsApp si hay teléfono → email si solo hay email → copiar/descargar si no hay ninguno de los dos. Opciones sin datos de contacto no aparecen.
+
+Fix: extraer una función utilitaria `mostrarOpcionesEnvio({ telefono, email, texto, pdfPath })` en `utils.js` (o un nuevo `envio.js` si la lógica crece) que renderice el conjunto de botones y pueda ser llamada desde `asistente.js`, `propuesta.js`, `factura.js` y `formulario.js`. El botón "Copiar" del asistente deja de llamar a `_alEnviar()` como efecto secundario. Esta deuda va en **Fase 2** como paso previo al botón de confirmación, para que la confirmación use ya la UI unificada.
+
+---
+
 ### 7.3 Funcionalidades pendientes
 
 **sfcom — leads de pedidos cancelados.** ✅ Implementado jun 2026. Ver Fase 5 §9 para el detalle completo.
@@ -1237,10 +1257,11 @@ Tres fixes en `panel.js` y `formulario.js` bloque 5. Independientes entre sí y 
 Objetivo: que Paula pueda enviar confirmaciones e instrucciones a clientes con reserva desde la ficha de reserva en `formulario.js`. Sin dependencias de esquema ni de borrador.
 
 Alcance MVP (sin Resend automático todavía):
+0. **UI de envío unificada (nueva deuda §7.2):** extraer `mostrarOpcionesEnvio()` en `utils.js` y aplicarla en `asistente.js`, `propuesta.js` y `factura.js`. La nueva confirmación (paso 1) usará ya la UI unificada. Foco automático: WhatsApp > email > copiar.
 1. Botón "Enviar confirmación" en la ficha de reserva de `formulario.js` (sección de acciones del cliente o pie del formulario).
 2. El botón llama a `abrirAsistenteRespuesta(reserva, 'confirmacion')`.
 3. En `asistente-config.js`, añadir instrucciones para modo `'confirmacion'`: el asistente redacta mensaje con fecha, venue, personas, acceso (`availability.access_instructions` si existe) e instrucciones prácticas del evento.
-4. El envío es manual (WhatsApp + copy, igual que ya funciona para solicitudes). Resend automático se evalúa como mejora posterior.
+4. El envío usa la UI unificada del paso 0. Resend automático se evalúa como mejora posterior.
 
 Nota: para reservas sfcom, incluir referencia al pedido original si está disponible en `origin_ref`.
 
