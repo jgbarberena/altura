@@ -1041,14 +1041,22 @@ function mostrarDetalle(sol) {
 }
 
 function _inferirServiceIds(level) {
+    if (!level) return []
+    const partes = level.toLowerCase().split('-')
+    const hint = partes.includes('encierro')  ? 'encierro'
+               : partes.includes('chupinazo') ? 'chupinazo'
+               : partes.includes('procesion') ? 'procesion'
+               : partes.includes('gigantes')  ? 'gigantes'
+               : partes.includes('pobre')     ? 'pobre_de_mi'
+               : level
     const FIJOS = {
         chupinazo:   ['CHUPINAZO_6'],
         procesion:   ['PROCESION_7'],
         gigantes:    ['DESPEDIDA_GIGANTES_14'],
         pobre_de_mi: ['POBRE_DE_MI']
     }
-    if (FIJOS[level]) return FIJOS[level]
-    if (level === 'encierro') return [7, 8, 9, 10, 11, 12, 13, 14].map(d => `ENCIERRO_${d}`)
+    if (FIJOS[hint]) return FIJOS[hint]
+    if (hint === 'encierro') return [7, 8, 9, 10, 11, 12, 13, 14].map(d => `ENCIERRO_${d}`)
     return []
 }
 

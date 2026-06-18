@@ -35,14 +35,22 @@ function parsearMetaComments(comments) {
 
 function expandirServiceIds(serviceHint, day, meta) {
     if (!serviceHint) return []
+    // Normaliza slugs web/sfcom ('vivir-el-chupinazo', 'ver-el-encierro') al keyword corto
+    const partes = serviceHint.toLowerCase().split('-')
+    const hint = partes.includes('encierro')  ? 'encierro'
+               : partes.includes('chupinazo') ? 'chupinazo'
+               : partes.includes('procesion') ? 'procesion'
+               : partes.includes('gigantes')  ? 'gigantes'
+               : partes.includes('pobre')     ? 'pobre_de_mi'
+               : serviceHint
     const FIJOS = {
         chupinazo:   ['CHUPINAZO_6'],
         procesion:   ['PROCESION_7'],
         gigantes:    ['DESPEDIDA_GIGANTES_14'],
         pobre_de_mi: ['POBRE_DE_MI']
     }
-    if (FIJOS[serviceHint]) return FIJOS[serviceHint]
-    if (serviceHint !== 'encierro') return []
+    if (FIJOS[hint]) return FIJOS[hint]
+    if (hint !== 'encierro') return []
     const todosDias = [7, 8, 9, 10, 11, 12, 13, 14]
     if (meta.flexible || (!meta.dias && !day)) return todosDias.map(d => `ENCIERRO_${d}`)
     const dias = meta.dias?.length ? meta.dias : (day ? [day] : todosDias)

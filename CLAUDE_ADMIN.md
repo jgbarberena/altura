@@ -660,9 +660,11 @@ Las deudas están organizadas por tipo de impacto. Los bugs (7.1) son los único
 
 ### 7.1 Bugs — producen comportamiento incorrecto ahora mismo
 
-**Asistente recibe lista de disponibilidad vacía.**
+**✅ RESUELTO — Asistente recibía lista de disponibilidad vacía en solicitudes web y sfcom.**
 
-El asistente arranca sin saber qué hay disponible para ofrecer. El contexto que se le pasa no incluye los datos de `availability_panel` (o llega vacío). Resultado: cuando Paula le pide que proponga opciones, no puede hacerlo. Pendiente localizar en `asistente-config.js` qué query falla o qué condición impide que los datos lleguen al system prompt.
+Causa raíz: `expandirServiceIds` en `asistente.js` hacía matching exacto contra `'chupinazo'`, `'encierro'`, etc., pero las solicitudes web y sfcom guardan `level` como slug completo (`'vivir-el-chupinazo'`, `'ver-el-encierro'`). El match fallaba → `serviceIds = []` → `disponibilidadParaAsistente` devolvía `[]` inmediatamente. Solo funcionaba para solicitudes de email (donde Claude parsea el nivel en formato corto).
+
+Fix (jun 2026): añadido paso de normalización `split('-')` al inicio de `expandirServiceIds`, igual que el fix aplicado días antes a `_preFillBorradorSiVacio` y `_inferirServiceId`. También corregido `_inferirServiceIds` en `solicitudes.js` (mismo patrón, afectaba solo a `_calcularPrecioRef`).
 
 ---
 
@@ -1045,12 +1047,12 @@ Decidir por cada FK si conviene CASCADE (limpieza automática) o NO ACTION (el J
 
 Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todos tocan `solicitudes.js`, `formulario.js` o `asistente-config.js`. Orden interno:
 
-1. **Bug asistente: disponibilidad vacía** — localizar por qué el system prompt no recibe datos de `availability_panel` y corregir la query o el ensamblado del contexto en `asistente-config.js`.
-2. **Mejora asistente: venue en lugar de balcón** — usar `venues.display_name` como referencia principal en la sección de disponibilidad del system prompt.
-3. **Mejora asistente: precios siempre por persona** — añadir instrucción explícita en `SYSTEM_PROMPT_ASISTENTE`.
-4. Unificar formato de `service_name` al construir líneas del borrador (solicitudes.js y formulario.js).
-5. Bug `_onBorradorActualizado`: emparejar por `service_id + venue_id` y preservar `estado` antes de sobreescribir.
-6. Actualizar `SYSTEM_PROMPT_ASISTENTE`: explicar qué significa cada valor de `estado` (`'pendiente'`, `'hecha'`, `'descartada'`). Valorar filtrar `'descartada'` del contexto.
+1. ✅ **Bug asistente: disponibilidad vacía** — `expandirServiceIds` en `asistente.js` normaliza ahora slugs con `split('-')`. También corregido `_inferirServiceIds` en `solicitudes.js`.
+2. 🔲 **Mejora asistente: venue en lugar de balcón** — pendiente de verificar qué muestra el asistente con el bug 1 ya corregido antes de decidir si hay algo más que cambiar.
+3. ✅ **Mejora asistente: precios siempre por persona** — añadida instrucción explícita en `SYSTEM_PROMPT_ASISTENTE` en la sección de reglas de precio y en el bloque PRECIOS del mensaje al cliente.
+4. 🔲 Unificar formato de `service_name` al construir líneas del borrador (solicitudes.js y formulario.js).
+5. 🔲 Bug `_onBorradorActualizado`: emparejar por `service_id + venue_id` y preservar `estado` antes de sobreescribir.
+6. 🔲 Actualizar `SYSTEM_PROMPT_ASISTENTE`: explicar qué significa cada valor de `estado` (`'pendiente'`, `'hecha'`, `'descartada'`). Valorar filtrar `'descartada'` del contexto.
 
 ---
 
