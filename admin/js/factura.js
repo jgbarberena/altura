@@ -54,7 +54,6 @@ export function initFacturacion(supabaseClient) {
 
     document.getElementById('btnCerrarFactura').addEventListener('click', cerrarPanel)
     document.getElementById('btnCancelarFactura').addEventListener('click', cerrarPanel)
-    document.getElementById('btnEmitirFactura').addEventListener('click', emitirFactura)
 
     // Cerrar al pulsar en el backdrop (fuera del contenido del dialog)
     dialog.addEventListener('click', e => {
@@ -78,6 +77,19 @@ export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
     _numFacturaSig = await calcularSiguienteNumero()
     renderPanelFactura()
     abrirPanel()
+
+    const base       = parseFloat(_hitoActual.amount)
+    const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
+    const nombre     = _cliente.company ?? _cliente.name ?? _cliente.id
+    mostrarOpcionesEnvio({
+        tipo:      'pdf',
+        email:     _cliente.email ?? null,
+        telefono:  _cliente.phone ?? null,
+        asunto:    FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')),
+        getTexto:  () => FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)),
+        onGenerar: _emitir,
+        container: document.getElementById('factura-botones-envio')
+    })
 }
 
 // ===== CÁLCULO DEL SIGUIENTE NÚMERO DE FACTURA =====
@@ -322,8 +334,8 @@ function buildLiquidacion() {
     </div>`
 }
 
-// ===== EMISIÓN =====
-async function emitirFactura() {
+// ===== EMISIÓN: GENERA PDF, SUBE A STORAGE Y MARCA EL HITO COMO FACTURADO =====
+async function _emitir() {
     const preview  = document.getElementById('factura-preview')
     const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
     const nifEdit  = preview.querySelector('[data-field="nif"]')?.textContent?.trim()
@@ -342,11 +354,8 @@ async function emitirFactura() {
     }
 
     const hoy = new Date().toISOString().split('T')[0]
-
-    // Generar PDF: descarga al navegador y obtiene el blob para subir a Storage
     const pdfResult = await generarPDF()
 
-    // Subir a Supabase Storage (no bloquea si falla)
     let invoicePath = null
     if (pdfResult?.blob) {
         const { data: uploadData, error: errUpload } = await _supabase.storage
@@ -359,7 +368,6 @@ async function emitirFactura() {
         }
     }
 
-    // Marcar hito como facturado e incluir la ruta del PDF si se subio correctamente
     const camposFactura = { invoiced: true, invoiced_at: hoy, invoice_number: _numFacturaSig, comments: concepto }
     if (invoicePath) camposFactura.invoice_path = invoicePath
     const { error: errCharge } = await _supabase
@@ -369,17 +377,6 @@ async function emitirFactura() {
     if (errCharge) { alert('Error al marcar como facturado: ' + errCharge.message); return }
 
     document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId: _hitoActual.id } }))
-
-    const base       = parseFloat(_hitoActual.amount)
-    const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
-    const nombre     = _cliente.company ?? _cliente.name ?? _cliente.id
-    mostrarOpcionesEnvio({
-        email:    _cliente.email ?? null,
-        telefono: _cliente.phone ?? null,
-        asunto:   FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')),
-        getTexto: () => FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)),
-        container: document.getElementById('factura-botones-envio')
-    })
 }
 
 // ===== GENERACIÓN DEL PDF con jsPDF puro =====

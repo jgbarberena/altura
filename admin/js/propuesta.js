@@ -46,7 +46,6 @@ export function initPropuesta(supabaseClient, serviciosData, venuesData, getDisp
     const dialog = document.getElementById('dialogPropuesta')
     document.getElementById('btnCerrarPropuesta').addEventListener('click', cerrarPanel)
     document.getElementById('btnCancelarPropuesta').addEventListener('click', cerrarPanel)
-    document.getElementById('btnGenerarPropuestaPDF').addEventListener('click', generarYDescargar)
 
     dialog.addEventListener('click', e => {
         const r = dialog.getBoundingClientRect()
@@ -64,9 +63,18 @@ export async function abrirPanelPropuesta(clienteObj, reservasSeleccionadas) {
 
     renderPanelPropuesta()
     document.getElementById('dialogPropuesta').showModal()
-
-    // Cargar imágenes reales en el mock-up una vez el DOM está pintado
     requestAnimationFrame(() => _cargarImagenesPreview())
+
+    const nombre = _cliente.name ?? _cliente.id
+    mostrarOpcionesEnvio({
+        tipo:      'pdf',
+        email:     _cliente.email ?? null,
+        telefono:  _cliente.phone ?? null,
+        asunto:    PROPUESTA_CONFIG.email_asunto_tpl(),
+        getTexto:  () => PROPUESTA_CONFIG.email_cuerpo_tpl(nombre),
+        onGenerar: _generarYSubir,
+        container: document.getElementById('propuesta-botones-envio')
+    })
 }
 
 // ===== NÚMERO DE PROPUESTA =====
@@ -254,57 +262,35 @@ function _leerEditables() {
     }
 }
 
-// ===== GENERAR Y DESCARGAR =====
-async function generarYDescargar() {
-    const btn = document.getElementById('btnGenerarPropuestaPDF')
-    btn.disabled    = true
-    btn.textContent = '⏳ Generando…'
+// ===== GENERAR PDF, SUBIR A STORAGE Y GUARDAR EN BD =====
+async function _generarYSubir() {
+    const pdfResult = await _generarPDF()
 
-    try {
-        const pdfResult = await _generarPDF()
-
-        // Subir a Storage
-        let propPath = null
-        if (pdfResult?.blob) {
-            const { data: uploadData, error: errUp } = await _supabase.storage
-                .from('proposals')
-                .upload(pdfResult.nombreArchivo, pdfResult.blob, { contentType: 'application/pdf', upsert: true })
-            if (errUp) {
-                console.error('Error al subir propuesta a Storage:', errUp.message)
-            } else {
-                propPath = uploadData.path
-            }
+    let propPath = null
+    if (pdfResult?.blob) {
+        const { data: uploadData, error: errUp } = await _supabase.storage
+            .from('proposals')
+            .upload(pdfResult.nombreArchivo, pdfResult.blob, { contentType: 'application/pdf', upsert: true })
+        if (errUp) {
+            console.error('Error al subir propuesta a Storage:', errUp.message)
+        } else {
+            propPath = uploadData.path
         }
-
-        // Guardar proposal_number y proposal_path en todas las reservas usadas
-        const ids = _reservas.map(r => r.id)
-        const camposUpdate = { proposal_number: _numPropuesta }
-        if (propPath) camposUpdate.proposal_path = propPath
-
-        const { error: errUpdate } = await _supabase
-            .from('reservations')
-            .update(camposUpdate)
-            .in('id', ids)
-        if (errUpdate) console.error('Error al guardar propuesta en reservas:', errUpdate.message)
-
-        // Notificar a formulario.js para refrescar la tabla
-        document.dispatchEvent(new CustomEvent('propuestaEmitida', {
-            detail: { ids, numero: _numPropuesta, path: propPath }
-        }))
-
-        const nombre = _cliente.name ?? _cliente.id
-        mostrarOpcionesEnvio({
-            email:    _cliente.email ?? null,
-            telefono: _cliente.phone ?? null,
-            asunto:   PROPUESTA_CONFIG.email_asunto_tpl(),
-            getTexto: () => PROPUESTA_CONFIG.email_cuerpo_tpl(nombre),
-            container: document.getElementById('propuesta-botones-envio')
-        })
-
-    } finally {
-        btn.disabled    = false
-        btn.textContent = '⬇ Generar PDF y preparar correo'
     }
+
+    const ids = _reservas.map(r => r.id)
+    const camposUpdate = { proposal_number: _numPropuesta }
+    if (propPath) camposUpdate.proposal_path = propPath
+
+    const { error: errUpdate } = await _supabase
+        .from('reservations')
+        .update(camposUpdate)
+        .in('id', ids)
+    if (errUpdate) console.error('Error al guardar propuesta en reservas:', errUpdate.message)
+
+    document.dispatchEvent(new CustomEvent('propuestaEmitida', {
+        detail: { ids, numero: _numPropuesta, path: propPath }
+    }))
 }
 
 // ===== GENERACIÓN DEL PDF =====

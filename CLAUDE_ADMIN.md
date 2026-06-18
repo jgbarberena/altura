@@ -290,7 +290,7 @@ Utilidades compartidas. Exports:
 | `persistirCobrosCliente(supabase, clienteId, todasReservas)` | Recalcula y persiste cobro final en charges. Si el hito ya tiene invoice_number, crea hito de ajuste. |
 | `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` | Recalcula y persiste pago final en payments. Primero busca todos los venues del proveedor para agregar disponibilidad y reservas de todos ellos. |
 | `resolverCliente(datos, todosClientes)` | **Punto de entrada obligatorio antes de generar un client_id nuevo.** `datos: { nombre, email, telefono }`. Devuelve `{ match: 'exacto'\|'ambiguo'\|'ninguno', cliente }`. Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar como subcadena de palabras (ambiguo). Evita la creación de duplicados (CLIENTE_2, CLIENTE_3) cuando llegan múltiples solicitudes de la misma persona. |
-| `mostrarOpcionesEnvio({ email, telefono, asunto, getTexto, container, onUsado })` | Renderiza los botones de envío (📋 Copiar / 📧 Email / 💬 WhatsApp) en un contenedor DOM. `getTexto` es una función llamada en el momento del clic (no en el render), lo que garantiza que siempre se usa el texto actual del textarea o closure. Los botones `Email` y `WhatsApp` solo aparecen si `email`/`telefono` son truthy. `asunto` es opcional (solo para el `mailto:`). `onUsado` es un callback opcional que recibe el texto final al pulsar cualquier botón. Usado por `asistente.js`, `propuesta.js` y `factura.js`. Importa `mostrarToast` de `verificacion.js` internamente. |
+| `mostrarOpcionesEnvio({ tipo, email, telefono, asunto, getTexto, onGenerar, container, onUsado })` | Renderiza botones de acción de envío en un contenedor DOM. **`tipo: 'texto'`** (default, asistente): 📋 Copiar al portapapeles · 📧 Enviar por correo · 💬 Enviar por WhatsApp. **`tipo: 'pdf'`** (propuesta, factura): ⬇ Solo generar PDF · ⬇ Generar PDF y preparar correo · ⬇ Generar PDF y enviar por WhatsApp. Para `tipo='pdf'` es obligatorio `onGenerar: async () => void`; al hacer clic todos los botones se deshabilitan mostrando "⏳ Generando…" mientras corre. El botón con `btn-primary` es WhatsApp si hay teléfono, Email si hay email, o la opción base si no hay contacto. Los botones de email/WA solo aparecen si `email`/`telefono` son truthy. `getTexto: () => string` se llama en el momento del clic. `onUsado` es callback opcional (para 'texto' recibe el texto; para 'pdf' sin argumento). |
 
 ### modal.js
 `crearModal(id, { wide, narrow, scroll })` — único punto de creación de modales en el admin.
@@ -486,14 +486,14 @@ Emisor: Paula Díaz Echalecu, NIF 72694758S. IVA: 21%. IRPF: 15%. Serie: VSF. N�
 
 El nombre del receptor usa `_cliente.company ?? _cliente.name ?? _cliente.id`.
 
-**Flujo de envío:** tras generar el PDF y persistir en Supabase, `emitirFactura()` llama a `mostrarOpcionesEnvio` con el asunto y cuerpo del template `FACTURA_CONFIG.email_asunto_tpl / email_cuerpo_tpl`. Los botones aparecen en `#factura-botones-envio` (dentro del `<dialog id="dialogFactura">`, entre el contenido y el footer). El diálogo no se cierra automáticamente — Paula lo cierra cuando ha elegido canal. Los templates de asunto/cuerpo están en `FACTURA_CONFIG` (constante al inicio del módulo); editarlos ahí si cambia el texto estándar.
+**Flujo de envío:** al abrir el diálogo, `abrirPanelFactura` llama a `mostrarOpcionesEnvio` con `tipo='pdf'` y `onGenerar=_emitir`. Los botones (Solo PDF / PDF+correo / PDF+WhatsApp) se renderizan en `#factura-botones-envio` dentro del footer del `<dialog id="dialogFactura">`. El botón con foco es WhatsApp si hay teléfono, Email si hay email, Solo PDF si no hay contacto. Un clic ejecuta `_emitir()`: lee los campos editables del preview, actualiza datos del cliente si cambiaron, genera el PDF, lo sube a Storage (bucket `invoices`), persiste `invoice_number`, `invoiced: true`, `invoiced_at` en el hito y dispara `facturaEmitida`; después abre el canal elegido. Templates de asunto/cuerpo en `FACTURA_CONFIG` al inicio del módulo.
 
 ### propuesta.js
 Módulo ES6, importado por formulario.js. `initPropuesta(supabase, servicios, venues, getDisponibilidad)`.
 
 Genera propuestas PDF para reservas seleccionadas. Serie PRP. Textos editables en el mock-up. Logo en base64 cargado al inicializar. Nombre del servicio: `svc.name ?? svc.description ?? r.service_id`.
 
-**Flujo de envío:** igual que `factura.js` — tras generar el PDF, `generarYDescargar()` llama a `mostrarOpcionesEnvio` con `PROPUESTA_CONFIG.email_asunto_tpl` / `email_cuerpo_tpl`. Los botones aparecen en `#propuesta-botones-envio` (dentro del `<dialog id="dialogPropuesta">`). El botón "⬇ Generar PDF y preparar correo" sigue visible y es re-clicable para regenerar.
+**Flujo de envío:** al abrir el diálogo, `abrirPanelPropuesta` llama a `mostrarOpcionesEnvio` con `tipo='pdf'` y `onGenerar=_generarYSubir`. Los botones (Solo PDF / PDF+correo / PDF+WhatsApp, según contacto disponible) se renderizan en `#propuesta-botones-envio` dentro del footer del `<dialog id="dialogPropuesta">`. El botón con foco es WhatsApp si hay teléfono, Email si hay email, Solo PDF si no hay ninguno. Un clic genera el PDF, lo sube a Storage (bucket `proposals`), persiste `proposal_number` y `proposal_path` en todas las reservas de la propuesta, dispara `propuestaEmitida` y abre el canal elegido. La función se llama de nuevo cada vez que se abre el diálogo (por si el cliente cambia entre aperturas).
 
 ### tablas.js
 Módulo ES6. Vista de solo lectura de todas las tablas. Selector de tabla, búsqueda en tiempo real, sort por columna, botón "⬇ Excel" usando `exportTable`.
@@ -850,13 +850,13 @@ Opción preferida a analizar: (B) por ser no destructiva y eliminar el problema 
 
 **✅ RESUELTO — UI de envío unificada (`mostrarOpcionesEnvio` en `utils.js`).**
 
-Implementado como paso 0 de Fase 2. La función `mostrarOpcionesEnvio({ email, telefono, asunto, getTexto, container, onUsado })` en `utils.js` renderiza los tres botones en cualquier contenedor DOM. Ver detalle en la tabla de exports de `utils.js` (§4). Usada por:
+Implementado como paso 0 de Fase 2. La función soporta dos modos (`tipo: 'texto' | 'pdf'`). Ver detalle completo en la tabla de exports de `utils.js` (§4). Usada por:
 
-- `asistente.js`: se llama cada vez que Claude completa una respuesta con `---MENSAJE_CLIENTE---`. `getTexto: () => elMsgFinal.value` lee el textarea en el momento del clic.
-- `propuesta.js`: llamada en `generarYDescargar()` tras generar el PDF. Los botones aparecen en `#propuesta-botones-envio` (dentro del dialog). El diálogo no se cierra solo.
-- `factura.js`: llamada en `emitirFactura()` tras persistir en Supabase. Los botones aparecen en `#factura-botones-envio`. El diálogo no se cierra solo (antes se cerraba automáticamente — cambio de UX intencional).
+- `asistente.js`: `tipo='texto'` (default). Se llama cada vez que Claude completa una respuesta con `---MENSAJE_CLIENTE---`. Botones: Copiar / Enviar por correo / Enviar por WhatsApp. El primario es WhatsApp si hay teléfono.
+- `propuesta.js`: `tipo='pdf'`. Se llama al abrir el diálogo (`abrirPanelPropuesta`), antes de cualquier acción. Botones: Solo PDF / PDF+correo / PDF+WhatsApp. Un clic genera el PDF y abre el canal en un solo paso.
+- `factura.js`: `tipo='pdf'`. Se llama al abrir el diálogo (`abrirPanelFactura`). Mismo patrón que propuesta.
 
-La futura confirmación de reserva (Fase 2, paso 1) usará la misma función.
+La confirmación de reserva (Fase 2, paso 1) usará la misma función con `tipo='texto'`.
 
 ---
 
@@ -1212,7 +1212,7 @@ Tres fixes en `panel.js` y `formulario.js` bloque 5. Independientes entre sí y 
 Objetivo: que Paula pueda enviar confirmaciones e instrucciones a clientes con reserva desde la ficha de reserva en `formulario.js`. Sin dependencias de esquema ni de borrador.
 
 Alcance MVP (sin Resend automático todavía):
-0. **UI de envío unificada (nueva deuda §7.2):** extraer `mostrarOpcionesEnvio()` en `utils.js` y aplicarla en `asistente.js`, `propuesta.js` y `factura.js`. La nueva confirmación (paso 1) usará ya la UI unificada. Foco automático: WhatsApp > email > copiar.
+0. ✅ **UI de envío unificada:** `mostrarOpcionesEnvio()` en `utils.js` con `tipo: 'texto'|'pdf'`. Para propuestas y facturas los botones aparecen al abrir el diálogo (un clic = generar + enviar). Foco automático: WhatsApp > email > opción base.
 1. Botón "Enviar confirmación" en la ficha de reserva de `formulario.js` (sección de acciones del cliente o pie del formulario).
 2. El botón llama a `abrirAsistenteRespuesta(reserva, 'confirmacion')`.
 3. En `asistente-config.js`, añadir instrucciones para modo `'confirmacion'`: el asistente redacta mensaje con fecha, venue, personas, acceso (`availability.access_instructions` si existe) e instrucciones prácticas del evento.

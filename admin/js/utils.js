@@ -357,61 +357,135 @@ export async function abrirRenombrarId({ tabla, idActual, supabase, onSuccess })
     setTimeout(() => input.select(), 50)
 }
 
-// Renderiza botones de envío (copiar / email / WhatsApp) en un contenedor DOM.
+// Renderiza botones de acción de envío en un contenedor DOM.
+//
+// tipo: 'texto' (default) — para mensajes sin adjunto (asistente).
+//   Botones: Copiar al portapapeles · Enviar por correo · Enviar por WhatsApp.
+//
+// tipo: 'pdf' — para documentos con PDF adjunto (propuesta, factura).
+//   Botones: Solo generar PDF · Generar PDF y preparar correo · Generar PDF y enviar por WhatsApp.
+//   onGenerar: async () => void — genera y descarga el PDF antes de abrir el canal.
+//   Mientras onGenerar corre, todos los botones se deshabilitan con "⏳ Generando…".
+//
+// El botón con btn-primary (foco visual) es: WhatsApp si hay teléfono,
+// Email si hay email, o la opción base (Solo PDF / Copiar) si no hay contacto.
 // getTexto: () => string — se llama en el momento del clic, no en el render.
-// asunto: subject opcional para el mailto; email/telefono: omite el botón si falsy.
-// onUsado: callback opcional que recibe el texto usado al hacer clic en cualquier botón.
-export function mostrarOpcionesEnvio({ email, telefono, asunto, getTexto, container, onUsado }) {
+// onUsado: callback opcional (para tipo='texto' recibe el texto; para 'pdf' sin argumento).
+export function mostrarOpcionesEnvio({ tipo = 'texto', email, telefono, asunto, getTexto, onGenerar, container, onUsado }) {
     container.innerHTML = ''
     container.style.display  = 'flex'
     container.style.gap      = '8px'
     container.style.flexWrap = 'wrap'
 
-    const btnCopiar = document.createElement('button')
-    btnCopiar.className = 'btn btn-secondary'
-    btnCopiar.style.minHeight = '44px'
-    btnCopiar.textContent = '📋 Copiar'
-    btnCopiar.addEventListener('click', async () => {
-        const texto = getTexto()
-        try {
-            await navigator.clipboard.writeText(texto)
-            mostrarToast('📋 Copiado al portapapeles')
-        } catch {
-            mostrarToast('❌ No se pudo copiar', '#991b1b')
+    const primaryRole = telefono ? 'wa' : email ? 'email' : 'default'
+    const cls = role => `btn ${primaryRole === role ? 'btn-primary' : 'btn-secondary'}`
+
+    if (tipo === 'pdf') {
+        const allBtns = []
+
+        async function handlePdf(btn, openChannel) {
+            const orig = btn.textContent
+            allBtns.forEach(b => { b.disabled = true })
+            btn.textContent = '⏳ Generando…'
+            try {
+                await onGenerar()
+                openChannel()
+                onUsado?.()
+            } catch (e) {
+                console.error('[mostrarOpcionesEnvio] onGenerar error:', e)
+            } finally {
+                allBtns.forEach(b => { b.disabled = false })
+                btn.textContent = orig
+            }
         }
-        onUsado?.(texto)
-    })
-    container.appendChild(btnCopiar)
 
-    if (email) {
-        const btnEmail = document.createElement('button')
-        btnEmail.className = 'btn btn-secondary'
-        btnEmail.style.minHeight = '44px'
-        btnEmail.textContent = '📧 Email'
-        btnEmail.addEventListener('click', () => {
+        const btnPdf = document.createElement('button')
+        btnPdf.className = cls('default')
+        btnPdf.style.minHeight = '44px'
+        btnPdf.textContent = '⬇ Solo generar PDF'
+        btnPdf.addEventListener('click', () => handlePdf(btnPdf, () => {}))
+        allBtns.push(btnPdf)
+        container.appendChild(btnPdf)
+
+        if (email) {
+            const btnEmail = document.createElement('button')
+            btnEmail.className = cls('email')
+            btnEmail.style.minHeight = '44px'
+            btnEmail.textContent = '⬇ Generar PDF y preparar correo'
+            btnEmail.addEventListener('click', () => handlePdf(btnEmail, () => {
+                const texto = getTexto()
+                const qs = [
+                    asunto && `subject=${encodeURIComponent(asunto)}`,
+                    `body=${encodeURIComponent(texto)}`
+                ].filter(Boolean).join('&')
+                window.open(`mailto:${email}?${qs}`, '_blank')
+            }))
+            allBtns.push(btnEmail)
+            container.appendChild(btnEmail)
+        }
+
+        if (telefono) {
+            const digits = telefono.replace(/\D/g, '')
+            const intl   = digits.length <= 9 ? '34' + digits : digits
+            const btnWA  = document.createElement('button')
+            btnWA.className = cls('wa')
+            btnWA.style.minHeight = '44px'
+            btnWA.textContent = '⬇ Generar PDF y enviar por WhatsApp'
+            btnWA.addEventListener('click', () => handlePdf(btnWA, () => {
+                const texto = getTexto()
+                window.open(`https://wa.me/${intl}?text=${encodeURIComponent(texto)}`, '_blank')
+            }))
+            allBtns.push(btnWA)
+            container.appendChild(btnWA)
+        }
+
+    } else {
+        const btnCopiar = document.createElement('button')
+        btnCopiar.className = cls('default')
+        btnCopiar.style.minHeight = '44px'
+        btnCopiar.textContent = '📋 Copiar al portapapeles'
+        btnCopiar.addEventListener('click', async () => {
             const texto = getTexto()
-            const qs = [
-                asunto && `subject=${encodeURIComponent(asunto)}`,
-                `body=${encodeURIComponent(texto)}`
-            ].filter(Boolean).join('&')
-            window.open(`mailto:${email}?${qs}`, '_blank')
+            try {
+                await navigator.clipboard.writeText(texto)
+                mostrarToast('📋 Copiado al portapapeles')
+            } catch {
+                mostrarToast('❌ No se pudo copiar', '#991b1b')
+            }
             onUsado?.(texto)
         })
-        container.appendChild(btnEmail)
-    }
+        container.appendChild(btnCopiar)
 
-    if (telefono) {
-        const digits = telefono.replace(/\D/g, '')
-        const intl   = digits.length <= 9 ? '34' + digits : digits
-        const btnWA  = document.createElement('button')
-        btnWA.className = 'btn btn-secondary'
-        btnWA.style.minHeight = '44px'
-        btnWA.textContent = '💬 WhatsApp'
-        btnWA.addEventListener('click', () => {
-            const texto = getTexto()
-            window.open(`https://wa.me/${intl}?text=${encodeURIComponent(texto)}`, '_blank')
-            onUsado?.(texto)
-        })
-        container.appendChild(btnWA)
+        if (email) {
+            const btnEmail = document.createElement('button')
+            btnEmail.className = cls('email')
+            btnEmail.style.minHeight = '44px'
+            btnEmail.textContent = '📧 Enviar por correo'
+            btnEmail.addEventListener('click', () => {
+                const texto = getTexto()
+                const qs = [
+                    asunto && `subject=${encodeURIComponent(asunto)}`,
+                    `body=${encodeURIComponent(texto)}`
+                ].filter(Boolean).join('&')
+                window.open(`mailto:${email}?${qs}`, '_blank')
+                onUsado?.(texto)
+            })
+            container.appendChild(btnEmail)
+        }
+
+        if (telefono) {
+            const digits = telefono.replace(/\D/g, '')
+            const intl   = digits.length <= 9 ? '34' + digits : digits
+            const btnWA  = document.createElement('button')
+            btnWA.className = cls('wa')
+            btnWA.style.minHeight = '44px'
+            btnWA.textContent = '💬 Enviar por WhatsApp'
+            btnWA.addEventListener('click', () => {
+                const texto = getTexto()
+                window.open(`https://wa.me/${intl}?text=${encodeURIComponent(texto)}`, '_blank')
+                onUsado?.(texto)
+            })
+            container.appendChild(btnWA)
+        }
     }
 }
