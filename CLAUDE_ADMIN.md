@@ -1011,26 +1011,28 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | -1 | ✅ Completa | Auditoría completa de Supabase |
 | 0 | 🔲 Parcial | Auditorías sin código (ver detalles abajo) |
 | 1 | ✅ Completa | Bugs simples (4 cambios quirúrgicos) |
-| 2 | 🔲 Pendiente | Esquema BD: cascada de borrados |
-| 3 | 🔲 Pendiente | Sistema de borrador y asistente (incl. bug disponibilidad vacía) |
-| 4 | 🔲 Pendiente | Flujo sfcom: leads cancelados + modales |
-| 5 | 🔲 Pendiente | Panel: UX de navegación y edición |
-| 6 | 🔲 Pendiente | Mejoras de propuestas |
-| 7 | 🔲 Pendiente | Funcionalidades mayores (requieren diseño previo) |
-| 8 | 🔲 Pendiente | Refactors y cierre |
+| 1b | 🔲 Pendiente | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
+| 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
+| 3 | 🔲 Pendiente | Esquema BD: cascada de borrados y renombrado de IDs |
+| 4 | 🔲 Pendiente | Sistema de borrador y asistente |
+| 5 | 🔲 Pendiente | Flujo sfcom: leads cancelados + modales |
+| 6 | 🔲 Pendiente | Panel: UX de navegación y edición |
+| 7 | 🔲 Pendiente | Mejoras de propuestas |
+| 8 | 🔲 Pendiente | Facturación canal sfcom |
+| 9 | 🔲 Pendiente | Refactors y cierre |
 
 ### Dependencias duras entre fases
 
 ```
-0 → 2 (la auditoría FK define qué migrar)
-0a → 5 (verificar trigger antes de tocar proveedores.js)
-2 → 5, 6, 7, 8 (borrados correctos antes de construir encima)
-3 → 6 (borrador limpio antes de mejoras en propuestas)
-5 → 6 (image_url auto-fill antes de usarlo en propuestas)
-todas → 8 (refactors de archivos grandes van últimos)
+0 → 3 (la auditoría FK define qué migrar)
+0a → 6 (verificar trigger antes de tocar proveedores.js)
+3 → 6, 7, 9 (borrados correctos antes de construir encima)
+4 → 7 (borrador limpio antes de mejoras en propuestas)
+6 → 7 (image_url auto-fill antes de usarlo en propuestas)
+todas → 9 (refactors de archivos grandes van últimos)
 ```
 
-La Fase 1 es independiente de todo: se puede hacer incluso antes que la 0.
+Las fases 1b y 2 son independientes de todo lo demás y pueden hacerse en cualquier orden entre ellas.
 
 ---
 
@@ -1080,19 +1082,45 @@ La Fase 1 es independiente de todo: se puede hacer incluso antes que la 0.
 
 ---
 
-### Fase 2 — 🔲 Esquema BD: cascada de borrados y renombrado de IDs
+### Fase 1b — 🔲 Bugs rápidos sin dependencias
+
+Tres fixes en `panel.js` y `formulario.js` bloque 5. Independientes entre sí y de cualquier otra fase.
+
+1. **Cálculo de margen en `panel.js`** — en `calcularEventos()`, filtrar `servicios` para excluir `event_type IN ('visita_guiada', 'otro')` antes de calcular filas y márgenes. Una línea.
+2. **Bug cobro no guardado** — investigar el handler de "marcar cobrado" en bloque 5 de `formulario.js`: añadir log de error visible y verificar que el listener no desaparece por un re-render previo al clic.
+3. **Cobros facturados no editables** — en `formulario.js` bloque 5, cambiar el criterio de editabilidad de `invoice_number IS NULL` a `collected = false`. Añadir aviso visible de que la factura emitida ha quedado desfasada si se modifica el importe.
+
+---
+
+### Fase 2 — 🔲 Comunicaciones semi-automáticas (urgente)
+
+Objetivo: que Paula pueda enviar confirmaciones e instrucciones a clientes con reserva desde la ficha de reserva en `formulario.js`. Sin dependencias de esquema ni de borrador.
+
+Alcance MVP (sin Resend automático todavía):
+1. Botón "Enviar confirmación" en la ficha de reserva de `formulario.js` (sección de acciones del cliente o pie del formulario).
+2. El botón llama a `abrirAsistenteRespuesta(reserva, 'confirmacion')`.
+3. En `asistente-config.js`, añadir instrucciones para modo `'confirmacion'`: el asistente redacta mensaje con fecha, venue, personas, acceso (`availability.access_instructions` si existe) e instrucciones prácticas del evento.
+4. El envío es manual (WhatsApp + copy, igual que ya funciona para solicitudes). Resend automático se evalúa como mejora posterior.
+
+Nota: para reservas sfcom, incluir referencia al pedido original si está disponible en `origin_ref`.
+
+No requiere diseño previo: el mecanismo de `abrirAsistenteRespuesta` ya existe y soporta modos nuevos. Solo hay que conectarlo desde la ficha de reserva y ampliar el system prompt.
+
+---
+
+### Fase 3 — 🔲 Esquema BD: cascada de borrados y renombrado de IDs
 
 Basada en los hallazgos del D1 (Fase -1). Solo la FK `sfcom_listings → availability` tiene CASCADE. Todas las demás son NO ACTION.
 
 Dos subobjetivos:
 
-**2a — ON DELETE CASCADE** (o mantener NO ACTION con JS explícito): decidir por cada FK si conviene CASCADE (limpieza automática al borrar padre) o NO ACTION (el JS controla el flujo con confirmación del usuario). Implementar migraciones en SQL Editor.
+**3a — ON DELETE CASCADE** (o mantener NO ACTION con JS explícito): decidir por cada FK si conviene CASCADE (limpieza automática al borrar padre) o NO ACTION (el JS controla el flujo con confirmación del usuario). Implementar migraciones en SQL Editor.
 
-**2b — ON UPDATE CASCADE** para IDs de texto: añadir `ON UPDATE CASCADE` a las FKs de `clients.id`, `providers.id`, `venues.id` y `services.id`. Con CASCADE, renombrar un ID en la tabla padre propagará automáticamente a todas las tablas hija. Esto también habilita en el futuro una UI de "renombrar ID" en el admin. Las FKs afectadas: `reservations.client_id`, `charges.client_id` (→clients); `venues.provider_id`, `payments.provider_id` (→providers); `reservations.venue_id`, `availability.venue_id` (→venues); `reservations.service_id`, `availability.service_id` (→services).
+**3b — ON UPDATE CASCADE** para IDs de texto: añadir `ON UPDATE CASCADE` a las FKs de `clients.id`, `providers.id`, `venues.id` y `services.id`. Con CASCADE, renombrar un ID en la tabla padre propagará automáticamente a todas las tablas hija. Esto también habilita en el futuro una UI de "renombrar ID" en el admin. Las FKs afectadas: `reservations.client_id`, `charges.client_id` (→clients); `venues.provider_id`, `payments.provider_id` (→providers); `reservations.venue_id`, `availability.venue_id` (→venues); `reservations.service_id`, `availability.service_id` (→services).
 
 ---
 
-### Fase 3 — 🔲 Sistema de borrador y asistente
+### Fase 4 — 🔲 Sistema de borrador y asistente
 
 Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todos tocan `solicitudes.js`, `formulario.js` o `asistente-config.js`. Orden interno:
 
@@ -1105,7 +1133,7 @@ Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todo
 
 ---
 
-### Fase 4 — 🔲 Flujo sfcom: leads cancelados + reducción de modales
+### Fase 5 — 🔲 Flujo sfcom: leads cancelados + reducción de modales
 
 Ambos cambios tocan `sfcom.js` y bloque 0 de `formulario.js`.
 
@@ -1114,29 +1142,30 @@ Ambos cambios tocan `sfcom.js` y bloque 0 de `formulario.js`.
 
 ---
 
-### Fase 5 — 🔲 Panel: UX de navegación y edición
+### Fase 6 — 🔲 Panel: UX de navegación y edición
 
 1. Tablas del panel navegables: listener `click` en `<tr>` → actualizar select → disparar render del detalle. Bidireccional.
 2. `services.image_url` auto-fill: al guardar la primera foto de un par venue/event_type, escribir `services.image_url` si está vacío.
 
 ---
 
-### Fase 6 — 🔲 Mejoras de propuestas
+### Fase 7 — 🔲 Mejoras de propuestas
 
 Usar datos ya disponibles en propuesta.js: `venues.display_name` como nombre del venue, `availability.photos[0]` como imagen principal, `availability.access_instructions` si existe.
 
 ---
 
-### Fase 7 — 🔲 Funcionalidades mayores (requieren diseño previo en claude.ai)
+### Fase 8 — 🔲 Facturación canal sfcom
 
-- Comunicaciones semi-automáticas: confirmar qué canal, si hace falta un `modo` nuevo en `abrirAsistenteRespuesta`, si el envío es manual o automático (Resend API).
-- Facturación canal sfcom: decidir entre cliente `SFCOM` en `clients` solo para facturación, o migrar reservas sfcom existentes.
+Decidir entre dos opciones y ejecutar:
+- Opción A: cliente `SFCOM` en `clients` solo para facturación; las reservas quedan donde están.
+- Opción B: migrar todas las reservas con `origin_ref LIKE 'WEB%'` al cliente `SFCOM`.
 
-Ambas requieren conversación de diseño en claude.ai antes de escribir código.
+Requiere conversación de diseño en claude.ai antes de escribir código.
 
 ---
 
-### Fase 8 — 🔲 Refactors y cierre
+### Fase 9 — 🔲 Refactors y cierre
 
 - Inferencia `level → service_id` unificada en `utils.js` (extraer de formulario.js, solicitudes.js, asistente.js).
 - Documentar reglas de nombres venue/evento en CLAUDE_ADMIN.md.
