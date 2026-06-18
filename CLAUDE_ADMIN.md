@@ -872,24 +872,16 @@ Las propuestas tienen más datos disponibles ahora de los que usan. Mejoras iden
 
 ---
 
-**Renombrar IDs de cliente, proveedor, venue u otras entidades.**
+**✅ RESUELTO — Renombrar IDs de cliente, proveedor, venue o servicio (jun 2026).**
 
-Actualmente imposible desde el admin. Desde el SQL Editor de Supabase tampoco es directo porque todas las FKs de IDs de texto (clients, providers, venues, services) son NO ACTION en UPDATE: al cambiar la PK falla el constraint porque las tablas hija aún referencian el ID antiguo.
+Implementado en dos partes:
 
-Solución correcta (a implementar en Fase 2): añadir `ON UPDATE CASCADE` a las FKs relevantes. Con CASCADE, `UPDATE clients SET id = 'NUEVO' WHERE id = 'VIEJO'` propagaría automáticamente a `reservations.client_id` y `charges.client_id`.
+**BD (Supabase SQL Editor):** todas las FKs de IDs de texto ahora tienen `ON UPDATE CASCADE`. Adicionalmente, `payments.provider_id → providers` y `availability.venue_id → venues` tienen `ON DELETE CASCADE`; `reservation_requests.assigned_venue_id → venues` tiene `ON DELETE SET NULL`. Con esto, `UPDATE clients SET id = 'NUEVO' WHERE id = 'VIEJO'` propaga automáticamente a `reservations.client_id` y `charges.client_id` (y análogamente para providers, venues y services).
 
-Mientras tanto, el workaround manual en SQL Editor (ejecutar como transacción en el orden correcto: primero las tablas hija, luego la PK):
-```sql
--- Ejemplo para renombrar cliente:
-BEGIN;
-UPDATE reservations SET client_id = 'NUEVO_ID' WHERE client_id = 'VIEJO_ID';
-UPDATE charges     SET client_id = 'NUEVO_ID' WHERE client_id = 'VIEJO_ID';
-UPDATE clients     SET id        = 'NUEVO_ID' WHERE id        = 'VIEJO_ID';
-COMMIT;
-
--- Para venue: UPDATE reservations, availability (venue_id), luego venues.
--- Para provider: UPDATE venues (provider_id), payments, luego providers.
-```
+**UI (código):** función `abrirRenombrarId({ tabla, idActual, supabase, onSuccess })` exportada desde `utils.js`. Abre un modal con input pre-rellenado, conversión live a mayúsculas/guiones bajos (mismo patrón que los campos ID existentes), validación de colisión, y UPDATE en Supabase. Botón `✏️ ID` añadido:
+- `formulario.html` / `formulario.js`: junto al campo ID cliente, visible solo cuando hay un cliente cargado.
+- `proveedores.html` / `proveedores.js`: junto al campo ID proveedor, y botón `✏️ ID venue` en la zona de venue, visible cuando hay un venue activo.
+- `tablas.js`: botón `✏️` en la celda ID de las tablas Clientes, Proveedores, Venues y Servicios.
 
 ---
 
@@ -1140,7 +1132,7 @@ Cuando se guarda cualquier cambio de availability desde `proveedores.js` (fotos,
 Consecuencias que hay que tener en cuenta al trabajar sobre este sistema:
 
 - **Todo proveedor con al menos una fila en `availability` tendrá al menos una fila en `payments`**, aunque nunca haya tenido una reserva.
-- **Borrar un proveedor siempre requiere borrar sus `payments` antes.** El DELETE de `providers` falla con FK violation si existe alguna fila en `payments.provider_id`, aunque el importe sea 0. Orden correcto: `DELETE FROM payments WHERE provider_id = '...'` → `DELETE FROM venues WHERE ...` → `DELETE FROM providers WHERE ...`.
+- **✅ Desde Fase 3 (jun 2026): `payments.provider_id → providers` tiene `ON DELETE CASCADE`.** El DELETE de `providers` elimina automáticamente todos sus payments. Sin embargo, `venues.provider_id → providers` sigue siendo `NO ACTION` en DELETE. Orden correcto actual: `DELETE FROM venues WHERE provider_id = '...'` (en cascada elimina `availability` y `sfcom_listings`) → `DELETE FROM providers WHERE id = '...'` (en cascada elimina `payments`). Ya no es necesario `DELETE FROM payments` explícito.
 - Este comportamiento aplica también a cualquier operación de limpieza o migración en Supabase que implique borrar proveedores.
 - La UNIQUE constraint `(provider_id, amount, due_date)` impide que el hito a 0 € se multiplique con cada guardado.
 
@@ -1161,7 +1153,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 1 | ✅ Completa | Bugs simples (4 cambios quirúrgicos) |
 | 1b | ✅ Completa | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
 | 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
-| 3 | 🔲 Pendiente | Esquema BD: cascada de borrados y renombrado de IDs |
+| 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
 | 4 | 🔲 Pendiente | Sistema de borrador y asistente |
 | 5 | 🟡 Parcial | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales 🔲 |
 | 6 | 🟡 Parcial | Panel: navegación tablas ✅ · image_url auto-fill 🔲 |
@@ -1172,9 +1164,9 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 ### Dependencias duras entre fases
 
 ```
-0 → 3 (la auditoría FK define qué migrar)
-0a → 6 (verificar trigger antes de tocar proveedores.js)
-3 → 6, 7, 9 (borrados correctos antes de construir encima)
+0 → 3 ✅ (la auditoría FK definió qué migrar — ambas completadas)
+0a → 6 ✅ (trigger verificado — desbloqueada)
+3 → 6, 7, 9 ✅ (borrados correctos ya en BD — desbloqueadas)
 4 → 7 (borrador limpio antes de mejoras en propuestas)
 6 → 7 (image_url auto-fill antes de usarlo en propuestas)
 todas → 9 (refactors de archivos grandes van últimos)
@@ -1241,7 +1233,7 @@ Hallazgo colateral de la prueba: `proveedores.js` llama a `persistirPagosProveed
 
 ---
 
-### Fase 1b — 🔲 Bugs rápidos sin dependencias
+### Fase 1b — ✅ Bugs rápidos sin dependencias (jun 2026)
 
 Tres fixes en `panel.js` y `formulario.js` bloque 5. Independientes entre sí y de cualquier otra fase.
 
@@ -1269,29 +1261,152 @@ No requiere diseño previo: el mecanismo de `abrirAsistenteRespuesta` ya existe 
 
 ---
 
-### Fase 3 — 🔲 Esquema BD: cascada de borrados y renombrado de IDs
+### Fase 3 — ✅ Esquema BD: cascada de borrados y renombrado de IDs (jun 2026)
 
-Basada en los hallazgos del D1 (Fase -1). Solo la FK `sfcom_listings → availability` tiene CASCADE. Todas las demás son NO ACTION.
+Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefinidas con DROP + ADD CONSTRAINT. Verificada con consulta de FKs completa: todas las reglas correctas en todas las tablas.
 
-Dos subobjetivos:
+**ON UPDATE CASCADE — todas las FKs de IDs de texto (renombrado en cascada):**
+- `reservations.client_id → clients` (ON UPDATE CASCADE, ON DELETE NO ACTION)
+- `charges.client_id → clients` (ON UPDATE CASCADE, ON DELETE NO ACTION)
+- `venues.provider_id → providers` (ON UPDATE CASCADE, ON DELETE NO ACTION)
+- `payments.provider_id → providers` (ON UPDATE CASCADE + **ON DELETE CASCADE**)
+- `reservations.venue_id → venues` (ON UPDATE CASCADE, ON DELETE NO ACTION)
+- `availability.venue_id → venues` (ON UPDATE CASCADE + **ON DELETE CASCADE**)
+- `reservations.service_id → services` (ON UPDATE CASCADE, ON DELETE NO ACTION)
+- `availability.service_id → services` (ON UPDATE CASCADE, ON DELETE NO ACTION)
 
-**3a — ON DELETE CASCADE** (o mantener NO ACTION con JS explícito): decidir por cada FK si conviene CASCADE (limpieza automática al borrar padre) o NO ACTION (el JS controla el flujo con confirmación del usuario). Implementar migraciones en SQL Editor.
+**ON DELETE SET NULL:**
+- `reservation_requests.assigned_venue_id → venues` (ON DELETE SET NULL) — al borrar un venue, las solicitudes con ese venue asignado pierden la asignación en lugar de bloquearse.
 
-**3b — ON UPDATE CASCADE** para IDs de texto: añadir `ON UPDATE CASCADE` a las FKs de `clients.id`, `providers.id`, `venues.id` y `services.id`. Con CASCADE, renombrar un ID en la tabla padre propagará automáticamente a todas las tablas hija. Esto también habilita en el futuro una UI de "renombrar ID" en el admin. Las FKs afectadas: `reservations.client_id`, `charges.client_id` (→clients); `venues.provider_id`, `payments.provider_id` (→providers); `reservations.venue_id`, `availability.venue_id` (→venues); `reservations.service_id`, `availability.service_id` (→services).
+**Efectos en operaciones de borrado:**
+- Borrar un venue → elimina en cascada su `availability` y (desde availability) sus `sfcom_listings`.
+- Borrar un proveedor → elimina en cascada sus `payments`. Los venues siguen siendo NO ACTION: hay que borrarlos primero. Orden: `DELETE FROM venues WHERE provider_id = '...'` → `DELETE FROM providers WHERE id = '...'`.
+- `UPDATE providers SET id = 'NUEVO' WHERE id = 'VIEJO'` → propaga a `venues.provider_id`, `payments.provider_id`. Análogamente para clients, venues y services.
+
+**UI de renombrado (implementada en la misma sesión):** ver §7.3 "Renombrar IDs" (✅ RESUELTO) para el detalle completo de `abrirRenombrarId` y los botones añadidos en `formulario.html`, `proveedores.html` y `tablas.js`.
 
 ---
 
-### Fase 4 — 🔲 Sistema de borrador y asistente
+### Fase 4 — 🔲 Asistente: borrador, notas de sesión y caché de prompts
 
-Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todos tocan `solicitudes.js`, `formulario.js` o `asistente-config.js`. Orden interno:
+Combinación de los fixes de borrador/asistente (antes "sesión B") y la feature de notas de sesión + caché (antes "sesión C"). Se unifican porque tocan los mismos archivos y el diseño de notas de sesión depende de verificar primero cómo funciona el asistente tras los fixes de borrador.
+
+**Archivos afectados:** `asistente.js`, `asistente-config.js`, `solicitudes.js`, `solicitudes.html`, Edge Function `claude-proxy` (Supabase Dashboard).
+
+**Estado de los pasos:**
 
 1. ✅ **Bug asistente: disponibilidad vacía** — `expandirServiceIds` en `asistente.js` normaliza ahora slugs con `split('-')`. También corregido `_inferirServiceIds` en `solicitudes.js`.
-2. 🔲 **Mejora asistente: venue en lugar de balcón** — pendiente de verificar qué muestra el asistente con el bug 1 ya corregido antes de decidir si hay algo más que cambiar.
-3. ✅ **Mejora asistente: precios siempre por persona** — añadida instrucción explícita en `SYSTEM_PROMPT_ASISTENTE` en la sección de reglas de precio y en el bloque PRECIOS del mensaje al cliente.
-4. 🔲 Unificar formato de `service_name` al construir líneas del borrador (solicitudes.js y formulario.js).
-5. 🔲 Bug `_onBorradorActualizado`: emparejar por `service_id + venue_id` y preservar `estado` antes de sobreescribir.
-6. 🔲 Actualizar `SYSTEM_PROMPT_ASISTENTE`: explicar qué significa cada valor de `estado` (`'pendiente'`, `'hecha'`, `'descartada'`). Valorar filtrar `'descartada'` del contexto.
-7. 🔲 **Notas de sesión (`session_context`)** — nueva tabla Supabase + textarea en `solicitudes.html` + segundo bloque de system prompt con `cache_control` propio + `cache_control` en el penúltimo mensaje del historial. Diseño completo en sección 7.3. Requiere verificar si `claude-proxy` ya admite `system` como array antes de tocar `asistente.js`.
+2. ✅ **Mejora asistente: precios siempre por persona** — instrucción explícita añadida en `SYSTEM_PROMPT_ASISTENTE`.
+3. 🔲 **Bug `_onBorradorActualizado` — preservar `estado` al actualizar desde el asistente (`solicitudes.js`).**
+
+   Cuando Claude emite `---BORRADOR---`, `_onBorradorActualizado` sobreescribe todo el array `proposal_draft`. Si Paula ya había marcado líneas como `'hecha'` o `'descartada'`, esos estados se pierden. Fix: antes de persistir el nuevo draft, emparejar cada línea nueva con la existente por `service_id + venue_id` y copiar el campo `estado` de la versión existente:
+   ```javascript
+   const draftActual = solicitudAbierta.proposal_draft || []
+   const draftNuevo = draft.map(linea => {
+       const existente = draftActual.find(
+           e => e.service_id === linea.service_id && e.venue_id === linea.venue_id
+       )
+       return existente ? { ...linea, estado: existente.estado } : linea
+   })
+   // usar draftNuevo en el INSERT, no draft
+   ```
+
+4. 🔲 **Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio (`solicitudes.js`).**
+
+   En el handler del botón "📩 Enviar recordatorio", después de ejecutar la acción principal, añadir:
+   ```javascript
+   if (sol.status === 'seguimiento_pendiente') {
+       await supabase.from('reservation_requests')
+           .update({ status: 'respuesta_enviada' })
+           .eq('id', sol.id)
+       sol.status = 'respuesta_enviada'
+       // actualizar badge en la lista
+   }
+   ```
+
+5. 🔲 **Mejora asistente: venue en lugar de balcón (`asistente-config.js`).**
+
+   Verificar con el bug 1 ya corregido (disponibilidad vacía) qué nombre usa el asistente al hablar de opciones. La clave en el contexto es `venue_display_name`. Si el asistente ignora ese campo y menciona el `id` técnico, añadir instrucción explícita en `SYSTEM_PROMPT_ASISTENTE` para que use `venue_display_name` como referencia principal.
+
+6. 🔲 **`SYSTEM_PROMPT_ASISTENTE` — significado de `estado` en el borrador (`asistente-config.js`).**
+
+   Añadir en la sección BORRADOR DE PROPUESTA la explicación de cada valor:
+   - `'pendiente'`: aún en negociación, sin reserva creada.
+   - `'hecha'`: ya convertida en reserva — confirmar al cliente que esta línea está cerrada.
+   - `'descartada'`: descartada por el admin — no mencionar ni ofrecer de nuevo.
+   Valorar filtrar las líneas `'descartada'` del contexto antes de enviarlas a Claude (bajo impacto).
+
+7. 🔲 **Unificar formato de `service_name` en líneas del borrador.**
+
+   `solicitudes.js` genera `"Encierro - día 7"`; `formulario.js` usa `svc.name` sin el día. El bloque de conversión funciona porque usa `service_name` y `day` por separado, pero el contexto del asistente puede quedar incompleto. Fix: decidir un formato canónico y aplicarlo en ambos sitios al construir las líneas del borrador.
+
+8. 🔲 **Paso previo — crear tabla `session_context` en Supabase SQL Editor:**
+   ```sql
+   CREATE TABLE session_context (
+     id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+     texto      text        NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   GRANT SELECT, INSERT ON session_context TO authenticated;
+   ```
+   Verificar con un INSERT+SELECT desde una sesión autenticada que los permisos funcionan. RLS: si está habilitado en el proyecto, crear políticas equivalentes a las de otras tablas del panel.
+
+9. 🔲 **Notas de sesión — UI en `solicitudes.html` / `solicitudes.js`.**
+
+   `solicitudes.html`: añadir un `<textarea>` con label "Notas para el asistente" en la zona superior, antes del listado. Seguir las clases CSS del proyecto; sin estilos inline salvo puntuales.
+
+   `solicitudes.js`:
+   - Al cargar la página: `SELECT texto FROM session_context ORDER BY created_at DESC LIMIT 1` → rellenar el textarea.
+   - Al perder el foco (`blur`) sobre el textarea: si el contenido cambió → `INSERT INTO session_context (texto) VALUES (...)`. Toast de feedback: "guardando…" / "guardado".
+   - Exponer el valor actual con una función o variable de módulo para que `asistente.js` lo lea en cada llamada. Revisar el patrón de comunicación existente entre los dos módulos (ver cómo `initAsistente` recibe callbacks actualmente) y elegir la forma más coherente — lo más probable es añadir un parámetro `getNotasSesion` al objeto de callbacks de `initAsistente`.
+
+10. 🔲 **Verificar Edge Function `claude-proxy` — soporte para `system` como array.**
+
+    En Supabase Dashboard → Edge Functions → claude-proxy → editor de código: buscar cómo se pasa `body.system` a la Claude API. Si el código hace `system: body.system` sin transformación, ya funciona con array. Si asume string (p.ej. concatena o hace `.trim()`), actualizarlo para que pase `system` tal cual cuando es array, o string si es string.
+
+11. 🔲 **`system` como array de bloques con caché en `asistente.js`.**
+
+    Modificar la llamada a `claude-proxy` para pasar `system` como array:
+    ```javascript
+    const notasSesion = getNotasSesion?.() || ''
+    const system = [
+        { type: 'text', text: SYSTEM_PROMPT_ASISTENTE, cache_control: { type: 'ephemeral' } }
+    ]
+    if (notasSesion.trim()) {
+        system.push({
+            type: 'text',
+            text: `CONTEXTO DE SESIÓN (notas de Paula):\n${notasSesion}`,
+            cache_control: { type: 'ephemeral' }
+        })
+    }
+    // pasar system en el body de la llamada a claude-proxy
+    ```
+    El segundo bloque solo se incluye cuando hay notas. Cuando Paula no cambia las notas, ambos bloques se cachean (10% del coste). Cuando cambia las notas, solo el segundo se invalida.
+
+12. 🔲 **`cache_control` en el penúltimo mensaje del historial (`asistente.js`).**
+
+    Al construir el array `messages` antes de invocar `claude-proxy`, añadir `cache_control` al content del penúltimo mensaje (el último intercambio completo antes del mensaje nuevo). Solo aplica si hay al menos 2 mensajes previos:
+    ```javascript
+    if (messages.length >= 2) {
+        const penultimo = messages[messages.length - 2]
+        const content = typeof penultimo.content === 'string'
+            ? [{ type: 'text', text: penultimo.content, cache_control: { type: 'ephemeral' } }]
+            : penultimo.content.map((b, i) =>
+                i === penultimo.content.length - 1
+                    ? { ...b, cache_control: { type: 'ephemeral' } }
+                    : b
+              )
+        messages[messages.length - 2] = { ...penultimo, content }
+    }
+    ```
+    Solo tiene efecto real cuando la conversación supera ~1.024 tokens, pero implementarlo no tiene coste práctico.
+
+**Verificación al terminar la sesión:**
+1. Abrir el asistente para una solicitud web → disponibilidad no vacía (ya corregido en Fase 3).
+2. Con borrador parcialmente convertido (líneas `'hecha'`), pedir al asistente nueva propuesta → las líneas `'hecha'` mantienen su `estado`.
+3. Escribir notas en el textarea, perder el foco → toast "guardado". Recargar → las notas persisten.
+4. Abrir el asistente con notas → en Network tab verificar que la llamada a `claude-proxy` lleva `system` como array con 2 elementos.
+5. Enviar recordatorio desde status `'seguimiento_pendiente'` → el status cambia a `'respuesta_enviada'`.
 
 ---
 
@@ -1310,10 +1425,10 @@ Cambios en `proposal_draft` y en el system prompt / contexto del asistente. Todo
 
 ---
 
-### Fase 6 — 🔲 Panel: UX de navegación y edición
+### Fase 6 — 🟡 Panel: UX de navegación y edición
 
-1. Tablas del panel navegables: listener `click` en `<tr>` → actualizar select → disparar render del detalle. Bidireccional.
-2. `services.image_url` auto-fill: al guardar la primera foto de un par venue/event_type, escribir `services.image_url` si está vacío.
+1. ✅ **Tablas del panel navegables (jun 2026):** `filaEvento` y `filaProveedor` en `panel.js` tienen `onclick` y `cursor:pointer`. Las funciones `window._seleccionarEvento` / `window._seleccionarProveedor` actualizan el select y disparan el render. Segundo clic deselecciona. Bidireccional con el dropdown.
+2. 🔲 `services.image_url` auto-fill: al guardar la primera foto de un par venue/event_type, escribir `services.image_url` si está vacío.
 
 ---
 
