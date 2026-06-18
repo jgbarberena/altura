@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
@@ -61,8 +61,9 @@ const inputEmail   = document.getElementById('inputEmail')
 const inputAddress = document.getElementById('inputAddress')
 const inputNif     = document.getElementById('inputNif')
 const inputComments = document.getElementById('inputComments')
-const autoList      = document.getElementById('autocompleteList')
-const statusDiv     = document.getElementById('cliente-status')
+const autoList            = document.getElementById('autocompleteList')
+const statusDiv           = document.getElementById('cliente-status')
+const btnRenombrarCliente = document.getElementById('btnRenombrarCliente')
 
 const selectServicio  = document.getElementById('selectServicio')
 const selectProveedor = document.getElementById('selectProveedor')
@@ -124,6 +125,7 @@ function mostrarSugerenciasCliente(val) {
             limpiarFormularioReserva()
         }
         clienteActual = null
+        btnRenombrarCliente.style.display = 'none'
         statusDiv.innerHTML = '✨ Cliente nuevo &nbsp;—&nbsp; ' + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
             + ' onclick="guardarClienteNuevo(event)">Guardar cliente</a>'
             + ' o se guardará al añadir una reserva'
@@ -155,6 +157,7 @@ function cargarCliente(cliente) {
     inputComments.value = cliente.comments ?? ''
     statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente'
     statusDiv.style.color = 'var(--accent-ok)'
+    btnRenombrarCliente.style.display = 'inline-flex'
     limpiarFormularioReserva()
     cargarReservasCliente(cliente.id)
 }
@@ -164,10 +167,25 @@ function limpiarCamposCliente() {
     inputName.value = inputCompany.value = inputPhone.value =
     inputEmail.value = inputComments.value = inputAddress.value = inputNif.value = ''
     statusDiv.textContent = ''
+    btnRenombrarCliente.style.display = 'none'
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
     document.getElementById('bloque-cobros-cliente').style.display   = 'none'
     limpiarFormularioReserva()
 }
+
+btnRenombrarCliente.addEventListener('click', () => {
+    const idViejo = clienteActual.id
+    abrirRenombrarId({
+        tabla: 'clients', idActual: idViejo, supabase,
+        onSuccess: nuevoId => {
+            const c = todosClientes.find(c => c.id === idViejo)
+            if (c) c.id = nuevoId
+            clienteActual.id = nuevoId
+            inputId.value    = nuevoId
+            mostrarToast(`Cliente renombrado: ${nuevoId}`)
+        }
+    })
+})
 
 function limpiarFormularioReserva() {
     reservaEditandoId = null

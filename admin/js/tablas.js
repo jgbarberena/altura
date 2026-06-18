@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, exportTable } from './utils.js'
+import { fmt, initSidebar, exportTable, abrirRenombrarId } from './utils.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -80,7 +80,7 @@ const TABLAS = {
         titulo: 'Venues',
         query:  () => supabase.from('venues').select('*').order('id'),
         cols: [
-            { label: 'ID',          campo: 'id' },
+            { label: 'ID',          campo: 'id', renameable: true },
             { label: 'Proveedor',   campo: 'provider_id' },
             { label: 'Nombre',      campo: 'display_name' },
             { label: 'Dirección',   campo: 'address' },
@@ -107,7 +107,7 @@ const TABLAS = {
         titulo: 'Clientes',
         query:  () => supabase.from('clients').select('*').order('id'),
         cols: [
-            { label: 'ID',          campo: 'id' },
+            { label: 'ID',          campo: 'id', renameable: true },
             { label: 'Nombre',      campo: 'name' },
             { label: 'Empresa',     campo: 'company' },
             { label: 'Teléfono',    campo: 'phone' },
@@ -119,7 +119,7 @@ const TABLAS = {
         titulo: 'Proveedores',
         query:  () => supabase.from('providers').select('*').order('id'),
         cols: [
-            { label: 'ID',           campo: 'id' },
+            { label: 'ID',           campo: 'id', renameable: true },
             { label: 'Nombre',       campo: 'name' },
             { label: 'Dirección',    campo: 'address' },
             { label: 'Forma pago',   campo: 'payment_method' },
@@ -131,7 +131,7 @@ const TABLAS = {
         titulo: 'Servicios',
         query:  () => supabase.from('services').select('*').order('day'),
         cols: [
-            { label: 'ID',          campo: 'id' },
+            { label: 'ID',          campo: 'id', renameable: true },
             { label: 'Día',         campo: 'day' },
             { label: 'Nombre',      campo: 'name' },
             { label: 'Descripción', campo: 'description' },
@@ -238,7 +238,11 @@ function renderTabla() {
                         const val   = row[c.campo]
                         const texto = c.fmt ? c.fmt(val, row) : (val ?? '—')
                         const clase = c.clase ? c.clase(val, row) : ''
-                        return `<td class="${clase}">${texto}</td>`
+                        const btnRename = (c.renameable && val)
+                            ? `<button class="btn btn-secondary" style="font-size:10px;padding:1px 5px;margin-left:6px;vertical-align:middle"
+                                onclick="window._renombrarDesdeTabla('${tablaActual}','${String(val).replace(/'/g, "\\'")}')">✏️</button>`
+                            : ''
+                        return `<td class="${clase}">${texto}${btnRename}</td>`
                     }).join('')}</tr>
                 `).join('')}
             </tbody>
@@ -341,6 +345,10 @@ window.aplicarFiltro = function(campo) {
     panelFiltroAbierto.remove()
     panelFiltroAbierto = null
     renderTabla()
+}
+
+window._renombrarDesdeTabla = async (tabla, idActual) => {
+    await abrirRenombrarId({ tabla, idActual, supabase, onSuccess: () => cargarTabla() })
 }
 
 document.getElementById('btnExportTabla')?.addEventListener('click', () => {

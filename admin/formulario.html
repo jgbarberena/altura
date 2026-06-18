@@ -76,7 +76,10 @@
                 <div class="form-grid">
                     <div class="form-field autocomplete-wrap">
                         <label>ID Cliente</label>
-                        <input type="text" id="inputClientId" placeholder="ID_CLIENTE" autocomplete="off">
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="text" id="inputClientId" placeholder="ID_CLIENTE" autocomplete="off" style="flex:1;min-width:0">
+                            <button id="btnRenombrarCliente" class="btn btn-secondary" style="display:none;font-size:11px;padding:2px 8px;white-space:nowrap;flex-shrink:0" title="Editar ID de este cliente">✏️ ID</button>
+                        </div>
                         <div class="autocomplete-list" id="autocompleteList" style="display:none"></div>
                     </div>
                     <div class="form-field">

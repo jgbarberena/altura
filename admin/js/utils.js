@@ -1,3 +1,5 @@
+import { crearModal } from './modal.js'
+
 // ===== UTILIDADES COMPARTIDAS DEL ADMIN =====
 
 // Formatea un número como moneda EUR
@@ -293,4 +295,63 @@ export function resolverCliente(datos, todosClientes) {
 export function buildCatalogUrl(slug, eventType) {
     if (!slug || !eventType) return null
     return `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${slug}&et=${eventType}`
+}
+
+// Abre un modal para renombrar el ID de un registro (clients, providers, venues, services).
+// Las FKs con ON UPDATE CASCADE propagan el cambio automáticamente en Supabase.
+export async function abrirRenombrarId({ tabla, idActual, supabase, onSuccess }) {
+    const { overlay, panel } = crearModal(`modal-renombrar-${tabla}`, { narrow: true })
+    panel.innerHTML = `
+        <h3 class="modal-title">Editar ID</h3>
+        <p style="font-size:13px;color:var(--subtle);margin:8px 0 14px">
+            Renombrar <strong>${idActual}</strong>.<br>Todas las referencias se actualizan automáticamente.
+        </p>
+        <div class="form-field">
+            <label>Nuevo ID</label>
+            <input type="text" id="inputNuevoId" value="${idActual}" autocomplete="off"
+                   style="font-family:monospace;text-transform:uppercase">
+        </div>
+        <p id="renombrar-error" style="color:var(--accent);font-size:12px;min-height:18px;margin-top:6px"></p>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+            <button class="btn btn-secondary" id="btnRenCancelar">Cancelar</button>
+            <button class="btn btn-primary"   id="btnRenAceptar">Aceptar</button>
+        </div>
+    `
+    const input = panel.querySelector('#inputNuevoId')
+    const error = panel.querySelector('#renombrar-error')
+    const btnOk = panel.querySelector('#btnRenAceptar')
+
+    input.addEventListener('keydown', e => {
+        if (e.key === ' ') {
+            e.preventDefault()
+            const pos = input.selectionStart
+            input.value = input.value.slice(0, pos) + '_' + input.value.slice(pos)
+            input.setSelectionRange(pos + 1, pos + 1)
+        }
+    })
+    input.addEventListener('input', () => { input.value = normalizarId(input.value) })
+
+    panel.querySelector('#btnRenCancelar').addEventListener('click', () => overlay.close())
+
+    btnOk.addEventListener('click', async () => {
+        const nuevoId = normalizarId(input.value)
+        error.textContent = ''
+        if (!nuevoId)           { error.textContent = 'El ID no puede estar vacío.'; return }
+        if (nuevoId === idActual) { overlay.close(); return }
+        const { data: existe } = await supabase.from(tabla).select('id').eq('id', nuevoId).maybeSingle()
+        if (existe) { error.textContent = `Ya existe un registro con ID "${nuevoId}".`; return }
+        btnOk.disabled = true
+        btnOk.textContent = 'Guardando…'
+        const { error: err } = await supabase.from(tabla).update({ id: nuevoId }).eq('id', idActual)
+        if (err) {
+            error.textContent = `Error: ${err.message}`
+            btnOk.disabled = false
+            btnOk.textContent = 'Aceptar'
+            return
+        }
+        overlay.close()
+        onSuccess(nuevoId)
+    })
+
+    setTimeout(() => input.select(), 50)
 }

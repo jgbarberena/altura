@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
@@ -62,6 +62,8 @@ const inputProveedorPhone      = document.getElementById('inputProveedorPhone')
 const inputProveedorComments   = document.getElementById('inputProveedorComments')
 const autoProvList             = document.getElementById('autocompleteProveedorList')
 const proveedorStatus          = document.getElementById('proveedor-status')
+const btnRenombrarProveedor    = document.getElementById('btnRenombrarProveedor')
+const btnRenombrarVenue        = document.getElementById('btnRenombrarVenue')
 const servicioDescStatus       = document.getElementById('servicio-desc-status')
 const inputServicioId          = document.getElementById('inputServicioId')
 const inputPlazas              = document.getElementById('inputPlazas')
@@ -77,6 +79,37 @@ inputServicioNombre.addEventListener('change',      guardarDescripcionServicio)
 inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
 inputServicioComments.addEventListener('change',    guardarDescripcionServicio)
 inputServicioHora.addEventListener('change',        guardarDescripcionServicio)
+
+btnRenombrarProveedor.addEventListener('click', () => {
+    const idViejo = proveedorActual.id
+    abrirRenombrarId({
+        tabla: 'providers', idActual: idViejo, supabase,
+        onSuccess: nuevoId => {
+            const p = todosProveedores.find(p => p.id === idViejo)
+            if (p) p.id = nuevoId
+            todosVenues.filter(v => v.provider_id === idViejo).forEach(v => v.provider_id = nuevoId)
+            proveedorActual.id = nuevoId
+            inputProveedorId.value = nuevoId
+            mostrarToast(`Proveedor renombrado: ${nuevoId}`)
+        }
+    })
+})
+
+btnRenombrarVenue.addEventListener('click', () => {
+    const idViejo = venueActual.id
+    abrirRenombrarId({
+        tabla: 'venues', idActual: idViejo, supabase,
+        onSuccess: nuevoId => {
+            const v = todosVenues.find(v => v.id === idViejo)
+            if (v) v.id = nuevoId
+            const vp = venuesDelProveedor.find(v => v.id === idViejo)
+            if (vp) vp.id = nuevoId
+            venueActual.id = nuevoId
+            renderVenueTabs(venuesDelProveedor, nuevoId)
+            mostrarToast(`Venue renombrado: ${nuevoId}`)
+        }
+    })
+})
 
 // ===== FOTOS DEL BALCÓN (carousel) =====
 let _photos  = []
@@ -426,6 +459,7 @@ function cargarProveedor(p) {
     renderVenueTabs(venuesDelProveedor, venueActual?.id ?? null)
     proveedorStatus.textContent  = '✅ Proveedor existente — los cambios se guardan automáticamente'
     proveedorStatus.style.color  = 'var(--accent-ok)'
+    btnRenombrarProveedor.style.display = 'inline-flex'
     document.getElementById('bloque-servicio').style.display = 'block'
     limpiarFormularioServicio()
     document.getElementById('btnAsistenteNuevo').style.display = 'inline-block'
@@ -436,6 +470,7 @@ function cargarProveedor(p) {
 
 function limpiarProveedor() {
     proveedorActual = null
+    btnRenombrarProveedor.style.display = 'none'
     limpiarCamposProveedor()
     proveedorStatus.textContent = ''
     document.getElementById('bloque-servicio').style.display            = 'none'
@@ -514,7 +549,8 @@ function mostrarGuardado() {
 function renderVenueTabs(venues, activeId) {
     const sep  = document.getElementById('venue-sep')
     const area = document.getElementById('venue-sep-area')
-    if (venues.length === 0) { area.style.display = 'none'; return }
+    if (venues.length === 0) { area.style.display = 'none'; btnRenombrarVenue.style.display = 'none'; return }
+    btnRenombrarVenue.style.display = activeId ? 'inline-flex' : 'none'
     area.style.display = 'block'
     if (venues.length === 1) {
         sep.innerHTML = `<hr class="venue-sep-hr"><button class="btn-add-venue" id="btnAddVenue">+</button>`

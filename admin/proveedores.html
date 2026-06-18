@@ -47,7 +47,10 @@
                 <div class="form-grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr))">
                     <div class="form-field autocomplete-wrap">
                         <label>ID Proveedor</label>
-                        <input type="text" id="inputProveedorId" placeholder="ID_PROVEEDOR" autocomplete="off">
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="text" id="inputProveedorId" placeholder="ID_PROVEEDOR" autocomplete="off" style="flex:1;min-width:0">
+                            <button id="btnRenombrarProveedor" class="btn btn-secondary" style="display:none;font-size:11px;padding:2px 8px;white-space:nowrap;flex-shrink:0" title="Editar ID de este proveedor">✏️ ID</button>
+                        </div>
                         <div class="autocomplete-list" id="autocompleteProveedorList" style="display:none"></div>
                     </div>
                     <div class="form-field">
@@ -88,6 +91,7 @@
                 <!-- VENUE: separador/tabs + campos venue -->
                 <div id="venue-sep-area" style="display:none">
                     <div id="venue-sep" class="venue-sep"></div>
+                    <button id="btnRenombrarVenue" class="btn btn-secondary" style="display:none;font-size:11px;padding:2px 8px;margin:4px 0" title="Editar ID de este venue">✏️ ID venue</button>
                     <div class="form-grid" style="margin-top:0">
                         <div class="form-field">
                             <label>Tipo</label>
