@@ -704,7 +704,7 @@ Si un hito tiene `invoice_number IS NOT NULL` (se generó una factura), el siste
 
 **Botón "Facturar" no aparece hasta recargar la página.**
 
-Al añadir un cobro nuevo en bloque 5 de `formulario.js`, el cobro aparece en la tabla pero el botón "Facturar" (o equivalente para generar la factura) no se renderiza hasta que se recarga la vista (navegar al panel de reservas y volver a cargar el cliente). La UI no actualiza los controles del hito tras el INSERT. Fix: tras el guardado del cobro, redibujar los controles del hito recién creado sin esperar a recarga completa.
+Al añadir un cobro nuevo en bloque 5 de `formulario.js`, el cobro aparece en la tabla pero el botón "Facturar" no se renderiza hasta recargar la vista. Causa raíz: patrón genérico de UI desactualizada tras efectos secundarios — ver §7.2. Fix: llamar a `cargarCobrosCliente(clienteId)` tras el INSERT del cobro en lugar de solo actualizar el estado local.
 
 ---
 
@@ -755,6 +755,17 @@ El registro duplicado fue eliminado en jun 2026. No tenía reservas ni charges a
 ---
 
 ### 7.2 UX — puntos de fricción en el uso diario
+
+**UI no refleja datos derivados ni efectos secundarios hasta recargar la página.**
+
+Patrón recurrente en el panel: cuando una operación de guardado tiene efectos secundarios en Supabase (un trigger, una llamada a `persistirCobrosCliente`, `persistirPagosProveedor`, etc.), la UI actualiza solo lo que el JS modificó directamente, pero no re-renderiza los elementos que cambiaron como consecuencia. Casos confirmados:
+
+- `proveedores.js`: al guardar las fotos de un availability row, el trigger `trg_sync_availability_event_type` propaga los cambios a todas las demás filas del mismo venue+event_type. La UI no los refleja hasta que el usuario recarga la página.
+- `formulario.js` bloque 5: al añadir un cobro, `persistirCobrosCliente` crea un "cobro final" adicional. El cobro nuevo ni el botón "Facturar" aparecen hasta recargar.
+
+Patrón de fix: tras cualquier save con efectos secundarios conocidos, re-leer de Supabase los datos afectados y re-renderizar. En la práctica, basta con llamar a la función de carga existente (`cargarVenue(id)`, `cargarCobrosCliente(clienteId)`, etc.) después del save, en lugar de solo modificar el estado local. El coste de red es despreciable dado el volumen de datos. Fix natural a incorporar cuando se toquen `proveedores.js` y `formulario.js` en otras fases — no justifica una fase propia.
+
+---
 
 **Exceso de modales en el flujo sfcom normal.**
 
