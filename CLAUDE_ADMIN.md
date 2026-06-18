@@ -690,15 +690,27 @@ Fix parcial aplicado (jun 2026): se añadió umbral mínimo de 5 caracteres para
 
 ---
 
-**Marcar cobro como cobrado puede no persistirse en Supabase.**
+**✅ CONFIRMADO — Marcar cobro como cobrado no persiste en Supabase.**
 
-Reportado al menos en una ocasión: pulsar el checkbox/botón "cobrado" en el hito de cobro de un cliente en `formulario.js` bloque 5 no guardó el cambio (el campo `collected` siguió a `false` en la BD). Posible causa: el handler del evento de cambio no llega a ejecutar el UPDATE, o el UPDATE falla silenciosamente. Investigar: (1) añadir log de error visible en el handler de "marcar cobrado" en bloque 5 de `formulario.js`, (2) verificar que el listener existe en el elemento correcto y no hay un re-render que lo elimine antes del clic.
+Confirmado en jun 2026 (prueba Fase 0d): marcar el cobro como cobrado en `formulario.js` bloque 5 muestra el check verde en la UI y cambia el botón a "marcar pendiente", pero `collected` sigue a `false` y `collected_date` sigue a `null` en Supabase tras la operación. La UI actualiza el estado solo visualmente; el UPDATE no se ejecuta o falla silenciosamente. Investigar: (1) añadir log de error visible en el handler de "marcar cobrado" en bloque 5 de `formulario.js`, (2) verificar que el listener existe en el elemento correcto y no hay un re-render que lo elimine antes del clic.
 
 ---
 
 **Cobros facturados pero no cobrados no se pueden editar.**
 
 Si un hito tiene `invoice_number IS NOT NULL` (se generó una factura), el sistema bloquea la edición del importe aunque `collected = false`. En la práctica, las reservas cambian en el último momento y la factura original queda desfasada. La función `persistirCobrosCliente` crea un "hito de ajuste" automáticamente, pero ese mecanismo no es operable ni visible desde la UI del cliente en `formulario.js`. El criterio de editabilidad debería ser `collected = false`, no `invoice_number IS NULL`. Fix: revisar `formulario.js` bloque 5 para permitir editar el `amount` de un hito mientras `collected = false`, aunque haya `invoice_number`, y añadir una advertencia visible de que la factura emitida ha quedado desfasada.
+
+---
+
+**Botón "Facturar" no aparece hasta recargar la página.**
+
+Al añadir un cobro nuevo en bloque 5 de `formulario.js`, el cobro aparece en la tabla pero el botón "Facturar" (o equivalente para generar la factura) no se renderiza hasta que se recarga la vista (navegar al panel de reservas y volver a cargar el cliente). La UI no actualiza los controles del hito tras el INSERT. Fix: tras el guardado del cobro, redibujar los controles del hito recién creado sin esperar a recarga completa.
+
+---
+
+**Invoice PDF en Supabase Storage no se elimina al borrar la reserva.**
+
+Al confirmar la eliminación de una reserva con cobros facturados, el JS elimina los cobros (incluidos los de `invoiced = true`) pero no borra el PDF correspondiente del bucket `invoices`. El fichero (ej: `VSF-08-2026_cliente.pdf`) permanece en Storage indefinidamente. No existe ningún mecanismo en el panel para gestionar ficheros de Storage. Fix propuesto: en el modal de confirmación de borrado de reserva, cuando hay cobros facturados, ofrecer la opción de eliminar también los PDFs asociados (leer `invoice_path` de los cobros afectados y ejecutar `supabase.storage.from('invoices').remove([paths])`).
 
 ---
 
@@ -710,9 +722,11 @@ Fix: al actualizar el borrador desde el asistente, emparejar líneas por `servic
 
 ---
 
-**Borrado en cascada incompleto — residuos tras eliminar reservas, clientes o proveedores.**
+**Borrado en cascada incompleto — `payments` quedan huérfanos al eliminar una reserva.**
 
-Auditado (jun 2026): la única FK con CASCADE es `sfcom_listings.availability_id → availability`. Todas las demás son NO ACTION en ambas direcciones. Esto significa que el JS debe gestionar manualmente el orden de borrado en cascada (lo hace, pero con riesgos si falla a medias). Pendiente decidir cuáles merecen CASCADE a nivel de BD vs. mantenerlas como NO ACTION para que el JS pueda controlar el flujo con confirmaciones del usuario.
+Verificado en jun 2026 (prueba Fase 0d): al eliminar una reserva desde "Gestión de reservas", el JS borra la reserva y todos sus cobros (`charges`), incluyendo los facturados (con aviso previo). Sin embargo, **los `payments` del proveedor no se tocan**. Los hitos de pago (manuales y el "Pago final" automático) quedan en la BD referenciando el proveedor aunque la reserva ya no exista.
+
+La única FK con CASCADE sigue siendo `sfcom_listings.availability_id → availability`. Todas las demás son NO ACTION. El borrado de `payments` huérfanos requiere actualmente limpieza manual en SQL Editor. La Fase 3 definirá qué FKs pasan a CASCADE en DELETE (a partir de los hallazgos de esta auditoría).
 
 ---
 
@@ -753,6 +767,12 @@ Plan: revisar los modales del flujo sfcom en `formulario.js` bloque 0 e identifi
 **Cálculo de margen en panel.js incluye tipos de servicio sin actividad comercial relevante.**
 
 Las tablas "Disponibilidad por evento" y "Disponibilidad por proveedor" del panel muestran filas para todos los `event_type`, incluidos `visita_guiada` y `otro`. Estos servicios tienen un modelo de negocio distinto (guías a precio fijo, sin margen de balcón) y distorsionan la lectura del margen global. Solo interesa ver el margen para balcones: `encierro`, `chupinazo`, `procesion`, `pobre_de_mi`, `despedida_gigantes`. Fix: en `calcularEventos()` de `panel.js`, filtrar `servicios` para excluir `event_type IN ('visita_guiada', 'otro')` antes de calcular filas y márgenes.
+
+---
+
+**No hay UI para eliminar un cliente directamente.**
+
+La única forma de borrar un cliente desde el panel es eliminar su última reserva: el JS detecta que no quedan más reservas y pregunta si también eliminar el cliente. Si el cliente ya no tiene reservas activas (nunca las tuvo, o ya se eliminaron todas), no hay ningún botón ni flujo para borrarlo. Workaround: crear una reserva temporal de 1€ para el cliente en cuestión y luego eliminarla, lo cual activa el modal de borrado encadenado. A nivel SQL: `DELETE FROM clients WHERE id = '...'` (asegurando primero que no quedan charges ni reservation_requests apuntando a ese cliente). Para Fase 5 o 9: añadir un botón "Eliminar cliente" con confirmación si no tiene reservas activas.
 
 ---
 
@@ -923,23 +943,22 @@ Esta feature va en **Fase 4** (ver sección 9).
 
 ### 7.4 Auditorías pendientes (investigar primero, luego decidir)
 
-**Bloqueos y residuos en el ciclo de facturación/cobros/pagos.**
+**✅ COMPLETADO — Auditoría del ciclo de facturación/cobros/pagos (jun 2026).**
 
-Situaciones conocidas o sospechadas que pueden dejar el sistema en estado inconsistente o impedir cambios:
-- **Cambio de ID de cliente imposible:** `clients.id` es PK y texto libre; si se equivoca al crearlo, no hay forma de renombrarlo desde el panel (habría que hacer UPDATE + reasignar FK manualmente en Supabase).
-- **Factura parcialmente emitida:** si se genera el PDF de una factura pero luego se añaden más cobros a la misma reserva, la factura queda desfasada pero no hay mecanismo de "anular y regenerar".
-- **PDFs de propuestas/facturas sin UI de acceso:** los PDF generados con `window.print()` no se guardan en ningún sitio accesible desde el panel. Si Paula pierde el PDF, no puede recuperarlo.
-- **Cobros y pagos tras eliminar una reserva:** ver bug de cascada en 7.1.
+Recorrido completo realizado en prueba Fase 0d. Residuos y bloqueos confirmados:
 
-Tarea: hacer un recorrido manual por cada flujo (crear reserva → facturar → cobrar → pagar proveedor → cerrar) anotando todos los puntos donde un error o cambio de opinión deja residuos. Documentar qué está cubierto por triggers/FK y qué requiere limpieza manual.
+- **Cambio de ID de cliente imposible desde el panel:** workaround SQL documentado en §7.3. Solucionable con ON UPDATE CASCADE en Fase 3.
+- **Factura desfasada:** si se generó el PDF pero luego cambia el importe, la factura queda desfasada. No hay mecanismo de "anular y regenerar" ni advertencia en el panel. `persistirCobrosCliente` crea un "hito de ajuste", pero no es visible ni operable desde la UI.
+- **PDFs de facturas:** se guardan en Supabase Storage (bucket `invoices`) y en `charges.invoice_path`. No hay UI para listarlos ni borrarlos. Al eliminar la reserva, los PDFs quedan huérfanos en Storage. Confirmado en prueba.
+- **`payments` no se borran al eliminar una reserva:** quedan como huérfanos referenciando el proveedor. Confirmado en prueba. Ver §7.1 y §8.
+- **`collected` no persiste al marcar cobro como cobrado:** bug confirmado en prueba. Ver §7.1.
+- **Botón "Facturar" no aparece hasta recargar:** bug confirmado en prueba. Ver §7.1.
 
 ---
 
-**Verificar el trigger `trg_sync_availability_event_type`.**
+**✅ VERIFICADO — Trigger `trg_sync_availability_event_type` funciona correctamente (jun 2026).**
 
-El trigger propaga `photos`, `description` y `access_instructions` a todas las filas con el mismo `venue_id + event_type` cuando se edita una de ellas desde `proveedores.js`. El código de la función `sync_availability_by_event_type` está auditado y es correcto (usa `services.event_type` como referencia). No se ha verificado empíricamente que funcione end-to-end desde la UI.
-
-Verificación: editar las fotos de un par venue/event_type con varias filas y comprobar que todas las demás se actualizan.
+Verificado en prueba Fase 0a. El trigger propaga `photos`, `description` y `access_instructions` a todas las filas con el mismo `venue_id + event_type`. Los tres campos se sincronizan en la misma operación. Ver hallazgos completos en §9 Fase 0a.
 
 Nota: existía una función huérfana `sync_photos_by_event_type()` (versión anterior que solo sincronizaba fotos). Eliminada en jun 2026 con `DROP FUNCTION public.sync_photos_by_event_type();`.
 
@@ -1049,11 +1068,19 @@ Productos con configuración incompleta o pendiente de aclarar con Hilario:
 
 **`payments` sin campo `is_final`.** El hito final de pago al proveedor se identifica por `comments === 'Pago final'`. Inconsistencia con `charges` (que sí tiene `is_final`). Bajo riesgo mientras no se añadan hitos con ese comentario de forma manual.
 
+**`persistirCobrosCliente` auto-crea un cobro "final" al guardar cualquier cobro del cliente.** Al añadir un hito de cobro manualmente en bloque 5, el JS llama también a `persistirCobrosCliente`, que calcula e inserta (o actualiza) el "cobro final" del cliente. Mismo patrón que `persistirPagosProveedor` con payments. Resultado: al crear el primer cobro manual, aparecen dos filas en `charges`: la manual y el cobro final automático. No se duplica (el cálculo upserta la misma fila). Comportamiento esperado, no es un bug.
+
+**El modal de confirmación "¿eliminar también el cliente?" desaparece si navegas.** Cuando se elimina la última reserva de un cliente, el JS muestra un modal preguntando si también borrar al cliente. Si el usuario navega a otra página antes de confirmar, el modal desaparece y el cliente queda en la BD sin forma de borrarlo ni de acceder a él desde ningún flujo normal.
+
+Solución propuesta: tratar el cierre del modal por cualquier vía (ESC, clic fuera, navegación) como "No, conservar cliente", y en ese caso redirigir automáticamente a la ficha del cliente recién huérfano para que sea accesible de inmediato. Así el "cancel" implícito no deja al cliente en un limbo inaccesible. A evaluar junto con la deuda §7.2 (añadir botón directo de borrado de cliente).
+
 **`invoiced` en `charges` es redundante** con `invoice_number IS NOT NULL`. Se mantiene por conveniencia en filtros de consulta.
 
 **Auto-transición `respuesta_enviada → seguimiento_pendiente` solo se evalúa al cargar `solicitudes.html`.** Si la sesión lleva días abierta, el badge en pantalla puede quedar desfasado. En la práctica no es problema porque la página se recarga con frecuencia.
 
 **Las vistas de Supabase son siempre en tiempo real.** No hay caché a nivel de vista en PostgreSQL: cada vez que el JS hace una query sobre `availability_panel` o `catalogo_publico`, Supabase ejecuta la vista en ese momento con los datos actuales de las tablas base. No hay riesgo de ver datos obsoletos por este motivo. El único caché relevante es `_stockCache` en `sfcom.js` (cliente JS, en memoria, solo para llamadas a la API sfcom).
+
+**`persistirPagosProveedor` crea un hito a 0 € para proveedores con availability pero sin reservas.** Si un proveedor tiene filas en `availability` con `total_slots = 0` o sin reservas activas, `persistirPagosProveedor` (llamada desde `proveedores.js` al guardar) inserta un pago de 0 € con `comments = 'Pago final'`. No es un dato incorrecto (refleja que el pago final calculado es 0), pero poluciona `payments` con filas vacías. La UNIQUE constraint evita duplicados. Revisable si se quiere filtrar el INSERT cuando `amount = 0` y no hay reservas previas.
 
 ---
 
@@ -1073,6 +1100,19 @@ Productos con configuración incompleta o pendiente de aclarar con Hilario:
 
 **`payments`: el hito final se identifica por `comments === 'Pago final'`**, no por un campo `is_final` (que sí existe en charges). Esta inconsistencia es conocida.
 
+**`persistirPagosProveedor` se ejecuta al guardar availability en `proveedores.js`, no solo al procesar reservas.**
+
+Cuando se guarda cualquier cambio de availability desde `proveedores.js` (fotos, descripción, instrucciones, slots), el código llama a `persistirPagosProveedor(supabase, providerId, ...)`. Esta función recalcula el hito "Pago final" del proveedor y lo persiste en `payments`. Si el proveedor no tiene reservas activas —o el importe calculado es 0 (p.ej. `total_slots = 0, price_per_slot = 0` con `billing_model = 'capacity'`)— se inserta igualmente una fila con `amount = 0`.
+
+Consecuencias que hay que tener en cuenta al trabajar sobre este sistema:
+
+- **Todo proveedor con al menos una fila en `availability` tendrá al menos una fila en `payments`**, aunque nunca haya tenido una reserva.
+- **Borrar un proveedor siempre requiere borrar sus `payments` antes.** El DELETE de `providers` falla con FK violation si existe alguna fila en `payments.provider_id`, aunque el importe sea 0. Orden correcto: `DELETE FROM payments WHERE provider_id = '...'` → `DELETE FROM venues WHERE ...` → `DELETE FROM providers WHERE ...`.
+- Este comportamiento aplica también a cualquier operación de limpieza o migración en Supabase que implique borrar proveedores.
+- La UNIQUE constraint `(provider_id, amount, due_date)` impide que el hito a 0 € se multiplique con cada guardado.
+
+Verificado empíricamente en jun 2026 durante la prueba de Fase 0a (ver §9).
+
 ---
 
 ## 9. Plan de fases para ejecutar la deuda técnica
@@ -1084,7 +1124,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | Fase | Estado | Descripción |
 |---|---|---|
 | -1 | ✅ Completa | Auditoría completa de Supabase |
-| 0 | 🔲 Parcial | Auditorías sin código (ver detalles abajo) |
+| 0 | ✅ Completa | Auditorías sin código (deudas operativas sfcom son independientes, ver §0) |
 | 1 | ✅ Completa | Bugs simples (4 cambios quirúrgicos) |
 | 1b | 🔲 Pendiente | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
 | 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
@@ -1136,13 +1176,24 @@ Las fases 1b y 2 son independientes de todo lo demás y pueden hacerse en cualqu
 
 ### Fase 0 — 🔲 Parcial: Auditorías sin código
 
-**0a — Verificar trigger `trg_sync_availability_event_type`:** editar fotos de un venue con varios días de encierro y confirmar que todas las filas del mismo event_type se actualizan. **Pendiente** (la función está auditada y es correcta; falta la prueba end-to-end desde la UI).
+**0a — Verificar trigger `trg_sync_availability_event_type`:** ✅ Verificado en jun 2026. Se creó un venue de prueba (TEST_TRIGGER_VENUE) con 3 filas de availability para ENCIERRO_7, ENCIERRO_8 y ENCIERRO_9 (`total_slots = 0`). Al editar `photos`, `description` y `access_instructions` en la fila de ENCIERRO_7 desde `proveedores.js`, los tres campos se propagaron correctamente a ENCIERRO_8 y ENCIERRO_9. El trigger funciona end-to-end tal como estaba auditado.
+
+Hallazgo colateral de la prueba: `proveedores.js` llama a `persistirPagosProveedor` al guardar cualquier cambio en availability. Esa función creó un hito de pago a 0 € para TEST_TRIGGER_PROV aunque no hubiera reservas (billing_model = capacity, total_slots = 0 → pago_final = 0). La FK `payments.provider_id` bloqueó el DELETE del proveedor hasta borrar ese pago explícitamente. Ver §8 y §7.8.
 
 **0b — Verificar origen de `event_type`:** ✅ Cerrada en Fase -1. Es columna directa en `services`.
 
 **0c — Auditoría de FK cascada:** ✅ Hecha en Fase -1 (D1). La única FK con CASCADE es `sfcom_listings.availability_id → availability`. Todas las demás son NO ACTION. Resultado: la Fase 2 incluirá añadir CASCADE en FKs seleccionadas.
 
-**0d — Auditoría del ciclo de facturación:** 🔲 Pendiente. Recorrido manual por cada flujo completo (crear reserva → cobrar → facturar → pagar proveedor → eliminar) anotando residuos.
+**0d — Auditoría del ciclo de facturación:** ✅ Completado en jun 2026. Recorrido completo documentado. Hallazgos principales:
+
+- Al añadir un cargo manualmente desde bloque 5, `formulario.js` llama también a `persistirCobrosCliente`, que crea un segundo hito "cobro final" automático (mismo patrón que `persistirPagosProveedor` con payments). Ver §7.8.
+- **Bug confirmado:** marcar cobro como cobrado no persiste en Supabase (ver §7.1).
+- **Bug confirmado:** el botón "Facturar" no aparece hasta recargar la página tras añadir un cobro (ver §7.1).
+- Facturación: crea el PDF correctamente, lo descarga y guarda `invoice_number` + `invoice_path` en la fila de `charges`. El campo `invoiced` se pone a `true`.
+- Marcar pago a proveedor como pagado: funciona correctamente y persiste.
+- Eliminar reserva vía "Gestión de reservas → seleccionar → Eliminar": el JS muestra aviso si hay cobros facturados y pide confirmación. **Al confirmar, elimina la reserva y todos sus cobros (incluidos los facturados), pero no elimina los `payments` del proveedor.** Los dos pagos (manual + "Pago final" automático) quedaron huérfanos referenciando el proveedor. Requiere borrado manual o CASCADE en `payments.provider_id`. Input directo para Fase 3. Ver §7.1.
+- El modal de "¿eliminar también el cliente?" es transient: si el usuario navega antes de confirmar, el modal desaparece y el cliente queda en la BD sin forma de borrarlo desde el panel. Ver §7.8.
+- **Invoice PDF en Storage no se limpia.** Al eliminar la reserva y los cobros, el fichero `VSF-XX-AAAA_cliente.pdf` permanece en el bucket `invoices`. No hay mecanismo en el panel para borrar ficheros de Storage. Ver §7.1.
 
 **Deudas operativas sfcom:** Contactar a Hilario sobre Pobre de Mí, Barrera Encierro, Visitas guiadas, Despedida Gigantes. Independiente de todas las fases.
 
