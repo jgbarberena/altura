@@ -690,6 +690,18 @@ Fix parcial aplicado (jun 2026): se añadió umbral mínimo de 5 caracteres para
 
 ---
 
+**Marcar cobro como cobrado puede no persistirse en Supabase.**
+
+Reportado al menos en una ocasión: pulsar el checkbox/botón "cobrado" en el hito de cobro de un cliente en `formulario.js` bloque 5 no guardó el cambio (el campo `collected` siguió a `false` en la BD). Posible causa: el handler del evento de cambio no llega a ejecutar el UPDATE, o el UPDATE falla silenciosamente. Investigar: (1) añadir log de error visible en el handler de "marcar cobrado" en bloque 5 de `formulario.js`, (2) verificar que el listener existe en el elemento correcto y no hay un re-render que lo elimine antes del clic.
+
+---
+
+**Cobros facturados pero no cobrados no se pueden editar.**
+
+Si un hito tiene `invoice_number IS NOT NULL` (se generó una factura), el sistema bloquea la edición del importe aunque `collected = false`. En la práctica, las reservas cambian en el último momento y la factura original queda desfasada. La función `persistirCobrosCliente` crea un "hito de ajuste" automáticamente, pero ese mecanismo no es operable ni visible desde la UI del cliente en `formulario.js`. El criterio de editabilidad debería ser `collected = false`, no `invoice_number IS NULL`. Fix: revisar `formulario.js` bloque 5 para permitir editar el `amount` de un hito mientras `collected = false`, aunque haya `invoice_number`, y añadir una advertencia visible de que la factura emitida ha quedado desfasada.
+
+---
+
 **`_onBorradorActualizado` no preserva el campo `estado` al actualizar desde el asistente.**
 
 Cuando Claude emite un `---BORRADOR---`, `_onBorradorActualizado` en `solicitudes.js` sobreescribe todo el array `proposal_draft`. Si Paula ya había empezado la conversión (alguna línea con `estado: 'hecha'` o `'descartada'`) y luego vuelve a abrir el asistente, esos estados se pierden y las líneas vuelven a `'pendiente'`.
@@ -735,6 +747,18 @@ El registro duplicado fue eliminado en jun 2026. No tenía reservas ni charges a
 Un pedido sfcom normal llega ya con todos los datos → Paula hace 6 clics/confirmaciones antes de que la reserva esté guardada (modal de nuevo pedido → confirmar cliente → confirmar servicio → seleccionar venue → confirmar bloque → guardar). La mayor parte de esos pasos son para casos de excepción (datos incompletos, varios venues posibles) pero se presentan en el camino principal.
 
 Plan: revisar los modales del flujo sfcom en `formulario.js` bloque 0 e identificar cuáles pueden fusionarse o suprimirse cuando los datos son completos. No es un rediseño completo; basta con saltarse pasos cuando la información es unívoca.
+
+---
+
+**Cálculo de margen en panel.js incluye tipos de servicio sin actividad comercial relevante.**
+
+Las tablas "Disponibilidad por evento" y "Disponibilidad por proveedor" del panel muestran filas para todos los `event_type`, incluidos `visita_guiada` y `otro`. Estos servicios tienen un modelo de negocio distinto (guías a precio fijo, sin margen de balcón) y distorsionan la lectura del margen global. Solo interesa ver el margen para balcones: `encierro`, `chupinazo`, `procesion`, `pobre_de_mi`, `despedida_gigantes`. Fix: en `calcularEventos()` de `panel.js`, filtrar `servicios` para excluir `event_type IN ('visita_guiada', 'otro')` antes de calcular filas y márgenes.
+
+---
+
+**Cambio de proveedor de una venue: no hay UI en admin.**
+
+Si hay que reasignar una venue a un proveedor diferente (p.ej. cambio de propietario de un balcón), no existe ningún campo editable en `proveedores.js`. La FK `venues.provider_id` es NO ACTION en DELETE, pero permite UPDATE sin restricciones. El cambio en Supabase es directo: `UPDATE venues SET provider_id = 'NUEVO_PROVEEDOR' WHERE id = 'MI_VENUE'`. Dado que los casos son rarísimos, basta documentar ese SQL; si ocurriera con frecuencia, valorar añadir un `<select>` de proveedor en la UI de edición de venue en `proveedores.js`.
 
 ---
 
@@ -792,6 +816,27 @@ Las propuestas tienen más datos disponibles ahora de los que usan. Mejoras iden
 - Incluir `availability.photos[0]` como imagen principal de cada línea.
 - Mostrar `availability.access_instructions` si está relleno.
 - Mejorar el contexto que recibe Claude para el borrador (más datos de disponibilidad = propuestas más concretas).
+
+---
+
+**Renombrar IDs de cliente, proveedor, venue u otras entidades.**
+
+Actualmente imposible desde el admin. Desde el SQL Editor de Supabase tampoco es directo porque todas las FKs de IDs de texto (clients, providers, venues, services) son NO ACTION en UPDATE: al cambiar la PK falla el constraint porque las tablas hija aún referencian el ID antiguo.
+
+Solución correcta (a implementar en Fase 2): añadir `ON UPDATE CASCADE` a las FKs relevantes. Con CASCADE, `UPDATE clients SET id = 'NUEVO' WHERE id = 'VIEJO'` propagaría automáticamente a `reservations.client_id` y `charges.client_id`.
+
+Mientras tanto, el workaround manual en SQL Editor (ejecutar como transacción en el orden correcto: primero las tablas hija, luego la PK):
+```sql
+-- Ejemplo para renombrar cliente:
+BEGIN;
+UPDATE reservations SET client_id = 'NUEVO_ID' WHERE client_id = 'VIEJO_ID';
+UPDATE charges     SET client_id = 'NUEVO_ID' WHERE client_id = 'VIEJO_ID';
+UPDATE clients     SET id        = 'NUEVO_ID' WHERE id        = 'VIEJO_ID';
+COMMIT;
+
+-- Para venue: UPDATE reservations, availability (venue_id), luego venues.
+-- Para provider: UPDATE venues (provider_id), payments, luego providers.
+```
 
 ---
 
@@ -1035,11 +1080,15 @@ La Fase 1 es independiente de todo: se puede hacer incluso antes que la 0.
 
 ---
 
-### Fase 2 — 🔲 Esquema BD: cascada de borrados
+### Fase 2 — 🔲 Esquema BD: cascada de borrados y renombrado de IDs
 
 Basada en los hallazgos del D1 (Fase -1). Solo la FK `sfcom_listings → availability` tiene CASCADE. Todas las demás son NO ACTION.
 
-Decidir por cada FK si conviene CASCADE (limpieza automática) o NO ACTION (el JS controla el flujo con confirmación del usuario). Implementar migraciones en Supabase SQL Editor. Revisar después si el código JS de borrado manual necesita ajustes.
+Dos subobjetivos:
+
+**2a — ON DELETE CASCADE** (o mantener NO ACTION con JS explícito): decidir por cada FK si conviene CASCADE (limpieza automática al borrar padre) o NO ACTION (el JS controla el flujo con confirmación del usuario). Implementar migraciones en SQL Editor.
+
+**2b — ON UPDATE CASCADE** para IDs de texto: añadir `ON UPDATE CASCADE` a las FKs de `clients.id`, `providers.id`, `venues.id` y `services.id`. Con CASCADE, renombrar un ID en la tabla padre propagará automáticamente a todas las tablas hija. Esto también habilita en el futuro una UI de "renombrar ID" en el admin. Las FKs afectadas: `reservations.client_id`, `charges.client_id` (→clients); `venues.provider_id`, `payments.provider_id` (→providers); `reservations.venue_id`, `availability.venue_id` (→venues); `reservations.service_id`, `availability.service_id` (→services).
 
 ---
 
