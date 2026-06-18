@@ -1,4 +1,5 @@
 import { crearModal } from './modal.js'
+import { mostrarToast } from './verificacion.js'
 
 // ===== UTILIDADES COMPARTIDAS DEL ADMIN =====
 
@@ -354,4 +355,63 @@ export async function abrirRenombrarId({ tabla, idActual, supabase, onSuccess })
     })
 
     setTimeout(() => input.select(), 50)
+}
+
+// Renderiza botones de envío (copiar / email / WhatsApp) en un contenedor DOM.
+// getTexto: () => string — se llama en el momento del clic, no en el render.
+// asunto: subject opcional para el mailto; email/telefono: omite el botón si falsy.
+// onUsado: callback opcional que recibe el texto usado al hacer clic en cualquier botón.
+export function mostrarOpcionesEnvio({ email, telefono, asunto, getTexto, container, onUsado }) {
+    container.innerHTML = ''
+    container.style.display  = 'flex'
+    container.style.gap      = '8px'
+    container.style.flexWrap = 'wrap'
+
+    const btnCopiar = document.createElement('button')
+    btnCopiar.className = 'btn btn-secondary'
+    btnCopiar.style.minHeight = '44px'
+    btnCopiar.textContent = '📋 Copiar'
+    btnCopiar.addEventListener('click', async () => {
+        const texto = getTexto()
+        try {
+            await navigator.clipboard.writeText(texto)
+            mostrarToast('📋 Copiado al portapapeles')
+        } catch {
+            mostrarToast('❌ No se pudo copiar', '#991b1b')
+        }
+        onUsado?.(texto)
+    })
+    container.appendChild(btnCopiar)
+
+    if (email) {
+        const btnEmail = document.createElement('button')
+        btnEmail.className = 'btn btn-secondary'
+        btnEmail.style.minHeight = '44px'
+        btnEmail.textContent = '📧 Email'
+        btnEmail.addEventListener('click', () => {
+            const texto = getTexto()
+            const qs = [
+                asunto && `subject=${encodeURIComponent(asunto)}`,
+                `body=${encodeURIComponent(texto)}`
+            ].filter(Boolean).join('&')
+            window.open(`mailto:${email}?${qs}`, '_blank')
+            onUsado?.(texto)
+        })
+        container.appendChild(btnEmail)
+    }
+
+    if (telefono) {
+        const digits = telefono.replace(/\D/g, '')
+        const intl   = digits.length <= 9 ? '34' + digits : digits
+        const btnWA  = document.createElement('button')
+        btnWA.className = 'btn btn-secondary'
+        btnWA.style.minHeight = '44px'
+        btnWA.textContent = '💬 WhatsApp'
+        btnWA.addEventListener('click', () => {
+            const texto = getTexto()
+            window.open(`https://wa.me/${intl}?text=${encodeURIComponent(texto)}`, '_blank')
+            onUsado?.(texto)
+        })
+        container.appendChild(btnWA)
+    }
 }

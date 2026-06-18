@@ -2,6 +2,8 @@
 // Genera una propuesta en PDF para reservas seleccionadas de un cliente.
 // Se importa desde formulario.js igual que factura.js.
 
+import { mostrarOpcionesEnvio } from './utils.js'
+
 // ===== CONFIGURACIÓN =====
 const PROPUESTA_CONFIG = {
     empresa_nombre:   'Vive San Fermín a medida',
@@ -290,7 +292,14 @@ async function generarYDescargar() {
             detail: { ids, numero: _numPropuesta, path: propPath }
         }))
 
-        _abrirMailto()
+        const nombre = _cliente.name ?? _cliente.id
+        mostrarOpcionesEnvio({
+            email:    _cliente.email ?? null,
+            telefono: _cliente.phone ?? null,
+            asunto:   PROPUESTA_CONFIG.email_asunto_tpl(),
+            getTexto: () => PROPUESTA_CONFIG.email_cuerpo_tpl(nombre),
+            container: document.getElementById('propuesta-botones-envio')
+        })
 
     } finally {
         btn.disabled    = false
@@ -590,15 +599,6 @@ async function _generarPDF() {
     const nombreArchivo = `${_numPropuesta.replace('/', '-')}_${(_cliente.name ?? _cliente.id).replace(/\s+/g, '_')}.pdf`
     doc.save(nombreArchivo)
     return { blob: doc.output('blob'), nombreArchivo }
-}
-
-// ===== CORREO =====
-function _abrirMailto() {
-    const email  = _cliente.email ?? ''
-    const nombre = _cliente.name  ?? _cliente.id
-    const asunto = encodeURIComponent(PROPUESTA_CONFIG.email_asunto_tpl())
-    const cuerpo = encodeURIComponent(PROPUESTA_CONFIG.email_cuerpo_tpl(nombre))
-    window.open(`mailto:${email}?subject=${asunto}&body=${cuerpo}`, '_blank')
 }
 
 // ===== CIERRE DEL PANEL =====

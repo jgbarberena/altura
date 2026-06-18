@@ -664,27 +664,29 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
             resultado.sfcom.verificado = false
         }
 
-        // ── Nombres de variaciones para idsMismatch (solo en verificación manual) ──
-        // stock-all no devuelve nombres; un GET de variaciones por producto ENCIERRO,
-        // solo cuando checkVariationNames = true (botón "Verificar datos").
-        const varNombreMap = new Map()   // variation_id → name
-        if (checkVariationNames) {
-            const encierroProductIds = [...new Set(
-                mappedAvails
-                    .filter(a => a.sfcom_variation_id && /^ENCIERRO_/.test(a.service_id))
-                    .map(a => a.sfcom_product_id)
-            )]
-            for (const productId of encierroProductIds) {
-                try {
-                    const items = await apiFetch(`products/${productId}/variations?per_page=100`)
-                    for (const item of (Array.isArray(items) ? items : [])) {
-                        varNombreMap.set(item.id, item.name ?? null)
-                    }
-                } catch (e) {
-                    console.warn(`[sfcom] No se pudieron cargar variaciones de ${productId} para idsMismatch: ${e.message}`)
-                }
+        // ── Check interno: variation_id duplicado por mismo producto ────────────
+        // Dos servicios con el mismo sfcom_product_id no pueden compartir sfcom_variation_id.
+        // Corre en todas las verificaciones (automática y manual).
+        const _varPorProducto = new Map()   // product_id → Map<variation_id → {venue_id, service_id}>
+        for (const avail of mappedAvails) {
+            if (!avail.sfcom_variation_id) continue
+            const pid = String(avail.sfcom_product_id)
+            if (!_varPorProducto.has(pid)) _varPorProducto.set(pid, new Map())
+            const varMap = _varPorProducto.get(pid)
+            const vid    = String(avail.sfcom_variation_id)
+            if (varMap.has(vid)) {
+                const otro = varMap.get(vid)
+                resultado.errores.push(
+                    `ID de variación duplicado: variation_id ${avail.sfcom_variation_id} ` +
+                    `asignado a ${avail.service_id} (${avail.venue_id}) ` +
+                    `y también a ${otro.service_id} (${otro.venue_id})`
+                )
+            } else {
+                varMap.set(vid, { venue_id: avail.venue_id, service_id: avail.service_id })
             }
         }
+
+        const varNombreMap = new Map()   // siempre vacío: sf-api-paula.php no expone endpoints de variaciones
 
         // ── Procesar cada par ─────────────────────────────────────────────────
         for (const avail of mappedAvails) {
@@ -814,39 +816,39 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
 
 // ────────────────────────────────────────────────────────────────────────────
 // getSfcomProducts (interno)
-// Lee todos los productos de sfcom y expande las variaciones de productos
-// de tipo variable. Devuelve un array plano de opciones seleccionables.
+// Construye la lista de productos/variaciones desde sfcom_listings en Supabase.
+// sf-api-paula.php no expone GET products ni GET variations; usamos los datos
+// que ya tenemos registrados como fuente de verdad local.
 // ────────────────────────────────────────────────────────────────────────────
 
 async function getSfcomProducts() {
-    const productos  = await apiFetch('products')
-    const resultado  = []
+    const { data, error } = await supabase
+        .from('sfcom_listings')
+        .select('sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(service_id)')
+        .not('sfcom_product_id', 'is', null)
 
-    for (const p of (productos ?? [])) {
-        if (p.type === 'variable' && p.variations?.length) {
-            let variaciones
-            try {
-                variaciones = await apiFetch(`products/${p.id}/variations`)
-            } catch (e) {
-                console.warn(`[sfcom] No se pudieron cargar variaciones de ${p.id}: ${e.message}`)
-                continue
-            }
-            for (const v of (variaciones ?? [])) {
-                resultado.push({
-                    name:         v.name,
-                    product_name: p.name,
-                    product_id:   p.id,
-                    variation_id: v.id
-                })
-            }
-        } else {
-            resultado.push({
-                name:         p.name,
-                product_name: p.name,
-                product_id:   p.id,
-                variation_id: null
-            })
-        }
+    if (error) throw new Error(error.message)
+    if (!data?.length) return []
+
+    const seen      = new Set()
+    const resultado = []
+    for (const row of data) {
+        const pid = row.sfcom_product_id
+        const vid = row.sfcom_variation_id ?? null
+        const key = `${pid}:${vid}`
+        if (seen.has(key)) continue
+        seen.add(key)
+
+        const serviceId = row.availability?.service_id ?? ''
+        const m         = /^ENCIERRO_(\d+)$/.exec(serviceId)
+        const dayNum    = m ? parseInt(m[1]) : null
+
+        resultado.push({
+            name:         dayNum ? `${row.sfcom_service_name} — día ${dayNum} julio` : row.sfcom_service_name,
+            product_name: row.sfcom_service_name,
+            product_id:   pid,
+            variation_id: vid
+        })
     }
     return resultado
 }

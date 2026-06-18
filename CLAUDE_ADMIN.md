@@ -417,11 +417,11 @@ Módulo ES6. Toda la comunicación con tienda.sanfermin.com a través de la Edge
 
 **Arquitectura:** `supabase.functions.invoke('sfcom-bridge', { body: { endpoint, method, payload } })`. La clave `X-Paula-Key` está en Supabase Vault (`SFCOM_API_KEY`), nunca en el código JS del cliente. Timeout de 12 segundos en la Edge Function.
 
-**Endpoints usados:**
-- `GET stock-all` → `{ updated_at, count, stock: { "id": qty, ... } }`. Devuelve todo el stock en una llamada. Clave es el ID como string (variation_id para variaciones, product_id para simples). **Siempre usar para leer stock.**
-- `PUT products/{id}` / `PUT products/{id}/variations/{var_id}` → modifica stock. Solo acepta `stock_quantity`. Rate limit: 20 req/min, máx 2 simultáneas.
-- `GET products`, `GET products/{id}/variations` → con rate limit. Solo cuando se necesitan nombres (verificación manual, picker de confirmación).
-- `GET orders?status=completed&after=<ISO>&per_page=N` → lista de pedidos.
+**Endpoints disponibles en sf-api-paula.php** (únicos soportados — cualquier otro devuelve 403):
+- `GET stock-all` → `{ updated_at, count, stock: { "id": qty, ... } }`. Todo el stock en una llamada. Clave = ID como string (variation_id para variaciones, product_id para simples). **Única forma de leer stock.**
+- `PUT products/{id}` / `PUT products/{id}/variations/{var_id}` → modifica `stock_quantity`. Rate limit: 20 req/min, máx 2 simultáneas.
+- `GET orders` → todos los pedidos WooCommerce, sin filtros. El filtrado (por status, fecha, dedup) se hace en JS cliente. No se pueden pasar query params.
+- `GET products*` y cualquier otro endpoint de la WooCommerce REST API → **no disponibles**, devuelven 403. No usar.
 
 **Fórmula de stock:**
 ```
@@ -438,16 +438,38 @@ nuevoStock = Math.max(0, Math.min(
 **Comisión sfcom:** 15%. Precio neto = precio bruto / 1.15. Aplicado al precargar precio desde solicitudes sfcom en formulario.js.
 
 **Exports principales:**
-- `syncStockToSfcom(supabase, proveedorId, servicioId)` — hace PUT si `sfcom_status === 'confirmed'`. Silencioso en éxito, modal de error en fallo. Llamar siempre después de cualquier operación que cambie reservas activas.
-- `checkAvailabilityBeforeSave(supabase, proveedorId, servicioId, plazas)` — verifica antes de guardar reserva nueva. No bloquea si el GET de sfcom falla.
-- `checkSfcomOrders(supabase)` — detecta pedidos nuevos, inserta en reservation_requests.
-- `verificarCoherencia(supabase)` — verifica integridad FK, sobrereservas y stock sfcom. Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], idsMismatch[], fallos[] } }`.
-- `mostrarModalConfirmacionSfcom(cambios)` — modal consultivo antes de PUTs. Devuelve `Promise<'sync'|'save'|'cancel'>`. Callers usan: `if (result === 'cancel') return` para abortar, `if (result === 'sync') await syncStockToSfcom(...)` para el PUT.
-- `verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)` — busca por nombre en sfcom y confirma entrada en sfcom_listings.
+- `syncStockToSfcom(supabase, venueId, serviceId)` — hace PUT si `sfcom_status === 'confirmed'`. Silencioso en éxito, modal de error en fallo. Llamar siempre después de cualquier operación que cambie reservas activas.
+- `checkAvailabilityBeforeSave(supabase, venueId, serviceId, plazas)` — verifica antes de guardar reserva nueva. No bloquea si el GET de sfcom falla.
+- `checkSfcomOrders(supabase)` — detecta pedidos nuevos y cancelados en sfcom, inserta en reservation_requests.
+- `importarCanceladosSfcom(supabase, sfcomListings, cancelados)` — importa pedidos cancelados como leads con `status: 'cancelada_sfcom'`.
+- `loadSfcomListings(supabase)` — carga el mapeo WooCommerce→servicio/venue. Usada en páginas que no son formulario.html.
+- `verificarCoherencia(supabase)` — véase abajo.
+- `mostrarModalConfirmacionSfcom(cambios)` — modal consultivo antes de PUTs. Devuelve `Promise<'sync'|'save'|'cancel'>`. Callers: `if (result === 'cancel') return` para abortar, `if (result === 'sync') await syncStockToSfcom(...)` para el PUT.
+- `verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)` — véase abajo.
 
-**Detección de `idsMismatch`** (solo en verificación manual): compara día del nombre de variación con día esperado según service_id. Requiere GET a `products/{id}/variations` (con rate limit); solo se ejecuta cuando `checkVariationNames = true` (botón "Verificar datos" y sfcom-panel.js). La verificación automática al cargar no detecta idsMismatch.
+**`verificarCoherencia(supabase)`**
 
-**Discrepancias `pendingExplains`:** cuando sfcom muestra más stock del esperado y el gap está completamente cubierto por solicitudes sfcom pendientes de procesar, la discrepancia no es un error. No aparece en el modal con botón de sincronización; el "Sincronizar todos" las ignora.
+Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], idsMismatch[], fallos[], error } }`.
+
+Comprobaciones que realiza (todas en cada llamada, automática o manual):
+1. Integridad FK: reservas con venue/service/client que no existen en sus tablas maestras.
+2. Sobrereserva: plazas activas superiores al total del venue/servicio.
+3. Solicitudes pendientes: sfcom sin atender (aviso) y web sin atender (aviso).
+4. Servicios `confirmed` sin `sfcom_product_id` (aviso).
+5. Discrepancias de stock: compara stock real en sfcom (`stock-all`) con stock esperado según fórmula. Genera `sfcom.discrepancias[]`.
+6. IDs de variación duplicados: detecta si dos servicios del mismo producto comparten `sfcom_variation_id` en `sfcom_listings`. Resultado va a `errores[]`.
+
+`sfcom.idsMismatch[]` **siempre queda vacío** — sf-api-paula.php no expone `GET products/{id}/variations`, así que no es posible verificar el nombre de variación en WooCommerce. El parámetro `checkVariationNames` que aceptan los callers es ignorado.
+
+`resultado.ok` es `true` solo si `errores[]` está vacío (las discrepancias sfcom no bloquean `ok`; tienen su propia sección en el modal).
+
+**`verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)`**
+
+Busca el nombre propuesto en la lista de productos conocidos y confirma la entrada en `sfcom_listings`. Fuente de la lista: query a `sfcom_listings` en Supabase (no a sfcom directamente, porque sf-api-paula.php no expone `GET products`). Esto significa que la lista incluye únicamente productos ya configurados en alguna fila de `sfcom_listings`. Si Hilario añade un producto nuevo que aún no aparece en ninguna fila, habrá que añadirlo manualmente con SQL o esperando a que se use por primera vez.
+
+Flujo interno: `getSfcomProducts()` (Supabase) → `_inferirProductoEnSfcom()` (auto-match por nombre y día) → si no hay match, picker modal → upsert en `sfcom_listings` con product_id, variation_id y `sfcom_status: 'confirmed'`.
+
+**Discrepancias `pendingExplains`:** cuando sfcom muestra más stock del esperado y el gap está cubierto íntegramente por solicitudes sfcom pendientes de procesar, la discrepancia no es un error. No aparece con botón de sincronización; el "Sincronizar todos" las ignora.
 
 ### sfcom-panel.js
 Módulo ES6. Panel de gestión sfcom con KPIs, solicitudes pendientes, reservas con sfcom_order_ref, y listings activos con stock. Lee `availability_with_sfcom`. No escribe en BD. Reutiliza `verificarCoherencia`, `mostrarModalVerificacion` y `mostrarModalPreCorreccion` de `verificacion.js`.
@@ -1154,7 +1176,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 1b | ✅ Completa | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
 | 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
 | 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
-| 4 | 🟡 Parcial | Sistema de borrador y asistente (código implementado; pendiente: tabla session_context en Supabase + verificar EF claude-proxy) |
+| 4 | ✅ Completa | Sistema de borrador y asistente (jun 2026) |
 | 5 | 🟡 Parcial | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales 🔲 |
 | 6 | 🟡 Parcial | Panel: navegación tablas ✅ · image_url auto-fill 🔲 |
 | 7 | 🔲 Pendiente | Mejoras de propuestas |

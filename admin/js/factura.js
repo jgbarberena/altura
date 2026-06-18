@@ -2,6 +2,8 @@
 // Gestiona la generación, previsualización y emisión de facturas desde los hitos de cobro.
 // Se importa desde formulario.js y necesita acceso al cliente supabase y a los datos globales.
 
+import { mostrarOpcionesEnvio } from './utils.js'
+
 // ===== CONFIGURACIÓN — editar aquí cuando cambien datos del emisor =====
 const FACTURA_CONFIG = {
     emisor_nombre:    'Paula Díaz Echalecu',
@@ -366,9 +368,18 @@ async function emitirFactura() {
         .eq('id', _hitoActual.id)
     if (errCharge) { alert('Error al marcar como facturado: ' + errCharge.message); return }
 
-    abrirMailto()
     document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId: _hitoActual.id } }))
-    cerrarPanel()
+
+    const base       = parseFloat(_hitoActual.amount)
+    const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
+    const nombre     = _cliente.company ?? _cliente.name ?? _cliente.id
+    mostrarOpcionesEnvio({
+        email:    _cliente.email ?? null,
+        telefono: _cliente.phone ?? null,
+        asunto:   FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')),
+        getTexto: () => FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)),
+        container: document.getElementById('factura-botones-envio')
+    })
 }
 
 // ===== GENERACIÓN DEL PDF con jsPDF puro =====
@@ -729,17 +740,6 @@ function _cargarLogoBase64() {
     }
     img.onerror = () => { _logoBase64 = null }
     img.src = LOGO_URL
-}
-
-// ===== APERTURA DEL CLIENTE DE CORREO =====
-function abrirMailto() {
-    const base       = parseFloat(_hitoActual.amount)
-    const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
-    const email      = _cliente.email ?? ''
-    const nombre     = _cliente.company ?? _cliente.name ?? _cliente.id
-    const asunto     = encodeURIComponent(FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')))
-    const cuerpo     = encodeURIComponent(FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)))
-    window.open(`mailto:${email}?subject=${asunto}&body=${cuerpo}`, '_blank')
 }
 
 // ===== APERTURA / CIERRE DEL PANEL =====

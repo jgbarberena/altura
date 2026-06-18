@@ -1,5 +1,6 @@
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
+import { mostrarOpcionesEnvio } from './utils.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
@@ -214,11 +215,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             <div style="font-size:12px;font-weight:600;color:#374151">✅ Mensaje para el cliente:</div>
             <textarea id="asistente-mensaje-final"
                 style="width:100%;min-height:140px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button id="btn-asistente-copiar" class="btn btn-secondary" style="min-height:48px">📋 Copiar</button>
-                ${solicitud.client_email ? `<a id="btn-asistente-email" class="btn btn-secondary" style="text-decoration:none;min-height:48px">📧 Email</a>` : ''}
-                ${solicitud.client_phone ? `<a id="btn-asistente-whatsapp" class="btn btn-secondary" style="text-decoration:none;min-height:48px" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
-            </div>
+            <div id="asistente-botones"></div>
         </div>
     `
 
@@ -327,16 +324,13 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
 
                 _ultimoBorrador = borradorDraft
 
-                const btnEmail = panel.querySelector('#btn-asistente-email')
-                const btnWA    = panel.querySelector('#btn-asistente-whatsapp')
-                if (btnEmail && solicitud.client_email) {
-                    btnEmail.href = `mailto:${solicitud.client_email}?body=${encodeURIComponent(mensajeFinal)}`
-                }
-                if (btnWA && solicitud.client_phone) {
-                    const digits = (solicitud.client_phone).replace(/\D/g, '')
-                    const intl   = digits.length <= 9 ? '34' + digits : digits
-                    btnWA.href   = `https://wa.me/${intl}?text=${encodeURIComponent(mensajeFinal)}`
-                }
+                mostrarOpcionesEnvio({
+                    email:     solicitud.client_email,
+                    telefono:  solicitud.client_phone,
+                    getTexto:  () => elMsgFinal.value,
+                    container: panel.querySelector('#asistente-botones'),
+                    onUsado:   _alUsarBoton
+                })
             }
         } catch (err) {
             mensajes.pop()
@@ -349,9 +343,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         }
     }
 
-    // Acción compartida al usar cualquier botón de envío
-    async function _alEnviar() {
-        const texto = elMsgFinal.value.trim()
+    async function _alUsarBoton(texto) {
         if (!texto) return
         if (_onRespuestaUsada) await _onRespuestaUsada(texto, solicitud)
         if (_ultimoBorrador !== null && _onBorradorActualizado) {
@@ -384,24 +376,6 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         if (elResultado.style.display !== 'none' && elInput.value.trim()) {
             elResultado.style.display = 'none'
         }
-    })
-
-    panel.querySelector('#btn-asistente-copiar')?.addEventListener('click', async () => {
-        try {
-            await navigator.clipboard.writeText(elMsgFinal.value)
-            mostrarToast('📋 Copiado al portapapeles')
-        } catch {
-            mostrarToast('❌ No se pudo copiar', '#991b1b')
-        }
-        await _alEnviar()
-    })
-
-    panel.querySelector('#btn-asistente-email')?.addEventListener('click', async () => {
-        await _alEnviar()
-    })
-
-    panel.querySelector('#btn-asistente-whatsapp')?.addEventListener('click', async () => {
-        await _alEnviar()
     })
 
     // Contexto inicial
@@ -499,16 +473,13 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                     elResultado.style.display       = 'flex'
                     elResultado.style.flexDirection = 'column'
                     elResultado.style.gap           = '10px'
-                    const btnEmail = panel.querySelector('#btn-asistente-email')
-                    const btnWA    = panel.querySelector('#btn-asistente-whatsapp')
-                    if (btnEmail && solicitud.client_email) {
-                        btnEmail.href = `mailto:${solicitud.client_email}?body=${encodeURIComponent(lastFinal)}`
-                    }
-                    if (btnWA && solicitud.client_phone) {
-                        const digits = solicitud.client_phone.replace(/\D/g, '')
-                        const intl   = digits.length <= 9 ? '34' + digits : digits
-                        btnWA.href   = `https://wa.me/${intl}?text=${encodeURIComponent(lastFinal)}`
-                    }
+                    mostrarOpcionesEnvio({
+                        email:     solicitud.client_email,
+                        telefono:  solicitud.client_phone,
+                        getTexto:  () => elMsgFinal.value,
+                        container: panel.querySelector('#asistente-botones'),
+                        onUsado:   _alUsarBoton
+                    })
                 }
                 hasHistory = mensajes.length > 0
             } catch(e) {

@@ -173,7 +173,7 @@ function limpiarCamposCliente() {
     limpiarFormularioReserva()
 }
 
-btnRenombrarCliente.addEventListener('click', () => {
+btnRenombrarCliente?.addEventListener('click', () => {
     const idViejo = clienteActual.id
     abrirRenombrarId({
         tabla: 'clients', idActual: idViejo, supabase,
