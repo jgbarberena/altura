@@ -279,7 +279,7 @@ function actualizarStockDesdeVerificacion(resultado) {
     if (!resultado?.sfcom) return
     const confirmados = todosLosDatos.disponibilidad.filter(d => d.sfcom_status === 'confirmed')
     const fallos  = new Set((resultado.sfcom.fallos ?? []).map(f => `${f.venueId}|${f.serviceId}`))
-    const discMap = new Map((resultado.sfcom.discrepancias ?? []).map(d => [`${d.venueId}|${d.serviceId}`, d.stockReal]))
+    const discMap = new Map((resultado.sfcom.discrepancias ?? []).map(d => [`${d.venueId}|${d.serviceId}`, d.stockSfcom]))
 
     confirmados.forEach(d => {
         const pairKey = `${d.venue_id}|${d.service_id}`

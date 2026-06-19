@@ -417,7 +417,7 @@ async function _generarYSubir() {
         .from('reservations')
         .update(camposUpdate)
         .in('id', ids)
-    if (errUpdate) console.error('Error al guardar propuesta en reservas:', errUpdate.message)
+    if (errUpdate) { alert('Error al guardar propuesta en reservas: ' + errUpdate.message); return }
 
     document.dispatchEvent(new CustomEvent('propuestaEmitida', {
         detail: { ids, numero: _numPropuesta, path: propPath }

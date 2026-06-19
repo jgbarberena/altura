@@ -1119,14 +1119,14 @@ Auditoría exhaustiva línea a línea del panel completo realizada en jun 2026. 
 **`verificarConsistenciaFinanciera` puede borrar cobros con historial contable sin doble confirmación (`panel.js`).**
 El botón "Corregir automáticamente" ejecuta `DELETE FROM charges WHERE client_id = X` para todos los clientes detectados como huérfanos. Si un cliente canceló reservas pero ya había pagado un adelanto (cobro con `collected=true` o `invoice_number`), ese cobro se borra. El modal muestra el aviso `tieneHistorial`, pero no excluye a esos clientes del corrector — solo advierte antes de ejecutar. Fix: excluir del corrector automático a cualquier huérfano con `tieneHistorial=true` y requerir acción manual.
 
-**Race condition en numeración de facturas y propuestas (`factura.js:96-112`, `propuesta.js:81-97`).**
-`calcularSiguienteNumero` lee `MAX(invoice_number)` y devuelve `+1`. Si dos sesiones emiten simultáneamente, obtienen el mismo número. No hay UNIQUE constraint en `charges.invoice_number` ni en `reservations.proposal_number`. Consecuencia legal real: facturas duplicadas. Fix: generar el número en BD mediante función SQL transaccional, o añadir UNIQUE constraint que haga fallar el segundo insert con error detectable.
+**✅ RESUELTO — Race condition en numeración de facturas (`factura.js:96-112`, `propuesta.js:81-97`).**
+`calcularSiguienteNumero` lee `MAX(invoice_number)` y devuelve `+1`. Aplicado en jun 2026: `ALTER TABLE charges ADD CONSTRAINT uq_charges_invoice_number UNIQUE (invoice_number)`. En PostgreSQL, NULLs no colisionan con el constraint. Si dos sesiones intentan emitir la misma factura simultáneamente, el segundo UPDATE falla con error visible para Paula. `reservations.proposal_number` no admite UNIQUE (varias reservas comparten el mismo número de propuesta). Adicionalmente, `propuesta.js` cambiado de `console.error` a `alert` para que el error sea visible.
 
-**`solicitudOriginRef` no se resetea cuando Paula cancela sin guardar (`formulario.js:1995-2010`).**
-`solicitudOriginRef` se asigna al cargar una solicitud. Si Paula abandona el flujo sin guardar, el valor queda en memoria. La próxima reserva que guarde hereda ese `origin_ref`, asociándola a una solicitud incorrecta. Fix: resetear `solicitudOriginRef = null` en `limpiarFormularioReserva()`.
+**✅ RESUELTO — `solicitudOriginRef` ya se resetea en `limpiarFormularioReserva()` (`formulario.js:193`).**
+El fix estaba aplicado: `solicitudOriginRef = null` en línea 193. El comentario en línea 2184 documenta el flujo deliberado donde se restaura tras `cargarCliente`.
 
-**`sfcom-panel.js` usa `d.stockReal` pero el objeto de discrepancia tiene `d.stockSfcom` (`sfcom-panel.js:282`).**
-La columna "Stock real" en la tabla de discrepancias del panel sfcom siempre muestra `undefined`. Bug de naming entre `sfcom.js` (genera el objeto con `stockSfcom`) y `sfcom-panel.js` (lo consume como `stockReal`). Fix: cambiar a `d.stockSfcom`.
+**✅ RESUELTO — `sfcom-panel.js` usaba `d.stockReal` pero el objeto de discrepancia tiene `d.stockSfcom` (`sfcom-panel.js:282`).**
+La columna "Stock real" en la tabla de discrepancias del panel sfcom siempre mostraba `undefined`. Corregido en jun 2026: `d.stockReal` → `d.stockSfcom`.
 
 **`_insertarMensaje` no protege contra escrituras concurrentes al log de conversación (`solicitudes.js:132-151`).**
 Lee `conversation_notes`, parsea, añade mensaje, persiste. Si dos eventos se disparan casi simultáneamente (asistente cierra modal mientras Paula guarda una edición), el segundo UPDATE sobreescribe el primero sin control de versión. Fix: usar optimistic locking o encolar los writes.
