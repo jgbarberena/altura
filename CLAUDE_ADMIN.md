@@ -356,10 +356,10 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 **Sistema de bienvenida (Fase 2, jun 2026):** botón "📩 Enviar bienvenida" en la fila de acciones del bloque 4, junto a "Generar propuesta". Implementado en puro JS, sin asistente.
 
-- **`actualizarBotonBienvenida()`** — muestra/oculta el botón según si el cliente tiene reservas activas. Bajo el botón aparece "✅ Enviado el DD/MM" si todas las confirmadas tienen `welcome_sent_at`.
-- **`componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarcadas, disponibilidad, opts)`** — genera el texto adaptando la intro según días hasta el 6 de julio (>1 día / mañana / ya estamos en SF). Incluye un bloque por reserva con nombre del evento, día, hora, `venue_display_name`, plazas e instrucciones de acceso si `availability.access_instructions` está relleno. Cierre firmado por Paula.
-- **`abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas)`** — modal con el texto como `<textarea>` editable. Si hay reservas pendientes, ofrece checkbox para incluir una nota sobre ellas. Usa `mostrarOpcionesEnvio` (`tipo:'texto'`) para WhatsApp/email. Al usar cualquier botón de envío escribe `welcome_sent_at` en todas las reservas incluidas y llama a `actualizarBotonBienvenida()`.
-- El bloque incluye las reservas **Confirmadas** más las **Pendientes** que tengan `welcome_sent_at` (las que Paula decidió incluir antes). Las pendientes sin `welcome_sent_at` se muestran en el banner de advertencia con la opción de incluir nota.
+- **`actualizarBotonBienvenida()`** — muestra/oculta el botón (`#btnEnviarBienvenida`, el propio elemento, con `display:'flex'/'none'`) según si el cliente tiene reservas activas. En una segunda línea dentro del botón (`<span id="bienvenida-status">`) aparece "✅ Enviado el DD/MM" si todas las confirmadas tienen `welcome_sent_at`.
+- **`componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarcadas, disponibilidad, opts)`** — genera el texto adaptando la intro según días hasta el 6 de julio (>1 día / mañana / ya estamos en SF). `diasParaSanFermin()` usa siempre el año en curso y **no salta al año siguiente** tras las fiestas (a diferencia de `fechaCobroDefault`). Incluye un bloque por reserva con nombre del evento, día, hora, `venue_display_name`, plazas e instrucciones de acceso si `availability.access_instructions` está relleno. Cuando hay varias reservas, los bloques se separan con `— — — — —`. Cierre firmado por Paula.
+- **`abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas)`** — modal con el texto como `<textarea>` editable. Si `pendientesNoMarcadas` no está vacío, muestra un banner de advertencia con checkbox para añadir una nota sobre ellas al final del mensaje. Usa `mostrarOpcionesEnvio` (`tipo:'texto'`) para WhatsApp/email. Al usar cualquier botón de envío escribe `welcome_sent_at` solo en `reservasIncluidas` (nunca en las que solo aparecen en el banner) y llama a `actualizarBotonBienvenida()`.
+- Al pulsar el botón, `reservasIncluidas` contiene siempre todas las reservas **Confirmadas** del cliente más las **Pendientes** que Paula haya marcado con el checkbox en la tabla. Las Pendientes no marcadas van a `pendientesNoMarcadas` y aparecen solo en el banner de advertencia del modal.
 
 ### solicitudes.js
 Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js` (`initSidebar`, `buildCatalogUrl`, `resolverCliente`), `mostrarToast` de `verificacion.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
@@ -1461,7 +1461,7 @@ Implementado en puro JS desde `formulario.js`, sin asistente. El diseño final d
 2. ✅ **`componerMensajeBienvenida()`** — genera el texto con intro adaptada a los días que quedan para el 6 de julio, bloques por reserva (evento, día, hora, venue, plazas, instrucciones de acceso), y cierre firmado por Paula.
 3. ✅ **`abrirModalBienvenida()`** — modal con `<textarea>` editable + `mostrarOpcionesEnvio` (`tipo:'texto'`). Al enviar escribe `welcome_sent_at` en las reservas incluidas.
 4. ✅ **`welcome_sent_at`** en `reservations` — campo timestamptz, null hasta el primer envío. El botón muestra "✅ Enviado el DD/MM" cuando todas las confirmadas lo tienen.
-5. ✅ **Manejo de pendientes** — las reservas Pendientes sin `welcome_sent_at` aparecen en un banner de advertencia con checkbox para incluir una nota opcional sobre ellas en el mensaje.
+5. ✅ **Manejo de pendientes** — las reservas Pendientes **no marcadas** con el checkbox de la tabla (antes de abrir el modal) van al parámetro `pendientesNoMarcadas` y aparecen en un banner de advertencia dentro del modal. Un checkbox en el banner permite añadir una nota sobre ellas al final del texto, sin escribir `welcome_sent_at` en esas reservas.
 
 ---
 
