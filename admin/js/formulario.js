@@ -691,11 +691,64 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
     }
 }
 
+function _modalEliminacionUltimaReserva(clienteId, conHistorial) {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-elim-ultima', { narrow: true })
+        if (conHistorial.length > 0) {
+            const facturas = conHistorial.filter(c => c.invoice_number).length
+            const cobrados = conHistorial.filter(c => c.collected && !c.invoice_number).length
+            const desc = [
+                facturas > 0 && `${facturas} cobro(s) facturado(s)`,
+                cobrados > 0 && `${cobrados} cobro(s) recibido(s) sin facturar`
+            ].filter(Boolean).join(' y ')
+            panel.innerHTML = `
+                <h2 style="color:var(--accent);margin-bottom:12px">⚠️ Última reserva — cobros con historial</h2>
+                <p style="margin-bottom:8px">Es la última reserva activa de <strong>${clienteId}</strong>.</p>
+                <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+                    El cliente tiene ${desc}. Se recomienda resolver el historial (ej: nota de crédito) antes de eliminar.
+                </p>
+                <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button id="btn-elim-cancelar" class="btn btn-primary" autofocus>Cancelar</button>
+                    <button id="btn-elim-cobros" class="btn btn-secondary" style="border-color:var(--accent);color:var(--accent)">Eliminar reserva y cobros</button>
+                    <button id="btn-elim-todo" class="btn btn-secondary" style="border-color:var(--accent);color:var(--accent)">Eliminar Todo (incl. cliente)</button>
+                </div>`
+            panel.querySelector('#btn-elim-cancelar').addEventListener('click', () => { overlay.close(); resolve('cancelar') })
+            panel.querySelector('#btn-elim-cobros').addEventListener('click', () => { overlay.close(); resolve('reserva-y-cobros') })
+            panel.querySelector('#btn-elim-todo').addEventListener('click', () => { overlay.close(); resolve('todo') })
+        } else {
+            panel.innerHTML = `
+                <h2 style="margin-bottom:12px">Última reserva de ${clienteId}</h2>
+                <p style="font-size:13px;color:var(--text);margin-bottom:16px">Esta es la última reserva activa del cliente.</p>
+                <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button id="btn-elim-cancelar" class="btn btn-secondary">Cancelar</button>
+                    <button id="btn-elim-solo" class="btn btn-primary">Eliminar reserva</button>
+                    <button id="btn-elim-cliente" class="btn btn-danger">Eliminar reserva y cliente</button>
+                </div>`
+            panel.querySelector('#btn-elim-cancelar').addEventListener('click', () => { overlay.close(); resolve('cancelar') })
+            panel.querySelector('#btn-elim-solo').addEventListener('click', () => { overlay.close(); resolve('solo-reserva') })
+            panel.querySelector('#btn-elim-cliente').addEventListener('click', () => { overlay.close(); resolve('reserva-y-cliente') })
+        }
+    })
+}
+
 async function eliminarSeleccionadas() {
     const ids = [...document.querySelectorAll('.chk-reserva:checked')]
         .map(chk => chk.closest('tr').dataset.id)
     if (ids.length === 0) return
-    if (!confirm(`¿Eliminar ${ids.length} reserva(s) definitivamente?`)) return
+
+    // Pre-check: ¿será la última reserva activa del cliente?
+    const isLastReservation = clienteActual !== null &&
+        todasReservas.filter(r => r.client_id === clienteActual.id && r.status !== 'Cancelada' && !ids.includes(r.id)).length === 0
+
+    let decisionElim = null
+    if (isLastReservation) {
+        const { data: cargos } = await supabase.from('charges').select('id, collected, invoice_number').eq('client_id', clienteActual.id)
+        const conHistorial = (cargos ?? []).filter(c => c.collected || c.invoice_number)
+        decisionElim = await _modalEliminacionUltimaReserva(clienteActual.id, conHistorial)
+        if (decisionElim === 'cancelar') return
+    } else {
+        if (!confirm(`¿Eliminar ${ids.length} reserva(s) definitivamente?`)) return
+    }
 
     // Modal consultivo: eliminar reservas activas sube el stock en sfcom
     const pairsParaModal = [...new Map(
@@ -719,7 +772,7 @@ async function eliminarSeleccionadas() {
             const key  = `${r.venue_id}|${r.service_id}`
             const prev = map.get(key)
             map.set(key, {
-                venueId:   r.venue_id,
+                venueId:    r.venue_id,
                 servicioId: r.service_id,
                 cancelada:  prev ? (prev.cancelada && r.status === 'Cancelada') : r.status === 'Cancelada'
             })
@@ -732,44 +785,9 @@ async function eliminarSeleccionadas() {
     todasReservas = todasReservas.filter(r => !ids.includes(r.id))
 
     if (clienteActual) {
-        const reservasActivas = todasReservas.filter(r => r.client_id === clienteActual.id && r.status !== 'Cancelada')
-        if (reservasActivas.length === 0) {
-            // Sin reservas activas: cobros sin cobrar y sin factura → borrar.
-            // Cobros con dinero real (collected) o con factura emitida → requieren confirmación.
-            const { data: cargosCliente } = await supabase
-                .from('charges').select('id, collected, invoice_number').eq('client_id', clienteActual.id)
-            const conHistorial = (cargosCliente ?? []).filter(c => c.collected || c.invoice_number)
-
-            if (conHistorial.length > 0) {
-                const facturas = conHistorial.filter(c => c.invoice_number).length
-                const cobrados = conHistorial.filter(c => c.collected && !c.invoice_number).length
-                const desc = [
-                    facturas > 0 && `${facturas} cobro(s) facturado(s)`,
-                    cobrados > 0 && `${cobrados} cobro(s) recibido(s) sin facturar`
-                ].filter(Boolean).join(' y ')
-                const ok = await new Promise(resolve => {
-                    const { overlay, panel } = crearModal('modal-elim-historial', { narrow: true })
-                    panel.innerHTML = `
-                        <h2 style="color:var(--accent);margin-bottom:12px">⚠️ Cobros con historial</h2>
-                        <p style="margin-bottom:8px"><strong>${clienteActual.id}</strong> tiene ${desc}.</p>
-                        <p style="font-size:13px;color:var(--text);margin-bottom:16px">
-                            Se recomienda resolver el historial antes de continuar (ej: nota de crédito).<br>
-                            Si confirmas, se eliminarán <strong>todos</strong> los cobros, incluidas las facturas.
-                        </p>
-                        <div style="display:flex;gap:8px;justify-content:flex-end">
-                            <button id="btn-hist-cancelar" class="btn btn-primary" autofocus>Cancelar</button>
-                            <button id="btn-hist-confirmar" class="btn btn-secondary" style="border-color:var(--accent);color:var(--accent)">Confirmar eliminación</button>
-                        </div>`
-                    panel.querySelector('#btn-hist-cancelar').addEventListener('click', () => { overlay.close(); resolve(false) })
-                    panel.querySelector('#btn-hist-confirmar').addEventListener('click', () => { overlay.close(); resolve(true) })
-                })
-                if (!ok) return
-            }
-
+        if (isLastReservation) {
             await supabase.from('charges').delete().eq('client_id', clienteActual.id)
-
-            const borrar = confirm(`${clienteActual.id} ya no tiene reservas activas. ¿Deseas eliminar también el cliente?`)
-            if (borrar) {
+            if (decisionElim === 'reserva-y-cliente' || decisionElim === 'todo') {
                 await supabase.from('clients').delete().eq('id', clienteActual.id)
                 todosClientes.splice(todosClientes.findIndex(c => c.id === clienteActual.id), 1)
                 limpiarCamposCliente()
@@ -1099,7 +1117,9 @@ btnAnadir.addEventListener('click', async () => {
             return
         }
         if (sfcomResult.sfcomCheck && sfcomResult.warning) {
-            if (!confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
+            const brechaExplicada = solicitudOriginRef?.startsWith('WEB') &&
+                (sfcomResult.stockEsperado - sfcomResult.stockSfcom) <= plazas
+            if (!brechaExplicada && !confirm(`Aviso de sfcom:\n\n${sfcomResult.warning}\n\n¿Deseas continuar igualmente?`)) return
         }
 
         const sfcomResultNuevo = await confirmarStockSfcom(supabase, [{
@@ -1111,7 +1131,8 @@ btnAnadir.addEventListener('click', async () => {
 
         if (!clienteActual) {
             const nombre = inputName.value.trim()
-            if (!confirm(`¿Crear cliente nuevo "${clienteId}"${nombre ? ' (' + nombre + ')' : ''}?`)) return
+            const esSolicitudSfcom = _cargandoSolicitud && solicitudOriginRef?.startsWith('WEB')
+            if (!esSolicitudSfcom && !confirm(`¿Crear cliente nuevo "${clienteId}"${nombre ? ' (' + nombre + ')' : ''}?`)) return
             const { error: errCliente } = await supabase.from('clients').insert({
                 id:       clienteId,
                 name:     nombre || null,
@@ -2523,12 +2544,20 @@ async function descartarSolicitud(id) {
 }
 
 async function _ofrecerCerrarSolicitud(ref) {
+    if (typeof ref === 'string' && ref.startsWith('WEB')) {
+        const [{ data: pendientes }, { data: reservasSaved }] = await Promise.all([
+            supabase.from('reservation_requests').select('id').eq('source', ref).neq('status', 'descartada'),
+            supabase.from('reservations').select('id').eq('origin_ref', ref)
+        ])
+        if ((pendientes?.length ?? 0) > (reservasSaved?.length ?? 0)) return
+        await supabase.from('reservation_requests').update({ status: 'convertida' }).match({ source: ref })
+        await cargarSolicitudes()
+        return
+    }
     if (!confirm('¿Marcar la solicitud como convertida?')) return
-    const esSfcomRef = typeof ref === 'string' && ref.startsWith('WEB')
-    const filtro = esSfcomRef ? { source: ref } : { id: ref }
     const { error } = await supabase.from('reservation_requests')
         .update({ status: 'convertida' })
-        .match(filtro)
+        .match({ id: ref })
     if (error) { console.error('Error al cerrar solicitud:', error); return }
     await cargarSolicitudes()
 }
@@ -2814,7 +2843,16 @@ async function ejecutarVerificacion(modoManual = false) {
     const hayFallos     = (resultado.sfcom.fallos?.length ?? 0) > 0
     const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0
 
-    if (modoManual || hayProblema || hayPendientes) {
+    if (hayProblema) {
+        mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
+    } else if (hayPendientes) {
+        if (modoManual) {
+            mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
+        } else {
+            const nPendientes = (resultado.sfcom.discrepancias ?? []).filter(d => d.pendingExplains).length
+            mostrarToast(`ℹ️ ${nPendientes} pedido(s) sfcom pendiente(s) de incorporar`, '#1d4ed8')
+        }
+    } else if (modoManual) {
         mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
     } else if (!resultado.sfcom.verificado) {
         mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e')

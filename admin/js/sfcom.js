@@ -375,6 +375,7 @@ export async function confirmarStockSfcom(supabase, pares) {
         if (cambio) cambios.push(cambio)
     }
     if (cambios.length === 0) return 'sync'
+    if (cambios.every(c => c.nuevoStock === c.stockActual)) return 'sync'
     return mostrarModalConfirmacionSfcom(cambios)
 }
 
