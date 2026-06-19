@@ -835,16 +835,17 @@ Resuelto en jun 2026. `filaEvento` y `filaProveedor` en `panel.js` tienen ahora 
 
 ---
 
-**`services.image_url` no se puede editar desde el admin.**
+**✅ RESUELTO — `services.image_url` editable desde proveedores.js.**
 
-`propuesta.js` usa como imagen de fallback `disp?.photos?.[0] ?? svc.image_url`. El primer término (`availability.photos`) se puede editar desde `proveedores.js`. Pero si no hay foto en `availability`, cae al `svc.image_url` (`services.image_url`), que no tiene ningún campo de edición en el panel.
+Campo `inputServicioImageUrl` añadido en la sección "Info del servicio" (`<details id="detailsServicioInfo">`). Se guarda vía `guardarDescripcionServicio` (autosave por `change`) y también en `btnGuardarServicio`. El auto-fill al guardar la primera foto (opción B) sigue pendiente como mejora futura — ver Fase 6 §9.
 
-Tres opciones:
-- (A) Añadir un campo de URL de imagen en la pantalla de edición de servicios dentro de `tablas.js`.
-- (B) Al guardar la primera foto en un par venue/event_type, escribir también `services.image_url` si está vacío (auto-fill).
-- (C) Eliminar el fallback a `svc.image_url` de `propuesta.js` y exigir que cada availability tenga fotos.
+**Deuda pendiente — `services.comments` obsoleta.**
 
-Opción preferida a analizar: (B) por ser no destructiva y eliminar el problema a futuro sin requerir trabajo manual.
+El campo `services.comments` existe en la BD pero el panel dejó de usarlo: el `inputServicioComments` fue repropuesto para guardar `availability.comments`. La columna puede eliminarse:
+```sql
+ALTER TABLE services DROP COLUMN comments;
+```
+Antes de ejecutar, verificar que ninguna función SQL, trigger o vista la referencie. En el código JS ya no se usa (`guardarDescripcionServicio`, `btnGuardarServicio`, `guardarServicioNuevo` actualizadas).
 
 ---
 

@@ -91,7 +91,6 @@
                 <!-- VENUE: separador/tabs + campos venue -->
                 <div id="venue-sep-area" style="display:none">
                     <div id="venue-sep" class="venue-sep"></div>
-                    <button id="btnRenombrarVenue" class="btn btn-secondary" style="display:none;font-size:11px;padding:2px 8px;margin:4px 0" title="Editar ID de este venue">✏️ ID venue</button>
                     <div class="form-grid" style="margin-top:0">
                         <div class="form-field">
                             <label>Tipo</label>
@@ -103,15 +102,15 @@
                             </select>
                         </div>
                         <div class="form-field">
-                            <label>Dirección balcón</label>
+                            <label id="labelVenueDireccion">Dirección del balcón</label>
                             <input type="text" id="inputVenueDireccion" placeholder="Dirección física del balcón">
                         </div>
                         <div class="form-field">
-                            <label>Nombre público del balcón</label>
+                            <label id="labelVenueDisplayName">Nombre del balcón</label>
                             <input type="text" id="inputVenueDisplayName" placeholder="Nombre visible (opcional)">
                         </div>
                         <div class="form-field" style="grid-column: 1 / -1">
-                            <label>Comentarios del balcón</label>
+                            <label>Comentarios</label>
                             <textarea id="inputVenueComments" rows="2" placeholder="Notas internas del venue" style="width:100%;resize:vertical"></textarea>
                         </div>
                     </div>
@@ -126,9 +125,33 @@
                 <div class="form-grid">
                     <div class="form-field autocomplete-wrap">
                         <label>Servicio</label>
-                        <input type="text" id="inputServicioId" placeholder="ID_SERVICIO" autocomplete="off">
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="text" id="inputServicioId" placeholder="ID_SERVICIO" autocomplete="off" style="flex:1;min-width:0">
+                            <button type="button" id="btnRenombrarServicio" class="btn btn-secondary" style="display:none;flex-shrink:0;white-space:nowrap">✏️ ID</button>
+                        </div>
                         <div class="autocomplete-list" id="autocompleteServicioList" style="display:none"></div>
                     </div>
+                    <div class="form-field">
+                        <label>Día</label>
+                        <select id="selectServicioDia">
+                            <option value="">— Sin día —</option>
+                            <option value="6">6 julio</option>
+                            <option value="7">7 julio</option>
+                            <option value="8">8 julio</option>
+                            <option value="9">9 julio</option>
+                            <option value="10">10 julio</option>
+                            <option value="11">11 julio</option>
+                            <option value="12">12 julio</option>
+                            <option value="13">13 julio</option>
+                            <option value="14">14 julio</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Hora inicio</label>
+                        <input type="time" id="inputServicioHora">
+                    </div>
+                </div>
+                <div class="form-grid" style="margin-top:0">
                     <div class="form-field">
                         <label>Plazas</label>
                         <input type="number" id="inputPlazas" step="1" placeholder="Nº plazas">
@@ -153,71 +176,72 @@
                         <label>Coste calculado</label>
                         <input type="text" id="inputCosteServicio" disabled placeholder="—">
                     </div>
-                    <div class="form-field">
-                        <label>Día</label>
-                        <select id="selectServicioDia">
-                            <option value="">— Sin día —</option>
-                            <option value="6">6 julio</option>
-                            <option value="7">7 julio</option>
-                            <option value="8">8 julio</option>
-                            <option value="9">9 julio</option>
-                            <option value="10">10 julio</option>
-                            <option value="11">11 julio</option>
-                            <option value="12">12 julio</option>
-                            <option value="13">13 julio</option>
-                            <option value="14">14 julio</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Hora inicio</label>
-                        <input type="time" id="inputServicioHora">
-                    </div>
                 </div>
-                <div class="servicio-desc-photos-wrap">
-                    <div class="servicio-desc-col">
+                <div id="servicio-desc-status" style="font-size:12px; margin-top:4px"></div>
+                <details id="detailsServicioInfo" style="margin-top:8px">
+                    <summary style="cursor:pointer;font-size:13px;color:var(--subtle);user-select:none">ℹ️ Info del servicio</summary>
+                    <div class="form-grid" style="margin-top:8px">
                         <div class="form-field">
-                            <label>Nombre</label>
-                            <input type="text" id="inputServicioNombre" placeholder="Nombre comercial corto (ej: Balcón encierro)">
+                            <label>Nombre comercial</label>
+                            <input type="text" id="inputServicioNombre" placeholder="Nombre comercial (ej: Balcón encierro)">
+                        </div>
+                        <div class="form-field" style="grid-column: 1 / -1">
+                            <label>Descripción del servicio</label>
+                            <textarea id="inputServicioDescription" rows="2" placeholder="Descripción general (compartida entre todos los venues)" style="resize:vertical"></textarea>
                         </div>
                         <div class="form-field">
-                            <label>Descripción</label>
-                            <textarea id="inputServicioDescription" rows="2" placeholder="Descripción del servicio" style="resize:vertical"></textarea>
-                        </div>
-                        <div class="form-field">
-                            <label>Instrucciones de acceso</label>
-                            <textarea id="inputAccessInstructions" rows="2" placeholder="Cómo llegar, código de entrada, contacto día del evento…" style="resize:vertical"></textarea>
-                        </div>
-                        <div class="form-field">
-                            <label>Comentarios</label>
-                            <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="resize:vertical"></textarea>
+                            <label>Imagen URL</label>
+                            <input type="text" id="inputServicioImageUrl" placeholder="https://...">
                         </div>
                     </div>
-                    <div class="servicio-photos-col" id="photoCarouselField" style="display:none">
-                        <label class="servicio-photos-label">Fotos del balcón</label>
-                        <div class="photo-carousel" id="photoCarousel">
-                            <div class="photo-carousel-img-wrap">
-                                <img id="photoCarouselImg" src="" alt="" style="display:none">
-                                <div id="photoCarouselEmpty" class="photo-carousel-empty">Sin fotos</div>
+                </details>
+                <div class="avail-sep" id="avail-sep" style="display:none">
+                    <hr class="venue-sep-hr">
+                    <span class="avail-sep-label">Disponibilidad en <code id="avail-sep-venue-id"></code></span>
+                    <hr class="venue-sep-hr">
+                </div>
+                <div id="avail-section" style="display:none">
+                    <div class="servicio-desc-photos-wrap">
+                        <div class="servicio-desc-col">
+                            <div class="form-field">
+                                <label>Descripción del venue</label>
+                                <textarea id="inputAvailDesc" rows="2" placeholder="Descripción específica de este venue para este servicio" style="resize:vertical"></textarea>
                             </div>
-                            <div class="photo-carousel-footer">
-                                <div class="photo-carousel-nav">
-                                    <button type="button" id="btnPhotoPrev" class="btn btn-secondary">◀</button>
-                                    <span id="photoCarouselCounter">0 / 0</span>
-                                    <button type="button" id="btnPhotoNext" class="btn btn-secondary">▶</button>
+                            <div class="form-field">
+                                <label>Instrucciones de acceso</label>
+                                <textarea id="inputAccessInstructions" rows="2" placeholder="Cómo llegar, código de entrada, contacto día del evento…" style="resize:vertical"></textarea>
+                            </div>
+                            <div class="form-field">
+                                <label>Comentarios</label>
+                                <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="resize:vertical"></textarea>
+                            </div>
+                        </div>
+                        <div class="servicio-photos-col" id="photoCarouselField" style="display:none">
+                            <label class="servicio-photos-label">Fotos</label>
+                            <div class="photo-carousel" id="photoCarousel">
+                                <div class="photo-carousel-img-wrap">
+                                    <img id="photoCarouselImg" src="" alt="" style="display:none">
+                                    <div id="photoCarouselEmpty" class="photo-carousel-empty">Sin fotos</div>
                                 </div>
-                                <button type="button" id="btnPhotoDel" class="btn btn-danger" style="display:none">🗑</button>
-                            </div>
-                            <div class="photo-carousel-add">
-                                <input type="text" id="inputPhotoUrl" placeholder="URL de la foto">
-                                <button type="button" id="btnPhotoAdd" class="btn btn-secondary">+ Añadir</button>
+                                <div class="photo-carousel-footer">
+                                    <div class="photo-carousel-nav">
+                                        <button type="button" id="btnPhotoPrev" class="btn btn-secondary">◀</button>
+                                        <span id="photoCarouselCounter">0 / 0</span>
+                                        <button type="button" id="btnPhotoNext" class="btn btn-secondary">▶</button>
+                                    </div>
+                                    <button type="button" id="btnPhotoDel" class="btn btn-danger" style="display:none">🗑</button>
+                                </div>
+                                <div class="photo-carousel-add">
+                                    <input type="text" id="inputPhotoUrl" placeholder="URL de la foto">
+                                    <button type="button" id="btnPhotoAdd" class="btn btn-secondary">+ Añadir</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div id="url-catalogo-servicio" style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--subtle);margin-top:4px"></div>
                 <div id="servicio-dia-warning" style="font-size:11px;color:var(--accent-warn);margin-top:4px;display:none"></div>
-                <div id="servicio-desc-status" style="grid-column: 1 / -1; font-size:12px; margin-top:-4px"></div>
-                <div id="servicio-status" style="grid-column: 1 / -1; margin-top:8px; font-size:12px;"></div>
+                <div id="servicio-status" style="margin-top:8px; font-size:12px;"></div>
 
                 <!-- SFCOM: solo visible en modo edición de un único servicio -->
                 <div id="sfcom-section" class="sfcom-section">

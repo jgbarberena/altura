@@ -1473,4 +1473,22 @@ dialog.modal-dialog-overlay::backdrop {
 }
 .venue-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .venue-tab:not(.active):hover { color: var(--text); border-color: var(--subtle); }
+.venue-sep-id {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--subtle);
+    flex-shrink: 0;
+}
+.avail-sep {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0 10px;
+}
+.avail-sep-label {
+    font-size: 11px;
+    color: var(--subtle);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 .dia-chip.active { background: var(--accent); color: white; border-color: var(--accent); }

@@ -63,21 +63,23 @@ const inputProveedorComments   = document.getElementById('inputProveedorComments
 const autoProvList             = document.getElementById('autocompleteProveedorList')
 const proveedorStatus          = document.getElementById('proveedor-status')
 const btnRenombrarProveedor    = document.getElementById('btnRenombrarProveedor')
-const btnRenombrarVenue        = document.getElementById('btnRenombrarVenue')
 const servicioDescStatus       = document.getElementById('servicio-desc-status')
 const inputServicioId          = document.getElementById('inputServicioId')
 const inputPlazas              = document.getElementById('inputPlazas')
 const inputPrecio              = document.getElementById('inputPrecio')
 const inputServicioNombre      = document.getElementById('inputServicioNombre')
 const inputServicioDescription = document.getElementById('inputServicioDescription')
+const inputServicioImageUrl    = document.getElementById('inputServicioImageUrl')
+const inputAvailDesc           = document.getElementById('inputAvailDesc')
 const inputAccessInstructions  = document.getElementById('inputAccessInstructions')
 const inputServicioComments    = document.getElementById('inputServicioComments')
+const btnRenombrarServicio     = document.getElementById('btnRenombrarServicio')
 const inputServicioDia         = document.getElementById('selectServicioDia')
 const inputServicioHora        = document.getElementById('inputServicioHora')
 
 inputServicioNombre.addEventListener('change',      guardarDescripcionServicio)
 inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
-inputServicioComments.addEventListener('change',    guardarDescripcionServicio)
+inputServicioImageUrl.addEventListener('change',    guardarDescripcionServicio)
 inputServicioHora.addEventListener('change',        guardarDescripcionServicio)
 
 btnRenombrarProveedor.addEventListener('click', () => {
@@ -95,7 +97,25 @@ btnRenombrarProveedor.addEventListener('click', () => {
     })
 })
 
-btnRenombrarVenue.addEventListener('click', () => {
+btnRenombrarServicio.addEventListener('click', () => {
+    if (!servicioEditandoId) return
+    const disp    = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (!disp) return
+    const idViejo = disp.service_id
+    abrirRenombrarId({
+        tabla: 'services', idActual: idViejo, supabase,
+        onSuccess: nuevoId => {
+            todosServicios.forEach(s => { if (s.id === idViejo) s.id = nuevoId })
+            todaDisponibilidad.forEach(d => { if (d.service_id === idViejo) d.service_id = nuevoId })
+            inputServicioId.value = nuevoId
+            if (proveedorActual) renderTablaServicios(proveedorActual.id)
+            mostrarToast(`Servicio renombrado: ${nuevoId}`)
+        }
+    })
+})
+
+function _renombrarVenueActual() {
+    if (!venueActual) return
     const idViejo = venueActual.id
     abrirRenombrarId({
         tabla: 'venues', idActual: idViejo, supabase,
@@ -109,6 +129,13 @@ btnRenombrarVenue.addEventListener('click', () => {
             mostrarToast(`Venue renombrado: ${nuevoId}`)
         }
     })
+}
+
+document.getElementById('venue-sep').addEventListener('click', e => {
+    if (e.target.closest('.btn-rename-venue')) { _renombrarVenueActual(); return }
+    if (e.target.closest('.btn-add-venue'))    { abrirDialogNuevoVenue(); return }
+    const tab = e.target.closest('.venue-tab')
+    if (tab) selectVenueTab(tab.dataset.venueId)
 })
 
 // ===== FOTOS DEL BALCÓN (carousel) =====
@@ -507,7 +534,10 @@ initAutoSave(supabase, [inputVenueDireccion, inputVenueDisplayName, inputVenueCo
     () => venueActual,
     { onSaved: mostrarGuardado })
 
-initAutoSave(supabase, [inputAccessInstructions], ['access_instructions'], 'availability',
+initAutoSave(supabase,
+    [inputAvailDesc, inputAccessInstructions, inputServicioComments],
+    ['description', 'access_instructions', 'comments'],
+    'availability',
     () => servicioEditandoId ? { id: servicioEditandoId } : null,
     { onSaved: mostrarGuardado })
 
@@ -517,6 +547,7 @@ selectVenueType.addEventListener('change', async () => {
     venueActual.venue_type = selectVenueType.value
     const v = todosVenues.find(v => v.id === venueActual.id)
     if (v) v.venue_type = selectVenueType.value
+    _actualizarLabelsVenue(selectVenueType.value)
     mostrarGuardado()
 })
 
@@ -549,21 +580,22 @@ function mostrarGuardado() {
 function renderVenueTabs(venues, activeId) {
     const sep  = document.getElementById('venue-sep')
     const area = document.getElementById('venue-sep-area')
-    if (venues.length === 0) { area.style.display = 'none'; btnRenombrarVenue.style.display = 'none'; return }
-    btnRenombrarVenue.style.display = activeId ? 'inline-flex' : 'none'
+    if (venues.length === 0) { area.style.display = 'none'; return }
     area.style.display = 'block'
+    const renameBtn = activeId
+        ? `<button class="btn btn-secondary btn-rename-venue" style="font-size:11px;padding:2px 7px">✏️ ID</button>`
+        : ''
     if (venues.length === 1) {
-        sep.innerHTML = `<hr class="venue-sep-hr"><button class="btn-add-venue" id="btnAddVenue">+</button>`
+        sep.innerHTML = `<hr class="venue-sep-hr">
+            <span class="venue-sep-id">${venues[0].id}</span>
+            ${renameBtn}
+            <button class="btn-add-venue">+</button>`
     } else {
         const tabs = venues.map(v =>
             `<button class="venue-tab${v.id === activeId ? ' active' : ''}" data-venue-id="${v.id}">${v.id}</button>`
         ).join('')
-        sep.innerHTML = `<hr class="venue-sep-hr">` + tabs + `<button class="btn-add-venue" id="btnAddVenue">+</button>`
+        sep.innerHTML = `<hr class="venue-sep-hr">` + tabs + renameBtn + `<button class="btn-add-venue">+</button>`
     }
-    sep.querySelectorAll('.venue-tab').forEach(btn =>
-        btn.addEventListener('click', () => selectVenueTab(btn.dataset.venueId))
-    )
-    document.getElementById('btnAddVenue')?.addEventListener('click', abrirDialogNuevoVenue)
 }
 
 function selectVenueTab(venueId) {
@@ -574,7 +606,20 @@ function selectVenueTab(venueId) {
     inputVenueDisplayName.value = venue.display_name ?? ''
     inputVenueComments.value    = venue.comments     ?? ''
     selectVenueType.value       = venue.venue_type   ?? 'balcon'
+    _actualizarLabelsVenue(venue.venue_type ?? 'balcon')
     renderVenueTabs(venuesDelProveedor, venueActual.id)
+}
+
+const _VENUE_LABELS = {
+    balcon:           { dir: 'Dirección del balcón',   name: 'Nombre del balcón' },
+    barrera:          { dir: 'Dirección de la barrera', name: 'Nombre de la barrera' },
+    guia:             { dir: 'Zona / ruta',             name: 'Nombre del guía' },
+    servicio_especial:{ dir: 'Lugar / ubicación',       name: 'Nombre del servicio' },
+}
+function _actualizarLabelsVenue(tipo) {
+    const lbl = _VENUE_LABELS[tipo] ?? _VENUE_LABELS.balcon
+    document.getElementById('labelVenueDireccion').textContent   = lbl.dir
+    document.getElementById('labelVenueDisplayName').textContent = lbl.name
 }
 
 function abrirDialogNuevoVenue() {
@@ -661,35 +706,35 @@ window.guardarServicioNuevo = async function(e) {
     e.preventDefault()
     const servicioId = inputServicioId.value.trim().toUpperCase()
     if (!servicioId) return
-    const dia  = inputServicioDia.value  ? parseInt(inputServicioDia.value) : null
-    const hora = inputServicioHora.value || null
-    const name = inputServicioNombre.value.trim()      || null
-    const desc = inputServicioDescription.value.trim() || null
-    const comm = inputServicioComments.value.trim()    || null
+    const dia    = inputServicioDia.value  ? parseInt(inputServicioDia.value) : null
+    const hora   = inputServicioHora.value || null
+    const name   = inputServicioNombre.value.trim()      || null
+    const desc   = inputServicioDescription.value.trim() || null
+    const imgUrl = inputServicioImageUrl.value.trim()    || null
     const { error } = await supabase.from('services')
-        .insert({ id: servicioId, day: dia, start_time: hora, name, description: desc, comments: comm })
+        .insert({ id: servicioId, day: dia, start_time: hora, name, description: desc, image_url: imgUrl })
     if (error) { alert('Error al guardar el servicio: ' + error.message); return }
-    todosServicios.push({ id: servicioId, day: dia, start_time: hora, name, description: desc, comments: comm })
-    servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
+    todosServicios.push({ id: servicioId, day: dia, start_time: hora, name, description: desc, image_url: imgUrl })
+    servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
     servicioDescStatus.style.color = 'var(--accent-ok)'
 }
 
-// Guardado automatico de description y comments al cambiar los campos
+// Guardado automático de campos services al cambiar los inputs correspondientes
 async function guardarDescripcionServicio() {
     const servicioId = inputServicioId.value.trim().toUpperCase()
     if (!servicioId) return
     const svc = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!svc) return
-    const name = inputServicioNombre.value.trim() || null
-    const desc = inputServicioDescription.value.trim() || null
-    const comm = inputServicioComments.value.trim()    || null
-    const hora = inputServicioHora.value  || null
+    const name     = inputServicioNombre.value.trim()      || null
+    const desc     = inputServicioDescription.value.trim() || null
+    const imgUrl   = inputServicioImageUrl.value.trim()    || null
+    const hora     = inputServicioHora.value               || null
     const { error } = await supabase.from('services')
-        .update({ name, description: desc, comments: comm, start_time: hora })
+        .update({ name, description: desc, image_url: imgUrl, start_time: hora })
         .eq('id', svc.id)
-    if (error) { console.error('Error al guardar descripcion:', error.message); return }
-    Object.assign(svc, { name, description: desc, comments: comm, start_time: hora })
-    todosServicios  = todosServicios.map(s => s.id === svc.id ? svc : s)
+    if (error) { console.error('Error al guardar descripción del servicio:', error.message); return }
+    Object.assign(svc, { name, description: desc, image_url: imgUrl, start_time: hora })
+    todosServicios = todosServicios.map(s => s.id === svc.id ? svc : s)
 }
 
 // ===== BLOQUE 2: SERVICIO =====
@@ -720,20 +765,21 @@ inputServicioId.addEventListener('input', () => {
     inputCosteTotal.value = ''
     selectModelo.value    = 'capacity'
     document.getElementById('inputCosteServicio').value = '—'
-    // Si el valor coincide exactamente con un servicio existente, cargar description y comments
+    // Si el valor coincide exactamente con un servicio existente, cargar sus campos
     const exacto = todosServicios.find(s => s.id.toUpperCase() === val)
     if (exacto) {
         inputServicioNombre.value      = exacto.name        ?? ''
         inputServicioDescription.value = exacto.description ?? ''
-        inputServicioComments.value    = exacto.comments    ?? ''
+        inputServicioImageUrl.value    = exacto.image_url   ?? ''
         inputServicioDia.value         = exacto.day         ? String(exacto.day) : ''
         inputServicioHora.value        = exacto.start_time  ?? ''
-        servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
+        servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
+        document.getElementById('detailsServicioInfo').open = false
     } else {
         inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
-        inputServicioComments.value    = ''
+        inputServicioImageUrl.value    = ''
         inputServicioDia.value         = _extraerDiaDeId(val) ? String(_extraerDiaDeId(val)) : ''
         inputServicioHora.value        = ''
         servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
@@ -741,6 +787,7 @@ inputServicioId.addEventListener('input', () => {
             + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
             + ' o se creará al añadir al proveedor'
         servicioDescStatus.style.color = 'var(--accent-warn)'
+        document.getElementById('detailsServicioInfo').open = true
     }
     document.getElementById('servicio-dia-warning').style.display = 'none'
     // Mostrar sección sfcom para nuevo servicio si no hay una fila de availability activa
@@ -777,22 +824,26 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
     // Cargar description y comments del servicio seleccionado
     const svcSel = todosServicios.find(s => s.id === div.dataset.id)
     if (svcSel) {
-        inputServicioDescription.value   = svcSel.description ?? ''
-        inputServicioComments.value      = svcSel.comments    ?? ''
-        inputServicioDia.value           = svcSel.day         ? String(svcSel.day) : ''
-        inputServicioHora.value          = svcSel.start_time  ?? ''
-        servicioDescStatus.innerHTML     = '✅ Servicio existente — los cambios en descripción y comentarios se guardan automáticamente'
-        servicioDescStatus.style.color   = 'var(--accent-ok)'
+        inputServicioNombre.value      = svcSel.name        ?? ''
+        inputServicioDescription.value = svcSel.description ?? ''
+        inputServicioImageUrl.value    = svcSel.image_url   ?? ''
+        inputServicioDia.value         = svcSel.day         ? String(svcSel.day) : ''
+        inputServicioHora.value        = svcSel.start_time  ?? ''
+        servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
+        servicioDescStatus.style.color = 'var(--accent-ok)'
+        document.getElementById('detailsServicioInfo').open = false
     } else {
-        inputServicioDescription.value   = ''
-        inputServicioComments.value      = ''
-        inputServicioDia.value           = ''
-        inputServicioHora.value          = ''
-        servicioDescStatus.innerHTML     = '✨ Servicio nuevo — '
+        inputServicioNombre.value      = ''
+        inputServicioDescription.value = ''
+        inputServicioImageUrl.value    = ''
+        inputServicioDia.value         = ''
+        inputServicioHora.value        = ''
+        servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
             + '<a href="#" style="font-size:inherit;color:inherit;text-decoration:underline;cursor:pointer"'
             + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
             + ' o se creará al añadir al proveedor'
-        servicioDescStatus.style.color   = 'var(--accent-warn)'
+        servicioDescStatus.style.color = 'var(--accent-warn)'
+        setTimeout(() => { document.getElementById('detailsServicioInfo').open = true }, 150)
     }
     document.getElementById('servicio-dia-warning').style.display = 'none'
     actualizarBtnServicio()
@@ -1079,22 +1130,28 @@ function limpiarFormularioServicio() {
     inputPrecio.value        = ''
     inputPrecio.disabled     = false
     inputCosteTotal.value    = ''
-    selectModelo.value                  = 'capacity'
-    inputServicioNombre.value           = ''
-    inputServicioDescription.value      = ''
-    inputAccessInstructions.value       = ''
-    inputServicioComments.value         = ''
-    inputServicioDia.value              = ''
-    inputServicioHora.value             = ''
+    selectModelo.value              = 'capacity'
+    inputServicioNombre.value       = ''
+    inputServicioDescription.value  = ''
+    inputServicioImageUrl.value     = ''
+    inputAvailDesc.value            = ''
+    inputAccessInstructions.value   = ''
+    inputServicioComments.value     = ''
+    inputServicioDia.value          = ''
+    inputServicioHora.value         = ''
     _photos  = []
     _photoIdx = 0
     _renderCarousel()
     document.getElementById('photoCarouselField').style.display = 'none'
+    document.getElementById('detailsServicioInfo').open = false
+    document.getElementById('avail-sep').style.display  = 'none'
+    document.getElementById('avail-section').style.display = 'none'
+    btnRenombrarServicio.style.display = 'none'
     if (servicioDescStatus) servicioDescStatus.textContent = ''
     document.getElementById('servicio-dia-warning').style.display = 'none'
     document.getElementById('inputCosteServicio').value = '—'
     document.getElementById('titulo-bloque-servicio').textContent = '➕ Añadir / Editar servicio'
-    servicioStatus.textContent    = ''
+    servicioStatus.textContent             = ''
     btnGuardarServicio.textContent         = 'Añadir servicio'
     btnGuardarServicio.disabled            = true
     btnCancelarServicio.style.display      = 'none'
@@ -1217,30 +1274,30 @@ btnGuardarServicio.addEventListener('click', async () => {
     const servicioExiste = todosServicios.find(s => s.id.toUpperCase() === servicioId)
     if (!servicioExiste) {
         if (!confirm(`¿Crear servicio nuevo "${servicioId}"?`)) return
-        const nameSvc = inputServicioNombre.value.trim()      || null
-        const descSvc = inputServicioDescription.value.trim() || null
-        const commSvc = inputServicioComments.value.trim()    || null
-        const diaSvc  = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
-        const horaSvc = inputServicioHora.value || null
+        const nameSvc    = inputServicioNombre.value.trim()      || null
+        const descSvc    = inputServicioDescription.value.trim() || null
+        const imgUrlSvc  = inputServicioImageUrl.value.trim()    || null
+        const diaSvc     = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
+        const horaSvc    = inputServicioHora.value || null
         const { error } = await supabase.from('services')
-            .insert({ id: servicioId, day: diaSvc, start_time: horaSvc, name: nameSvc, description: descSvc, comments: commSvc })
+            .insert({ id: servicioId, day: diaSvc, start_time: horaSvc, name: nameSvc, description: descSvc, image_url: imgUrlSvc })
         if (error) { alert('Error al crear servicio: ' + error.message); return }
-        todosServicios.push({ id: servicioId, day: diaSvc, start_time: horaSvc, name: nameSvc, description: descSvc, comments: commSvc })
+        todosServicios.push({ id: servicioId, day: diaSvc, start_time: horaSvc, name: nameSvc, description: descSvc, image_url: imgUrlSvc })
     }
 
-    const nameSvc = inputServicioNombre.value.trim()      || null
-    const descSvc = inputServicioDescription.value.trim() || null
-    const commSvc = inputServicioComments.value.trim()    || null
-    const horaSvc = inputServicioHora.value || null
+    const nameSvc   = inputServicioNombre.value.trim()      || null
+    const descSvc   = inputServicioDescription.value.trim() || null
+    const imgUrlSvc = inputServicioImageUrl.value.trim()    || null
+    const horaSvc   = inputServicioHora.value || null
 
     // Actualizar campos del servicio en la tabla services
     const svcId = todaDisponibilidad.find(d => d.id === servicioEditandoId)?.service_id
                   ?? servicioId
     await supabase.from('services')
-        .update({ name: nameSvc, description: descSvc, comments: commSvc, start_time: horaSvc })
+        .update({ name: nameSvc, description: descSvc, image_url: imgUrlSvc, start_time: horaSvc })
         .eq('id', svcId)
     todosServicios = todosServicios.map(s =>
-        s.id === svcId ? { ...s, name: nameSvc, description: descSvc, comments: commSvc, start_time: horaSvc } : s
+        s.id === svcId ? { ...s, name: nameSvc, description: descSvc, image_url: imgUrlSvc, start_time: horaSvc } : s
     )
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)
@@ -1468,21 +1525,27 @@ function cargarServicioEnFormulario(dispIds) {
             inputPrecio.disabled = false
             inputCosteTotal.value = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2)
         }
-        // campos de services
+        // campos de services (compartidos entre venues)
         const svc = todosServicios.find(s => s.id === disps[0].service_id)
-        inputServicioNombre.value        = svc?.name        ?? ''
-        inputServicioDescription.value   = svc?.description ?? ''
-        inputServicioComments.value      = svc?.comments    ?? ''
-        inputServicioDia.value           = svc?.day         ? String(svc.day) : ''
-        inputServicioHora.value          = svc?.start_time  ?? ''
-        // campos de availability (para la fila activa)
-        inputAccessInstructions.value    = disps[0].access_instructions ?? ''
+        inputServicioNombre.value       = svc?.name        ?? ''
+        inputServicioDescription.value  = svc?.description ?? ''
+        inputServicioImageUrl.value     = svc?.image_url   ?? ''
+        inputServicioDia.value          = svc?.day         ? String(svc.day) : ''
+        inputServicioHora.value         = svc?.start_time  ?? ''
+        // campos de availability (específicos del par venue+service)
+        inputAvailDesc.value          = disps[0].description        ?? ''
+        inputAccessInstructions.value = disps[0].access_instructions ?? ''
+        inputServicioComments.value   = disps[0].comments            ?? ''
         _photos  = Array.isArray(disps[0].photos) ? [...disps[0].photos] : []
         _photoIdx = 0
         _renderCarousel()
         document.getElementById('photoCarouselField').style.display = 'flex'
         document.getElementById('servicio-dia-warning').style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
+        document.getElementById('avail-sep-venue-id').textContent = disps[0].venue_id
+        document.getElementById('avail-sep').style.display     = 'flex'
+        document.getElementById('avail-section').style.display = 'block'
+        btnRenombrarServicio.style.display = 'inline-flex'
         actualizarSeccionSfcom(disps[0])
         _mostrarUrlCatalogoServicio(buildCatalogUrl(disps[0].venue_slug, disps[0].event_type))
     } else {
@@ -1507,16 +1570,21 @@ function cargarServicioEnFormulario(dispIds) {
                 ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2) : ''
         }
 
-        inputServicioNombre.value        = ''
-        inputServicioDescription.value   = ''
-        inputAccessInstructions.value    = ''
-        inputServicioComments.value      = ''
-        inputServicioDia.value           = ''
-        inputServicioHora.value          = ''
+        inputServicioNombre.value      = ''
+        inputServicioDescription.value = ''
+        inputServicioImageUrl.value    = ''
+        inputAvailDesc.value           = ''
+        inputAccessInstructions.value  = ''
+        inputServicioComments.value    = ''
+        inputServicioDia.value         = ''
+        inputServicioHora.value        = ''
         _photos  = []
         _photoIdx = 0
         _renderCarousel()
         document.getElementById('photoCarouselField').style.display = 'none'
+        document.getElementById('avail-sep').style.display          = 'none'
+        document.getElementById('avail-section').style.display      = 'none'
+        btnRenombrarServicio.style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent =
             `✏️ Editando ${disps.length} servicios`
         actualizarSeccionSfcom(null)
