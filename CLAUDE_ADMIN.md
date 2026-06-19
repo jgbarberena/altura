@@ -863,6 +863,41 @@ La confirmación de reserva (Fase 2, paso 1) usará la misma función con `tipo=
 
 ### 7.3 Funcionalidades pendientes
 
+**Botón "Verificar todo" global en el sidebar.**
+
+Actualmente hay dos botones de verificación repartidos por el panel, con alcances distintos y sin presencia en todas las páginas:
+
+- `formulario.html` → `🔍 Verificar datos` → ejecuta `verificarCoherencia` (coherencia reservas/plazas + stock sfcom + IDs de variación). Modo manual: siempre muestra modal. Modo auto (al cargar): modal solo si hay problemas.
+- `sfcom.html` → `🔍 Comprobar stock / corregir` → ejecuta la misma `verificarCoherencia`, con código duplicado en `sfcom-panel.js` (función `ejecutarVerificacion` casi idéntica a la de `formulario.js`).
+- `panel.html` → ejecuta `verificarConsistenciaFinanciera()` automáticamente al cargar. No hay botón manual para forzarla desde ninguna página. Comprueba: SUM(charges) == SUM(reservas no canceladas) por cliente; SUM(payments) ≈ coste teórico por proveedor según `billing_model`.
+- `solicitudes.html`, `proveedores.html`, `tablas.html` → ninguna verificación de ningún tipo.
+
+El objetivo es un único botón en el sidebar de todas las páginas que:
+1. Ejecute las dos comprobaciones: `verificarCoherencia` + `verificarConsistenciaFinanciera`.
+2. Siempre muestre el resultado en modal (no toast), aunque todo esté correcto.
+3. Sustituya los dos botones actuales (o al menos los unifique).
+
+**Trabajo necesario:**
+
+_A. Añadir el botón a los HTML que no lo tienen._ El sidebar está duplicado en cada `.html`. Hay que editar `panel.html`, `solicitudes.html`, `proveedores.html` y `tablas.html` para añadir el mismo `<button id="btnVerificarDatos">` que ya tiene `formulario.html`. Unificar el label (hoy formulario usa "Verificar datos" y sfcom usa "Comprobar stock / corregir").
+
+_B. Extraer `verificarConsistenciaFinanciera` a un módulo compartido._ Actualmente es una función closure en `panel.js` que cierra sobre variables locales (`charges`, `reservas`, `payments`, `disponibilidad`, `venues`). Para llamarla desde otras páginas necesita: recibir `supabase` como parámetro y hacer sus propias consultas, o exportar los datos que necesita a un módulo común. La opción limpia es extraerla a `verificacion.js` como `async function verificarConsistenciaFinanciera(supabase)` con sus propios SELECTs. Los datos que necesita son: `charges`, `reservas` (no canceladas), `payments`, `availability` (join con `venues` para obtener `provider_id`).
+
+_C. Consolidar la función `ejecutarVerificacion`._ Existe casi idéntica en `formulario.js` y `sfcom-panel.js`. Candidato natural para `verificacion.js` como función exportada que acepte `supabase` y `modoManual`. Las dos copias actuales se reemplazarían por un import.
+
+_D. Diseñar el modal combinado._ Dos opciones:
+- Opción A (sencilla): encadenar los dos modales — primero el de `verificarCoherencia`, luego el de consistencia financiera — con un botón "Siguiente" al cerrar el primero.
+- Opción B (completa): un único modal con dos secciones. Más trabajo de UI pero más limpio.
+
+_E. Mantener el orden checkSfcomOrders → verificarCoherencia._ El código de `formulario.js` documenta por qué importa este orden: los pedidos que registra `checkSfcomOrders` afectan a `pendingExplains` en la verificación. Desde páginas sin `checkSfcomOrders` (panel, solicitudes…) la verificación puede arrancar directamente; desde formulario y sfcom hay que respetar el orden.
+
+**Dudas pendientes de decidir (anotar respuesta cuando se vaya a implementar):**
+1. ¿Modal encadenado (opción A) o modal unificado (opción B)?
+2. En `panel.html`, la verificación financiera ya corre sola al cargar. ¿El botón global la vuelve a ejecutar igualmente (redundante pero inofensivo), o en `panel.html` el botón solo ejecuta `verificarCoherencia` (la parte que ahora falta allí)?
+3. ¿Renombramos el botón en `sfcom.html` para unificarlo ("Verificar datos" en lugar de "Comprobar stock / corregir"), o mantenemos el label diferenciado en esa página?
+
+---
+
 **sfcom — leads de pedidos cancelados.** ✅ Implementado jun 2026. Ver Fase 5 §9 para el detalle completo.
 
 **Pendiente — dedup multi-venue/multi-día:** si un mismo cliente cancela el mismo encierro en venue A y venue B (o el mismo venue en días distintos), hoy se crean dos leads por separado. Plan: detectar en la importación y fusionar `proposal_draft` en la solicitud existente, o mostrar un aviso manual. No hay urgencia hasta que ocurra en producción.
@@ -1070,6 +1105,208 @@ Solución propuesta: tratar el cierre del modal por cualquier vía (ESC, clic fu
 **Las vistas de Supabase son siempre en tiempo real.** No hay caché a nivel de vista en PostgreSQL: cada vez que el JS hace una query sobre `availability_panel` o `catalogo_publico`, Supabase ejecuta la vista en ese momento con los datos actuales de las tablas base. No hay riesgo de ver datos obsoletos por este motivo. El único caché relevante es `_stockCache` en `sfcom.js` (cliente JS, en memoria, solo para llamadas a la API sfcom).
 
 **`persistirPagosProveedor` crea un hito a 0 € para proveedores con availability pero sin reservas.** Si un proveedor tiene filas en `availability` con `total_slots = 0` o sin reservas activas, `persistirPagosProveedor` (llamada desde `proveedores.js` al guardar) inserta un pago de 0 € con `comments = 'Pago final'`. No es un dato incorrecto (refleja que el pago final calculado es 0), pero poluciona `payments` con filas vacías. La UNIQUE constraint evita duplicados. Revisable si se quiere filtrar el INSERT cuando `amount = 0` y no hay reservas previas.
+
+---
+
+### 7.9 Auditoría de código — jun 2026
+
+Auditoría exhaustiva línea a línea del panel completo realizada en jun 2026. Se leyeron los 16 archivos JS del admin (`utils.js`, `supabase.js`, `auth.js`, `modal.js`, `verificacion.js`, `panel.js`, `solicitudes.js`, `formulario.js`, `propuesta.js`, `factura.js`, `asistente.js`, `asistente-config.js`, `proveedores.js`, `sfcom.js`, `sfcom-panel.js`, `tablas.js`) más los HTML de cada panel. Los hallazgos ya documentados en §7.1–7.8 se excluyen aquí.
+
+---
+
+#### Crítico — pueden corromper datos o bloquear completamente
+
+**`verificarConsistenciaFinanciera` puede borrar cobros con historial contable sin doble confirmación (`panel.js`).**
+El botón "Corregir automáticamente" ejecuta `DELETE FROM charges WHERE client_id = X` para todos los clientes detectados como huérfanos. Si un cliente canceló reservas pero ya había pagado un adelanto (cobro con `collected=true` o `invoice_number`), ese cobro se borra. El modal muestra el aviso `tieneHistorial`, pero no excluye a esos clientes del corrector — solo advierte antes de ejecutar. Fix: excluir del corrector automático a cualquier huérfano con `tieneHistorial=true` y requerir acción manual.
+
+**Race condition en numeración de facturas y propuestas (`factura.js:96-112`, `propuesta.js:81-97`).**
+`calcularSiguienteNumero` lee `MAX(invoice_number)` y devuelve `+1`. Si dos sesiones emiten simultáneamente, obtienen el mismo número. No hay UNIQUE constraint en `charges.invoice_number` ni en `reservations.proposal_number`. Consecuencia legal real: facturas duplicadas. Fix: generar el número en BD mediante función SQL transaccional, o añadir UNIQUE constraint que haga fallar el segundo insert con error detectable.
+
+**`solicitudOriginRef` no se resetea cuando Paula cancela sin guardar (`formulario.js:1995-2010`).**
+`solicitudOriginRef` se asigna al cargar una solicitud. Si Paula abandona el flujo sin guardar, el valor queda en memoria. La próxima reserva que guarde hereda ese `origin_ref`, asociándola a una solicitud incorrecta. Fix: resetear `solicitudOriginRef = null` en `limpiarFormularioReserva()`.
+
+**`sfcom-panel.js` usa `d.stockReal` pero el objeto de discrepancia tiene `d.stockSfcom` (`sfcom-panel.js:282`).**
+La columna "Stock real" en la tabla de discrepancias del panel sfcom siempre muestra `undefined`. Bug de naming entre `sfcom.js` (genera el objeto con `stockSfcom`) y `sfcom-panel.js` (lo consume como `stockReal`). Fix: cambiar a `d.stockSfcom`.
+
+**`_insertarMensaje` no protege contra escrituras concurrentes al log de conversación (`solicitudes.js:132-151`).**
+Lee `conversation_notes`, parsea, añade mensaje, persiste. Si dos eventos se disparan casi simultáneamente (asistente cierra modal mientras Paula guarda una edición), el segundo UPDATE sobreescribe el primero sin control de versión. Fix: usar optimistic locking o encolar los writes.
+
+---
+
+#### Alto — comportamiento incorrecto en casuísticas reales
+
+**`actualizarProveedores`: el venue activo desaparece del select silenciosamente al cambiar las plazas (`formulario.js:344-399`).**
+Al filtrar proveedores por capacidad, si el venue previamente seleccionado no tiene plazas suficientes para el nuevo número de plazas, se excluye del select sin aviso. `selectProveedor.value = proveedorActual` falla porque la opción ya no existe y el select queda en blanco. Paula puede guardar la reserva sin venue seleccionado.
+
+**`_inferirDesdeSfcom`: matching por día no funciona para servicios no-ENCIERRO con múltiples filas (`formulario.js:1834-1838`).**
+Si hay varios candidatos con el mismo `sfcom_service_name` que no son ENCIERRO (ej. dos configuraciones de CHUPINAZO), busca `'ENCIERRO_' + day` → no encuentra nada → devuelve `filas[0]` arbitrariamente. Impacto: asignación de servicio incorrecta en solicitudes sfcom.
+
+**`confirmarReorganizacion`: la reversión puede fallar silenciosamente y Paula recibe un mensaje falso (`formulario.js:1740-1758`).**
+Si un UPDATE falla a media operación, intenta revertir con `Promise.allSettled`. Si alguna reversión también falla, solo queda un `console.log` interno. Paula recibe "Los cambios anteriores han sido revertidos" sin que sea cierto. Fix: si la reversión falla, mostrar modal de error grave con los cambios concretos para corrección manual.
+
+**`cambiarEstadoSeleccionadas`: reactivar una reserva cancelada no verifica capacidad propia (`formulario.js:651-672`).**
+Al reactivar Cancelada → Confirmada/Pendiente, solo se verifica sfcom, no si el hueco que había al cancelar sigue libre. Entre la cancelación y la reactivación pueden haberse creado otras reservas que ocupen ese espacio. Impacto: sobrereserva posible.
+
+**`cargarReservasCliente` no sincroniza el array global `todasReservas` (`formulario.js:489-514`).**
+Filtra reservas solo del cliente activo y guarda en `reservasCliente`. `todasReservas` (usado para cálculos de disponibilidad en el resto del panel) queda con datos de la carga inicial. Si otra sesión añadió reservas mientras tanto, los cálculos de disponibilidad están desfasados.
+
+**`cobroFinal` puede resultar negativo sin aviso para Paula (`formulario.js:1179, 1199`).**
+`cobroFinal = total - prepagos`. Si un cliente sobrepagó o se cancelaron reservas tras cobrar el adelanto, `cobroFinal < 0`. Se persiste silenciosamente y aparece como importe negativo en la tabla de cobros.
+
+**`reorgCambiarServicio`: cambia el venue silenciosamente al primero disponible si el actual no ofrece el nuevo servicio (`formulario.js:1530-1554`).**
+En el panel de reorganización, al cambiar el servicio de una reserva, si el venue actual no ofrece ese servicio, la reserva se mueve al primer venue disponible del nuevo servicio sin pedir confirmación. Paula puede no darse cuenta.
+
+**`marcarAtendida` marca la solicitud como `convertida` sin verificar que se haya creado una reserva real (`formulario.js:2324-2332`).**
+El botón "✅ Procesado" en la tabla sfcom del bloque 0 actúa directamente. Si Paula lo pulsa por error, la solicitud desaparece de todas las listas activas. No hay modal de confirmación.
+
+**`_alUsarBoton` en el asistente marca el mensaje como enviado aunque Paula cierre el correo sin enviar (`asistente.js:346-354`).**
+Al pulsar "Enviar por correo", se abre `mailto:` y simultáneamente se registra en el log como `<Paula>` y la solicitud pasa a `respuesta_enviada`. Si Paula cierra Outlook sin enviar, el log queda con un mensaje "enviado" que el cliente nunca recibió. No hay forma de revertirlo sin editar el log manualmente.
+
+**Falta `asunto` en el `mailto:` generado por el asistente (`asistente.js:327`, `utils.js:374`).**
+La llamada a `mostrarOpcionesEnvio` desde `asistente.js` no pasa el parámetro `asunto`. El enlace `mailto:` se abre sin subject. El cliente recibe un correo sin asunto.
+
+**`btnEliminarServicio`: DELETE de proveedor sin manejar error de FK (`proveedores.js:1545-1623`).**
+Al eliminar todos los servicios de un proveedor, aparece `confirm("¿Eliminar también el proveedor?")` que ejecuta DELETE en `providers`. Si el proveedor tiene otros venues con reservas activas, el DELETE fallará por FK, pero el código no maneja explícitamente ese error. La UI queda en estado inconsistente.
+
+**`cargarServiciosProveedor`: muestra todos los venues del proveedor mezclados, no solo el tab activo (`proveedores.js:1341`).**
+Cuando un proveedor tiene varios venues (AMAYA_SABATE, PATRICIA), la tabla de servicios filtra por `provider_id` y muestra todos los venues juntos, confundiendo la jerarquía proveedor → venue → servicio.
+
+**`btnConfirmarSfcom` con resultado `'save'` deja sfcom con stock incorrecto sin recordatorio (`proveedores.js:234-265`).**
+La opción "Solo guardar" confirma el `sfcom_status` en BD pero no sincroniza el stock a WooCommerce. No hay indicador posterior de que sfcom está desincronizado ni recordatorio de que hay que sincronizar.
+
+**`btnGuardarServicio` en modo edición múltiple ignora cambios en `services.name/description/comments` (`proveedores.js:1155-1192`).**
+En modo edición múltiple, solo actualiza campos de `availability`. Los inputs de nombre y descripción del servicio están visibles y editables pero sus cambios se descartan al guardar, sin aviso.
+
+**Asistente múltiple no valida `service_id` duplicado entre filas antes de insertar (`proveedores.js:2216-2293`).**
+Si dos filas del bulk insert tienen el mismo `serviceId`, colisionan con UNIQUE(venue_id, service_id) en `availability`. El código muestra `alert` con el error de BD pero no previene la colisión.
+
+**`syncStockToSfcom` enmascara sobrereservas poniendo 0 sin alertar (`sfcom.js:143-146`).**
+`Math.max(0, Math.min(...))` eleva el stock negativo a 0. El PUT a sfcom es correcto (no se ofrecen plazas de más), pero Paula no recibe ningún aviso de que hay una sobrereserva. El problema queda enmascarado.
+
+**`verificarBajaSfcom` confunde "stock 0 porque todo está vendido" con "Hilario retiró el producto" (`sfcom.js:1141-1152`).**
+`gone = stock === 0 || stock === null`. Un producto vendido al 100% tiene stock 0 sin que Hilario lo haya retirado. Esto puede mostrar el botón "Confirmar baja" para un producto activo en sfcom.
+
+**`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada (`sfcom.js:92-95`).**
+`return result?.stock ?? {}`. Si la API responde con un JSON malformado o un error con status 200, devuelve objeto vacío. El consumidor ve todos los availability como `fallos` pero el error real (API rota) no se muestra.
+
+**`importarCanceladosSfcom`: la dedup puede ocultar una segunda cancelación del mismo cliente (`sfcom.js:1354-1372`).**
+La dedup usa email+phone+nombre. Si el mismo email cancela dos productos distintos (ej. ENCIERRO_7 y CHUPINAZO_6) simultáneamente, el segundo lead se descarta por considerarse duplicado del primero. Fix: incluir `origin_ref` del pedido en la dedup.
+
+**El parseo de `---BORRADOR---` falla silenciosamente con JSON inválido generado por Claude (`asistente.js:299-313`).**
+Si Claude devuelve JSON malformado en el bloque `---BORRADOR---`, `borradorDraft = null` sin warning visible para Paula. El mensaje al cliente sí se muestra, pero el borrador queda sin actualizar en Supabase.
+
+**Tres paneles distintos enriquecen `availability_panel` con datos sfcom de formas diferentes (`proveedores.js:16-33`, `formulario.js:20-32`, `sfcom-panel.js:37`).**
+`proveedores.js` y `formulario.js` hacen dos queries separadas y mezclan sfcom en memoria manualmente. `sfcom-panel.js` usa la vista `availability_with_sfcom` directamente. Un cambio de esquema rompe los dos primeros sin afectar al tercero. Fix: usar `availability_with_sfcom` consistentemente en todos los paneles que necesiten campos sfcom.
+
+**`verificarCoherencia`: el check de nombres de variación (`idsMismatch`) es código muerto con UI engañosa (`sfcom.js:689, 721`).**
+El parámetro `checkVariationNames` se acepta pero `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone ese endpoint. `idsMismatch[]` nunca se rellena. El código sigue corriendo la comprobación y preparando modales para un caso que nunca puede ocurrir. Fix: eliminar la lógica `idsMismatch` o documentarla explícitamente como no implementada.
+
+**El sort de "Cobrado/Pagado" en `tablas.js` ordena por emoji — resultado confuso (`tablas.js:253-256`).**
+`valorCelda` para esa columna devuelve strings como "✅ 2026-07-06", "❌ Vencido", "⏳ No". `localeCompare` los ordena alfabéticamente por el emoji inicial, no agrupando cobrados vs pendientes de forma útil. Fix: usar el raw value booleano para el sort y formatear solo en display.
+
+**`persistirCobrosCliente` lanza `alert()` síncrono bloqueante en flujo destructivo (`utils.js:188`).**
+Cuando el hito final ya está facturado y hay un cambio, dispara `alert()` bloqueante. Esta función se llama desde múltiples contextos sin que el caller pueda reaccionar al resultado. Fix: sustituir por modal informativo y devolver un resultado al caller.
+
+---
+
+#### Medio — edge cases que ocurrirán con el tiempo
+
+**`_preFillBorradorSiVacio` no usa `await` en el update a Supabase (`solicitudes.js:861-864`).**
+`supabase.from('reservation_requests').update(...).eq('id', sol.id)` sin `await`. Si el update falla, la memoria y la BD divergen silenciosamente.
+
+**`_renderBorrador` re-renderiza el DOM entero en cada cambio, perdiendo el foco del input (`solicitudes.js:615-617`, `658`, `688`).**
+Cada cambio en una fila llama a `rebind()` que recrea todo el DOM. Con inputs numéricos, Paula puede perder el foco al escribir rápido. Fix: aplicar cambios in-place para inputs numéricos sin re-renderizar.
+
+**`session_context` crece indefinidamente — cada edición inserta una fila nueva (`solicitudes.js:1169-1178`).**
+No hay DELETE de versiones antiguas ni UPSERT. Solo se lee `ORDER BY created_at DESC LIMIT 1` pero la tabla acumula sin límite. Fix: UPSERT en una fila única o borrado periódico de versiones antiguas.
+
+**El parseo del log de conversación es frágil ante contenido inesperado (`solicitudes.js:62-95`).**
+`_parsearLog` distingue líneas por regex `^---DD/MM/AA---$` y `^<Paula>` / `^<Cliente>`. Si un cliente escribe textualmente `<Paula>` en un mensaje, el parser lo trata como marcador de autor y asigna los mensajes siguientes al autor incorrecto.
+
+**Paula no puede editar mensajes del día anterior (`solicitudes.js:123, 154-207`).**
+`_initEditListeners` activa el botón de edición solo si el mensaje es del día actual (`isToday`). Un typo del día anterior no tiene solución desde la UI.
+
+**`_onBorradorActualizado` falla silenciosamente si la solicitud no está en los arrays en memoria (`solicitudes.js:264-287`).**
+Si la solicitud se movió entre estados durante la sesión, `sol` es `undefined`. El borrador se guarda en BD pero no se actualiza en memoria → la tabla del borrador visible queda desactualizada.
+
+**Race condition por `setTimeout(50ms/100ms/150ms)` para sincronizar selects (`formulario.js:601-606`, `2044-2059`).**
+Se usan delays hardcodeados para esperar a que un `dispatchEvent` popule las opciones del siguiente select. En dispositivos lentos, el timeout puede agotarse antes de que el listener async haya corrido. Fix: hacer `actualizarProveedores` retornar una Promise y encadenar con `await`.
+
+**`togglePagoProvCobrado` usa `prompt()` nativo para la fecha de pago (`proveedores.js:1762`).**
+`prompt()` es bloqueante, no permite validación de formato de fecha, y es inconsistente con el resto del panel que usa modales propios.
+
+**`_savePhotos` sobreescribe el array entero — race condition si dos tabs editan (`proveedores.js:144-156`).**
+Add/remove de foto siempre escribe el array completo en BD. Si Paula tiene el panel en dos tabs y ambas editan fotos del mismo servicio, gana el último en guardar.
+
+**El input de ID en el asistente múltiple no preserva la posición del cursor al normalizar (`proveedores.js:2170-2188`).**
+`input.value = normalizarId(input.value)` en el evento `input` reemplaza el valor completo y salta el cursor al final. Typing extraño si Paula escribe en el medio del texto.
+
+**`multipleRows[i]._db_*` no se resetean tras guardar, marcando filas como `modified` siempre (`proveedores.js:2142-2156`).**
+Los valores de referencia `_db_slots`, `_db_precio`, `_db_modelo` no se actualizan tras guardar. Si Paula reabre el dialog sin recargar, todos los rows aparecen como modificados aunque no hayan cambiado.
+
+**`sfcom-panel.js` no importa pedidos nuevos ni cancelados al cargarse.**
+Solo `panel.js` y `solicitudes.js` llaman a `checkSfcomOrders` e `importarCanceladosSfcom`. Si Paula abre directamente `sfcom.html` sin pasar antes por otro panel, no se importa nada.
+
+**`crearModal` con id reutilizable elimina modales en proceso async sin aviso (`modal.js:7-8`).**
+Si Paula pulsa "Verificar datos" dos veces seguidas mientras la primera verificación sigue cargando, el primer modal se elimina del DOM. El resultado de la primera verificación se pierde sin aviso.
+
+**`checkSfcomOrders` se llama sin caché al cargar `panel.js` Y `solicitudes.js`.**
+Cada navegación entre panel.html y solicitudes.html dispara un GET al endpoint externo sin caché ni throttle. Ver también §7.4 (caché de sfcom).
+
+**`abrirAsistenteRespuesta` no tiene timeout — el spinner puede quedar activo indefinidamente (`asistente.js:283-285`).**
+Si Claude tarda mucho o la Edge Function no responde, el spinner de "Pensando..." queda activo sin que Paula pueda cancelar. No hay `AbortController`.
+
+**`abrirProcesarEmail`: regex greedy para extraer JSON puede atrapar texto ajeno (`asistente.js:541-542`).**
+`rawText.match(/\{[\s\S]*\}/)` es greedy. Si Claude incluye un ejemplo de código con `{` antes del JSON real, todo se interpreta como JSON y el parse falla.
+
+**Signed URLs de Supabase Storage (TTL 60s) expiran si Paula tarda en clicar (`formulario.js:1391-1419`).**
+Las URLs firmadas para descargar facturas y propuestas duran 60 segundos. Si Paula genera la URL y se distrae, el intento de descarga recibirá un 403. No hay refresh automático.
+
+**`bloque3` permite clicar en un venue con sobrereserva (`disp-error`), abriendo el panel de reorganización de forma confusa (`formulario.js:1048-1057`).**
+La sobrereserva se marca en rojo pero el click sigue activo. El panel de reorganización que se abre no explica claramente la causa.
+
+**`_emitir` (factura) actualiza `clients` en memoria antes de confirmar que el UPDATE a Supabase fue exitoso (`factura.js:341-354`).**
+`Object.assign(_cliente, updates)` ocurre antes del error check. Si el UPDATE falla, el cliente en memoria queda con datos no persistidos y la siguiente acción del panel los usa como si fueran reales.
+
+**`tipoFactura` puede calcular `'unico'` incorrectamente cuando hay hitos de ajuste (`factura.js:39-46`).**
+Si todos los adelantos fueron eliminados sin haberlos facturado, `facturadosPrev.length === 0` → tipo `'unico'`. El PDF sale sin sección de liquidación aunque el importe real no cuadre con lo cobrado.
+
+**El logo de propuesta puede no estar cargado al generar el PDF (`propuesta.js:616-634`).**
+Si Paula abre el panel de propuesta y pulsa el botón inmediatamente, `_logoBlackBase64` puede no haber cargado. El PDF se genera sin logo (`try/catch` silencioso).
+
+**`Math.abs(parseFloat(amount) - cobroFinal) >= 0.01` puede dar falso positivo por precisión float (`utils.js:176`).**
+Con valores como `123.456789`, el parseFloat puede introducir error de redondeo que active el hito de ajuste innecesariamente. Fix: redondear a 2 decimales antes de comparar.
+
+**`parseInt(value) || null` convierte explícitamente `0` en `null` en varios sitios (`solicitudes.js:622-630`).**
+`parseInt(0) = 0` es falsy → se guarda `null`. Si Paula introduce 0 plazas intencionadamente, se interpreta como "sin valor".
+
+---
+
+#### Bajo — pulido y consistencia
+
+**HTML de `_renderItem` no escapa `client_name`, `level`, `service_id` (`solicitudes.js:349-383`).**
+Son campos de entrada externa (formulario web, sfcom). Si contuvieran `<`, `&` o comillas, el HTML quedaría roto o con XSS potencial.
+
+**`aplicarFiltro` en `tablas.js` inyecta el nombre de columna sin escape en `onclick=` inline (`tablas.js:298`).**
+Los nombres de columna actuales son seguros, pero si en el futuro se añade una columna con comilla simple en el nombre, el HTML se corrompe.
+
+**El nombre del archivo de export en `tablas.js` usa extensión `.csv` aunque se genera `.xlsx` (`tablas.js:356-357`).**
+`exportTable(..., '${tablaActual}.csv')` y `utils.exportTable` reemplaza la extensión por `.xlsx`. Discrepancia que confunde al leer el código.
+
+**`document.execCommand('copy')` está deprecado en navegadores modernos (`sfcom.js:493`, `1127`, `1206`, `1274`).**
+Fix: sustituir por `navigator.clipboard.writeText()` con fallback.
+
+**El logo de propuesta y las imágenes de vista previa se re-fetchean en cada apertura del panel, sin caché (`propuesta.js:230-241`).**
+Para propuestas con 5+ servicios con imagen, hay 5+ fetches en paralelo en cada apertura.
+
+**Los errores de Supabase solo van a `console.error` — Paula no sabe que ocurrieron sin abrir DevTools.**
+No hay reporting central ni toast de error genérico para operaciones secundarias.
+
+**Textos "San Fermín 2026" y "6-14 de julio" hardcodeados en `propuesta.js` (líneas 12, 22) y `factura.js` (línea 21).**
+Para 2027, hay que buscarlos y actualizarlos manualmente en varios archivos. No hay constante de temporada centralizada.
+
+**`window.*` global handlers (sortReservasCliente, facturarHito, etc.) pueden colisionar entre módulos en un refactor futuro.**
+El patrón `onclick=` inline con funciones en `window` es propenso a colisiones silenciosas si dos módulos definen el mismo nombre.
 
 ---
 

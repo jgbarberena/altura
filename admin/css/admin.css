@@ -1002,8 +1002,8 @@ dialog::backdrop {
 .prop-svc-nombre  { font-weight: 600; color: #222; margin-bottom: 2px; font-size: 12px; }
 .prop-svc-meta    { font-size: 10px; color: var(--accent); margin-bottom: 2px; }
 .prop-svc-dir     { font-size: 10px; color: #999; font-style: italic; }
-.prop-svc-desc    { font-size: 10px; color: #555; line-height: 1.5; margin-top: 5px; }
-.prop-svc-acceso  { font-size: 10px; color: var(--accent-dark); font-style: italic; margin-top: 3px; }
+.prop-svc-desc    { font-size: 10px; color: #555; line-height: 1.5; margin-top: 5px; min-height: 16px; }
+.prop-svc-desc:empty::before { content: "Añadir descripción comercial..."; color: #bbb; font-style: italic; pointer-events: none; }
 
 /* Cabecera cliente extendida */
 .prop-dest-sub  { font-size: 11px; font-weight: 400; color: #444; margin-top: 1px; }
@@ -1323,7 +1323,6 @@ dialog.modal-dialog-overlay::backdrop {
     .prop-svc-meta     { font-size: 11px; }
     .prop-svc-dir      { font-size: 11px; }
     .prop-svc-desc     { font-size: 11px; }
-    .prop-svc-acceso   { font-size: 11px; }
     .prop-total-row td { font-size: 13px; }
     .prop-cierre-frase { font-size: 15px; }
     .prop-banner-claim { font-size: 12px; }
@@ -1593,3 +1592,5 @@ dialog.modal-dialog-overlay::backdrop {
     flex-shrink: 0;
 }
 .dia-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.text-microcopy { font-size: 11px; color: var(--subtle); }

@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
@@ -171,6 +171,7 @@ function limpiarCamposCliente() {
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
     document.getElementById('bloque-cobros-cliente').style.display   = 'none'
     limpiarFormularioReserva()
+    actualizarBotonBienvenida()
 }
 
 btnRenombrarCliente?.addEventListener('click', () => {
@@ -511,6 +512,7 @@ async function cargarReservasCliente(clienteId) {
     bloque.style.display = 'block'
     renderTablaReservas()
     await cargarCobrosCliente(clienteId, reservas)
+    actualizarBotonBienvenida()
 }
 
 function renderTablaReservas() {
@@ -811,6 +813,183 @@ document.getElementById('btnGenerarPropuesta').addEventListener('click', () => {
     }
 
     abrirPanelPropuesta(clienteActual, reservasFiltradas)
+})
+
+// ===== BIENVENIDA AL CLIENTE =====
+
+// Días naturales entre hoy y el 6 de julio del año en curso.
+// Nunca salta al año siguiente (a diferencia de fechaCobroDefault), porque
+// durante y tras San Fermín seguimos en el caso "ya estamos en San Fermín".
+function diasParaSanFermin() {
+    const hoy = new Date()
+    const hoyMidnight = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+    const sf = new Date(hoy.getFullYear(), 6, 6)
+    return Math.round((sf - hoyMidnight) / 864e5)
+}
+
+function componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarcadas, disponibilidad, { lang = 'es', incluirNotaPendientes = false } = {}) {
+    const nombre = cliente.name || cliente.id
+    const dias   = diasParaSanFermin()
+    const plural = reservasIncluidas.length > 1
+
+    let intro
+    if (dias > 1) {
+        intro = plural
+            ? `¡Hola ${nombre}!\n\nQuedan ${dias} días para San Fermín 🎉 Queremos dejarte ya toda la información de tus experiencias para que las tengas a mano.`
+            : `¡Hola ${nombre}!\n\nQuedan ${dias} días para San Fermín 🎉 Queremos dejarte ya toda la información de tu experiencia para que la tengas a mano.`
+    } else if (dias === 1) {
+        intro = plural
+            ? `¡Hola ${nombre}!\n\n¡Mañana empieza San Fermín! 🔴⚪ Te dejamos otra vez los detalles de tus experiencias para que lo tengas todo claro:`
+            : `¡Hola ${nombre}!\n\n¡Mañana empieza San Fermín! 🔴⚪ Te dejamos otra vez los detalles de tu experiencia para que lo tengas todo claro:`
+    } else {
+        intro = plural
+            ? `¡Hola ${nombre}!\n\n¡Ya estamos en San Fermín! 🎉 Te dejamos toda la información de tus experiencias confirmadas:`
+            : `¡Hola ${nombre}!\n\n¡Ya estamos en San Fermín! 🎉 Te dejamos toda la información de tu experiencia confirmada:`
+    }
+
+    const bloques = reservasIncluidas.map(r => {
+        const srv  = servicios.find(s => s.id === r.service_id)
+        const disp = disponibilidad.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
+        const nombreEvento = srv?.name  ?? r.service_id
+        const dia          = srv?.day   ?? '?'
+        const hora         = srv?.start_time ?? '?'
+        const venue        = disp?.venue_display_name ?? r.venue_id
+        const acceso       = disp?.access_instructions ?? null
+
+        let bloque = `📍 ${nombreEvento} — ${dia} de julio, ${hora}h\n${venue}\n${r.slots} personas`
+        if (acceso) bloque += `\n\nCómo llegar e instrucciones de acceso:\n${acceso}`
+        return bloque
+    })
+
+    const cierre = `Cualquier duda, aquí me tienes.\n\nUn abrazo,\nPaula\nExperiencias San Fermín`
+    const sep    = bloques.length > 1 ? '\n\n— — — — —\n\n' : '\n\n'
+    let texto = `${intro}\n\n${bloques.join(sep)}\n\n${cierre}`
+
+    if (incluirNotaPendientes && pendientesNoMarcadas.length > 0) {
+        if (pendientesNoMarcadas.length === 1) {
+            const r            = pendientesNoMarcadas[0]
+            const srv          = servicios.find(s => s.id === r.service_id)
+            const nombreEvento = srv?.name ?? r.service_id
+            const dia          = srv?.day  ?? '?'
+            texto += `\n\n—\nPor cierto, sigue pendiente de confirmar tu reserva de ${nombreEvento} (${dia} de julio). Si sigues interesado/a, escríbenos y te la confirmamos.`
+        } else {
+            const lista = pendientesNoMarcadas.map(r => {
+                const srv = servicios.find(s => s.id === r.service_id)
+                return `- ${srv?.name ?? r.service_id} (${srv?.day ?? '?'} de julio)`
+            }).join('\n')
+            texto += `\n\n—\nPor cierto, tienes estas reservas pendientes de confirmar:\n${lista}\nSi sigues interesado/a, escríbenos y te las confirmamos.`
+        }
+    }
+
+    return texto
+}
+
+function actualizarBotonBienvenida() {
+    const btn      = document.getElementById('btnEnviarBienvenida')
+    const statusEl = document.getElementById('bienvenida-status')
+    if (!btn) return
+
+    if (!clienteActual) { btn.style.display = 'none'; return }
+
+    const resDelCliente = todasReservas.filter(r => r.client_id === clienteActual.id)
+    const tieneActivas  = resDelCliente.some(r => r.status === 'Confirmada' || r.status === 'Pendiente')
+    btn.style.display   = tieneActivas ? 'flex' : 'none'
+
+    if (!statusEl) return
+    const confirmadas = resDelCliente.filter(r => r.status === 'Confirmada')
+    if (confirmadas.length > 0 && confirmadas.every(r => r.welcome_sent_at)) {
+        const fechaMax = new Date(Math.max(...confirmadas.map(r => new Date(r.welcome_sent_at).getTime())))
+        const dd = String(fechaMax.getDate()).padStart(2, '0')
+        const mm = String(fechaMax.getMonth() + 1).padStart(2, '0')
+        statusEl.textContent = `✅ Enviado el ${dd}/${mm}`
+    } else {
+        statusEl.textContent = ''
+    }
+}
+
+function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
+    const { overlay, panel } = crearModal('modal-bienvenida', { wide: true, scroll: true })
+    const nombre             = clienteActual.name || clienteActual.id
+
+    const bannerHtml = pendientesNoMarcadas.length > 0 ? `
+        <div class="modal-header-desc" style="background:#fff8e1;border:1px solid var(--accent-warn);padding:10px;border-radius:6px;margin-bottom:12px">
+            ⚠️ Este cliente tiene reservas pendientes que no se incluyen en la bienvenida:
+            <ul style="margin:6px 0 8px 18px">
+                ${pendientesNoMarcadas.map(r => {
+                    const srv = servicios.find(s => s.id === r.service_id)
+                    return `<li>${srv?.name ?? r.service_id} (${srv?.day ?? '?'} de julio)</li>`
+                }).join('')}
+            </ul>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+                <input type="checkbox" id="chkIncluirNotaPendientes">
+                Añadir nota recordando estas reservas pendientes
+            </label>
+        </div>` : ''
+
+    const textoInicial = componerMensajeBienvenida(clienteActual, reservasIncluidas, pendientesNoMarcadas, disponibilidad)
+
+    panel.innerHTML = `
+        ${bannerHtml}
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="modal-header-title">Bienvenida — ${nombre}</div>
+            <button id="btnCerrarBienvenida" class="btn btn-secondary" style="padding:4px 10px">✕</button>
+        </div>
+        <textarea id="textoBienvenida" class="modal-email-textarea" style="height:320px">${textoInicial}</textarea>
+        <div id="bienvenida-botones-envio"></div>
+    `
+
+    panel.querySelector('#btnCerrarBienvenida').addEventListener('click', () => overlay.close())
+
+    if (pendientesNoMarcadas.length > 0) {
+        panel.querySelector('#chkIncluirNotaPendientes').addEventListener('change', e => {
+            panel.querySelector('#textoBienvenida').value = componerMensajeBienvenida(
+                clienteActual, reservasIncluidas, pendientesNoMarcadas, disponibilidad,
+                { incluirNotaPendientes: e.target.checked }
+            )
+        })
+    }
+
+    const idsIncluidas = reservasIncluidas.map(r => r.id)
+    mostrarOpcionesEnvio({
+        email:     clienteActual.email || null,
+        telefono:  clienteActual.phone || null,
+        asunto:    'Tu experiencia en San Fermín',
+        getTexto:  () => panel.querySelector('#textoBienvenida').value,
+        container: panel.querySelector('#bienvenida-botones-envio'),
+        onUsado:   async () => {
+            const ts = new Date().toISOString()
+            const { error } = await supabase.from('reservations')
+                .update({ welcome_sent_at: ts })
+                .in('id', idsIncluidas)
+            if (error) { console.error('[bienvenida] welcome_sent_at:', error); return }
+            todasReservas = todasReservas.map(r =>
+                idsIncluidas.includes(r.id) ? { ...r, welcome_sent_at: ts } : r
+            )
+            actualizarBotonBienvenida()
+            mostrarToast('✅ Bienvenida enviada')
+        }
+    })
+}
+
+document.getElementById('btnEnviarBienvenida').addEventListener('click', () => {
+    if (!clienteActual) return
+
+    const resDelCliente    = todasReservas.filter(r => r.client_id === clienteActual.id)
+    const confirmadas      = resDelCliente.filter(r => r.status === 'Confirmada')
+    const checkedIds       = new Set(
+        [...document.querySelectorAll('.chk-reserva:checked')]
+            .map(chk => chk.closest('tr').dataset.id)
+    )
+    const pendientesMarcadas   = resDelCliente.filter(r => r.status === 'Pendiente' && checkedIds.has(r.id))
+    const pendientesNoMarcadas = resDelCliente.filter(r => r.status === 'Pendiente' && !checkedIds.has(r.id))
+    const reservasIncluidas    = [...confirmadas, ...pendientesMarcadas]
+
+    if (reservasIncluidas.length === 0) {
+        mostrarToast('No hay reservas confirmadas para incluir en la bienvenida', '#6b7280')
+        return
+    }
+
+    abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas)
 })
 
 // ===== AÑADIR / GUARDAR RESERVA =====
