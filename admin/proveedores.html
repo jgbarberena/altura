@@ -122,36 +122,57 @@
             <!-- BLOQUE 2: AÑADIR/EDITAR SERVICIO -->
             <div class="bloque" id="bloque-servicio" style="display:none">
                 <h2 id="titulo-bloque-servicio">➕ Añadir / Editar servicio</h2>
-                <div class="form-grid">
-                    <div class="form-field autocomplete-wrap">
-                        <label>Servicio</label>
-                        <div style="display:flex;gap:6px;align-items:center">
-                            <input type="text" id="inputServicioId" placeholder="ID_SERVICIO" autocomplete="off" style="flex:1;min-width:0">
-                            <button type="button" id="btnRenombrarServicio" class="btn btn-secondary" style="display:none;flex-shrink:0;white-space:nowrap">✏️ ID</button>
+                <div style="display:flex;gap:14px;align-items:flex-start">
+                    <div style="flex:1;min-width:0">
+                        <div class="form-grid">
+                            <div class="form-field autocomplete-wrap">
+                                <label>Servicio</label>
+                                <div style="display:flex;gap:6px;align-items:center">
+                                    <input type="text" id="inputServicioId" placeholder="ID_SERVICIO" autocomplete="off" style="flex:1;min-width:0">
+                                    <button type="button" id="btnRenombrarServicio" class="btn btn-secondary" style="display:none;flex-shrink:0;white-space:nowrap">✏️ ID</button>
+                                </div>
+                                <div class="autocomplete-list" id="autocompleteServicioList" style="display:none"></div>
+                            </div>
+                            <div class="form-field">
+                                <label>Día</label>
+                                <select id="selectServicioDia">
+                                    <option value="">— Sin día —</option>
+                                    <option value="6">6 julio</option>
+                                    <option value="7">7 julio</option>
+                                    <option value="8">8 julio</option>
+                                    <option value="9">9 julio</option>
+                                    <option value="10">10 julio</option>
+                                    <option value="11">11 julio</option>
+                                    <option value="12">12 julio</option>
+                                    <option value="13">13 julio</option>
+                                    <option value="14">14 julio</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label>Hora inicio</label>
+                                <input type="time" id="inputServicioHora">
+                            </div>
                         </div>
-                        <div class="autocomplete-list" id="autocompleteServicioList" style="display:none"></div>
                     </div>
-                    <div class="form-field">
-                        <label>Día</label>
-                        <select id="selectServicioDia">
-                            <option value="">— Sin día —</option>
-                            <option value="6">6 julio</option>
-                            <option value="7">7 julio</option>
-                            <option value="8">8 julio</option>
-                            <option value="9">9 julio</option>
-                            <option value="10">10 julio</option>
-                            <option value="11">11 julio</option>
-                            <option value="12">12 julio</option>
-                            <option value="13">13 julio</option>
-                            <option value="14">14 julio</option>
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Hora inicio</label>
-                        <input type="time" id="inputServicioHora">
-                    </div>
+                    <details id="detailsServicioInfo" style="flex-shrink:0;min-width:220px;max-width:300px">
+                        <summary style="cursor:pointer;font-size:13px;color:var(--subtle);user-select:none;white-space:nowrap">ℹ️ Info del servicio</summary>
+                        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+                            <div class="form-field">
+                                <label>Nombre comercial</label>
+                                <input type="text" id="inputServicioNombre" placeholder="Nombre comercial (ej: Balcón encierro)">
+                            </div>
+                            <div class="form-field">
+                                <label>Descripción del servicio</label>
+                                <textarea id="inputServicioDescription" rows="3" placeholder="Descripción general (compartida entre todos los venues)" style="resize:vertical;width:100%"></textarea>
+                            </div>
+                            <div class="form-field">
+                                <label>Imagen URL</label>
+                                <input type="text" id="inputServicioImageUrl" placeholder="https://...">
+                            </div>
+                        </div>
+                    </details>
                 </div>
-                <div class="form-grid" style="margin-top:0">
+                <div class="form-grid" style="margin-top:8px">
                     <div class="form-field">
                         <label>Plazas</label>
                         <input type="number" id="inputPlazas" step="1" placeholder="Nº plazas">
@@ -178,23 +199,6 @@
                     </div>
                 </div>
                 <div id="servicio-desc-status" style="font-size:12px; margin-top:4px"></div>
-                <details id="detailsServicioInfo" style="margin-top:8px">
-                    <summary style="cursor:pointer;font-size:13px;color:var(--subtle);user-select:none">ℹ️ Info del servicio</summary>
-                    <div class="form-grid" style="margin-top:8px">
-                        <div class="form-field">
-                            <label>Nombre comercial</label>
-                            <input type="text" id="inputServicioNombre" placeholder="Nombre comercial (ej: Balcón encierro)">
-                        </div>
-                        <div class="form-field" style="grid-column: 1 / -1">
-                            <label>Descripción del servicio</label>
-                            <textarea id="inputServicioDescription" rows="2" placeholder="Descripción general (compartida entre todos los venues)" style="resize:vertical"></textarea>
-                        </div>
-                        <div class="form-field">
-                            <label>Imagen URL</label>
-                            <input type="text" id="inputServicioImageUrl" placeholder="https://...">
-                        </div>
-                    </div>
-                </details>
                 <div class="avail-sep" id="avail-sep" style="display:none">
                     <hr class="venue-sep-hr">
                     <span class="avail-sep-label">Disponibilidad en <code id="avail-sep-venue-id"></code></span>

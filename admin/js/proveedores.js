@@ -622,6 +622,16 @@ function _actualizarLabelsVenue(tipo) {
     document.getElementById('labelVenueDisplayName').textContent = lbl.name
 }
 
+function _cargarDispParaServicio(serviceId) {
+    if (!proveedorActual) return
+    const targetVenueId = venueActual?.id
+    const filas = todaDisponibilidad.filter(d =>
+        d.service_id === serviceId && d.venue_provider_id === proveedorActual.id
+    )
+    const disp = (targetVenueId ? filas.find(d => d.venue_id === targetVenueId) : null) ?? filas[0]
+    if (disp) cargarServicioEnFormulario([disp.id])
+}
+
 function abrirDialogNuevoVenue() {
     if (!proveedorActual) return
     const existingIds = new Set(venuesDelProveedor.map(v => v.id))
@@ -755,6 +765,11 @@ inputServicioId.addEventListener('input', () => {
     if (inputServicioId.value !== normalized) inputServicioId.value = normalized
     const val      = inputServicioId.value.trim().toUpperCase()
     const autoList = document.getElementById('autocompleteServicioList')
+    // Resetear estado de edición en cada pulsación
+    servicioEditandoId = null
+    document.getElementById('avail-sep').style.display     = 'none'
+    document.getElementById('avail-section').style.display = 'none'
+    btnRenombrarServicio.style.display = 'none'
     if (!val) { autoList.style.display = 'none'; servicioDescStatus.textContent = ''; return }
     const coincidencias = todosServicios.filter(s => s.id.toUpperCase().startsWith(val))
     autoList.innerHTML  = coincidencias.map(s => `<div data-id="${s.id}">${s.id}</div>`).join('')
@@ -776,6 +791,7 @@ inputServicioId.addEventListener('input', () => {
         servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
         document.getElementById('detailsServicioInfo').open = false
+        _cargarDispParaServicio(exacto.id)
     } else {
         inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
@@ -815,13 +831,18 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
     if (!div) return
     inputServicioId.value = div.dataset.id
     document.getElementById('autocompleteServicioList').style.display = 'none'
+    // Resetear estado de edición
+    servicioEditandoId = null
+    document.getElementById('avail-sep').style.display     = 'none'
+    document.getElementById('avail-section').style.display = 'none'
+    btnRenombrarServicio.style.display = 'none'
     // Limpiar siempre los campos de availability (son del par proveedor-servicio)
     inputPlazas.value     = ''
     inputPrecio.value     = ''
     inputCosteTotal.value = ''
     selectModelo.value    = 'capacity'
     document.getElementById('inputCosteServicio').value = '—'
-    // Cargar description y comments del servicio seleccionado
+    // Cargar campos del servicio seleccionado
     const svcSel = todosServicios.find(s => s.id === div.dataset.id)
     if (svcSel) {
         inputServicioNombre.value      = svcSel.name        ?? ''
@@ -832,6 +853,7 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
         servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
         document.getElementById('detailsServicioInfo').open = false
+        _cargarDispParaServicio(svcSel.id)
     } else {
         inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
