@@ -648,6 +648,7 @@ function _cargarDispParaServicio(serviceId) {
     _photoIdx = 0
     _renderCarousel()
     document.getElementById('photoCarouselField').style.display = (_photos.length > 0) ? 'flex' : 'none'
+    document.getElementById('avail-sep-service-id').textContent = serviceId
     document.getElementById('avail-sep-venue-id').textContent   = targetVenueId
     document.getElementById('avail-sep').style.display          = 'flex'
     document.getElementById('avail-section').style.display      = 'block'
@@ -1588,7 +1589,8 @@ function cargarServicioEnFormulario(dispIds) {
         document.getElementById('photoCarouselField').style.display = 'flex'
         document.getElementById('servicio-dia-warning').style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
-        document.getElementById('avail-sep-venue-id').textContent = disps[0].venue_id
+        document.getElementById('avail-sep-service-id').textContent = disps[0].service_id
+        document.getElementById('avail-sep-venue-id').textContent   = disps[0].venue_id
         document.getElementById('avail-sep').style.display     = 'flex'
         document.getElementById('avail-section').style.display = 'block'
         btnRenombrarServicio.style.display = 'inline-flex'
