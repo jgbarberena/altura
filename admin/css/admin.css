@@ -998,9 +998,106 @@ dialog::backdrop {
     display: block;
 }
 
+.prop-svc-tipo    { font-size: 9px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 1px; }
 .prop-svc-nombre  { font-weight: 600; color: #222; margin-bottom: 2px; font-size: 12px; }
 .prop-svc-meta    { font-size: 10px; color: var(--accent); margin-bottom: 2px; }
 .prop-svc-dir     { font-size: 10px; color: #999; font-style: italic; }
+.prop-svc-desc    { font-size: 10px; color: #555; line-height: 1.5; margin-top: 5px; }
+.prop-svc-acceso  { font-size: 10px; color: var(--accent-dark); font-style: italic; margin-top: 3px; }
+
+/* Cabecera cliente extendida */
+.prop-dest-sub  { font-size: 11px; font-weight: 400; color: #444; margin-top: 1px; }
+.prop-dest-dir  { font-size: 10px; color: #888; font-style: italic; margin-top: 1px; }
+
+/* Toolbar selector de modo */
+.propuesta-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0 10px;
+    border-bottom: 1px solid #f0e0e0;
+    margin-bottom: 10px;
+}
+.propuesta-toolbar-label  { font-size: 12px; color: #666; font-weight: 500; }
+.propuesta-toolbar-select { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; border-radius: 4px; }
+
+/* Bloques modo COMPLETO */
+.prop-bloque {
+    border-bottom: 1px solid #f0e0e0;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+}
+.prop-bloque:last-of-type { border-bottom: none; margin-bottom: 0; }
+
+.prop-bloque-top {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.prop-fotos {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.prop-foto-ppal {
+    width: 120px;
+    height: 88px;
+    object-fit: cover;
+    border-radius: 6px;
+    display: block;
+}
+
+.prop-fotos-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.prop-foto-mini {
+    width: 56px;
+    height: 42px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+}
+
+.prop-datos {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.prop-datos-nums {
+    font-size: 11px;
+    font-weight: 600;
+    color: #333;
+    margin-top: auto;
+    padding-top: 6px;
+    border-top: 1px solid #eee;
+}
+
+.prop-bloque-bottom {
+    margin-top: 10px;
+    padding: 9px 12px;
+    background: #fef8f8;
+    border-radius: 4px;
+    border: 1px solid #f0e0e0;
+}
+
+.prop-total-completo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0 0;
+    border-top: 2px solid var(--accent);
+    font-weight: 700;
+    font-size: 12px;
+    color: #222;
+    margin-top: 10px;
+}
 
 .prop-total-row td {
     font-weight: 700;
@@ -1221,21 +1318,25 @@ dialog.modal-dialog-overlay::backdrop {
     .prop-titulo       { font-size: 17px; margin-bottom: 14px; padding-bottom: 12px; }
     .prop-tabla        { font-size: 12px; }
     .prop-col-num      { font-size: 12px; }
+    .prop-svc-tipo     { font-size: 10px; }
     .prop-svc-nombre   { font-size: 13px; }
     .prop-svc-meta     { font-size: 11px; }
     .prop-svc-dir      { font-size: 11px; }
+    .prop-svc-desc     { font-size: 11px; }
+    .prop-svc-acceso   { font-size: 11px; }
     .prop-total-row td { font-size: 13px; }
     .prop-cierre-frase { font-size: 15px; }
     .prop-banner-claim { font-size: 12px; }
     .prop-banner-web   { font-size: 15px; }
 
-    /* Columna imagen visible en desktop */
+    /* Columna imagen visible en desktop — modo compacto */
     .prop-col-img { display: table-cell; width: 66px; vertical-align: middle; }
+    .prop-img     { width: 60px; height: 42px; }
 
-    .prop-img {
-        width: 60px;
-        height: 42px;
-    }
+    /* Modo COMPLETO — fotos más grandes */
+    .prop-foto-ppal { width: 150px; height: 110px; }
+    .prop-foto-mini { width: 70px; height: 53px; }
+    .prop-total-completo { font-size: 13px; }
 }
 
 /* =========================
