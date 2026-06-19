@@ -110,6 +110,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | proposal_number | text |
 | proposal_path | Ruta al PDF en Supabase Storage (bucket `proposals`) |
 | origin_ref | Referencia de origen heterogénea: `WEB026_1090` (sfcom), UUID (solicitud web/email), null (reserva directa). Detección: `origin_ref LIKE 'WEB%'` para sfcom; `IS NOT NULL AND NOT LIKE 'WEB%'` para UUID. |
+| welcome_sent_at | timestamptz — momento en que Paula envió la bienvenida al cliente. Se escribe al pulsar cualquier botón de envío en el modal de bienvenida. Null si nunca se ha enviado. Usado por `actualizarBotonBienvenida` para mostrar "✅ Enviado el DD/MM" bajo el botón. |
 
 **`charges`** — Hitos de cobro a clientes (por cliente, no por reserva)
 | Campo | Notas |
@@ -345,13 +346,20 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 **Bloque 3 — Disponibilidad:** Mapa visual de columnas por proveedor. Click en proveedor sin plazas abre panel de reorganización.
 
-**Bloque 4 — Reservas del cliente:** Tabla de reservas. Checkbox para editar, cancelar o eliminar en lote. Botón "Generar propuesta".
+**Bloque 4 — Reservas del cliente:** Tabla de reservas. Checkbox para editar, cancelar o eliminar en lote. Botón "Generar propuesta". Botón "📩 Enviar bienvenida" (ver sistema de bienvenida más abajo).
 
 **Bloque 5 — Cobros al cliente:** Hitos de cobro. Botón de facturación por hito. Hito final (`is_final: true`) recalculado automáticamente vía `persistirCobrosCliente`.
 
 **Orden de borrado de reservas (`eliminarSeleccionadas`):** al eliminar reservas del cliente activo, el sistema comprueba si quedan reservas con `status !== 'Cancelada'`. Si quedan → `persistirCobrosCliente` recalcula el cobro final. Si no quedan reservas activas → se eliminan todos los charges del cliente: los que no tienen `collected=true` ni `invoice_number` se borran sin preguntar; si hay alguno con historial (cobrado o facturado) se muestra un modal con **Cancelar como botón por defecto** antes de proceder. Tras limpiar charges, se ofrece opcionalmente eliminar también el cliente (en este punto ya no hay FK pendiente).
 
 **Secuencia de carga:** `checkSfcomOrders` primero; `ejecutarVerificacion(false)` encadenado en `.finally()` para evitar race condition (verificarCoherencia lee reservation_requests y necesita que los pedidos sfcom nuevos estén ya insertados).
+
+**Sistema de bienvenida (Fase 2, jun 2026):** botón "📩 Enviar bienvenida" en la fila de acciones del bloque 4, junto a "Generar propuesta". Implementado en puro JS, sin asistente.
+
+- **`actualizarBotonBienvenida()`** — muestra/oculta el botón según si el cliente tiene reservas activas. Bajo el botón aparece "✅ Enviado el DD/MM" si todas las confirmadas tienen `welcome_sent_at`.
+- **`componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarcadas, disponibilidad, opts)`** — genera el texto adaptando la intro según días hasta el 6 de julio (>1 día / mañana / ya estamos en SF). Incluye un bloque por reserva con nombre del evento, día, hora, `venue_display_name`, plazas e instrucciones de acceso si `availability.access_instructions` está relleno. Cierre firmado por Paula.
+- **`abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas)`** — modal con el texto como `<textarea>` editable. Si hay reservas pendientes, ofrece checkbox para incluir una nota sobre ellas. Usa `mostrarOpcionesEnvio` (`tipo:'texto'`) para WhatsApp/email. Al usar cualquier botón de envío escribe `welcome_sent_at` en todas las reservas incluidas y llama a `actualizarBotonBienvenida()`.
+- El bloque incluye las reservas **Confirmadas** más las **Pendientes** que tengan `welcome_sent_at` (las que Paula decidió incluir antes). Las pendientes sin `welcome_sent_at` se muestran en el banner de advertencia con la opción de incluir nota.
 
 ### solicitudes.js
 Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js` (`initSidebar`, `buildCatalogUrl`, `resolverCliente`), `mostrarToast` de `verificacion.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
@@ -856,8 +864,7 @@ Implementado como paso 0 de Fase 2. La función soporta dos modos (`tipo: 'texto
 - `asistente.js`: `tipo='texto'` (default). Se llama cada vez que Claude completa una respuesta con `---MENSAJE_CLIENTE---`. Botones: Copiar / Enviar por correo / Enviar por WhatsApp. El primario es WhatsApp si hay teléfono.
 - `propuesta.js`: `tipo='pdf'`. Se llama al abrir el diálogo (`abrirPanelPropuesta`), antes de cualquier acción. Botones: Solo PDF / PDF+correo / PDF+WhatsApp. Un clic genera el PDF y abre el canal en un solo paso.
 - `factura.js`: `tipo='pdf'`. Se llama al abrir el diálogo (`abrirPanelFactura`). Mismo patrón que propuesta.
-
-La confirmación de reserva (Fase 2, paso 1) usará la misma función con `tipo='texto'`.
+- `formulario.js` (bienvenida): `tipo='texto'`. Se llama desde `abrirModalBienvenida`. El texto ya está compuesto por `componerMensajeBienvenida`; `getTexto` lee el valor del `<textarea>` editable por Paula.
 
 ---
 
@@ -1353,7 +1360,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 0 | ✅ Completa | Auditorías sin código (deudas operativas sfcom son independientes, ver §0) |
 | 1 | ✅ Completa | Bugs simples (4 cambios quirúrgicos) |
 | 1b | ✅ Completa | Bugs rápidos sin dependencias (margen + cobros bloque 5) |
-| 2 | 🔲 Pendiente | Comunicaciones semi-automáticas (urgente) |
+| 2 | ✅ Completa | Comunicaciones semi-automáticas (bienvenida) |
 | 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
 | 4 | ✅ Completa | Sistema de borrador y asistente (jun 2026) |
 | 5 | 🟡 Parcial | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales 🔲 |
@@ -1445,20 +1452,16 @@ Tres fixes en `panel.js` y `formulario.js` bloque 5. Independientes entre sí y 
 
 ---
 
-### Fase 2 — 🔲 Comunicaciones semi-automáticas (urgente)
+### Fase 2 — ✅ Comunicaciones semi-automáticas: bienvenida (jun 2026)
 
-Objetivo: que Paula pueda enviar confirmaciones e instrucciones a clientes con reserva desde la ficha de reserva en `formulario.js`. Sin dependencias de esquema ni de borrador.
+Implementado en puro JS desde `formulario.js`, sin asistente. El diseño final difirió del plan original (que preveía usar el asistente en modo `'confirmacion'`): se optó por generación directa en JS porque el mensaje de bienvenida es estructurado y no requiere inteligencia conversacional.
 
-Alcance MVP (sin Resend automático todavía):
-0. ✅ **UI de envío unificada:** `mostrarOpcionesEnvio()` en `utils.js` con `tipo: 'texto'|'pdf'`. Para propuestas y facturas los botones aparecen al abrir el diálogo (un clic = generar + enviar). Foco automático: WhatsApp > email > opción base.
-1. Botón "Enviar confirmación" en la ficha de reserva de `formulario.js` (sección de acciones del cliente o pie del formulario).
-2. El botón llama a `abrirAsistenteRespuesta(reserva, 'confirmacion')`.
-3. En `asistente-config.js`, añadir instrucciones para modo `'confirmacion'`: el asistente redacta mensaje con fecha, venue, personas, acceso (`availability.access_instructions` si existe) e instrucciones prácticas del evento.
-4. El envío usa la UI unificada del paso 0. Resend automático se evalúa como mejora posterior.
-
-Nota: para reservas sfcom, incluir referencia al pedido original si está disponible en `origin_ref`.
-
-No requiere diseño previo: el mecanismo de `abrirAsistenteRespuesta` ya existe y soporta modos nuevos. Solo hay que conectarlo desde la ficha de reserva y ampliar el system prompt.
+0. ✅ **UI de envío unificada:** `mostrarOpcionesEnvio()` en `utils.js`. Ver detalle en §4.
+1. ✅ **Botón "📩 Enviar bienvenida"** en la fila de acciones del bloque 4 de `formulario.html`, junto a "Generar propuesta". Solo visible si el cliente tiene reservas activas.
+2. ✅ **`componerMensajeBienvenida()`** — genera el texto con intro adaptada a los días que quedan para el 6 de julio, bloques por reserva (evento, día, hora, venue, plazas, instrucciones de acceso), y cierre firmado por Paula.
+3. ✅ **`abrirModalBienvenida()`** — modal con `<textarea>` editable + `mostrarOpcionesEnvio` (`tipo:'texto'`). Al enviar escribe `welcome_sent_at` en las reservas incluidas.
+4. ✅ **`welcome_sent_at`** en `reservations` — campo timestamptz, null hasta el primer envío. El botón muestra "✅ Enviado el DD/MM" cuando todas las confirmadas lo tienen.
+5. ✅ **Manejo de pendientes** — las reservas Pendientes sin `welcome_sent_at` aparecen en un banner de advertencia con checkbox para incluir una nota opcional sobre ellas en el mensaje.
 
 ---
 
