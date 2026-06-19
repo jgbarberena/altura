@@ -623,13 +623,37 @@ function _actualizarLabelsVenue(tipo) {
 }
 
 function _cargarDispParaServicio(serviceId) {
-    if (!proveedorActual) return
     const targetVenueId = venueActual?.id
-    const filas = todaDisponibilidad.filter(d =>
-        d.service_id === serviceId && d.venue_provider_id === proveedorActual.id
-    )
-    const disp = (targetVenueId ? filas.find(d => d.venue_id === targetVenueId) : null) ?? filas[0]
-    if (disp) cargarServicioEnFormulario([disp.id])
+    if (!targetVenueId) return  // sin venue seleccionada no podemos mostrar datos de disponibilidad
+
+    // Caso 1: el par venue+servicio ya existe → modo edición completo
+    const disp = todaDisponibilidad.find(d => d.service_id === serviceId && d.venue_id === targetVenueId)
+    if (disp) {
+        cargarServicioEnFormulario([disp.id])
+        return
+    }
+
+    // Caso 2: servicio existe globalmente pero no en esta venue → modo añadir, mostrar sección
+    // Pre-rellenar desde otro par mismo venue + event_type (trigger garantiza que son iguales)
+    const svc = todosServicios.find(s => s.id === serviceId)
+    const prefill = svc?.event_type
+        ? todaDisponibilidad.find(d => d.venue_id === targetVenueId && d.event_type === svc.event_type)
+        : null
+
+    servicioEditandoId            = null
+    inputAvailDesc.value          = prefill?.description         ?? ''
+    inputAccessInstructions.value = prefill?.access_instructions ?? ''
+    inputServicioComments.value   = ''  // comments no está sincronizado por el trigger
+    _photos  = Array.isArray(prefill?.photos) ? [...prefill.photos] : []
+    _photoIdx = 0
+    _renderCarousel()
+    document.getElementById('photoCarouselField').style.display = (_photos.length > 0) ? 'flex' : 'none'
+    document.getElementById('avail-sep-venue-id').textContent   = targetVenueId
+    document.getElementById('avail-sep').style.display          = 'flex'
+    document.getElementById('avail-section').style.display      = 'block'
+    btnRenombrarServicio.style.display = 'none'  // solo se muestra en edición de par existente
+    actualizarSeccionSfcom(null, true)
+    _mostrarUrlCatalogoServicio(null)
 }
 
 function abrirDialogNuevoVenue() {
