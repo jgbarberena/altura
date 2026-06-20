@@ -882,7 +882,9 @@ function verificarConsistenciaFinanciera() {
         const btn = panel.querySelector('#btn-cons-corregir')
         btn.disabled = true
         btn.textContent = 'Corrigiendo…'
+        const manuales = []
         for (const p of problemasClientes) {
+            if (p.esHuerfano && p.tieneHistorial) { manuales.push(p); continue }
             if (p.esHuerfano) {
                 const { error } = await supabase.from('charges').delete().eq('client_id', p.id)
                 if (error) console.error('Error eliminando charges de', p.id, error)
@@ -893,8 +895,22 @@ function verificarConsistenciaFinanciera() {
         for (const p of problemasProveedores) {
             await persistirPagosProveedor(supabase, p.id, reservas, disponibilidad)
         }
-        btn.textContent = '✓ Hecho — recargando…'
-        setTimeout(() => location.reload(), 1500)
+        if (manuales.length > 0) {
+            panel.innerHTML = `
+                <h2 style="margin-bottom:12px">⚠️ Corrección parcial</h2>
+                <p style="margin-bottom:8px">Los demás problemas se han corregido. Los siguientes clientes requieren acción manual (tienen cobros cobrados o facturados):</p>
+                <ul style="margin:8px 0 16px 16px;font-size:13px">
+                    ${manuales.map(p => `<li><strong>${p.id}</strong> — ${fmt(p.enBD)} en cobros, sin reservas activas</li>`).join('')}
+                </ul>
+                <p style="font-size:12px;color:var(--subtle)">Abre cada cliente en el panel de reservas y resuelve el historial (nota de crédito, anulación…).</p>
+                <div style="display:flex;justify-content:flex-end">
+                    <button id="btn-cons-ok" class="btn btn-primary">Entendido — recargar</button>
+                </div>`
+            panel.querySelector('#btn-cons-ok').addEventListener('click', () => location.reload())
+        } else {
+            btn.textContent = '✓ Hecho — recargando…'
+            setTimeout(() => location.reload(), 1500)
+        }
     })
 }
 

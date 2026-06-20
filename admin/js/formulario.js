@@ -660,6 +660,42 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             const sfcomDelta  = reactivadas.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
             return { ...p, sfcomDelta, allDelta }
         })
+        // Verificar capacidad interna antes de permitir la reactivación
+        const sinCapacidad = pairsConCambio
+            .filter(p => p.allDelta > 0)
+            .map(p => {
+                const { libres } = getPlazasInfo(p.venueId, p.serviceId)
+                return libres < p.allDelta
+                    ? { pair: p, libres, reserva: todasReservas.find(r => ids.includes(r.id) && r.status === 'Cancelada' && r.venue_id === p.venueId && r.service_id === p.serviceId) }
+                    : null
+            })
+            .filter(Boolean)
+        if (sinCapacidad.length > 0) {
+            const primera = sinCapacidad[0]
+            await new Promise(resolve => {
+                const { overlay, panel: mp } = crearModal('modal-sin-capacidad', { narrow: true })
+                mp.innerHTML = `
+                    <h2 style="margin-bottom:12px">Sin plazas disponibles</h2>
+                    <p style="font-size:13px;color:var(--text);margin-bottom:8px">
+                        No hay plazas suficientes en <strong>${primera.pair.venueId}</strong> / <strong>${primera.pair.serviceId}</strong>
+                        (disponibles: ${primera.libres}, necesarias: ${primera.pair.allDelta}).
+                    </p>
+                    <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+                        Se abre <strong>${primera.reserva?.id ?? 'la reserva'}</strong> en modo edición para que reasignes el venue.
+                        Si cancelas la edición, la reserva permanece cancelada.
+                    </p>
+                    <div style="display:flex;gap:8px;justify-content:flex-end">
+                        <button id="btn-sc-ok" class="btn btn-primary">Entendido</button>
+                    </div>`
+                mp.querySelector('#btn-sc-ok').addEventListener('click', () => { overlay.close(); resolve() })
+                overlay.addEventListener('close', resolve)
+            })
+            if (primera.reserva) {
+                cargarReservaEnFormulario(primera.reserva)
+                selectEstado.value = nuevoEstado
+            }
+            return
+        }
         for (const p of pairsConCambio) {
             if (p.allDelta <= 0) continue
             const sfcomResult = await checkAvailabilityBeforeSave(supabase, p.venueId, p.serviceId, p.allDelta)
@@ -1048,6 +1084,13 @@ btnAnadir.addEventListener('click', async () => {
         const pairsParaModal = []
         const parCambia  = venueId !== venueIdAnterior || servicioId !== servicioIdAnterior
         const esSfcomRes = Boolean(reservaOriginal?.origin_ref?.startsWith('WEB'))
+        if (reservaOriginal?.status === 'Cancelada' && estado !== 'Cancelada') {
+            const { libres } = getPlazasInfo(venueId, servicioId)
+            if (libres < plazas) {
+                alert(`No hay plazas disponibles en ${venueId} para ${servicioId}.\nDisponibles: ${libres}, necesarias: ${plazas}.`)
+                return
+            }
+        }
         if (parCambia) {
             const eraActiva  = reservaOriginal?.status !== 'Cancelada'
             const seraActiva = estado !== 'Cancelada'
@@ -1948,10 +1991,17 @@ window.confirmarReorganizacion = async function() {
             .update(updateData)
             .eq('id', id)
         if (error) {
-            await Promise.allSettled(aplicados.map(rid =>
+            const reversiones = await Promise.allSettled(aplicados.map(rid =>
                 supabase.from('reservations').update(originales[rid]).eq('id', rid)
             ))
-            alert(`Error al reorganizar (${id}). Los cambios anteriores han sido revertidos.`)
+            const fallidas = reversiones
+                .map((r, i) => (r.status === 'rejected' || r.value?.error) ? aplicados[i] : null)
+                .filter(Boolean)
+            if (fallidas.length > 0) {
+                alert(`Error al reorganizar (${id}).\n\n⚠️ La reversión también falló en: ${fallidas.join(', ')}.\nEstas reservas pueden quedar inconsistentes — corrígelas manualmente en Supabase.`)
+            } else {
+                alert(`Error al reorganizar (${id}). Los cambios anteriores han sido revertidos correctamente.`)
+            }
             return
         }
         aplicados.push(id)
@@ -2520,11 +2570,28 @@ async function registrarPedidosSfcom(pedidos) {
 }
 
 async function marcarAtendida(id) {
+    const confirmado = await new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-marcar-atendida', { narrow: true })
+        panel.innerHTML = `
+            <h2 style="margin-bottom:12px">¿Marcar como procesada?</h2>
+            <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+                Esta solicitud no tiene ninguna reserva creada. Al marcarla como procesada
+                desaparecerá de las listas activas sin haber generado ninguna reserva.<br><br>
+                Úsalo solo si ya atendiste al cliente por otro medio o si descartarás la solicitud.
+            </p>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button id="btn-atendida-cancelar" class="btn btn-secondary" autofocus>Cancelar</button>
+                <button id="btn-atendida-confirmar" class="btn btn-primary">Marcar como procesada</button>
+            </div>`
+        panel.querySelector('#btn-atendida-cancelar').addEventListener('click', () => { overlay.close(); resolve(false) })
+        panel.querySelector('#btn-atendida-confirmar').addEventListener('click', () => { overlay.close(); resolve(true) })
+        overlay.addEventListener('close', () => resolve(false))
+    })
+    if (!confirmado) return
     const { error } = await supabase
         .from('reservation_requests')
         .update({ status: 'convertida' })
         .eq('id', id)
-
     if (error) console.error('Error marcando como atendida:', error)
     await cargarSolicitudes()
 }
