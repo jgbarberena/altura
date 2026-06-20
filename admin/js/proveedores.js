@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_URL } from './supabase.js'
+import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId } from './utils.js'
 import { mostrarToast } from './verificacion.js'
@@ -209,17 +209,12 @@ document.getElementById('btnPhotoAdd').addEventListener('click', async () => {
 
 // ── Upload foto desde archivo (FTP vía Edge Function) ──────────────────────
 async function _subirFotoArchivo(file) {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) throw new Error('Sesión no disponible')
     const form = new FormData()
     form.append('file', file)
-    const resp = await fetch(
-        `${SUPABASE_URL}/functions/v1/upload-venue-photo`,
-        { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` }, body: form }
-    )
-    const result = await resp.json()
-    if (!resp.ok || !result.url) throw new Error(result.error ?? `HTTP ${resp.status}`)
-    return result.url
+    const { data, error } = await supabase.functions.invoke('upload-venue-photo', { body: form })
+    if (error) throw error
+    if (!data?.url) throw new Error('Sin URL en la respuesta')
+    return data.url
 }
 document.getElementById('btnUploadFoto').addEventListener('click', () => {
     document.getElementById('inputFotoArchivo').click()
