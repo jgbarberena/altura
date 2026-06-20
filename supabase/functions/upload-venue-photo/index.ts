@@ -125,10 +125,10 @@ Deno.serve(async (req: Request) => {
     const filename = `${base}.${ext}`
 
     // 3 ── Credenciales FTP desde Vault
-    const host = Deno.env.get('FTP_HOST') ?? ''
-    const user = Deno.env.get('FTP_USER') ?? ''
-    const pass = Deno.env.get('FTP_PASS') ?? ''
-    if (!host || !user || !pass) return json({ error: 'FTP no configurado (faltan secrets)' }, 500)
+    const host    = Deno.env.get('FTP_HOST') ?? ''
+    const ftpUser = Deno.env.get('FTP_USER') ?? ''
+    const pass    = Deno.env.get('FTP_PASS') ?? ''
+    if (!host || !ftpUser || !pass) return json({ error: 'FTP no configurado (faltan secrets)' }, 500)
 
     const fileData = new Uint8Array(await file.arrayBuffer())
 
@@ -136,7 +136,7 @@ Deno.serve(async (req: Request) => {
     const ftp = new FTPClient()
     try {
         await ftp.connect(host, FTP_PORT)
-        await ftp.cmd(`USER ${user}`)
+        await ftp.cmd(`USER ${ftpUser}`)
         await ftp.cmd(`PASS ${pass}`)
         await ftp.upload(REMOTE_DIR, filename, fileData)
     } catch (e) {
