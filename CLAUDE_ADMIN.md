@@ -809,11 +809,21 @@ Patrón de fix: tras cualquier save con efectos secundarios conocidos, re-leer d
 
 ---
 
-**Exceso de modales en el flujo sfcom normal.**
+**✅ RESUELTO — Exceso de modales en flujo sfcom y flujo de eliminación (jun 2026).**
 
-Un pedido sfcom normal llega ya con todos los datos → Paula hace 6 clics/confirmaciones antes de que la reserva esté guardada (modal de nuevo pedido → confirmar cliente → confirmar servicio → seleccionar venue → confirmar bloque → guardar). La mayor parte de esos pasos son para casos de excepción (datos incompletos, varios venues posibles) pero se presentan en el camino principal.
+6 cambios aplicados en `formulario.js` y `sfcom.js`:
 
-Plan: revisar los modales del flujo sfcom en `formulario.js` bloque 0 e identificar cuáles pueden fusionarse o suprimirse cuando los datos son completos. No es un rediseño completo; basta con saltarse pasos cuando la información es unívoca.
+**A — `checkAvailabilityBeforeSave` silenciado cuando la brecha está explicada:** el check sigue ejecutándose siempre, pero si `solicitudOriginRef?.startsWith('WEB')` y `(stockEsperado − stockSfcom) ≤ plazas` (la brecha es exactamente la del pedido en curso), no se muestra el `confirm`. Si hay brecha adicional inesperada, sí se muestra.
+
+**B — `confirmarStockSfcom` auto-sincroniza sin modal cuando stock no cambia:** si `nuevoStock === stockActual` para todos los pares afectados, devuelve `'sync'` directamente sin abrir el modal consultivo. Sucede al procesar pedidos sfcom (que ya descontaron stock): el stock resultante coincide con el actual → no hay nada que preguntar.
+
+**C — Confirm de cliente nuevo suprimido al venir de sfcom:** el `confirm('¿Crear cliente nuevo?')` se salta cuando `_cargandoSolicitud && solicitudOriginRef?.startsWith('WEB')`. Para reservas manuales sigue apareciendo.
+
+**D — Cierre automático de solicitud sfcom:** `_ofrecerCerrarSolicitud` para refs WEB compara cuántos `reservation_requests` no descartados hay con cuántas reservas tienen ese `origin_ref`. Si quedan items sin procesar (pedido de varios productos), no cierra nada. Si todos están procesados, cierra sin confirm. Para refs no-WEB sigue pidiendo confirm como antes.
+
+**E — Verificación auto-run con solo pendingExplains muestra toast en lugar de modal:** `ejecutarVerificacion(false)` (arranque de página) muestra un toast azul "ℹ️ N pedido(s) sfcom pendiente(s) de incorporar" cuando la única discrepancia es `pendingExplains`. Con `modoManual=true` (botón "Verificar datos") sigue mostrando el modal completo con la sección azul explicativa.
+
+**F — Modal de eliminación unificado para última reserva:** antes de borrar nada, computa si las reservas seleccionadas son las últimas activas del cliente. Si sí: consulta cobros y muestra un único modal contextual (nuevo: `_modalEliminacionUltimaReserva`). Sin cobros con historial: "Cancelar" / "Eliminar reserva" / "Eliminar reserva y cliente". Con cobros facturados o cobrados: "Cancelar" (autofocus) / "Eliminar reserva y cobros" / "Eliminar Todo (incl. cliente)". Reemplaza el flujo previo de 3 interrupciones (confirm inicial + modal historial + confirm cliente).
 
 ---
 
@@ -1363,7 +1373,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 2 | ✅ Completa | Comunicaciones semi-automáticas (bienvenida) |
 | 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
 | 4 | ✅ Completa | Sistema de borrador y asistente (jun 2026) |
-| 5 | 🟡 Parcial | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales 🔲 |
+| 5 | ✅ Completa | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales ✅ |
 | 6 | 🟡 Parcial | Panel: navegación tablas ✅ · image_url auto-fill 🔲 |
 | 7 | 🔲 Pendiente | Mejoras de propuestas |
 | 8 | 🔲 Pendiente | Facturación canal sfcom |
@@ -1521,7 +1531,7 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
    - `panel.js` / `panel.html`: nueva alerta `alerta-cancelados-sfcom` "N leads sfcom cancelados — posibles ventas a recuperar" con enlace a `solicitudes.html`.
    - `asistente-config.js`: modo `recuperar_sfcom` — comprueba disponibilidad del venue/servicio cancelado, redacta email de recuperación, sugiere alternativas si no hay plaza, tono resolutivo sin mencionar "cancelado".
    - **Supabase**: CHECK constraint `reservation_requests_status_check` ampliado para incluir `'cancelada_sfcom'`.
-2. 🔲 Reducción de modales: identificar pasos evitables cuando los datos son unívocos (cliente detectado, servicio inferido, un solo venue posible). No es rediseño, es saltarse pasos en el camino principal.
+2. ✅ **Reducción de modales (jun 2026):** 6 cambios en `formulario.js` y `sfcom.js`. Ver detalle completo en §7.2. Resumen: A) checkAvailabilityBeforeSave silenciado cuando la brecha es la del pedido sfcom; B) confirmarStockSfcom auto-sync sin modal cuando nuevoStock = stockActual; C) confirm de cliente nuevo suprimido al venir de solicitud sfcom; D) _ofrecerCerrarSolicitud auto-cierra solicitudes WEB cuando todos sus items tienen reserva; E) verificación auto-run con solo pendingExplains → toast azul en lugar de modal; F) eliminación de última reserva → un único modal contextual pre-computado (reemplaza 3 interrupciones).
 
 ---
 
