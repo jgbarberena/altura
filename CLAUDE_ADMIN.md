@@ -798,6 +798,16 @@ El registro duplicado fue eliminado en jun 2026. No tenía reservas ni charges a
 
 ---
 
+**Confirmación de borrado de proveedor no cubre todos los casos.**
+
+En `proveedores.js` (alrededor de la línea 1710-1727), la comprobación `serviciosRestantes.length === 0 && eliminados.length > 0` pregunta "¿eliminar también el proveedor?" y, si se confirma, borra en cascada sus `payments` y el registro de `providers`. Sin embargo, si los servicios de un proveedor se eliminan en varias acciones de guardado separadas (en lugar de seleccionarlos todos y eliminarlos en una sola pasada), el contador puede no detectar el momento exacto en que el proveedor se queda a cero y el diálogo no se dispara: el proveedor queda huérfano en la BD (sin `availability`, sin reservas, sin pagos, pero con los registros en `providers` y `venues` intactos).
+
+Caso real (jun 2026): fusión de dos proveedores duplicados donde los 9 servicios del proveedor a eliminar se borraron en más de una tanda. Al terminar, `venues`/`providers` seguían existiendo aunque `availability`, `reservations` y `payments` ya estaban en cero. Se corrigió con DELETE manual sobre `venues` y `providers`.
+
+No hay pérdida de datos ni inconsistencia real — solo queda un registro vacío en el listado de proveedores. Bajo impacto, no urgente. Posible solución: en lugar de comprobar `serviciosRestantes.length === 0` solo en el momento de cada guardado individual, recalcular el estado completo del proveedor de forma más robusta (suma de `availability` + `reservations` + `payments` desde Supabase), o añadir una acción de "verificar/limpiar proveedores huérfanos" accesible desde el panel en lugar de depender de detectar el instante exacto del último borrado. Confirmar con el usuario el comportamiento deseado antes de implementar.
+
+---
+
 ### 7.2 UX — puntos de fricción en el uso diario
 
 **UI no refleja datos derivados ni efectos secundarios hasta recargar la página.**
