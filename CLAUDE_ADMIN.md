@@ -14,6 +14,23 @@ Dos clientes Supabase:
 - **Admin** (`/admin/js/supabase.js`): módulo ES6, `export const supabase`. Solo en el panel.
 - **Público** (`/js/supabase-global.js`): script clásico, `window.supabasePublic`, `persistSession: false`. Solo en páginas públicas que necesitan acceso (formulario de solicitud, catálogo).
 
+### Edge Functions
+
+Las Edge Functions corren en el runtime de Deno de Supabase. **No se despliegan por FTP ni git** — solo desde el Dashboard (editor de código de cada función) o vía Supabase CLI. El directorio `supabase/functions/` del repo es la copia de referencia; está excluido del deploy FTP.
+
+**Funciones activas:**
+
+| Función | JWT | Propósito |
+|---|---|---|
+| `claude-proxy` | ON | Proxy a Claude API. Verifica JWT en gateway. |
+| `sfcom-bridge` | ON | Proxy a sf-api-paula.php. Resuelve CORS server-to-server. |
+| `upload-venue-photo` | ON | Sube imagen al FTP de producción, devuelve URL pública. |
+| `notificar-solicitud` | — | Disparada por trigger DB al insertar en `reservation_requests`. |
+
+**Patrón de llamada desde JS:** siempre `supabase.functions.invoke('nombre', { body })`. Nunca `fetch()` directo — el `fetch` directo con cabecera `Authorization` requiere preflight CORS que puede fallar si no está bien configurado. `supabase.functions.invoke()` gestiona el token y los headers automáticamente.
+
+**Secrets (variables de entorno de Edge Functions):** se configuran en Dashboard → Edge Functions → **Manage secrets**. Se leen en Deno con `Deno.env.get('CLAVE')`. Son distintos del **Supabase Vault** (que es almacenamiento cifrado en Postgres, accesible vía SQL con `select vault.decrypted_secrets`). Usar `Deno.env.get()` solo funciona con secrets configurados en "Manage secrets", no con entradas del Vault SQL.
+
 ---
 
 ## 2. Base de datos
@@ -397,6 +414,10 @@ Gestiona:
 - Carrusel de fotos por par venue/servicio (escribe en `availability.photos`; el trigger sincroniza al resto del event_type automáticamente).
 - Asistente de creación en lote (`dlgNuevoServicio`): crea servicios y availability para un rango de días desde un nombre base.
 - Widget de imagen (`.img-picker`): cuadro cuadrado, vacío muestra input de URL, con imagen muestra la foto con botón ✕.
+
+**Subida de fotos desde archivo (botón 📁 en el carrusel):** `_subirFotoArchivo(file)` llama a la Edge Function `upload-venue-photo` vía `supabase.functions.invoke()`. La función sube el archivo al servidor FTP (`/httpdocs/img/venues/`) y devuelve la URL pública (`https://experienciasanfermin.com/img/venues/<filename>`). La URL se añade a `_photos[]` y se persiste en `availability.photos` con `_savePhotos()`. Las credenciales FTP están en los secrets de la Edge Function (Dashboard → Manage secrets: `FTP_HOST`, `FTP_USER`, `FTP_PASS`).
+
+**Fotos de venues (`img/venues/`):** carpeta en el repo y en el servidor FTP para fotos técnicas de balcones (fachada, portal, acceso). Se incluye en el deploy normal: las fotos que estén en local se commitean a git y se suben por FTP. Para sincronizar lo que haya en el servidor con el local, hacer pull manual (extensión SFTP de VS Code o script PowerShell). Pendiente: procesar imagen con canvas antes de subir para convertir HEIC/multlicapa de iPhone a JPEG estándar.
 
 **Acceso a datos sfcom:** lecturas vía `sfcom_listings` (mezclados en memoria con `availability_panel`). Escrituras sfcom siempre a `sfcom_listings`, nunca a `availability`.
 
