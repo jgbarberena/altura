@@ -436,6 +436,10 @@ function _serviciosUnicos() {
         vistos.add(d.service_id)
         const RE_DIA = /_(\d+)$/
         const diaNum = parseInt(d.service_id.match(RE_DIA)?.[1]) || null
+        // DEUDA TÉCNICA (2026): este diccionario es redundante ahora que services.name es
+        // consistente. Se podría sustituir por uso directo de services.name, manteniendo
+        // event_type solo para el array `order` de clasificación. No se cambia ahora porque
+        // el comportamiento actual funciona correctamente.
         const etLabel = {
             encierro: 'Encierro', chupinazo: 'Chupinazo', procesion: 'Procesión',
             gigantes: 'Gigantes', pobre_de_mi: 'Pobre de Mí'

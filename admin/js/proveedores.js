@@ -2752,10 +2752,11 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
     const precio = modelo === 'fixed'
         ? parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
         : parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
-    const hora = document.getElementById('dlgNuevoHora').value || null
-    const img  = document.getElementById('dlgNuevoImg').value.trim() || null
-    const name = document.getElementById('dlgNuevoNombre').value.trim() || null
-    const desc = document.getElementById('dlgNuevoDesc').value.trim() || null
+    const hora      = document.getElementById('dlgNuevoHora').value || null
+    const img       = document.getElementById('dlgNuevoImg').value.trim() || null
+    const name      = document.getElementById('dlgNuevoNombre').value.trim() || null
+    const desc      = document.getElementById('dlgNuevoDesc').value.trim() || null
+    const eventType = document.getElementById('dlgNuevoEventType').value || null
 
     let crearProveedor = false
     let soloServicios  = false
@@ -2803,9 +2804,9 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
     for (const id of nuevos) {
         const dia = _extraerDiaDeId(id)
         const { error } = await supabase.from('services')
-            .insert({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
+            .insert({ id, day: dia, start_time: hora, image_url: img, name, description: desc, event_type: eventType, comments: null })
         if (error) errores.push(`${id}: ${error.message}`)
-        else todosServicios.push({ id, day: dia, start_time: hora, image_url: img, name, description: desc, comments: null })
+        else todosServicios.push({ id, day: dia, start_time: hora, image_url: img, name, description: desc, event_type: eventType, comments: null })
     }
     if (errores.length > 0) alert('Errores al crear servicios:\n' + errores.join('\n'))
 
@@ -2825,7 +2826,7 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
             }).select().single()
             if (error) console.error('Error al asignar', id, ':', error.message)
             else {
-                todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, event_type: null, sfcom_status: null, sfcom_slots_listed: null, sfcom_service_name: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null })
+                todaDisponibilidad.push({ ...nd, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, event_type: eventType, sfcom_status: null, sfcom_slots_listed: null, sfcom_service_name: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null })
                 asignados++
             }
         }
