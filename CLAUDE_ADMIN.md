@@ -1568,3 +1568,24 @@ Requiere conversación de diseño en claude.ai antes de escribir código.
 - Evaluar granularidad caché sfcom en sfcom.js.
 - Tablas.js edición directa + Supabase Storage (funcionalidad nueva grande).
 - Split de formulario.js (solo si el tamaño es problema práctico, siempre al final).
+
+---
+
+## 10. Deuda técnica: claridad de labels y textareas para Paula
+
+Paula gestiona el panel desde el móvil sin contexto técnico de cómo se usa cada campo en propuestas/asistente/catálogo público. Varios campos de texto libre del panel (sobre todo en `proveedores.js` / `formulario.js`, en los formularios de venue, servicio y disponibilidad) tienen labels genéricos ("Descripción", "Comentarios") que no indican: (a) dónde se usa ese texto de cara al cliente, (b) si es específico de un par venue+servicio o si cae a un fallback compartido por todos los días/proveedores de un mismo servicio, (c) qué pasa si se deja vacío.
+
+**Campos relevantes a revisar** (no exhaustivo — verificar en código real antes de tocar nada):
+
+`description` y `access_instructions` en el formulario de disponibilidad (`proveedores.js`): el texto se usa en propuestas, en el asistente de IA y en el catálogo público. Para servicios tipo "extra" (charla de corredor, aprender a correr, apartado, corralillos del gas, baile de la alpargata) NO tiene sentido rellenar esto por cada par venue+servicio — siempre cae al mismo contenido a nivel de servicio (mismo texto para todos los días/proveedores). El label debería advertir esto.
+
+`comments` en cliente/reserva/proveedor: NO se sincroniza ni se usa de cara al cliente en ningún sitio — es uso puramente interno. Debería quedar claro que nunca llega a un mensaje ni a una propuesta.
+
+El placeholder gris de los campos vacíos podría incluir una pista breve de qué tipo de contenido va ahí (ej. "Texto comercial: qué se ve, qué incluye, por qué merece la pena" vs. "Instrucciones logísticas: hora de llegada, cómo acceder").
+
+Campo `name` / `display_name` de venue vs. servicio: existe una convención ya establecida (servicio = categoría del evento, sin "Balcón"; venue = lugar físico, con "Balcón" si aplica) que no está documentada en ningún sitio visible para Paula.
+
+**Antes de implementar cualquier cambio de labels:**
+1. Revisar el código real de `proveedores.js`, `proveedores.html`, `formulario.js` y `formulario.html` tal como estén en ese momento — puede haber cambiado desde esta nota.
+2. Confirmar con el usuario los textos exactos de cada label antes de aplicarlos, no asumir redacción.
+3. No es una tarea de lógica, es de UX/redacción — bajo riesgo pero requiere revisión humana del resultado visual en el panel real.
