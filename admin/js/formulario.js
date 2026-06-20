@@ -2517,8 +2517,6 @@ async function registrarPedidosSfcom(pedidos) {
             status:         'nueva'
         })
     }
-
-    await cargarSolicitudes()
 }
 
 async function marcarAtendida(id) {
@@ -2801,9 +2799,8 @@ checkSfcomOrders(supabase)
         }
         if (resultado.ok && resultado.nuevos?.length) {
             await registrarPedidosSfcom(resultado.nuevos)
-        } else {
-            await cargarSolicitudes()
         }
+        await cargarSolicitudes()
     })
     .catch(e => {
         console.warn('[sfcom] checkSfcomOrders al inicio:', e.message)

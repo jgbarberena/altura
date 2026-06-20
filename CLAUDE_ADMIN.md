@@ -839,6 +839,24 @@ No hay pérdida de datos ni inconsistencia real — solo queda un registro vací
 
 ---
 
+**Asistente: edición del textarea de respuesta no se refleja en `mensajes` ni en el log.**
+
+El textarea `#asistente-mensaje-final` es editable. `getTexto: () => elMsgFinal.value` lee el valor actual en el momento del clic, por lo que la edición SÍ llega correctamente a `_alUsarBoton` → `_onRespuestaUsadaEnLog` → `conversation_notes`. Pero `mensajes` (el array interno de la conversación) nunca se actualiza con el texto editado: el último mensaje del assistant mantiene la respuesta bruta de Claude incluyendo `---MENSAJE_CLIENTE---` y el texto original. Consecuencias:
+- sessionStorage guarda `mensajes` al cerrar el asistente → al reabrirlo se restaura el texto original, no el editado.
+- El log guardado con "Guardar log" (o auto-save) contiene los mensajes originales, no la versión editada.
+
+Fix: en `_alUsarBoton(texto)`, antes de llamar a `_onRespuestaUsadaEnLog`, actualizar el último mensaje del assistant en `mensajes` reemplazando el contenido después de `---MENSAJE_CLIENTE---` con `texto`. Así sessionStorage y el log reflejan la edición.
+
+---
+
+**Asistente: log guardado solo de forma manual — Paula nunca lo hará.**
+
+El botón "Guardar log" en la cabecera del asistente es la única forma de persistir la conversación en `assistant_logs`. Paula no lo pulsará. El propósito del log es alimentar la revisión periódica del `SYSTEM_PROMPT_ASISTENTE`.
+
+Fix: cambiar "Guardar log" por un toggle `<input type="checkbox">` estilo iOS con label "Auto-guardar logs". Estado persistido en `localStorage`. Por defecto: activo. Cuando está activo, en el evento `close` del overlay se hace INSERT en `assistant_logs` si hay mensajes. Cuando está inactivo, solo se guarda manualmente al pulsar el toggle activo (o dejarlo como botón de guardado manual). Javier puede desactivarlo si empieza a acumular demasiadas entradas.
+
+---
+
 ### 7.2 UX — puntos de fricción en el uso diario
 
 **UI no refleja datos derivados ni efectos secundarios hasta recargar la página.**
@@ -849,6 +867,14 @@ Patrón recurrente en el panel: cuando una operación de guardado tiene efectos 
 - `formulario.js` bloque 5: al añadir un cobro, `persistirCobrosCliente` crea un "cobro final" adicional. El cobro nuevo ni el botón "Facturar" aparecen hasta recargar.
 
 Patrón de fix: tras cualquier save con efectos secundarios conocidos, re-leer de Supabase los datos afectados y re-renderizar. En la práctica, basta con llamar a la función de carga existente (`cargarVenue(id)`, `cargarCobrosCliente(clienteId)`, etc.) después del save, en lugar de solo modificar el estado local. El coste de red es despreciable dado el volumen de datos. Fix natural a incorporar cuando se toquen `proveedores.js` y `formulario.js` en otras fases — no justifica una fase propia.
+
+---
+
+**✅ RESUELTO — Pedidos sfcom ya registrados no aparecían en bloque 0 (jun 2026).**
+
+Bug introducido en la refactorización de reducción de modales (Fase 5). Al cargar `formulario.html`, `checkSfcomOrders` devolvía pedidos en `resultado.nuevos` aunque ya estuviesen en `reservation_requests`. `registrarPedidosSfcom` los filtraba internamente y hacía early return sin llamar `cargarSolicitudes()`. El `.then()` había tomado el camino `if` (no el `else`), por lo que `cargarSolicitudes()` no se llamaba nunca. Bloque 0 quedaba vacío aunque hubiera solicitudes sfcom con `status='nueva'`.
+
+Fix: `cargarSolicitudes()` se saca del interior de `registrarPedidosSfcom` y se llama siempre al final del `.then()`, independientemente de si se insertaron filas nuevas.
 
 ---
 
@@ -933,12 +959,23 @@ Actualmente el formulario de un par venue+servicio muestra siempre en paralelo (
 
 **Restricciones:** solo visibilidad/UX; el comportamiento de guardado no cambia. Paula puede editar cualquiera de las dos zonas siempre. La pestaña de servicio edita `services` (afecta a todos los pares de ese service_id) — verificar que el guardado ya apunta a la tabla correcta.
 
-**Pendiente de decidir — criterio de "balcón":**
-Dos opciones:
-- `venueActual.venue_type === 'balcon'` — ya disponible en `proveedores.js`, sin necesidad de lista adicional.
-- `TIPOS_BALCON.includes(event_type)` — semánticamente más correcto pero la constante solo existe en `panel.js:288` (`['encierro','chupinazo','procesion','despedida_gigantes','pobre_de_mi']`) y habría que duplicarla o extraerla a `utils.js`. El catálogo público NO usa TIPOS_BALCON para esto — filtra por `slug IS NOT NULL`, que es una lógica distinta.
+**Criterio de "balcón" — ✅ Decidido:** usar `venueActual.venue_type === 'balcon'`. Ya disponible en `proveedores.js` sin constante adicional. La alternativa `TIPOS_BALCON.includes(event_type)` es semánticamente más precisa pero requiere extraer o duplicar la constante de `panel.js:288`; diferido a Fase 9 si hay refactor de `utils.js`. Para el propósito del tab por defecto (UX), el tipo de venue es suficiente.
 
-Decidir con el usuario antes de implementar. Si se opta por `utils.js`, hacerlo en la misma sesión que los demás refactors de Fase 9.
+---
+
+**Carousel de fotos: imágenes no uniformes rompen el layout.**
+
+Las fotos subidas desde iPhone pueden ser landscape 4:3, portrait 9:16 u otros ratios. El carousel actual no tiene contenedor de tamaño fijo, por lo que la interfaz "salta" al navegar entre fotos de distintos ratios.
+
+Fix: envolver la imagen en un contenedor `aspect-ratio: 16/9; overflow: auto`. La imagen con `width: 100%; height: auto; display: block` encaja perfectamente en 16:9, sobresale por abajo en imágenes más altas (scroll vertical) y por la derecha en imágenes más anchas que 16:9 (caso raro; scroll horizontal). CSS-only, sin JS. Aplicar también al carousel del catálogo público cuando se toque ese código.
+
+---
+
+**Carousel de fotos: no se puede reordenar.**
+
+`availability.photos` es un `text[]` en Supabase. El orden importa: `photos[0]` es la imagen principal en propuestas y catálogo. Actualmente solo se puede añadir (al final) y eliminar; no reordenar.
+
+Fix: añadir un botón "⬆ Subir" en el footer del carousel junto a `🗑`. Al pulsar: `photos.splice(idx - 1, 0, photos.splice(idx, 1)[0])` → guardar con `_savePhotos`. Solo activo cuando `_photoIdx > 0`. No requiere cambios en Supabase ni en Edge Functions.
 
 ---
 
@@ -1438,7 +1475,9 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
 | 4 | ✅ Completa | Sistema de borrador y asistente (jun 2026) |
 | 5 | ✅ Completa | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales ✅ |
-| 6 | 🟡 Parcial | Panel: navegación tablas ✅ · image_url auto-fill 🔲 |
+| 6 | 🟡 Parcial | Panel: tablas navegables ✅ · image_url editable ✅ · pestañas par/servicio 🔲 · fotos 16:9 🔲 · reordenar fotos 🔲 · auto-fill image_url 🔲 |
+| 6b | 🔲 Pendiente | Asistente: fix mensajes editados + auto-save logs toggle |
+| 6c | 🔲 Pendiente | Bugs §7.9 sin fase: marcarAtendida, verificarConsistencia, reactivar capacidad, reversión falsa |
 | 7 | 🔲 Pendiente | Mejoras de propuestas |
 | 8 | 🔲 Pendiente | Facturación canal sfcom |
 | 9 | 🔲 Pendiente | Refactors y cierre |
@@ -1602,7 +1641,33 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 ### Fase 6 — 🟡 Panel: UX de navegación y edición
 
 1. ✅ **Tablas del panel navegables (jun 2026):** `filaEvento` y `filaProveedor` en `panel.js` tienen `onclick` y `cursor:pointer`. Las funciones `window._seleccionarEvento` / `window._seleccionarProveedor` actualizan el select y disparan el render. Segundo clic deselecciona. Bidireccional con el dropdown.
-2. 🔲 `services.image_url` auto-fill: al guardar la primera foto de un par venue/event_type, escribir `services.image_url` si está vacío.
+2. ✅ **`services.image_url` editable (jun 2026):** campo `inputServicioImageUrl` en la sección "Info del servicio" de `proveedores.js`.
+3. 🔲 **Pestañas "Detalles del par" / "Info del servicio":** ver diseño completo en §7.2. Criterio balcón: `venueActual.venue_type === 'balcon'` (✅ decidido). HTML restructuring de `detailsServicioInfo` + `avail-section` + tab nav. JS: dos click handlers + default tab al cargar + badges de contenido. Hacer antes de §6b porque modifica la misma zona de `proveedores.js`.
+4. 🔲 **Fotos 16:9 con overflow:** CSS `aspect-ratio: 16/9; overflow: auto` en `.photo-carousel-img-wrap`. Imagen con `width: 100%; height: auto`. Sin JS adicional.
+5. 🔲 **Reordenar fotos (botón ⬆ Subir):** en footer del carousel, solo activo si `_photoIdx > 0`. Al pulsar: `photos.splice(idx - 1, 0, photos.splice(idx, 1)[0])` → `_savePhotos(photos)`.
+6. 🔲 **`services.image_url` auto-fill:** al guardar la primera foto de un par venue/event_type (cuando `photos` pasa de vacío a longitud 1), escribir `services.image_url` si está vacío.
+
+---
+
+### Fase 6b — 🔲 Asistente: fix mensajes editados + auto-save logs
+
+**Archivo principal:** `asistente.js`.
+
+1. 🔲 **Fix `mensajes` con edición:** en `_alUsarBoton(texto)`, antes de llamar a `_onRespuestaUsadaEnLog`, localizar el último mensaje del assistant en `mensajes` (el que contiene `---MENSAJE_CLIENTE---`) y reemplazar el texto después del marker con `texto`. Así sessionStorage y el log reflejan la versión editada por Paula.
+2. 🔲 **Auto-save de logs:** sustituir el botón "Guardar log" por un toggle checkbox estilo iOS con label "Auto-guardar logs". Estado en `localStorage('asistente_autolog')`, valor por defecto `true`. En el evento `close` del overlay: si el toggle está activo y `mensajes.length > 0`, hacer INSERT en `assistant_logs` con los mensajes ya actualizados (punto 1). Si el toggle está inactivo, el INSERT solo ocurre al activarlo manualmente (equivale al botón anterior).
+
+---
+
+### Fase 6c — 🔲 Bugs §7.9: fixes sin fase asignada
+
+Bugs de severidad alta/crítica confirmados en código (jun 2026) que no estaban en ninguna fase anterior. **Hacer antes de Fase 7** para no acumular deuda crítica.
+
+**Archivos:** `panel.js`, `formulario.js`.
+
+1. 🔲 **`verificarConsistenciaFinanciera`: botón "Corregir" no protege cobros con historial (`panel.js:881-887`).** El corrector automático itera `problemasClientes` y ejecuta DELETE para todos los `esHuerfano`, incluyendo los que tienen `tieneHistorial: true`. Solo muestra un `<p>` de aviso pero no los excluye. Fix: excluir del loop de DELETE a cualquier entrada con `tieneHistorial: true`; mostrar en el modal qué clientes requieren corrección manual.
+2. 🔲 **`marcarAtendida` sin confirmación (`formulario.js:2524-2532`).** Hace `status: 'convertida'` directamente, sin modal ni confirm. La solicitud desaparece de todas las listas activas. Fix: añadir un confirm modal breve ("¿Marcar como convertida? La solicitud dejará de aparecer en las listas activas.") antes de ejecutar el UPDATE.
+3. 🔲 **`cambiarEstadoSeleccionadas` reactivar sin verificar capacidad propia (`formulario.js:663-668`).** Al reactivar Cancelada → Confirmada/Pendiente, solo verifica sfcom (`checkAvailabilityBeforeSave`) pero no comprueba si `total_slots` sigue teniendo hueco para los slots de la reserva. Fix: antes del UPDATE, comprobar que `total_slots - SUM(slots activos sin esta reserva) >= r.slots` para cada reserva a reactivar; avisar y pedir confirmación si hay sobrereserva.
+4. 🔲 **`confirmarReorganizacion`: reversión falsa (`formulario.js:1951-1954`).** Usa `Promise.allSettled` para revertir pero luego muestra "Los cambios anteriores han sido revertidos" sin comprobar si alguna reversión falló. Fix: inspeccionar el resultado de `allSettled`; si alguna reversión tiene `status: 'rejected'`, mostrar un modal de error grave listando qué reservas quedan en estado inconsistente para corrección manual.
 
 ---
 
