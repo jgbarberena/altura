@@ -890,6 +890,27 @@ Implementado como paso 0 de Fase 2. La función soporta dos modos (`tipo: 'texto
 
 ---
 
+**Pestañas "Detalles del servicio" vs "Detalles del par" en el formulario de disponibilidad (`proveedores.js`).**
+
+Actualmente el formulario de un par venue+servicio muestra siempre en paralelo (a) la información general del servicio (`services.description`, `services.image_url`) y (b) la información específica del par (`availability.description`, `availability.access_instructions`, `availability.photos`). Para servicios de balcón, la zona de par es la que importa; para servicios "extra" (visitas guiadas, charlas, apartado, corralillos, etc.), lo relevante es la zona de servicio, y tener la zona de par visible por defecto solo confunde.
+
+**Diseño acordado:**
+- Dos pestañas tipo `.venue-tab` (reutilizar el patrón ya existente en `proveedores.js` para alternar entre venues) bajo el encabezado "Detalles de {SERVICE_ID} para {VENUE_ID}": "Detalles del servicio" | "Detalles del par".
+- La pestaña activa por defecto depende del tipo de servicio: balcón → "par"; extra → "servicio".
+- Al cambiar a la pestaña no activa por defecto: mostrar un aviso breve e informativo (un solo clic para descartar, no bloqueante). Si es balcón: "Editar aquí afecta a TODOS los proveedores y días de este servicio, no solo a este balcón." Si es extra: "Si hay contenido aquí, anula la información general del servicio para este caso concreto."
+- Indicador visual (punto/badge) en cada pestaña si esa zona ya tiene contenido (`services.description`/`image_url` para "servicio"; `availability.description`/`access_instructions`/`photos` para "par"), para que no pase desapercibido un override silencioso.
+
+**Restricciones:** solo visibilidad/UX; el comportamiento de guardado no cambia. Paula puede editar cualquiera de las dos zonas siempre. La pestaña de servicio edita `services` (afecta a todos los pares de ese service_id) — verificar que el guardado ya apunta a la tabla correcta.
+
+**Pendiente de decidir — criterio de "balcón":**
+Dos opciones:
+- `venueActual.venue_type === 'balcon'` — ya disponible en `proveedores.js`, sin necesidad de lista adicional.
+- `TIPOS_BALCON.includes(event_type)` — semánticamente más correcto pero la constante solo existe en `panel.js:288` (`['encierro','chupinazo','procesion','despedida_gigantes','pobre_de_mi']`) y habría que duplicarla o extraerla a `utils.js`. El catálogo público NO usa TIPOS_BALCON para esto — filtra por `slug IS NOT NULL`, que es una lógica distinta.
+
+Decidir con el usuario antes de implementar. Si se opta por `utils.js`, hacerlo en la misma sesión que los demás refactors de Fase 9.
+
+---
+
 ### 7.3 Funcionalidades pendientes
 
 **Botón "Verificar todo" global en el sidebar.**
