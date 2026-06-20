@@ -405,6 +405,10 @@ Gestiona:
 - `'confirmed'` → "Dar de baja" → `'deactivation_pending'` (correo a Hilario) → Hilario retira → "Confirmar baja" → GET verificación → DELETE en sfcom_listings → `null`
 - Mientras `sfcom_status` no sea null, el servicio no se puede eliminar.
 
+**Selector de venue (pestañas):** cuando un proveedor tiene más de un venue, el selector muestra una pestaña por venue. `selectVenueTab(venueId)` actualiza `venueActual` y refresca los campos del venue (dirección, nombre, tipo) y la tabla de servicios. `venueActual` es la variable de estado que indica el venue activo en todo momento.
+
+**Tabla de servicios (`bloque-servicios-proveedor`):** `cargarServiciosProveedor(proveedorId, venueId)` filtra `todaDisponibilidad` por `d.venue_id === vid` (donde `vid = venueId ?? venueActual?.id`). Muestra solo los servicios del venue activo; nunca mezcla venues aunque el proveedor tenga varios. La tabla se refresca al cambiar de pestaña y tras cualquier operación de guardado o eliminación de servicios. El cálculo de pagos (`persistirPagosProveedor`) es distinto: agrega todos los venues del proveedor a propósito — eso es correcto y no debe verse afectado por el filtro de la tabla.
+
 ### panel.js
 Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `payments`, `charges`, `reservation_requests`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
 
@@ -805,6 +809,12 @@ En `proveedores.js` (alrededor de la línea 1710-1727), la comprobación `servic
 Caso real (jun 2026): fusión de dos proveedores duplicados donde los 9 servicios del proveedor a eliminar se borraron en más de una tanda. Al terminar, `venues`/`providers` seguían existiendo aunque `availability`, `reservations` y `payments` ya estaban en cero. Se corrigió con DELETE manual sobre `venues` y `providers`.
 
 No hay pérdida de datos ni inconsistencia real — solo queda un registro vacío en el listado de proveedores. Bajo impacto, no urgente. Posible solución: en lugar de comprobar `serviciosRestantes.length === 0` solo en el momento de cada guardado individual, recalcular el estado completo del proveedor de forma más robusta (suma de `availability` + `reservations` + `payments` desde Supabase), o añadir una acción de "verificar/limpiar proveedores huérfanos" accesible desde el panel en lugar de depender de detectar el instante exacto del último borrado. Confirmar con el usuario el comportamiento deseado antes de implementar.
+
+---
+
+**✅ RESUELTO — Tabla de servicios del proveedor mezclaba todos los venues (jun 2026).**
+
+`cargarServiciosProveedor` filtraba `todaDisponibilidad` por `venue_provider_id` (todos los venues del proveedor) y `selectVenueTab` no actualizaba la tabla al cambiar de pestaña. Resultado: un proveedor con dos venues mostraba los servicios de ambos a la vez. Corregido: el filtro pasó a `venue_id === venueActual.id` y `selectVenueTab` llama a `cargarServiciosProveedor` al finalizar.
 
 ---
 

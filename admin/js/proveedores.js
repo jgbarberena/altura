@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js'
+import { supabase, SUPABASE_URL } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId } from './utils.js'
 import { mostrarToast } from './verificacion.js'
@@ -205,6 +205,45 @@ document.getElementById('btnPhotoAdd').addEventListener('click', async () => {
     document.getElementById('inputPhotoUrl').value = ''
     _renderCarousel()
     await _savePhotos()
+})
+
+// ── Upload foto desde archivo (FTP vía Edge Function) ──────────────────────
+async function _subirFotoArchivo(file) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('Sesión no disponible')
+    const form = new FormData()
+    form.append('file', file)
+    const resp = await fetch(
+        `${SUPABASE_URL}/functions/v1/upload-venue-photo`,
+        { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` }, body: form }
+    )
+    const result = await resp.json()
+    if (!resp.ok || !result.url) throw new Error(result.error ?? `HTTP ${resp.status}`)
+    return result.url
+}
+document.getElementById('btnUploadFoto').addEventListener('click', () => {
+    document.getElementById('inputFotoArchivo').click()
+})
+document.getElementById('inputFotoArchivo').addEventListener('change', async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const btn = document.getElementById('btnUploadFoto')
+    btn.disabled = true
+    btn.textContent = '⏳'
+    try {
+        const url = await _subirFotoArchivo(file)
+        _photos.push(url)
+        _photoIdx = _photos.length - 1
+        document.getElementById('photoCarouselField').style.display = 'flex'
+        _renderCarousel()
+        await _savePhotos()
+    } catch (err) {
+        alert('Error al subir la foto: ' + err.message)
+    } finally {
+        btn.disabled = false
+        btn.textContent = '📁'
+        e.target.value = ''
+    }
 })
 
 inputServicioDia.addEventListener('change', () => {
@@ -608,6 +647,7 @@ function selectVenueTab(venueId) {
     selectVenueType.value       = venue.venue_type   ?? 'balcon'
     _actualizarLabelsVenue(venue.venue_type ?? 'balcon')
     renderVenueTabs(venuesDelProveedor, venueActual.id)
+    cargarServiciosProveedor(proveedorActual.id, venueId)
 }
 
 const _VENUE_LABELS = {
@@ -1441,8 +1481,9 @@ let sortServiciosDir   = 'asc'
 let serviciosProveedor      = []
 let _datosServiciosExport   = []  // copia del último render para export
 
-async function cargarServiciosProveedor(proveedorId) {
-    const dispProv = todaDisponibilidad.filter(d => d.venue_provider_id === proveedorId)
+async function cargarServiciosProveedor(proveedorId, venueId) {
+    const vid      = venueId ?? venueActual?.id
+    const dispProv = todaDisponibilidad.filter(d => d.venue_id === vid)
     const bloque   = document.getElementById('bloque-servicios-proveedor')
     if (dispProv.length === 0) { bloque.style.display = 'none'; return }
     serviciosProveedor = dispProv
