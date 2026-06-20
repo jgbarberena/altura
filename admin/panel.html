@@ -176,9 +176,10 @@
                     <button class="btn btn-secondary" id="btnExportEventos" style="font-size:12px">⬇ Excel</button>
                 </div>
                 <div class="selector-mobile">
-                    <select id="selector-evento">
-                        <option value="">— Todos los eventos —</option>
-                    </select>
+                    <div class="autocomplete-wrap">
+                        <input type="text" id="selector-evento" placeholder="— Todos los eventos —" autocomplete="off">
+                        <div class="autocomplete-list" id="autocomplete-evento-list" style="display:none"></div>
+                    </div>
                 </div>
                 <div class="table-wrapper">
                     <table id="tabla-eventos">
@@ -204,9 +205,10 @@
                     <button class="btn btn-secondary" id="btnExportProveedores" style="font-size:12px">⬇ Excel</button>
                 </div>
                 <div class="selector-mobile">
-                    <select id="selector-proveedor">
-                        <option value="">— Todos los proveedores —</option>
-                    </select>
+                    <div class="autocomplete-wrap">
+                        <input type="text" id="selector-proveedor" placeholder="— Todos los proveedores —" autocomplete="off">
+                        <div class="autocomplete-list" id="autocomplete-proveedor-list" style="display:none"></div>
+                    </div>
                 </div>
                 <div class="table-wrapper">
                     <table id="tabla-proveedores">

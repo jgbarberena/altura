@@ -366,7 +366,6 @@ function renderEventos(filtro) {
 }
 
 function calcularEventos() {
-    const selector = document.getElementById('selector-evento')
 
     eventosFilas = servicios.map(s => {
         const dispS       = disponibilidad.filter(d => d.service_id === s.id)
@@ -412,22 +411,38 @@ function calcularEventos() {
         return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento, clientesHTML: clientesEventoHTML, dot: dotEvento }
     }).filter(Boolean)
 
-    selector.innerHTML = '<option value="">— Todos los eventos —</option>' +
-        eventosFilas.map(f => `<option value="${f.id}">${f.id}</option>`).join('')
+    const inputEvento = document.getElementById('selector-evento')
+    const listEvento  = document.getElementById('autocomplete-evento-list')
+
+    function _listEvento(val) {
+        const items = val ? eventosFilas.filter(f => f.id.toLowerCase().includes(val.toLowerCase())) : eventosFilas
+        listEvento.innerHTML = items.map(f => `<div data-id="${f.id}">${f.id}</div>`).join('')
+        listEvento.style.display = items.length ? 'block' : 'none'
+    }
+    inputEvento.addEventListener('focus', () => _listEvento(inputEvento.value))
+    inputEvento.addEventListener('input', () => {
+        _listEvento(inputEvento.value)
+        if (!inputEvento.value) { sortEventosCol = null; sortEventosDir = 'asc'; renderEventos('') }
+    })
+    listEvento.addEventListener('click', e => {
+        const div = e.target.closest('[data-id]')
+        if (!div) return
+        inputEvento.value = div.dataset.id
+        listEvento.style.display = 'none'
+        sortEventosCol = null; sortEventosDir = 'asc'
+        renderEventos(div.dataset.id)
+    })
 
     sortEventosCol = null; sortEventosDir = 'asc'
     renderEventos('')
-    selector.addEventListener('change', () => {
-        sortEventosCol = null; sortEventosDir = 'asc'
-        renderEventos(selector.value)
-    })
 }
 
 // Clic en fila de evento: selecciona en el selector y muestra el detalle. Segundo clic deselecciona.
 window._seleccionarEvento = function(id) {
-    const selector = document.getElementById('selector-evento')
-    const nuevo = selector.value === id ? '' : id
-    selector.value = nuevo
+    const input = document.getElementById('selector-evento')
+    const nuevo = input.value === id ? '' : id
+    input.value = nuevo
+    document.getElementById('autocomplete-evento-list').style.display = 'none'
     sortEventosCol = null; sortEventosDir = 'asc'
     renderEventos(nuevo)
 }
@@ -510,7 +525,6 @@ function renderProveedores(filtro) {
 }
 
 function calcularProveedores() {
-    const selector = document.getElementById('selector-proveedor')
 
     const venueIds = [...new Set(disponibilidad.map(d => d.venue_id))].sort()
     provFilas = venueIds.map(venueId => {
@@ -559,22 +573,38 @@ function calcularProveedores() {
         return { id: venueId, capacidad, confirmadas, pendientes, libres, pct, colorFill, detalleServicios, clientes: clientesProv, clientesHTML: clientesProvHTML, dot: dotProv }
     }).filter(Boolean)
 
-    selector.innerHTML = '<option value="">— Todos los proveedores —</option>' +
-        provFilas.map(f => `<option value="${f.id}">${f.id}</option>`).join('')
+    const inputProv = document.getElementById('selector-proveedor')
+    const listProv  = document.getElementById('autocomplete-proveedor-list')
+
+    function _listProv(val) {
+        const items = val ? provFilas.filter(f => f.id.toLowerCase().includes(val.toLowerCase())) : provFilas
+        listProv.innerHTML = items.map(f => `<div data-id="${f.id}">${f.id}</div>`).join('')
+        listProv.style.display = items.length ? 'block' : 'none'
+    }
+    inputProv.addEventListener('focus', () => _listProv(inputProv.value))
+    inputProv.addEventListener('input', () => {
+        _listProv(inputProv.value)
+        if (!inputProv.value) { sortProvCol = null; sortProvDir = 'asc'; renderProveedores('') }
+    })
+    listProv.addEventListener('click', e => {
+        const div = e.target.closest('[data-id]')
+        if (!div) return
+        inputProv.value = div.dataset.id
+        listProv.style.display = 'none'
+        sortProvCol = null; sortProvDir = 'asc'
+        renderProveedores(div.dataset.id)
+    })
 
     sortProvCol = null; sortProvDir = 'asc'
     renderProveedores('')
-    selector.addEventListener('change', () => {
-        sortProvCol = null; sortProvDir = 'asc'
-        renderProveedores(selector.value)
-    })
 }
 
 // Clic en fila de proveedor: selecciona en el selector y muestra el detalle. Segundo clic deselecciona.
 window._seleccionarProveedor = function(id) {
-    const selector = document.getElementById('selector-proveedor')
-    const nuevo = selector.value === id ? '' : id
-    selector.value = nuevo
+    const input = document.getElementById('selector-proveedor')
+    const nuevo = input.value === id ? '' : id
+    input.value = nuevo
+    document.getElementById('autocomplete-proveedor-list').style.display = 'none'
     sortProvCol = null; sortProvDir = 'asc'
     renderProveedores(nuevo)
 }
@@ -874,6 +904,13 @@ calcularCalendario()
 calcularEstadoFinanciero()
 calcularEventos()
 calcularProveedores()
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.autocomplete-wrap')) {
+        document.getElementById('autocomplete-evento-list').style.display = 'none'
+        document.getElementById('autocomplete-proveedor-list').style.display = 'none'
+    }
+})
 calcularResumen()
 calcularCashflow()
 verificarConsistenciaFinanciera()
