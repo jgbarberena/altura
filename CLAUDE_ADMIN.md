@@ -779,9 +779,16 @@ Al añadir un cobro nuevo en bloque 5 de `formulario.js`, el cobro aparece en la
 
 ---
 
-**Invoice PDF en Supabase Storage no se elimina al borrar la reserva.**
+**PDFs en Supabase Storage quedan huérfanos al borrar reservas o charges — diferido a Fase 9.**
 
-Al confirmar la eliminación de una reserva con cobros facturados, el JS elimina los cobros (incluidos los de `invoiced = true`) pero no borra el PDF correspondiente del bucket `invoices`. El fichero (ej: `VSF-08-2026_cliente.pdf`) permanece en Storage indefinidamente. No existe ningún mecanismo en el panel para gestionar ficheros de Storage. Fix propuesto: en el modal de confirmación de borrado de reserva, cuando hay cobros facturados, ofrecer la opción de eliminar también los PDFs asociados (leer `invoice_path` de los cobros afectados y ejecutar `supabase.storage.from('invoices').remove([paths])`).
+Verificado jun 2026. No hay ningún `storage.from(...).remove(...)` en ningún flujo de eliminación del panel. Lo que queda huérfano:
+
+- `proposal_path` en reservas borradas: en cualquier eliminación (`eliminarSeleccionadas`), las reservas se borran pero sus PDFs de propuesta en el bucket `proposals` no. Los paths se pierden con la fila.
+- `invoice_path` en charges borrados: solo en el flujo `isLastReservation`, donde se eliminan todos los `charges` del cliente (línea 860 de `formulario.js`). Los PDFs de facturas en el bucket `invoices` quedan inaccesibles.
+
+Impacto: muy bajo. PDFs de ~100KB cada uno; con el volumen del proyecto no van a afectar al límite de Storage de Supabase. Los archivos son inaccesibles pero no causan ningún problema funcional para Paula.
+
+Fix (diferido a Fase 9): en `eliminarSeleccionadas` de `formulario.js`, antes de los DELETEs: (1) recoger `proposal_path` de `todasReservas.filter(r => ids.includes(r.id))`, llamar a `storage.from('proposals').remove([...paths])`; (2) en el caso `isLastReservation`, ampliar el SELECT de charges (línea 816) para incluir `invoice_path`, recoger los no nulos y llamar a `storage.from('invoices').remove([...paths])`. Unas 15 líneas en total. Se abordará junto con la gestión de Storage en Fase 9.
 
 ---
 
@@ -791,11 +798,9 @@ Fix en `solicitudes.js`: antes de persistir el nuevo draft recibido del asistent
 
 ---
 
-**Borrado en cascada incompleto — `payments` quedan huérfanos al eliminar una reserva.**
+**✅ RESUELTO — `payments` del proveedor se recalculan correctamente al eliminar una reserva.**
 
-Verificado en jun 2026 (prueba Fase 0d): al eliminar una reserva desde "Gestión de reservas", el JS borra la reserva y todos sus cobros (`charges`), incluyendo los facturados (con aviso previo). Sin embargo, **los `payments` del proveedor no se tocan**. Los hitos de pago (manuales y el "Pago final" automático) quedan en la BD referenciando el proveedor aunque la reserva ya no exista.
-
-La única FK con CASCADE sigue siendo `sfcom_listings.availability_id → availability`. Todas las demás son NO ACTION. El borrado de `payments` huérfanos requiere actualmente limpieza manual en SQL Editor. La Fase 3 definirá qué FKs pasan a CASCADE en DELETE (a partir de los hallazgos de esta auditoría).
+Verificado jun 2026. `eliminarSeleccionadas` en `formulario.js:875` llama a `persistirPagosProveedor` tras el borrado, que recalcula y upserta el pago final del proveedor con las reservas actualizadas. Lo documentado en la prueba Fase 0d estaba desactualizado.
 
 ---
 
@@ -823,13 +828,11 @@ El registro duplicado fue eliminado en jun 2026. No tenía reservas ni charges a
 
 ---
 
-**Confirmación de borrado de proveedor no cubre todos los casos.**
+**✅ RESUELTO — Cascade al borrar servicios de proveedor en varias tandas.**
 
-En `proveedores.js` (alrededor de la línea 1710-1727), la comprobación `serviciosRestantes.length === 0 && eliminados.length > 0` pregunta "¿eliminar también el proveedor?" y, si se confirma, borra en cascada sus `payments` y el registro de `providers`. Sin embargo, si los servicios de un proveedor se eliminan en varias acciones de guardado separadas (en lugar de seleccionarlos todos y eliminarlos en una sola pasada), el contador puede no detectar el momento exacto en que el proveedor se queda a cero y el diálogo no se dispara: el proveedor queda huérfano en la BD (sin `availability`, sin reservas, sin pagos, pero con los registros en `providers` y `venues` intactos).
+El incidente real (jun 2026, fusión de proveedores duplicados) ocurrió antes de que existiera la lógica cascade actual. El código en `proveedores.js:1887-1944` maneja correctamente el caso multi-tanda: cada vez que `btnEliminarServicio` se dispara, filtra `todaDisponibilidad` en memoria tras cada borrado y comprueba si el venue quedó vacío. Si es el último venue del proveedor (`hayOtrasConServicios = false`), abre `_modalOpcionesEliminar` ofreciendo borrar venue + proveedor. Funciona independientemente de cuántas tandas se usen.
 
-Caso real (jun 2026): fusión de dos proveedores duplicados donde los 9 servicios del proveedor a eliminar se borraron en más de una tanda. Al terminar, `venues`/`providers` seguían existiendo aunque `availability`, `reservations` y `payments` ya estaban en cero. Se corrigió con DELETE manual sobre `venues` y `providers`.
-
-No hay pérdida de datos ni inconsistencia real — solo queda un registro vacío en el listado de proveedores. Bajo impacto, no urgente. Posible solución: en lugar de comprobar `serviciosRestantes.length === 0` solo en el momento de cada guardado individual, recalcular el estado completo del proveedor de forma más robusta (suma de `availability` + `reservations` + `payments` desde Supabase), o añadir una acción de "verificar/limpiar proveedores huérfanos" accesible desde el panel en lugar de depender de detectar el instante exacto del último borrado. Confirmar con el usuario el comportamiento deseado antes de implementar.
+Edge case menor aceptado: si un venue quedó sin availability en una sesión anterior (sin pasar por el botón de borrado en esa sesión), no entra en `venuesAfectadas` en la sesión actual. El resultado es un venue vacío en la BD sin impacto funcional. Frecuencia esperada: prácticamente nula.
 
 ---
 
@@ -1523,9 +1526,9 @@ Hallazgo colateral de la prueba: `proveedores.js` llama a `persistirPagosProveed
 - **Bug confirmado:** el botón "Facturar" no aparece hasta recargar la página tras añadir un cobro (ver §7.1).
 - Facturación: crea el PDF correctamente, lo descarga y guarda `invoice_number` + `invoice_path` en la fila de `charges`. El campo `invoiced` se pone a `true`.
 - Marcar pago a proveedor como pagado: funciona correctamente y persiste.
-- Eliminar reserva vía "Gestión de reservas → seleccionar → Eliminar": el JS muestra aviso si hay cobros facturados y pide confirmación. **Al confirmar, elimina la reserva y todos sus cobros (incluidos los facturados), pero no elimina los `payments` del proveedor.** Los dos pagos (manual + "Pago final" automático) quedaron huérfanos referenciando el proveedor. Requiere borrado manual o CASCADE en `payments.provider_id`. Input directo para Fase 3. Ver §7.1.
+- Eliminar reserva vía "Gestión de reservas → seleccionar → Eliminar": el JS muestra aviso si hay cobros facturados y pide confirmación. Al confirmar, elimina la reserva, todos sus cobros, y llama a `persistirPagosProveedor` para recalcular el pago final del proveedor. ✅ Los `payments` se gestionan correctamente (ver §7.1).
 - El modal de "¿eliminar también el cliente?" es transient: si el usuario navega antes de confirmar, el modal desaparece y el cliente queda en la BD sin forma de borrarlo desde el panel. Ver §7.8.
-- **Invoice PDF en Storage no se limpia.** Al eliminar la reserva y los cobros, el fichero `VSF-XX-AAAA_cliente.pdf` permanece en el bucket `invoices`. No hay mecanismo en el panel para borrar ficheros de Storage. Ver §7.1.
+- **Invoice PDF y proposal PDF en Storage no se limpian.** Al eliminar reservas y cobros, los ficheros PDF permanecen en los buckets `invoices` y `proposals`. Diferido a Fase 9. Ver §7.1.
 
 **Deudas operativas sfcom:** Contactar a Hilario sobre Pobre de Mí, Barrera Encierro, Visitas guiadas, Despedida Gigantes. Independiente de todas las fases.
 
