@@ -1180,10 +1180,6 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ### 7.6 Deuda de datos (no es tarea de código)
 
-**Datos de servicios incompletos** — los campos `name`, `description`, `image_url` y `start_time` de varios servicios están vacíos en Supabase. Afecta a propuestas y al contexto del asistente. Rellenar desde Supabase Dashboard o desde el panel de tablas.
-
-**55 servicios en la tabla `services`** — Solo hay 12-14 activos documentados. El exceso puede ser servicios de prueba, de temporadas anteriores, o creados por el asistente de lote. Revisar en Dashboard (Table Editor → services, ordenados por event_type) e identificar cuáles están activos y cuáles son residuos.
-
 **`event_type` — ✅ RESUELTO** — Es una columna directa en `services` (pos 3, texto). Las vistas la leen de `services.event_type`. No hay nada que investigar. Se puede acceder directamente desde `availability_panel` (que ya lo expone) sin riesgo de datos obsoletos.
 
 ---
@@ -2010,7 +2006,6 @@ Sin cambios en el flujo normal. `solicitudOriginRef` es null → no se crea carg
 
 - Inferencia `level → service_id` unificada en `utils.js` (extraer de formulario.js, solicitudes.js, asistente.js).
 - ✅ Reglas de nombres venue/evento documentadas en §3.
-- Rellenar datos incompletos de servicios (tarea manual en Dashboard).
 - Evaluar granularidad caché sfcom en sfcom.js.
 - Tablas.js edición directa + Supabase Storage (incluye limpieza de PDFs huérfanos — ver §7.1).
 - Split de formulario.js (solo si el tamaño es problema práctico, siempre al final).
