@@ -129,7 +129,7 @@ function _renombrarVenueActual() {
             if (vp) vp.id = nuevoId
             venueActual.id = nuevoId
             renderVenueTabs(venuesDelProveedor, nuevoId)
-            mostrarToast(`Venue renombrado: ${nuevoId}`)
+            mostrarToast(`${(_VENUE_LABELS[venueActual?.venue_type] ?? _VENUE_LABELS.balcon).toast}: ${nuevoId}`)
         }
     })
 }
@@ -731,15 +731,22 @@ function selectVenueTab(venueId) {
 }
 
 const _VENUE_LABELS = {
-    balcon:           { dir: 'Dirección del balcón',   name: 'Nombre del balcón' },
-    barrera:          { dir: 'Dirección de la barrera', name: 'Nombre de la barrera' },
-    guia:             { dir: 'Zona / ruta',             name: 'Nombre del guía' },
-    servicio_especial:{ dir: 'Lugar / ubicación',       name: 'Nombre del servicio' },
+    balcon:            { dir: 'Dirección del balcón',    name: 'Nombre del balcón',    desc: 'Descripción del balcón',    dlgTitulo: 'Añadir balcón',   dlgId: 'ID Balcón',   dlgDir: 'Dirección física del balcón',    toast: 'Balcón renombrado',   errorId: 'Ese ID de balcón ya está en uso.'   },
+    barrera:           { dir: 'Dirección de la barrera', name: 'Nombre de la barrera', desc: 'Descripción de la barrera', dlgTitulo: 'Añadir barrera',  dlgId: 'ID Barrera',  dlgDir: 'Dirección física de la barrera', toast: 'Barrera renombrada',  errorId: 'Ese ID de barrera ya está en uso.'  },
+    guia:              { dir: 'Zona / ruta',             name: 'Nombre del guía',      desc: 'Descripción del guía',      dlgTitulo: 'Añadir guía',     dlgId: 'ID Guía',     dlgDir: 'Zona o ruta del guía',           toast: 'Guía renombrado',     errorId: 'Ese ID de guía ya está en uso.'     },
+    servicio_especial: { dir: 'Lugar / ubicación',       name: 'Nombre del servicio',  desc: 'Descripción del espacio',   dlgTitulo: 'Añadir espacio',  dlgId: 'ID Espacio',  dlgDir: 'Lugar o ubicación',              toast: 'Espacio renombrado',  errorId: 'Ese ID de espacio ya está en uso.'  },
 }
 function _actualizarLabelsVenue(tipo) {
     const lbl = _VENUE_LABELS[tipo] ?? _VENUE_LABELS.balcon
     document.getElementById('labelVenueDireccion').textContent   = lbl.dir
     document.getElementById('labelVenueDisplayName').textContent = lbl.name
+    document.getElementById('labelAvailDesc').textContent        = lbl.desc
+}
+function _actualizarLabelsDlgVenue(tipo) {
+    const lbl = _VENUE_LABELS[tipo] ?? _VENUE_LABELS.balcon
+    document.getElementById('dlgVenueTitulo').textContent     = lbl.dlgTitulo
+    document.getElementById('dlgVenueIdLabel').textContent    = lbl.dlgId
+    document.getElementById('dlgVenueDireccion').placeholder  = lbl.dlgDir
 }
 
 function _cargarDispParaServicio(serviceId) {
@@ -792,8 +799,13 @@ function abrirDialogNuevoVenue() {
     document.getElementById('dlgVenueType').value      = 'balcon'
     document.getElementById('dlgVenueDireccion').value = ''
     document.getElementById('dlgVenueError').style.display = 'none'
+    _actualizarLabelsDlgVenue('balcon')
     document.getElementById('dlgNuevoVenue').showModal()
 }
+
+document.getElementById('dlgVenueType').addEventListener('change', () => {
+    _actualizarLabelsDlgVenue(document.getElementById('dlgVenueType').value)
+})
 
 document.getElementById('dlgVenueCancelar').addEventListener('click', () =>
     document.getElementById('dlgNuevoVenue').close()
@@ -810,7 +822,7 @@ document.getElementById('dlgVenueCrear').addEventListener('click', async () => {
         return
     }
     if (todosVenues.find(v => v.id === venueId)) {
-        errEl.textContent = 'Ya existe un venue con ese ID.'
+        errEl.textContent = (_VENUE_LABELS[venueType] ?? _VENUE_LABELS.balcon).errorId
         errEl.style.display = 'block'
         return
     }

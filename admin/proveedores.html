@@ -83,8 +83,8 @@
                         <input type="text" id="inputProveedorPhone" placeholder="Teléfono del proveedor">
                     </div>
                     <div class="form-field" style="grid-column: 1 / -1">
-                        <label>Comentarios</label>
-                        <input type="text" id="inputProveedorComments" placeholder="Comentarios">
+                        <label>Notas internas</label>
+                        <input type="text" id="inputProveedorComments" placeholder="Solo uso interno">
                     </div>
                 </div>
 
@@ -110,8 +110,8 @@
                             <input type="text" id="inputVenueDisplayName" placeholder="Nombre visible (opcional)">
                         </div>
                         <div class="form-field" style="grid-column: 1 / -1">
-                            <label>Comentarios</label>
-                            <textarea id="inputVenueComments" rows="2" placeholder="Notas internas del venue" style="width:100%;resize:vertical"></textarea>
+                            <label>Notas internas</label>
+                            <textarea id="inputVenueComments" rows="2" placeholder="Notas internas" style="width:100%;resize:vertical"></textarea>
                         </div>
                     </div>
                 </div>
@@ -196,16 +196,16 @@
                         <div class="servicio-desc-photos-wrap">
                             <div class="servicio-desc-col">
                                 <div class="form-field">
-                                    <label>Descripción del venue</label>
-                                    <textarea id="inputAvailDesc" rows="2" placeholder="Descripción específica de este venue para este servicio" style="resize:vertical"></textarea>
+                                    <label id="labelAvailDesc">Descripción del balcón</label>
+                                    <textarea id="inputAvailDesc" rows="2" placeholder="Va en propuestas, confirmaciones y catálogo web" style="resize:vertical"></textarea>
                                 </div>
                                 <div class="form-field">
                                     <label>Instrucciones de acceso</label>
                                     <textarea id="inputAccessInstructions" rows="2" placeholder="Cómo llegar, código de entrada, contacto día del evento…" style="resize:vertical"></textarea>
                                 </div>
                                 <div class="form-field">
-                                    <label>Comentarios</label>
-                                    <textarea id="inputServicioComments" rows="2" placeholder="Comentarios internos" style="resize:vertical"></textarea>
+                                    <label>Notas internas</label>
+                                    <textarea id="inputServicioComments" rows="2" placeholder="Solo uso interno" style="resize:vertical"></textarea>
                                 </div>
                             </div>
                             <div class="servicio-photos-col" id="photoCarouselField" style="display:none">
@@ -245,7 +245,7 @@
                                 </div>
                                 <div class="form-field">
                                     <label>Descripción del servicio</label>
-                                    <textarea id="inputServicioDescription" rows="3" placeholder="Descripción general (compartida entre todos los venues)" style="resize:vertical"></textarea>
+                                    <textarea id="inputServicioDescription" rows="3" placeholder="Descripción general del servicio (igual para todos los proveedores)" style="resize:vertical"></textarea>
                                 </div>
                             </div>
                             <div class="servicio-photos-col">
@@ -527,10 +527,10 @@
     <!-- DIÁLOGO NUEVO VENUE -->
     <dialog id="dlgNuevoVenue">
         <div style="padding:20px 24px;min-width:340px">
-            <h2 style="font-size:15px;margin-bottom:16px">Añadir venue</h2>
+            <h2 id="dlgVenueTitulo" style="font-size:15px;margin-bottom:16px">Añadir balcón</h2>
             <div class="form-grid">
                 <div class="form-field">
-                    <label>ID Venue</label>
+                    <label id="dlgVenueIdLabel">ID Balcón</label>
                     <input type="text" id="dlgVenueId"
                            style="text-transform:uppercase;font-family:monospace;letter-spacing:.04em"
                            autocomplete="off">
@@ -547,7 +547,7 @@
                 </div>
                 <div class="form-field" style="grid-column:1/-1">
                     <label>Dirección</label>
-                    <input type="text" id="dlgVenueDireccion" placeholder="Dirección física del venue">
+                    <input type="text" id="dlgVenueDireccion" placeholder="Dirección física del balcón">
                 </div>
             </div>
             <div id="dlgVenueError" style="font-size:12px;color:var(--accent);margin-top:8px;display:none"></div>
