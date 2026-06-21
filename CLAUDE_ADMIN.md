@@ -1178,6 +1178,46 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ---
 
+**Decisión pendiente — operador `??` sobre campos de texto de Supabase.**
+
+El operador `??` (nullish coalescing) en JavaScript solo activa el fallback cuando el valor es `null` o `undefined`. Una cadena vacía `''` o una cadena de espacios `'   '` se trata como valor válido y no activa el fallback. Cualquier campo de texto que se haya guardado como `''` en Supabase (en lugar de `NULL`) hará que un patrón tipo `campo ?? fallback` muestre un string vacío en la UI en lugar de caer al fallback.
+
+**Caso confirmado en producción:** `venues.display_name` de `DAVID_UBEDA` estaba guardado como `''`. `propuesta.js:231` tiene `venue.display_name ?? svc.name ?? r.venue_id`. El `??` no activaba el fallback al `svc.name`, y la propuesta mostraba el nombre de venue en blanco.
+
+**Recomendación:** tratar como "vacío" cualquier valor que sea `null`, `undefined`, o cadena que al recortarse da `''`. En texto para display, esto se consigue con el operador `||` en lugar de `??` (ya que `''` es falsy en JS y `||` sí activa el fallback). La diferencia: `??` protege frente a `0` y `false`; `||` los trata como falsy. Para campos de texto donde `0` nunca es un valor esperado, `||` es más correcto.
+
+**Función propuesta para `utils.js`** (no implementar hasta decidir):
+```js
+// Devuelve v si tiene contenido tras recortar, o fallback en caso contrario
+export function valorO(v, fallback) {
+    return (v == null || String(v).trim() === '') ? fallback : v
+}
+```
+Estilo consistente con `fechaCobroDefault`, `normalizarId`, etc. Uso: `valorO(venue.display_name, svc.name ?? r.venue_id)`.
+
+**Fuente del problema (capa de persistencia):** los inputs de texto en el panel pueden guardar `''` cuando el usuario borra el contenido y sale sin resetear a `null`. La solución de raíz es convertir `''` a `null` al guardar (con algo como `campo: input.value.trim() || null`), pero eso requiere revisar todos los autosaves. La función `valorO` es la alternativa para la capa de presentación, sin tocar la persistencia.
+
+**Sitios concretos donde aplicar `valorO` supondría mejora real** (verificados jun 2026):
+
+| Archivo | Línea aprox. | Patrón actual | Riesgo |
+|---|---|---|---|
+| `propuesta.js` | 231, 291 | `venue.display_name ?? svc.name ?? r.venue_id` | Alto — visible en PDF al cliente |
+| `propuesta.js` | 372 | `venue.display_name ?? svc.name ?? r.service_id` | Alto — visible en PDF al cliente |
+| `propuesta.js` | 148 | `_cliente.company ?? _cliente.name ?? _cliente.id` | Alto — cabecera del PDF |
+| `propuesta.js` | 149 | `_cliente.name ?? ''` | Medio |
+| `propuesta.js` | 150 | `_cliente.address ?? ''` | Medio |
+| `propuesta.js` | 834 | `(_cliente.company ?? _cliente.name ?? _cliente.id)` (nombre de archivo) | Bajo |
+| `factura.js` | 83, 177, 348, 720 | `_cliente.company ?? _cliente.name ?? _cliente.id` | Alto — cabecera del PDF |
+| `sfcom-panel.js` | 153 | `venue?.display_name ?? r.venue_id ?? '—'` | Bajo — solo UI interna |
+| `sfcom-panel.js` | 206 | `d.venue_display_name ?? d.venue_id ?? '—'` | Bajo — solo UI interna |
+| `formulario.js` | 942, 961, 967, 1009 | `srv?.name ?? r.service_id` | Bajo — `services.name` difícilmente vacío |
+
+Patrón `campo ?? ''` en relleno de inputs (ej. `input.value = cliente.name ?? ''`) es correcto — un input con `''` muestra el campo vacío, que es el comportamiento esperado.
+
+**Datos verificados como limpios (jun 2026):** `venues.display_name` sin cadenas vacías tras corregir `DAVID_UBEDA` a `NULL`. Las tablas `clients`, `providers` y `reservations` no son verificables con anon key; asumidas limpias hasta evidencia contraria.
+
+---
+
 ### 7.6 Deuda de datos (no es tarea de código)
 
 **`event_type` — ✅ RESUELTO** — Es una columna directa en `services` (pos 3, texto). Las vistas la leen de `services.event_type`. No hay nada que investigar. Se puede acceder directamente desde `availability_panel` (que ya lo expone) sin riesgo de datos obsoletos.
@@ -1199,7 +1239,7 @@ Productos con configuración incompleta o pendiente de aclarar con Hilario:
 
 **Falsos positivos en verificación sfcom por TTL de caché del servidor.** `stock-all` en `sf-api-paula.php` trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola; no requiere acción.
 
-**`payments` sin campo `is_final`.** El hito final de pago al proveedor se identifica por `comments === 'Pago final'`. Inconsistencia con `charges` (que sí tiene `is_final`). Bajo riesgo mientras no se añadan hitos con ese comentario de forma manual.
+**✅ RESUELTO — `payments` migrado a columna `is_final` (jun 2026).** `ALTER TABLE payments ADD COLUMN is_final boolean DEFAULT false` + `UPDATE payments SET is_final = true WHERE comments = 'Pago final'` (30 filas migradas, conteos verificados iguales). Código actualizado en `utils.js` (`persistirPagosProveedor`) y `proveedores.js` (`cargarPagosProveedor`, `recalcularPagoFinalProveedor`, `persistirHitosProveedor`). El texto `comments: 'Pago final'` se mantiene como texto legible para Paula; la lógica usa exclusivamente `is_final`. Consistente con `charges`.
 
 **`persistirCobrosCliente` auto-crea un cobro "final" al guardar cualquier cobro del cliente.** Al añadir un hito de cobro manualmente en bloque 5, el JS llama también a `persistirCobrosCliente`, que calcula e inserta (o actualiza) el "cobro final" del cliente. Mismo patrón que `persistirPagosProveedor` con payments. Resultado: al crear el primer cobro manual, aparecen dos filas en `charges`: la manual y el cobro final automático. No se duplica (el cálculo upserta la misma fila). Comportamiento esperado, no es un bug.
 

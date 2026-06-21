@@ -1993,7 +1993,7 @@ async function recalcularPagoFinalProveedor(proveedorId) {
     if (idxFinal >= 0) {
         hitosProvTemp[idxFinal].amount = pagoFinal
     } else {
-        hitosProvTemp.push({ esFinal: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-15', paid: false })
+        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-15', paid: false })
     }
     renderHitosProveedor()
     actualizarResumenCoste(proveedorId, costTotal, prepagos, pagoFinal)
@@ -2023,7 +2023,8 @@ async function persistirHitosProveedor(proveedorId) {
             due_date:    h.due_date ?? null,
             paid:        h.paid ?? false,
             paid_date:   h.paid_date ?? null,
-            comments:    h.comments ?? null
+            comments:    h.comments ?? null,
+            is_final:    h.esFinal ?? false
         }
         if (h.id) {
             const { error } = await supabase.from('payments').update(payload).eq('id', h.id)
@@ -2042,14 +2043,14 @@ async function cargarPagosProveedor(proveedorId) {
     const { data } = await supabase
         .from('payments').select('*').eq('provider_id', proveedorId).order('due_date')
 
-    hitosProvTemp = (data ?? []).map(h => ({ ...h, esFinal: h.comments === 'Pago final' }))
+    hitosProvTemp = (data ?? []).map(h => ({ ...h, esFinal: h.is_final ?? false }))
 
     const costTotal = calcularCosteTotalProveedor(proveedorId)
     const prepagos  = hitosProvTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
     const pagoFinal = costTotal - prepagos
 
     if (!hitosProvTemp.find(h => h.esFinal)) {
-        hitosProvTemp.push({ esFinal: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-15', paid: false })
+        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-15', paid: false })
     } else {
         const idx = hitosProvTemp.findIndex(h => h.esFinal)
         hitosProvTemp[idx].amount = pagoFinal

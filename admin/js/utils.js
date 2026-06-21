@@ -239,15 +239,15 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
         .from('payments').select('*').eq('provider_id', proveedorId)
     if (errSelect) { console.error('persistirPagosProveedor: error leyendo payments:', errSelect); return }
 
-    const prepagos  = (payments ?? []).filter(p => p.comments !== 'Pago final')
+    const prepagos  = (payments ?? []).filter(p => !p.is_final)
         .reduce((s, p) => s + parseFloat(p.amount), 0)
     const pagoFinal = costTotal - prepagos
-    const hitoFinal = (payments ?? []).find(p => p.comments === 'Pago final')
+    const hitoFinal = (payments ?? []).find(p => p.is_final)
 
     if (!hitoFinal) {
         const { error } = await supabase.from('payments').insert({
             provider_id: proveedorId, amount: pagoFinal,
-            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final'
+            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final', is_final: true
         })
         if (error) { console.error('persistirPagosProveedor: error creando pago final:', error); return }
         console.log(`💸 Pago final creado para ${proveedorId}: ${pagoFinal}€`)
