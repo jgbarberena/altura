@@ -1477,7 +1477,7 @@ async function cargarCobrosCliente(clienteId, reservas) {
     const cobroFinal = total - prepagos
 
     if (!hitosClienteTemp.find(h => h.esFinal)) {
-        if (cobroFinal >= 0.01) {
+        if (cobroFinal >= 0.01 && clienteId !== 'SFCOM') {
             // No existe en BBDD — crear y persistir inmediatamente
             hitosClienteTemp.push({
                 esFinal:   true,

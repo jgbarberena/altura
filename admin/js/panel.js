@@ -805,6 +805,7 @@ function verificarConsistenciaFinanciera() {
     }
     const problemasClientes = []
     for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
+        if (id === 'SFCOM') continue
         const c = Math.round((chargesTotales.get(id) ?? 0) * 100) / 100
         const r = Math.round((reservasTotales.get(id) ?? 0) * 100) / 100
         if (Math.abs(c - r) < 0.01) continue
