@@ -273,6 +273,14 @@ Cinco tipos distintos que conviene no confundir:
 | `venues.slug` | Público estable | Para URLs del catálogo. Nunca cambia. |
 | `services.id` | Interno | Qué evento. Formato TIPO_DIA. |
 | `services.name` | Público | Nombre del tipo de experiencia sin día (ej: "Balcón encierro"). |
+| `sfcom_listings.sfcom_service_name` | Externo | Nombre del producto en tienda.sanfermin.com. Solo para sincronización con sfcom. |
+
+**Regla de uso por contexto:**
+- `venues.id` / `providers.id` / `services.id` — solo en BD y código. Nunca visible en documentos ni en UI de cara al cliente.
+- `venues.display_name` — en toda UI interna del panel. Si es null, se usa `venues.id` como fallback.
+- `services.name` — en documentos al cliente: propuestas, confirmaciones, mensajes de bienvenida.
+- `venues.slug` — solo en URLs del catálogo público. Nunca cambia una vez asignado.
+- `sfcom_listings.sfcom_service_name` — solo para identificar productos en la tienda sfcom (contrato de búsqueda en `registrarPedidosSfcom`). No usar fuera de ese contexto.
 
 **Display en el panel:** `formatVenueLabel(venueId, venueProviderId)` en `utils.js` devuelve `"PROV_ID — VENUE_ID"` solo si son distintos (caso multi-venue), o solo `venueId` en el caso normal.
 
@@ -1123,11 +1131,9 @@ Cuando Javier le indica un precio al asistente ("ofrece tal balcón a X euros"),
 
 ---
 
-**Exceso de "nombres" para venue/evento.**
+**✅ RESUELTO — Reglas de uso de identificadores de venue/evento documentadas en §3.**
 
-Cada lugar físico puede tener hasta cuatro identificadores distintos: `venues.id` (PK técnico, ej. `BALCON_ESTAFETA_1`), `venues.display_name` (nombre visible en el panel), `services.name` (nombre del servicio en ese venue, ej. `"Balcón encierro"`), y `sfcom_listings.sfcom_service_name` (nombre en la tienda sfcom). A esto se suman los slugs de URL del catálogo público. La proliferación genera confusión sobre qué mostrar en qué contexto.
-
-Aclaración de reglas a documentar: `id` solo en BD/código; `display_name` en toda UI interna; `services.name` en documentos al cliente (propuestas, confirmaciones); `sfcom_service_name` solo para sincronización con sfcom.
+Cada lugar físico tiene hasta cinco identificadores distintos (`venues.id`, `venues.display_name`, `venues.slug`, `services.name`, `sfcom_listings.sfcom_service_name`). Las reglas de qué usar en cada contexto (BD/código, UI interna, documentos al cliente, catálogo, sfcom) están formalizadas en §3.
 
 ---
 
@@ -2003,10 +2009,10 @@ Sin cambios en el flujo normal. `solicitudOriginRef` es null → no se crea carg
 ### Fase 9 — 🔲 Refactors y cierre
 
 - Inferencia `level → service_id` unificada en `utils.js` (extraer de formulario.js, solicitudes.js, asistente.js).
-- Documentar reglas de nombres venue/evento en CLAUDE_ADMIN.md.
+- ✅ Reglas de nombres venue/evento documentadas en §3.
 - Rellenar datos incompletos de servicios (tarea manual en Dashboard).
 - Evaluar granularidad caché sfcom en sfcom.js.
-- Tablas.js edición directa + Supabase Storage (funcionalidad nueva grande).
+- Tablas.js edición directa + Supabase Storage (incluye limpieza de PDFs huérfanos — ver §7.1).
 - Split de formulario.js (solo si el tamaño es problema práctico, siempre al final).
 
 ---
