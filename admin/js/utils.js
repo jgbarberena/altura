@@ -154,9 +154,11 @@ export function renderClientChips(reservas) {
 // Recalcula y persiste en Supabase el cobro final de un cliente
 // Llama siempre que cambie cualquier reserva del cliente
 export async function persistirCobrosCliente(supabase, clienteId, todasReservas) {
-    const total = todasReservas
-        .filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
-        .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    const total = clienteId === 'SFCOM'
+        ? todasReservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+                       .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+        : todasReservas.filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
+                       .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
 
     const { data: charges, error: errSelect } = await supabase
         .from('charges').select('*').eq('client_id', clienteId)

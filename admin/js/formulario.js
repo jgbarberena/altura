@@ -168,8 +168,12 @@ function limpiarCamposCliente() {
     inputEmail.value = inputComments.value = inputAddress.value = inputNif.value = ''
     statusDiv.textContent = ''
     btnRenombrarCliente.style.display = 'none'
+    document.getElementById('bloque-resumen-canal').style.display    = 'none'
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
     document.getElementById('bloque-cobros-cliente').style.display   = 'none'
+    ;['btnCancelar', 'btnEliminar', 'btnGenerarPropuesta', 'btnEnviarBienvenida'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = ''
+    })
     limpiarFormularioReserva()
     actualizarBotonBienvenida()
 }
@@ -487,6 +491,16 @@ let sortReservasCol = null
 let sortReservasDir = 'asc'
 let reservasCliente = []
 
+function mostrarResumenCanal(totalVentas, count, chargesHilario) {
+    const facturado = (chargesHilario ?? []).filter(c => c.invoice_number).reduce((s, c) => s + parseFloat(c.amount), 0)
+    const pendiente = totalVentas - facturado
+    document.getElementById('resumen-canal-stats').innerHTML =
+        `Ventas registradas en sfcom: <strong>${fmt(totalVentas)}</strong> · ${count} reservas<br>` +
+        `Ya facturado a Hilario: <strong style="color:var(--accent-ok)">${fmt(facturado)}</strong> &nbsp;·&nbsp; ` +
+        `Pendiente: <strong style="color:${pendiente > 0.01 ? 'var(--accent-warn)' : 'var(--accent-ok)'}">${fmt(pendiente)}</strong>`
+    document.getElementById('bloque-resumen-canal').style.display = 'block'
+}
+
 async function cargarReservasCliente(clienteId) {
     const { data: reservasRaw } = await supabase
         .from('reservations')
@@ -501,6 +515,29 @@ async function cargarReservasCliente(clienteId) {
     }))
 
     const bloque = document.getElementById('bloque-reservas-cliente')
+
+    if (clienteId === 'SFCOM') {
+        const sfcomReservas = todasReservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+        const totalVentas   = sfcomReservas.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+        const { data: chargesHilario } = await supabase.from('charges').select('amount, invoice_number').eq('client_id', 'SFCOM')
+        mostrarResumenCanal(totalVentas, sfcomReservas.length, chargesHilario)
+        const virtualRow = {
+            id: 'SFCOM_CANAL', client_id: 'SFCOM',
+            service_id: 'Canal sfcom', venue_id: `${sfcomReservas.length} reservas`,
+            slots: sfcomReservas.length, price_per_slot: null,
+            total_amount: totalVentas.toFixed(2),
+            status: 'Confirmada', proposal_number: null
+        }
+        reservasCliente = [virtualRow]
+        bloque.style.display = 'block'
+        renderTablaReservas()
+        document.getElementById('btnCancelar').style.display      = 'none'
+        document.getElementById('btnEliminar').style.display      = 'none'
+        document.getElementById('btnGenerarPropuesta').style.display = 'none'
+        document.getElementById('btnEnviarBienvenida').style.display = 'none'
+        await cargarCobrosCliente(clienteId, reservasCliente)
+        return
+    }
 
     if (!reservas || reservas.length === 0) {
         bloque.style.display = 'none'
@@ -564,7 +601,7 @@ function renderTablaReservas() {
             <td>${r.service_id}</td>
             <td>${r.venue_id}</td>
             <td>${r.slots}</td>
-            <td>${r.price_per_slot}€</td>
+            <td>${r.price_per_slot != null ? r.price_per_slot + '€' : '—'}</td>
             <td>${r.total_amount}€</td>
             <td class="${r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'}">${r.status}</td>
             <td>${celdaPropuesta}</td>
@@ -1341,6 +1378,11 @@ window.seleccionarProveedorDesdeCajita = function(proveedorId) {
 
 
 function calcularTotalCobrarCliente(clienteId) {
+    if (clienteId === 'SFCOM') {
+        return todasReservas
+            .filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+            .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    }
     return todasReservas
         .filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
         .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
