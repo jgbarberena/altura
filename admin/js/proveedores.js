@@ -70,6 +70,8 @@ const inputPrecio              = document.getElementById('inputPrecio')
 const inputServicioNombre      = document.getElementById('inputServicioNombre')
 const inputServicioDescription = document.getElementById('inputServicioDescription')
 const inputServicioImageUrl    = document.getElementById('inputServicioImageUrl')
+const servicioImgPreview       = document.getElementById('servicioImgPreview')
+const servicioImgEmpty         = document.getElementById('servicioImgEmpty')
 const inputAvailDesc           = document.getElementById('inputAvailDesc')
 const inputAccessInstructions  = document.getElementById('inputAccessInstructions')
 const inputServicioComments    = document.getElementById('inputServicioComments')
@@ -80,6 +82,7 @@ const inputServicioHora        = document.getElementById('inputServicioHora')
 inputServicioNombre.addEventListener('change',      guardarDescripcionServicio)
 inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
 inputServicioImageUrl.addEventListener('change',    guardarDescripcionServicio)
+inputServicioImageUrl.addEventListener('input',     _syncServicioImgPreview)
 inputServicioHora.addEventListener('change',        guardarDescripcionServicio)
 
 btnRenombrarProveedor.addEventListener('click', () => {
@@ -186,6 +189,7 @@ async function _savePhotos(esPrimeraFoto = false) {
         const svc = todosServicios.find(s => s.id === inputServicioId.value)
         if (svc && !svc.image_url) {
             inputServicioImageUrl.value = _photos[0]
+            _syncServicioImgPreview()
             await supabase.from('services').update({ image_url: _photos[0] }).eq('id', svc.id)
             svc.image_url = _photos[0]
         }
@@ -259,6 +263,19 @@ document.getElementById('inputFotoArchivo').addEventListener('change', async (e)
         e.target.value = ''
     }
 })
+
+function _syncServicioImgPreview() {
+    const url = inputServicioImageUrl.value.trim()
+    if (url) {
+        servicioImgPreview.src           = url
+        servicioImgPreview.style.display = 'block'
+        servicioImgEmpty.style.display   = 'none'
+    } else {
+        servicioImgPreview.src           = ''
+        servicioImgPreview.style.display = 'none'
+        servicioImgEmpty.style.display   = 'block'
+    }
+}
 
 // ===== TABS PAR / SERVICIO =====
 
@@ -754,6 +771,7 @@ function _cargarDispParaServicio(serviceId) {
     inputServicioNombre.value       = svc?.name        ?? ''
     inputServicioDescription.value  = svc?.description ?? ''
     inputServicioImageUrl.value     = svc?.image_url   ?? ''
+    _syncServicioImgPreview()
     document.getElementById('avail-sep-service-id').textContent  = serviceId
     document.getElementById('avail-sep-venue-id').textContent    = targetVenueId
     document.getElementById('avail-tab-servicio-id').textContent = serviceId
@@ -923,12 +941,12 @@ inputServicioId.addEventListener('input', () => {
         inputServicioHora.value        = exacto.start_time  ?? ''
         servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
-        document.getElementById('detailsServicioInfo').open = false
         _cargarDispParaServicio(exacto.id)
     } else {
         inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
         inputServicioImageUrl.value    = ''
+        _syncServicioImgPreview()
         inputServicioDia.value         = _extraerDiaDeId(val) ? String(_extraerDiaDeId(val)) : ''
         inputServicioHora.value        = ''
         servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
@@ -936,7 +954,6 @@ inputServicioId.addEventListener('input', () => {
             + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
             + ' o se creará al añadir al proveedor'
         servicioDescStatus.style.color = 'var(--accent-warn)'
-        document.getElementById('detailsServicioInfo').open = true
     }
     document.getElementById('servicio-dia-warning').style.display = 'none'
     // Mostrar sección sfcom para nuevo servicio si no hay una fila de availability activa
@@ -985,12 +1002,12 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
         inputServicioHora.value        = svcSel.start_time  ?? ''
         servicioDescStatus.innerHTML   = '✅ Servicio existente — los cambios en info del servicio se guardan automáticamente'
         servicioDescStatus.style.color = 'var(--accent-ok)'
-        document.getElementById('detailsServicioInfo').open = false
         _cargarDispParaServicio(svcSel.id)
     } else {
         inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
         inputServicioImageUrl.value    = ''
+        _syncServicioImgPreview()
         inputServicioDia.value         = ''
         inputServicioHora.value        = ''
         servicioDescStatus.innerHTML   = '✨ Servicio nuevo — '
@@ -998,7 +1015,6 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
             + ' onclick="guardarServicioNuevo(event)">Guardar servicio</a>'
             + ' o se creará al añadir al proveedor'
         servicioDescStatus.style.color = 'var(--accent-warn)'
-        setTimeout(() => { document.getElementById('detailsServicioInfo').open = true }, 150)
     }
     document.getElementById('servicio-dia-warning').style.display = 'none'
     actualizarBtnServicio()
@@ -1289,6 +1305,7 @@ function limpiarFormularioServicio() {
     inputServicioNombre.value       = ''
     inputServicioDescription.value  = ''
     inputServicioImageUrl.value     = ''
+    _syncServicioImgPreview()
     inputAvailDesc.value            = ''
     inputAccessInstructions.value   = ''
     inputServicioComments.value     = ''
@@ -1685,6 +1702,7 @@ function cargarServicioEnFormulario(dispIds) {
         inputServicioNombre.value       = svc?.name        ?? ''
         inputServicioDescription.value  = svc?.description ?? ''
         inputServicioImageUrl.value     = svc?.image_url   ?? ''
+        _syncServicioImgPreview()
         inputServicioDia.value          = svc?.day         ? String(svc.day) : ''
         inputServicioHora.value         = svc?.start_time  ?? ''
         // campos de availability (específicos del par venue+service)
@@ -1731,6 +1749,7 @@ function cargarServicioEnFormulario(dispIds) {
         inputServicioNombre.value      = ''
         inputServicioDescription.value = ''
         inputServicioImageUrl.value    = ''
+        _syncServicioImgPreview()
         inputAvailDesc.value           = ''
         inputAccessInstructions.value  = ''
         inputServicioComments.value    = ''

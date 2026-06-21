@@ -1374,6 +1374,23 @@ dialog.modal-dialog-overlay::backdrop {
 .servicio-photos-col .photo-carousel-img-wrap {
     flex: none;
 }
+.svc-img-preview {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.svc-img-preview img {
+    width: 100%;
+    height: auto;
+    display: none;
+    object-fit: cover;
+}
 
 @media (max-width: 768px) {
     .servicio-desc-photos-wrap { flex-direction: column; }

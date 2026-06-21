@@ -237,18 +237,26 @@
                         </div>
                     </div>
                     <div id="avail-panel-servicio" style="display:none">
-                        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-                            <div class="form-field">
-                                <label>Nombre comercial</label>
-                                <input type="text" id="inputServicioNombre" placeholder="Nombre comercial (ej: Balcón encierro)">
+                        <div class="servicio-desc-photos-wrap" style="margin-top:8px">
+                            <div class="servicio-desc-col">
+                                <div class="form-field">
+                                    <label>Nombre comercial</label>
+                                    <input type="text" id="inputServicioNombre" placeholder="Nombre comercial (ej: Balcón encierro)">
+                                </div>
+                                <div class="form-field">
+                                    <label>Descripción del servicio</label>
+                                    <textarea id="inputServicioDescription" rows="3" placeholder="Descripción general (compartida entre todos los venues)" style="resize:vertical"></textarea>
+                                </div>
                             </div>
-                            <div class="form-field">
-                                <label>Descripción del servicio</label>
-                                <textarea id="inputServicioDescription" rows="3" placeholder="Descripción general (compartida entre todos los venues)" style="resize:vertical;width:100%"></textarea>
-                            </div>
-                            <div class="form-field">
-                                <label>Imagen URL</label>
-                                <input type="text" id="inputServicioImageUrl" placeholder="https://...">
+                            <div class="servicio-photos-col">
+                                <label class="servicio-photos-label">Imagen</label>
+                                <div class="svc-img-preview">
+                                    <img id="servicioImgPreview" src="" alt="">
+                                    <div id="servicioImgEmpty" class="photo-carousel-empty">Sin imagen</div>
+                                </div>
+                                <div class="form-field" style="margin-top:6px">
+                                    <input type="text" id="inputServicioImageUrl" placeholder="https://...">
+                                </div>
                             </div>
                         </div>
                     </div>
