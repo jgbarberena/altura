@@ -839,21 +839,9 @@ No hay pérdida de datos ni inconsistencia real — solo queda un registro vací
 
 ---
 
-**Asistente: edición del textarea de respuesta no se refleja en `mensajes` ni en el log.**
+**✅ RESUELTO — Asistente: edición del textarea de respuesta ya se refleja en `mensajes` y en el log (Fase 6b).**
 
-El textarea `#asistente-mensaje-final` es editable. `getTexto: () => elMsgFinal.value` lee el valor actual en el momento del clic, por lo que la edición SÍ llega correctamente a `_alUsarBoton` → `_onRespuestaUsadaEnLog` → `conversation_notes`. Pero `mensajes` (el array interno de la conversación) nunca se actualiza con el texto editado: el último mensaje del assistant mantiene la respuesta bruta de Claude incluyendo `---MENSAJE_CLIENTE---` y el texto original. Consecuencias:
-- sessionStorage guarda `mensajes` al cerrar el asistente → al reabrirlo se restaura el texto original, no el editado.
-- El log guardado con "Guardar log" (o auto-save) contiene los mensajes originales, no la versión editada.
-
-Fix: en `_alUsarBoton(texto)`, antes de llamar a `_onRespuestaUsadaEnLog`, actualizar el último mensaje del assistant en `mensajes` reemplazando el contenido después de `---MENSAJE_CLIENTE---` con `texto`. Así sessionStorage y el log reflejan la edición.
-
----
-
-**Asistente: log guardado solo de forma manual — Paula nunca lo hará.**
-
-El botón "Guardar log" en la cabecera del asistente es la única forma de persistir la conversación en `assistant_logs`. Paula no lo pulsará. El propósito del log es alimentar la revisión periódica del `SYSTEM_PROMPT_ASISTENTE`.
-
-Fix: cambiar "Guardar log" por un toggle `<input type="checkbox">` estilo iOS con label "Auto-guardar logs". Estado persistido en `localStorage`. Por defecto: activo. Cuando está activo, en el evento `close` del overlay se hace INSERT en `assistant_logs` si hay mensajes. Cuando está inactivo, solo se guarda manualmente al pulsar el toggle activo (o dejarlo como botón de guardado manual). Javier puede desactivarlo si empieza a acumular demasiadas entradas.
+**✅ RESUELTO — Asistente: toggle auto-guardar log implementado (Fase 6b).** El botón "Guardar log" fue sustituido por un toggle estilo iOS en la cabecera del modal. Por defecto activo. Guarda automáticamente al cerrar el modal; también guarda al activar el toggle si estaba desactivado.
 
 ---
 
@@ -1474,7 +1462,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 4 | ✅ Completa | Sistema de borrador y asistente (jun 2026) |
 | 5 | ✅ Completa | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales ✅ |
 | 6 | ✅ Completa | Panel: tablas navegables ✅ · image_url editable ✅ · pestañas par/servicio ✅ · fotos 16:9 ✅ · reordenar fotos ✅ · auto-fill image_url ✅ |
-| 6b | 🔲 Pendiente | Asistente: fix mensajes editados + auto-save logs toggle |
+| 6b | ✅ Completa | Asistente: fix mensajes editados + auto-save logs toggle |
 | 6c | ✅ Completa | Bugs §7.9: marcarAtendida ✅ · verificarConsistencia ✅ · reactivar capacidad ✅ · reversión falsa ✅ |
 | 7 | ✅ Completa | Mejoras de propuestas: display_name ✅ · fallback descripción ✅ · fotos 16:9 ✅ · modos Compacto/Completo ✅ |
 | 8 | ✅ Completa | Facturación canal sfcom |
@@ -1647,12 +1635,12 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 6b — 🔲 Asistente: fix mensajes editados + auto-save logs
+### Fase 6b — ✅ Asistente: fix mensajes editados + auto-save logs (implementada)
 
-**Archivo principal:** `asistente.js`.
+**Archivo:** `asistente.js`.
 
-1. 🔲 **Fix `mensajes` con edición:** en `_alUsarBoton(texto)`, antes de llamar a `_onRespuestaUsadaEnLog`, localizar el último mensaje del assistant en `mensajes` (el que contiene `---MENSAJE_CLIENTE---`) y reemplazar el texto después del marker con `texto`. Así sessionStorage y el log reflejan la versión editada por Paula.
-2. 🔲 **Auto-save de logs:** sustituir el botón "Guardar log" por un toggle checkbox estilo iOS con label "Auto-guardar logs". Estado en `localStorage('asistente_autolog')`, valor por defecto `true`. En el evento `close` del overlay: si el toggle está activo y `mensajes.length > 0`, hacer INSERT en `assistant_logs` con los mensajes ya actualizados (punto 1). Si el toggle está inactivo, el INSERT solo ocurre al activarlo manualmente (equivale al botón anterior).
+1. ✅ **Fix `mensajes` con edición:** en `_alUsarBoton(texto)`, antes de llamar a `_onRespuestaUsadaEnLog`, el bucle recorre `mensajes` al revés buscando el último mensaje de `role: 'assistant'` que contenga `---MENSAJE_CLIENTE---`, y reemplaza el contenido a partir del marker con el texto editado por Paula. SessionStorage y el log guardado reflejan la versión final, no el texto bruto de Claude.
+2. ✅ **Toggle auto-guardar log:** el botón "Guardar log" fue sustituido por un toggle estilo iOS (`#lbl-autolog`, `#autolog-track`, `#autolog-thumb`) en la cabecera del modal. Estado en `localStorage('asistente_autolog')`; por defecto activado. Al cerrar el overlay (`close` event): si el toggle está activo y hay mensajes, se hace INSERT en `assistant_logs`. Al activar el toggle manualmente (cuando estaba desactivado): también se guarda inmediatamente.
 
 ---
 

@@ -1799,6 +1799,38 @@ document.getElementById('btnEditarServicios').addEventListener('click', () => {
     cargarServicioEnFormulario(ids)
 })
 
+function _modalOpcionesEliminar(venueId, venueType, proveedorId) {
+    const tipo = (_VENUE_LABELS[venueType] ?? _VENUE_LABELS.balcon).dlgTitulo.replace('Añadir ', '')
+    return new Promise(resolve => {
+        let done = false
+        const finish = v => { if (!done) { done = true; resolve(v) } }
+        const dlg = document.createElement('dialog')
+        dlg.style.width = 'min(420px, 92vw)'
+        dlg.innerHTML = `
+            <h3 class="dialog-titulo" style="margin-bottom:10px">${venueId} sin servicios</h3>
+            <p style="margin:0 0 20px; font-size:13px; color:var(--subtle)">
+                Es el único ${tipo} de <strong>${proveedorId}</strong>. La disponibilidad ya ha sido eliminada.
+                ¿Qué más quieres borrar?
+            </p>
+            <div style="display:flex; flex-direction:column; gap:8px">
+                <button class="btn btn-secondary">Nada más — mantener ${tipo} y proveedor</button>
+                <button class="btn btn-secondary" style="border-color:var(--accent-warn);color:var(--accent-warn)">
+                    Eliminar también el ${tipo} <strong>${venueId}</strong>
+                </button>
+                <button class="btn btn-danger">
+                    Eliminar ${tipo} y proveedor <strong>${proveedorId}</strong>
+                </button>
+            </div>`
+        document.body.appendChild(dlg)
+        dlg.showModal()
+        const [b0, b1, b2] = dlg.querySelectorAll('button')
+        b0.onclick = () => { dlg.close(); finish('solo') }
+        b1.onclick = () => { dlg.close(); finish('venue') }
+        b2.onclick = () => { dlg.close(); finish('todo') }
+        dlg.addEventListener('close', () => { dlg.remove(); finish('solo') })
+    })
+}
+
 document.getElementById('btnEliminarServicio').addEventListener('click', async () => {
     const checks = [...document.querySelectorAll('.chk-servicio:checked')]
     if (checks.length === 0) return
@@ -1848,25 +1880,53 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
         }
     }
 
-    const proveedorId = proveedorActual?.id
-    if (proveedorId) {
-        const serviciosRestantes = todaDisponibilidad.filter(d => d.venue_provider_id === proveedorId)
-        if (serviciosRestantes.length === 0 && eliminados.length > 0) {
-            const borrarProveedor = confirm(
-                `"${proveedorId}" se ha quedado sin servicios.\n` +
-                `¿Eliminar también el proveedor?`
-            )
-            if (borrarProveedor) {
-                await supabase.from('payments').delete().eq('provider_id', proveedorId)
-                await supabase.from('providers').delete().eq('id', proveedorId)
-                todosProveedores = todosProveedores.filter(p => p.id !== proveedorId)
+    // ─── Cascade: venue vacía → ofrecer borrar venue; última venue → ofrecer también el proveedor
+    const venuesAfectadas = [...new Set(eliminados.map(e => e.venueId))]
+    for (const venueId of venuesAfectadas) {
+        if (todaDisponibilidad.some(d => d.venue_id === venueId)) continue
+
+        const venue = venuesDelProveedor.find(v => v.id === venueId)
+        const tipo  = (_VENUE_LABELS[venue?.venue_type] ?? _VENUE_LABELS.balcon).dlgTitulo.replace('Añadir ', '')
+        const hayOtrasConServicios = todaDisponibilidad.some(
+            d => d.venue_provider_id === proveedorActual.id && d.venue_id !== venueId
+        )
+
+        if (hayOtrasConServicios) {
+            const borrar = confirm(`"${venueId}" ya no ofrece ningún servicio.\n¿Eliminar también el ${tipo}?`)
+            if (borrar) {
+                await supabase.from('venues').delete().eq('id', venueId)
+                todosVenues        = todosVenues.filter(v => v.id !== venueId)
+                venuesDelProveedor = venuesDelProveedor.filter(v => v.id !== venueId)
+                if (venueActual?.id === venueId) venueActual = venuesDelProveedor[0] ?? null
+            }
+        } else {
+            const opcion = await _modalOpcionesEliminar(venueId, venue?.venue_type ?? 'balcon', proveedorActual.id)
+            if (opcion === 'venue' || opcion === 'todo') {
+                await supabase.from('venues').delete().eq('id', venueId)
+                todosVenues        = todosVenues.filter(v => v.id !== venueId)
+                venuesDelProveedor = venuesDelProveedor.filter(v => v.id !== venueId)
+                venueActual        = null
+            }
+            if (opcion === 'todo') {
+                for (const v of venuesDelProveedor) {
+                    await supabase.from('venues').delete().eq('id', v.id)
+                }
+                todosVenues        = todosVenues.filter(v => v.provider_id !== proveedorActual.id)
+                venuesDelProveedor = []
+                await supabase.from('payments').delete().eq('provider_id', proveedorActual.id)
+                await supabase.from('providers').delete().eq('id', proveedorActual.id)
+                todosProveedores   = todosProveedores.filter(p => p.id !== proveedorActual.id)
                 limpiarProveedor()
                 inputProveedorId.value = ''
                 if (noEliminados.length > 0) alert('No se pudieron eliminar:\n' + noEliminados.join('\n'))
                 return
             }
         }
+    }
 
+    const proveedorId = proveedorActual?.id
+    if (proveedorId) {
+        renderVenueTabs(venuesDelProveedor, venueActual?.id ?? null)
         await persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)
         limpiarFormularioServicio()
         cargarServiciosProveedor(proveedorId)

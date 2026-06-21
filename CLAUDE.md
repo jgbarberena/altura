@@ -93,6 +93,8 @@ Usar siempre `pwsh` (PowerShell 7), no `powershell` (PS5).
 
 **Credenciales FTP:** el script las lee de `.vscode/sftp.json`. Esta carpeta está excluida del FTP y del repositorio. Otros archivos excluidos del FTP: `.git/`, `.claude/`, `CLAUDE*.md`, `deploy.ps1`, `*.ps1`, `index-template.html`, `*.zip`.
 
+**Documentar antes de hacer deploy.** Cualquier cambio no trivial debe quedar documentado en `CLAUDE_ADMIN.md` (o `CLAUDE_WEB.md` si es frontend público) antes del deploy. Excepción: bug fixes puros donde el error era una desviación obvia del diseño y no hay nada que explicar — en ese caso basta con marcar "✅ RESUELTO" en la deuda técnica correspondiente si ya estaba anotada, y no es necesario documentar si no estaba. Javier puede dar instrucciones concretas sobre qué y cómo documentar; si no las da, documentar por defecto.
+
 ---
 
 ## 6. Principios técnicos transversales
