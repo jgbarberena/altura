@@ -168,7 +168,6 @@ function limpiarCamposCliente() {
     inputEmail.value = inputComments.value = inputAddress.value = inputNif.value = ''
     statusDiv.textContent = ''
     btnRenombrarCliente.style.display = 'none'
-    document.getElementById('bloque-resumen-canal').style.display    = 'none'
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
     document.getElementById('bloque-cobros-cliente').style.display   = 'none'
     ;['btnCancelar', 'btnEliminar', 'btnGenerarPropuesta', 'btnEnviarBienvenida'].forEach(id => {
@@ -491,15 +490,6 @@ let sortReservasCol = null
 let sortReservasDir = 'asc'
 let reservasCliente = []
 
-function mostrarResumenCanal(totalVentas, count, chargesHilario) {
-    const facturado = (chargesHilario ?? []).filter(c => c.invoice_number).reduce((s, c) => s + parseFloat(c.amount), 0)
-    const pendiente = totalVentas - facturado
-    document.getElementById('resumen-canal-stats').innerHTML =
-        `Ventas registradas en sfcom: <strong>${fmt(totalVentas)}</strong> · ${count} reservas<br>` +
-        `Ya facturado a Hilario: <strong style="color:var(--accent-ok)">${fmt(facturado)}</strong> &nbsp;·&nbsp; ` +
-        `Pendiente: <strong style="color:${pendiente > 0.01 ? 'var(--accent-warn)' : 'var(--accent-ok)'}">${fmt(pendiente)}</strong>`
-    document.getElementById('bloque-resumen-canal').style.display = 'block'
-}
 
 async function cargarReservasCliente(clienteId) {
     const { data: reservasRaw } = await supabase
@@ -519,8 +509,6 @@ async function cargarReservasCliente(clienteId) {
     if (clienteId === 'SFCOM') {
         const sfcomReservas = todasReservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
         const totalVentas   = sfcomReservas.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-        const { data: chargesHilario } = await supabase.from('charges').select('amount, invoice_number').eq('client_id', 'SFCOM')
-        mostrarResumenCanal(totalVentas, sfcomReservas.length, chargesHilario)
         const virtualRow = {
             id: 'SFCOM_CANAL', client_id: 'SFCOM',
             service_id: 'Canal sfcom', venue_id: `${sfcomReservas.length} reservas`,
@@ -1477,7 +1465,7 @@ async function cargarCobrosCliente(clienteId, reservas) {
     const cobroFinal = total - prepagos
 
     if (!hitosClienteTemp.find(h => h.esFinal)) {
-        if (cobroFinal >= 0.01 && clienteId !== 'SFCOM') {
+        if (cobroFinal >= 0.01) {
             // No existe en BBDD — crear y persistir inmediatamente
             hitosClienteTemp.push({
                 esFinal:   true,
