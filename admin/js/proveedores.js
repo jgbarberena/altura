@@ -1297,7 +1297,6 @@ function limpiarFormularioServicio() {
     _photoIdx = 0
     _renderCarousel()
     document.getElementById('photoCarouselField').style.display = 'none'
-    document.getElementById('detailsServicioInfo').open = false
     document.getElementById('avail-sep').style.display  = 'none'
     document.getElementById('avail-section').style.display = 'none'
     btnRenombrarServicio.style.display = 'none'
