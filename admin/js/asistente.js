@@ -190,7 +190,12 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         <div style="display:flex;justify-content:space-between;align-items:center">
             <h3 style="font-size:15px;font-weight:600;margin:0">💬 Asistente de respuesta</h3>
             <div style="display:flex;gap:10px;align-items:center">
-                <button id="btn-guardar-log" style="background:none;border:none;cursor:pointer;font-size:11px;color:#9ca3af;text-decoration:underline;padding:0" title="Guardar conversación en Supabase">Guardar log</button>
+                <label id="lbl-autolog" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#9ca3af;user-select:none" title="Guardar conversación en Supabase al cerrar">
+                    <span id="autolog-track" style="display:inline-block;width:30px;height:17px;border-radius:9px;background:#d1d5db;position:relative;flex-shrink:0;transition:background .15s">
+                        <span id="autolog-thumb" style="position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span>
+                    </span>
+                    Auto-guardar log
+                </label>
                 <button id="btn-asistente-cerrar" style="background:none;border:none;cursor:pointer;font-size:15px;color:#777;padding:4px 8px;line-height:1;border-radius:4px" title="Cerrar">✕</button>
             </div>
         </div>
@@ -345,6 +350,15 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
 
     async function _alUsarBoton(texto) {
         if (!texto) return
+        // Actualizar el último mensaje del asistente con el texto editado por Paula
+        const MARKER_USO = '---MENSAJE_CLIENTE---'
+        for (let i = mensajes.length - 1; i >= 0; i--) {
+            if (mensajes[i].role === 'assistant' && mensajes[i].content.includes(MARKER_USO)) {
+                const idx = mensajes[i].content.indexOf(MARKER_USO)
+                mensajes[i] = { ...mensajes[i], content: mensajes[i].content.slice(0, idx + MARKER_USO.length) + '\n' + texto }
+                break
+            }
+        }
         if (_onRespuestaUsada) await _onRespuestaUsada(texto, solicitud)
         if (_ultimoBorrador !== null && _onBorradorActualizado) {
             await _onBorradorActualizado(solicitud.id, _ultimoBorrador)
@@ -420,11 +434,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         })
     }
 
-    panel.querySelector('#btn-guardar-log').addEventListener('click', async () => {
-        if (mensajes.length === 0) {
-            mostrarToast('No hay conversación que guardar', '#6b7280')
-            return
-        }
+    let _logGuardado = false
+    async function _guardarLog() {
+        if (mensajes.length === 0 || _logGuardado) return
         const { error } = await _supabase.from('assistant_logs').insert({
             solicitud_id:     solicitud.id    || null,
             client_name:      solicitud.client_name || null,
@@ -437,7 +449,29 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             console.error('[log]', error)
         } else {
             mostrarToast('💾 Log guardado')
+            _logGuardado = true
         }
+    }
+
+    const elAutologTrack = panel.querySelector('#autolog-track')
+    const elAutologThumb = panel.querySelector('#autolog-thumb')
+    let autolog = localStorage.getItem('asistente_autolog') !== 'false'
+
+    function _setAutolog(on) {
+        autolog = on
+        localStorage.setItem('asistente_autolog', on ? 'true' : 'false')
+        elAutologTrack.style.background = on ? '#16a34a' : '#d1d5db'
+        elAutologThumb.style.left       = on ? '15px'   : '2px'
+    }
+    _setAutolog(autolog)
+
+    panel.querySelector('#lbl-autolog').addEventListener('click', async () => {
+        _setAutolog(!autolog)
+        if (autolog) await _guardarLog()
+    })
+
+    overlay.addEventListener('close', async () => {
+        if (autolog) await _guardarLog()
     })
 
     // Restore stored conversation or start fresh
