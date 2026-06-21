@@ -183,14 +183,11 @@
                 </div>
                 <div id="servicio-desc-status" style="font-size:12px; margin-top:4px"></div>
                 <div class="avail-sep" id="avail-sep" style="display:none">
-                    <span class="avail-sep-label">Detalles <code id="avail-sep-service-id"></code> en <code id="avail-sep-venue-id"></code></span>
+                    <button class="avail-tab active" data-avail-tab="par">Detalles <code id="avail-sep-service-id"></code> en <code id="avail-sep-venue-id"></code><span class="avail-tab-badge" id="badge-tab-par" style="display:none"> ●</span></button>
+                    <button class="avail-tab" data-avail-tab="servicio">Info general <code id="avail-tab-servicio-id"></code><span class="avail-tab-badge" id="badge-tab-servicio" style="display:none"> ●</span></button>
                     <hr class="venue-sep-hr">
                 </div>
                 <div id="avail-section" style="display:none">
-                    <div class="avail-tab-nav" id="avail-tab-nav">
-                        <button class="avail-tab active" data-avail-tab="par">Detalles del par <span class="avail-tab-badge" id="badge-tab-par" style="display:none">●</span></button>
-                        <button class="avail-tab" data-avail-tab="servicio">Info del servicio <span class="avail-tab-badge" id="badge-tab-servicio" style="display:none">●</span></button>
-                    </div>
                     <div id="avail-tab-aviso" class="avail-tab-aviso" style="display:none">
                         <span id="avail-tab-aviso-texto"></span>
                         <button type="button" id="avail-tab-aviso-cerrar">✕</button>

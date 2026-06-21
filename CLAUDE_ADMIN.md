@@ -1475,9 +1475,9 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 3 | ✅ Completa | Esquema BD: cascada de borrados y renombrado de IDs |
 | 4 | ✅ Completa | Sistema de borrador y asistente (jun 2026) |
 | 5 | ✅ Completa | Flujo sfcom: leads cancelados + recuperación ✅ · reducción de modales ✅ |
-| 6 | 🟡 Parcial | Panel: tablas navegables ✅ · image_url editable ✅ · pestañas par/servicio 🔲 · fotos 16:9 🔲 · reordenar fotos 🔲 · auto-fill image_url 🔲 |
+| 6 | ✅ Completa | Panel: tablas navegables ✅ · image_url editable ✅ · pestañas par/servicio ✅ · fotos 16:9 ✅ · reordenar fotos ✅ · auto-fill image_url ✅ |
 | 6b | 🔲 Pendiente | Asistente: fix mensajes editados + auto-save logs toggle |
-| 6c | 🔲 Pendiente | Bugs §7.9 sin fase: marcarAtendida, verificarConsistencia, reactivar capacidad, reversión falsa |
+| 6c | ✅ Completa | Bugs §7.9: marcarAtendida ✅ · verificarConsistencia ✅ · reactivar capacidad ✅ · reversión falsa ✅ |
 | 7 | 🔲 Pendiente | Mejoras de propuestas |
 | 8 | 🔲 Pendiente | Facturación canal sfcom |
 | 9 | 🔲 Pendiente | Refactors y cierre |
@@ -1638,14 +1638,14 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 6 — 🟡 Panel: UX de navegación y edición
+### Fase 6 — ✅ Panel: UX de navegación y edición (completa jun 2026)
 
-1. ✅ **Tablas del panel navegables (jun 2026):** `filaEvento` y `filaProveedor` en `panel.js` tienen `onclick` y `cursor:pointer`. Las funciones `window._seleccionarEvento` / `window._seleccionarProveedor` actualizan el select y disparan el render. Segundo clic deselecciona. Bidireccional con el dropdown.
-2. ✅ **`services.image_url` editable (jun 2026):** campo `inputServicioImageUrl` en la sección "Info del servicio" de `proveedores.js`.
-3. 🔲 **Pestañas "Detalles del par" / "Info del servicio":** ver diseño completo en §7.2. Criterio balcón: `venueActual.venue_type === 'balcon'` (✅ decidido). HTML restructuring de `detailsServicioInfo` + `avail-section` + tab nav. JS: dos click handlers + default tab al cargar + badges de contenido. Hacer antes de §6b porque modifica la misma zona de `proveedores.js`.
-4. 🔲 **Fotos 16:9 con overflow:** CSS `aspect-ratio: 16/9; overflow: auto` en `.photo-carousel-img-wrap`. Imagen con `width: 100%; height: auto`. Sin JS adicional.
-5. 🔲 **Reordenar fotos (botón ⬆ Subir):** en footer del carousel, solo activo si `_photoIdx > 0`. Al pulsar: `photos.splice(idx - 1, 0, photos.splice(idx, 1)[0])` → `_savePhotos(photos)`.
-6. 🔲 **`services.image_url` auto-fill:** al guardar la primera foto de un par venue/event_type (cuando `photos` pasa de vacío a longitud 1), escribir `services.image_url` si está vacío.
+1. ✅ **Tablas del panel navegables:** `filaEvento` y `filaProveedor` en `panel.js` tienen `onclick` y `cursor:pointer`. Las funciones `window._seleccionarEvento` / `window._seleccionarProveedor` actualizan el select y disparan el render. Segundo clic deselecciona. Bidireccional con el dropdown.
+2. ✅ **`services.image_url` editable:** campo `inputServicioImageUrl` en la sección "Info del servicio" de `proveedores.js`.
+3. ✅ **Pestañas par/servicio sobre la línea separadora:** tabs `data-avail-tab` dentro de `avail-sep` (mismo patrón que venue tabs). Tab por defecto según `venue_type === 'balcon'`. Badges de contenido no guardado. Etiquetas dinámicas: "Detalles [SERVICE_ID] en [VENUE_ID]" y "Info general [SERVICE_ID]".
+4. ✅ **Fotos 16:9 con overflow:** CSS `aspect-ratio: 16/9; overflow: auto` en `.photo-carousel-img-wrap`.
+5. ✅ **Reordenar fotos (botón ⬆ Subir):** footer del carousel, activo si `_photoIdx > 0`. `photos.splice(idx - 1, 0, photos.splice(idx, 1)[0])` → `_savePhotos()`.
+6. ✅ **`services.image_url` auto-fill:** al guardar la primera foto (`esPrimeraFoto && photos.length === 1 && !image_url`), actualiza `services.image_url` en Supabase y en caché.
 
 ---
 
@@ -1658,16 +1658,14 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 6c — 🔲 Bugs §7.9: fixes sin fase asignada
-
-Bugs de severidad alta/crítica confirmados en código (jun 2026) que no estaban en ninguna fase anterior. **Hacer antes de Fase 7** para no acumular deuda crítica.
+### Fase 6c — ✅ Bugs §7.9: fixes sin fase asignada (completa jun 2026)
 
 **Archivos:** `panel.js`, `formulario.js`.
 
-1. 🔲 **`verificarConsistenciaFinanciera`: botón "Corregir" no protege cobros con historial (`panel.js:881-887`).** El corrector automático itera `problemasClientes` y ejecuta DELETE para todos los `esHuerfano`, incluyendo los que tienen `tieneHistorial: true`. Solo muestra un `<p>` de aviso pero no los excluye. Fix: excluir del loop de DELETE a cualquier entrada con `tieneHistorial: true`; mostrar en el modal qué clientes requieren corrección manual.
-2. 🔲 **`marcarAtendida` sin confirmación (`formulario.js:2524-2532`).** Hace `status: 'convertida'` directamente, sin modal ni confirm. La solicitud desaparece de todas las listas activas. Fix: añadir un confirm modal breve ("¿Marcar como convertida? La solicitud dejará de aparecer en las listas activas.") antes de ejecutar el UPDATE.
-3. 🔲 **`cambiarEstadoSeleccionadas` reactivar sin verificar capacidad propia (`formulario.js:663-668`).** Al reactivar Cancelada → Confirmada/Pendiente, solo verifica sfcom (`checkAvailabilityBeforeSave`) pero no comprueba si `total_slots` sigue teniendo hueco para los slots de la reserva. Fix: antes del UPDATE, comprobar que `total_slots - SUM(slots activos sin esta reserva) >= r.slots` para cada reserva a reactivar; avisar y pedir confirmación si hay sobrereserva.
-4. 🔲 **`confirmarReorganizacion`: reversión falsa (`formulario.js:1951-1954`).** Usa `Promise.allSettled` para revertir pero luego muestra "Los cambios anteriores han sido revertidos" sin comprobar si alguna reversión falló. Fix: inspeccionar el resultado de `allSettled`; si alguna reversión tiene `status: 'rejected'`, mostrar un modal de error grave listando qué reservas quedan en estado inconsistente para corrección manual.
+1. ✅ **`verificarConsistenciaFinanciera`: botón "Corregir" protege cobros con historial.** Excluye del DELETE a entradas con `tieneHistorial: true`; lista en el modal los clientes que requieren corrección manual.
+2. ✅ **`marcarAtendida` requiere confirmación.** Modal de confirm antes de hacer `status: 'convertida'`. Autofocus en "Cancelar" para evitar pulsaciones accidentales.
+3. ✅ **`cambiarEstadoSeleccionadas` verifica capacidad al reactivar.** Antes del UPDATE, comprueba plazas libres con `getPlazasInfo` por par; si no hay hueco, carga la reserva en el formulario con estado en 'pendiente' para que Paula elija proveedor o cancele.
+4. ✅ **`confirmarReorganizacion`: reversión real.** Inspecciona `allSettled` + `r.value?.error`; si alguna reversión falló, muestra modal de error grave listando qué reservas quedan inconsistentes.
 
 ---
 

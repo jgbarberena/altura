@@ -298,7 +298,7 @@ function _initAvailTabs(isBalcon) {
     _actualizarBadgesTabs()
 }
 
-document.getElementById('avail-tab-nav').addEventListener('click', e => {
+document.getElementById('avail-sep').addEventListener('click', e => {
     const tab = e.target.closest('.avail-tab')
     if (!tab) return
     _seleccionarTabAvail(tab.dataset.availTab)
@@ -754,8 +754,9 @@ function _cargarDispParaServicio(serviceId) {
     inputServicioNombre.value       = svc?.name        ?? ''
     inputServicioDescription.value  = svc?.description ?? ''
     inputServicioImageUrl.value     = svc?.image_url   ?? ''
-    document.getElementById('avail-sep-service-id').textContent = serviceId
-    document.getElementById('avail-sep-venue-id').textContent   = targetVenueId
+    document.getElementById('avail-sep-service-id').textContent  = serviceId
+    document.getElementById('avail-sep-venue-id').textContent    = targetVenueId
+    document.getElementById('avail-tab-servicio-id').textContent = serviceId
     document.getElementById('avail-sep').style.display          = 'flex'
     document.getElementById('avail-section').style.display      = 'block'
     _initAvailTabs(venueActual?.venue_type === 'balcon')
@@ -1696,8 +1697,9 @@ function cargarServicioEnFormulario(dispIds) {
         document.getElementById('photoCarouselField').style.display = 'flex'
         document.getElementById('servicio-dia-warning').style.display = 'none'
         document.getElementById('titulo-bloque-servicio').textContent = '✏️ Editando servicio'
-        document.getElementById('avail-sep-service-id').textContent = disps[0].service_id
-        document.getElementById('avail-sep-venue-id').textContent   = disps[0].venue_id
+        document.getElementById('avail-sep-service-id').textContent  = disps[0].service_id
+        document.getElementById('avail-sep-venue-id').textContent    = disps[0].venue_id
+        document.getElementById('avail-tab-servicio-id').textContent = disps[0].service_id
         document.getElementById('avail-sep').style.display     = 'flex'
         document.getElementById('avail-section').style.display = 'block'
         _initAvailTabs(venueActual?.venue_type === 'balcon')
