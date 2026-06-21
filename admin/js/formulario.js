@@ -736,6 +736,16 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
 
     const { error } = await supabase.from('reservations').update({ status: nuevoEstado }).in('id', ids)
     if (!error && clienteActual) {
+        if (nuevoEstado === 'Cancelada') {
+            const sfcomCanceladas = todasReservas.filter(r => ids.includes(r.id) && r.origin_ref?.startsWith('WEB'))
+            for (const r of sfcomCanceladas) {
+                await supabase.from('charges').delete()
+                    .eq('client_id', r.client_id)
+                    .eq('comments', 'Cobrado vía sfcom')
+                    .gte('amount', parseFloat(r.total_amount) - 0.005)
+                    .lte('amount', parseFloat(r.total_amount) + 0.005)
+            }
+        }
         todasReservas = todasReservas.map(r =>
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )

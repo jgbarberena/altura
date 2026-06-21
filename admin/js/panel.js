@@ -240,9 +240,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 // ===== BLOQUE 1: ESTADO FINANCIERO =====
 function calcularEstadoFinanciero() {
-    // Cobros — ya no hay que filtrar por estado de reserva
-    const cobrosTotal    = charges.reduce((s, c) => s + parseFloat(c.amount), 0)
-    const cobrado        = charges.filter(c => c.collected).reduce((s, c) => s + parseFloat(c.amount), 0)
+    // Cobros — excluir SFCOM para evitar doble conteo (sus reservas ya cuentan en clientes reales)
+    const chargesClientes = charges.filter(c => c.client_id !== 'SFCOM')
+    const cobrosTotal    = chargesClientes.reduce((s, c) => s + parseFloat(c.amount), 0)
+    const cobrado        = chargesClientes.filter(c => c.collected).reduce((s, c) => s + parseFloat(c.amount), 0)
     const pendienteCobro = cobrosTotal - cobrado
 
     document.getElementById('kpi-cobros-confirmados').textContent = fmt(cobrosTotal)
@@ -696,7 +697,7 @@ function calcularCashflow() {
         eventos.push({ fecha: p.due_date, importe: -parseFloat(p.amount || 0), tipo: 'previsto' })
     })
 
-    charges.forEach(c => {
+    charges.filter(c => c.client_id !== 'SFCOM').forEach(c => {
         if (!enTemporada(c.due_date)) return
         eventos.push({ fecha: c.due_date, importe: parseFloat(c.amount || 0), tipo: 'previsto' })
     })
@@ -707,7 +708,7 @@ function calcularCashflow() {
         eventos.push({ fecha, importe: -parseFloat(p.amount || 0), tipo: 'real' })
     })
 
-    charges.filter(c => c.collected).forEach(c => {
+    charges.filter(c => c.collected && c.client_id !== 'SFCOM').forEach(c => {
         const fecha = c.collected_date ?? c.due_date
         if (!enTemporada(fecha) || fecha > hoy) return
         eventos.push({ fecha, importe: parseFloat(c.amount || 0), tipo: 'real' })
