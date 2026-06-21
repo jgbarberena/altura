@@ -1478,7 +1478,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 6 | ✅ Completa | Panel: tablas navegables ✅ · image_url editable ✅ · pestañas par/servicio ✅ · fotos 16:9 ✅ · reordenar fotos ✅ · auto-fill image_url ✅ |
 | 6b | 🔲 Pendiente | Asistente: fix mensajes editados + auto-save logs toggle |
 | 6c | ✅ Completa | Bugs §7.9: marcarAtendida ✅ · verificarConsistencia ✅ · reactivar capacidad ✅ · reversión falsa ✅ |
-| 7 | 🔲 Pendiente | Mejoras de propuestas |
+| 7 | ✅ Completa | Mejoras de propuestas: display_name ✅ · fallback descripción ✅ · fotos 16:9 ✅ · modos Compacto/Completo ✅ |
 | 8 | 🔲 Pendiente | Facturación canal sfcom |
 | 9 | 🔲 Pendiente | Refactors y cierre |
 
@@ -1669,9 +1669,9 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 7 — 🔲 Mejoras de propuestas
+### Fase 7 — ✅ Mejoras de propuestas (completa jun 2026)
 
-Usar datos ya disponibles en propuesta.js: `venues.display_name` como nombre del venue, `availability.access_instructions` si existe. (`availability.photos[0]` ya funciona — ✅.)
+`venues.display_name` ✅ — cadena `filaSaved.nombre ?? venue.display_name ?? svc.name ?? r.venue_id`. `availability.description → svc.description` ✅ — fallback correcto en modo Completo. `disp?.photos[0] ?? svc.image_url` ✅ — hasta 3 fotos en modo Completo. `access_instructions` no se incluye en propuestas (pertenece a confirmaciones, no a propuestas comerciales). Dos modos Compacto/Completo implementados.
 
 ---
 
