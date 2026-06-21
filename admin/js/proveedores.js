@@ -149,13 +149,15 @@ function _renderCarousel() {
     const btnPrev  = document.getElementById('btnPhotoPrev')
     const btnNext  = document.getElementById('btnPhotoNext')
     const btnDel   = document.getElementById('btnPhotoDel')
+    const btnUp    = document.getElementById('btnPhotoUp')
     if (_photos.length === 0) {
-        img.style.display   = 'none'
-        empty.style.display = 'block'
+        img.style.display    = 'none'
+        empty.style.display  = 'block'
         counter.textContent  = '0 / 0'
         btnPrev.disabled     = true
         btnNext.disabled     = true
         btnDel.style.display = 'none'
+        btnUp.style.display  = 'none'
         return
     }
     _photoIdx = Math.max(0, Math.min(_photoIdx, _photos.length - 1))
@@ -166,19 +168,27 @@ function _renderCarousel() {
     btnPrev.disabled     = _photoIdx === 0
     btnNext.disabled     = _photoIdx === _photos.length - 1
     btnDel.style.display = 'inline-block'
+    btnUp.style.display  = 'inline-block'
+    btnUp.disabled       = _photoIdx === 0
 }
 
-async function _savePhotos() {
+async function _savePhotos(esPrimeraFoto = false) {
     if (!servicioEditandoId) return
     const payload = _photos.length ? _photos : null
     const { error } = await supabase.from('availability')
         .update({ photos: payload })
         .eq('id', servicioEditandoId)
-    if (error) console.error('Error al guardar fotos:', error.message)
-    else {
-        const d = todaDisponibilidad.find(d => d.id === servicioEditandoId)
-        if (d) d.photos = payload
-        mostrarGuardado()
+    if (error) { console.error('Error al guardar fotos:', error.message); return }
+    const d = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (d) d.photos = payload
+    mostrarGuardado()
+    if (esPrimeraFoto && _photos.length === 1 && !inputServicioImageUrl.value.trim()) {
+        const svc = todosServicios.find(s => s.id === inputServicioId.value)
+        if (svc && !svc.image_url) {
+            inputServicioImageUrl.value = _photos[0]
+            await supabase.from('services').update({ image_url: _photos[0] }).eq('id', svc.id)
+            svc.image_url = _photos[0]
+        }
     }
 }
 
@@ -197,14 +207,22 @@ document.getElementById('btnPhotoDel').addEventListener('click', async () => {
     _renderCarousel()
     await _savePhotos()
 })
+document.getElementById('btnPhotoUp').addEventListener('click', async () => {
+    if (_photoIdx === 0 || _photos.length < 2) return
+    _photos.splice(_photoIdx - 1, 0, _photos.splice(_photoIdx, 1)[0])
+    _photoIdx--
+    _renderCarousel()
+    await _savePhotos()
+})
 document.getElementById('btnPhotoAdd').addEventListener('click', async () => {
     const url = document.getElementById('inputPhotoUrl').value.trim()
     if (!url) return
+    const esPrimera = _photos.length === 0
     _photos.push(url)
     _photoIdx = _photos.length - 1
     document.getElementById('inputPhotoUrl').value = ''
     _renderCarousel()
-    await _savePhotos()
+    await _savePhotos(esPrimera)
 })
 
 // ── Upload foto desde archivo (FTP vía Edge Function) ──────────────────────
@@ -227,11 +245,12 @@ document.getElementById('inputFotoArchivo').addEventListener('change', async (e)
     btn.textContent = '⏳'
     try {
         const url = await _subirFotoArchivo(file)
+        const esPrimera = _photos.length === 0
         _photos.push(url)
         _photoIdx = _photos.length - 1
         document.getElementById('photoCarouselField').style.display = 'flex'
         _renderCarousel()
-        await _savePhotos()
+        await _savePhotos(esPrimera)
     } catch (err) {
         alert('Error al subir la foto: ' + err.message)
     } finally {
@@ -239,6 +258,55 @@ document.getElementById('inputFotoArchivo').addEventListener('change', async (e)
         btn.textContent = '📁'
         e.target.value = ''
     }
+})
+
+// ===== TABS PAR / SERVICIO =====
+
+function _seleccionarTabAvail(tabName, mostrarAviso = true) {
+    document.querySelectorAll('.avail-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.availTab === tabName)
+    })
+    document.getElementById('avail-panel-par').style.display      = tabName === 'par'      ? '' : 'none'
+    document.getElementById('avail-panel-servicio').style.display = tabName === 'servicio' ? '' : 'none'
+    const avisoDiv   = document.getElementById('avail-tab-aviso')
+    const avisoTexto = document.getElementById('avail-tab-aviso-texto')
+    if (mostrarAviso) {
+        const esBalcon   = venueActual?.venue_type === 'balcon'
+        const esNoDefault = (esBalcon && tabName === 'servicio') || (!esBalcon && tabName === 'par')
+        if (esNoDefault) {
+            avisoTexto.textContent = esBalcon
+                ? 'Editar aquí afecta a TODOS los venues y días de este servicio, no solo a este balcón.'
+                : 'Si hay contenido aquí, anula la información general del servicio para este caso concreto.'
+            avisoDiv.style.display = 'flex'
+        } else {
+            avisoDiv.style.display = 'none'
+        }
+    } else {
+        avisoDiv.style.display = 'none'
+    }
+}
+
+function _actualizarBadgesTabs() {
+    const hasPar      = !!(inputAvailDesc.value.trim() || inputAccessInstructions.value.trim() || _photos.length > 0)
+    const hasServicio = !!(inputServicioNombre.value.trim() || inputServicioDescription.value.trim() || inputServicioImageUrl.value.trim())
+    document.getElementById('badge-tab-par').style.display      = hasPar      ? '' : 'none'
+    document.getElementById('badge-tab-servicio').style.display = hasServicio ? '' : 'none'
+}
+
+function _initAvailTabs(isBalcon) {
+    _seleccionarTabAvail(isBalcon ? 'par' : 'servicio', false)
+    _actualizarBadgesTabs()
+}
+
+document.getElementById('avail-tab-nav').addEventListener('click', e => {
+    const tab = e.target.closest('.avail-tab')
+    if (!tab) return
+    _seleccionarTabAvail(tab.dataset.availTab)
+    _actualizarBadgesTabs()
+})
+
+document.getElementById('avail-tab-aviso-cerrar').addEventListener('click', () => {
+    document.getElementById('avail-tab-aviso').style.display = 'none'
 })
 
 inputServicioDia.addEventListener('change', () => {
@@ -683,10 +751,14 @@ function _cargarDispParaServicio(serviceId) {
     _photoIdx = 0
     _renderCarousel()
     document.getElementById('photoCarouselField').style.display = (_photos.length > 0) ? 'flex' : 'none'
+    inputServicioNombre.value       = svc?.name        ?? ''
+    inputServicioDescription.value  = svc?.description ?? ''
+    inputServicioImageUrl.value     = svc?.image_url   ?? ''
     document.getElementById('avail-sep-service-id').textContent = serviceId
     document.getElementById('avail-sep-venue-id').textContent   = targetVenueId
     document.getElementById('avail-sep').style.display          = 'flex'
     document.getElementById('avail-section').style.display      = 'block'
+    _initAvailTabs(venueActual?.venue_type === 'balcon')
     btnRenombrarServicio.style.display = 'none'  // solo se muestra en edición de par existente
     actualizarSeccionSfcom(null, true)
     _mostrarUrlCatalogoServicio(null)
@@ -1629,6 +1701,7 @@ function cargarServicioEnFormulario(dispIds) {
         document.getElementById('avail-sep-venue-id').textContent   = disps[0].venue_id
         document.getElementById('avail-sep').style.display     = 'flex'
         document.getElementById('avail-section').style.display = 'block'
+        _initAvailTabs(venueActual?.venue_type === 'balcon')
         btnRenombrarServicio.style.display = 'inline-flex'
         actualizarSeccionSfcom(disps[0])
         _mostrarUrlCatalogoServicio(buildCatalogUrl(disps[0].venue_slug, disps[0].event_type))
