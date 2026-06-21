@@ -1036,7 +1036,7 @@ El asistente ya puede redactar confirmaciones de reserva y recordatorios previos
 
 **Facturación canal sfcom.**
 
-Cuando sfcom vende, liquidan el neto. Ver Fase 8 para el diseño completo y lo pendiente. Las reservas sfcom (`origin_ref LIKE 'WEB%'`) quedan en el cliente real; el cargo automático `'Cobrado vía sfcom'` registra el cobro ya realizado. Cliente virtual `SFCOM` pendiente de crear en Dashboard.
+✅ Implementado en Fase 8 (jun 2026). Ver §9 Fase 8 para el diseño completo, todos los cambios de código y los SQL ejecutados. Las reservas sfcom quedan en los clientes reales con un cargo automático `'Cobrado vía sfcom'`. El cliente `SFCOM` agrupa las ventas del canal y permite facturar a Hilario desde el flujo normal.
 
 ---
 
@@ -1477,7 +1477,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 6b | 🔲 Pendiente | Asistente: fix mensajes editados + auto-save logs toggle |
 | 6c | ✅ Completa | Bugs §7.9: marcarAtendida ✅ · verificarConsistencia ✅ · reactivar capacidad ✅ · reversión falsa ✅ |
 | 7 | ✅ Completa | Mejoras de propuestas: display_name ✅ · fallback descripción ✅ · fotos 16:9 ✅ · modos Compacto/Completo ✅ |
-| 8 | 🔲 Pendiente | Facturación canal sfcom |
+| 8 | ✅ Completa | Facturación canal sfcom |
 | 9 | 🔲 Pendiente | Refactors y cierre |
 
 ### Dependencias duras entre fases
@@ -1673,32 +1673,339 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 8 — ⚙️ Facturación canal sfcom (parcialmente implementada)
+### Fase 8 — ✅ Facturación canal sfcom (completa jun 2026)
 
-Diseño decidido: Opción A — cliente `SFCOM` en `clients` como entidad virtual, las reservas quedan en los clientes reales. No hay columna nueva en `charges`; los cargos sfcom se identifican por `comments = 'Cobrado vía sfcom'` (y opcionalmente por JOIN con `reservations.origin_ref LIKE 'WEB%'`).
+---
 
-**Implementado:**
-- `persistirCobrosCliente` (utils.js): no crea "Cobro final 0€" cuando el total ya está cubierto por prepagos (`cobroFinal < 0.01 && !hitoFinal → return`).
-- `cargarCobrosCliente` (formulario.js): ídem — no añade ni persiste cobro final en memoria cuando `cobroFinal < 0.01`.
-- Al guardar una reserva sfcom (origin_ref LIKE 'WEB%'), se crea automáticamente un `charges` record: `collected=true, comments='Cobrado vía sfcom', is_final=false` por el importe exacto de la reserva.
-- El cliente `SFCOM` está filtrado del autocomplete de clientes en formulario.js.
+#### El problema
 
-**Pendiente:**
-- **Manual:** crear cliente `SFCOM` en Supabase Dashboard (SQL Editor):
-  ```sql
-  INSERT INTO clients (id, name) VALUES ('SFCOM', 'Canal sfcom (tienda.sanfermin.com)') ON CONFLICT DO NOTHING;
-  ```
-- **Retroactivo:** añadir cargos a las reservas sfcom existentes (SQL Editor):
-  ```sql
-  INSERT INTO charges (client_id, amount, due_date, collected, collected_date, comments, is_final)
-  SELECT r.client_id, r.total_amount, CURRENT_DATE, true, CURRENT_DATE, 'Cobrado vía sfcom', false
-  FROM reservations r
-  WHERE r.origin_ref LIKE 'WEB%' AND r.status != 'Cancelada'
-  ON CONFLICT (client_id, amount, due_date) DO NOTHING;
-  ```
-  Verificar resultado: `SELECT client_id, COUNT(*), SUM(amount) FROM charges WHERE comments = 'Cobrado vía sfcom' GROUP BY client_id;`
-- **"Resumen canal" block:** vista especial cuando se carga cliente SFCOM en formulario.html con totales WEB% (diferida — bajo demanda).
-- **Liquidación con Hilario:** facturas/charges del cliente SFCOM para registrar lo que sfcom nos debe (diferido).
+Las reservas que entran por tienda.sanfermin.com (canal sfcom, operado por Hilario) llegan identificadas con `origin_ref LIKE 'WEB%'` (ej: `WEB026_1090`). El precio en `reservations.price_per_slot` ya es el precio **neto** que Paula recibe: el bruto que pagó el cliente dividido entre 1,15 (la comisión del 15% ya está descontada). Por tanto, el dinero de esas reservas técnicamente "ya está cobrado" por sfcom y Hilario se lo transferirá a Paula. El sistema de cobros normal no refleja esto: las reservas existen en `charges` de los clientes reales pero sin ninguna marca de que ya están liquidadas vía canal.
+
+Adicionalmente, Paula necesita poder facturar a Hilario el importe acumulado de ventas del canal para cerrar la liquidación con él.
+
+---
+
+#### Decisión de diseño
+
+Dos ángulos del mismo dinero, gestionados por separado:
+
+**Ángulo 1 — Cliente real:** cada reserva sfcom del cliente `GARCIA_PEDRO` genera un `charges` row en el propio `GARCIA_PEDRO` con `collected=true` y `comments='Cobrado vía sfcom'`. Significa: "este dinero ya fue cobrado, vía sfcom". El cobro final automático del cliente real queda en 0€ (o el saldo correcto si hay otras reservas no-sfcom del mismo cliente).
+
+**Ángulo 2 — Canal sfcom:** existe un cliente `SFCOM` en la tabla `clients` que representa a Hilario/la tienda. Al abrirlo en formulario.html, el sistema muestra una **fila virtual** (`SFCOM_CANAL`) que agrega todas las ventas WEB% activas, y genera un "Cobro final" real en `charges` bajo `client_id='SFCOM'` por el total acumulado. Ese es el importe que Paula le debe facturar a Hilario.
+
+Estos dos ángulos representan el mismo dinero visto desde perspectivas distintas. No se suman en ningún KPI: los KPIs del panel excluyen explícitamente los `charges` de `client_id='SFCOM'`.
+
+---
+
+#### Base de datos: qué existe y qué significa
+
+**Tabla `clients`:**
+- Fila `id='SFCOM', name='Canal sfcom (tienda.sanfermin.com)'`. Creada manualmente en jun 2026.
+
+**Tabla `charges` — dos capas de registros sfcom:**
+
+Capa A — cargos en clientes reales, uno por reserva sfcom:
+```
+client_id   = el cliente real (GARCIA_PEDRO, EMPRESA_X, etc.)
+amount      = reserva.total_amount (importe neto de esa reserva)
+collected   = true
+collected_date = fecha de inserción (día en que se procesó el pedido sfcom)
+comments    = 'Cobrado vía sfcom'
+is_final    = false
+```
+Identificador: `comments = 'Cobrado vía sfcom'`. No hay FK directa a `reservations` (la tabla `charges` no tiene `reservation_id`). El vínculo se establece por `client_id + amount + collected_date` y, si se necesita auditar, por JOIN con `reservations WHERE origin_ref LIKE 'WEB%' AND client_id = charges.client_id`.
+
+Capa B — cobro final en cliente SFCOM:
+```
+client_id   = 'SFCOM'
+amount      = suma de total_amount de todas las reservas WEB% activas (no Canceladas)
+is_final    = true
+collected   = false hasta que Paula marque la liquidación como cobrada
+```
+Este registro se auto-crea y auto-actualiza cada vez que Paula abre el cliente SFCOM en formulario.html. Es el importe que se le facturará a Hilario. Puede quedar desactualizado entre visitas, pero se recalcula siempre al abrir.
+
+**SQL ejecutados en jun 2026 (ya aplicados, no repetir):**
+
+Creación del cliente SFCOM:
+```sql
+INSERT INTO clients (id, name) VALUES ('SFCOM', 'Canal sfcom (tienda.sanfermin.com)') ON CONFLICT DO NOTHING;
+```
+
+Cargos retroactivos para reservas sfcom existentes (capa A):
+```sql
+INSERT INTO charges (client_id, amount, due_date, collected, collected_date, comments, is_final)
+SELECT r.client_id, r.total_amount, CURRENT_DATE, true, CURRENT_DATE, 'Cobrado vía sfcom', false
+FROM reservations r
+WHERE r.origin_ref LIKE 'WEB%' AND r.status != 'Cancelada'
+ON CONFLICT (client_id, amount, due_date) DO NOTHING;
+```
+
+Corrección de cobros finales desajustados en clientes reales (necesario porque el cobro final de algunos clientes se había calculado antes de insertar los cargos retroactivos):
+```sql
+UPDATE charges c
+SET amount = (
+    SELECT COALESCE(SUM(r.total_amount), 0) -
+           COALESCE((SELECT SUM(c2.amount) FROM charges c2
+                     WHERE c2.client_id = c.client_id
+                       AND c2.is_final = false
+                       AND c2.collected = true), 0)
+    FROM reservations r
+    WHERE r.client_id = c.client_id AND r.status != 'Cancelada'
+)
+WHERE c.is_final = true AND c.invoice_number IS NULL
+  AND c.client_id != 'SFCOM';
+```
+
+Eliminación del cobro final erróneo de SFCOM (se creó automáticamente al abrir el cliente antes de que los datos estuvieran completos):
+```sql
+DELETE FROM charges WHERE client_id = 'SFCOM';
+```
+(El cobro final correcto se regenera automáticamente la próxima vez que Paula abre el cliente SFCOM.)
+
+---
+
+#### Código modificado — detalle de cada cambio
+
+**`formulario.js` — función `calcularTotalCobrarCliente`**
+
+Calcula el total que se le puede cobrar a un cliente (suma de reservas activas). Para SFCOM, no hay reservas propias; el total son todas las ventas WEB%:
+
+```js
+function calcularTotalCobrarCliente(clienteId) {
+    if (clienteId === 'SFCOM') {
+        return todasReservas
+            .filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+            .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    }
+    return todasReservas
+        .filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
+        .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+}
+```
+
+Sin este parche, SFCOM mostraría 0€ (no tiene reservas propias) y no habría base para calcular cobro final.
+
+---
+
+**`formulario.js` — función `cargarReservasCliente` (rama SFCOM)**
+
+Al cargar el cliente SFCOM, en lugar de leer sus reservas de `todasReservas` (que está vacío para SFCOM), construye una fila virtual en memoria y la usa como si fuera una reserva real:
+
+```js
+if (clienteId === 'SFCOM') {
+    const sfcomReservas = todasReservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+    const totalVentas   = sfcomReservas.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    const virtualRow = {
+        id: 'SFCOM_CANAL', client_id: 'SFCOM',
+        service_id: 'Canal sfcom', venue_id: `${sfcomReservas.length} reservas`,
+        slots: sfcomReservas.length, price_per_slot: null,
+        total_amount: totalVentas.toFixed(2),
+        status: 'Confirmada', proposal_number: null
+    }
+    reservasCliente = [virtualRow]
+    // ... (render de tabla, ocultar botones que no aplican, cargar cobros)
+    await cargarCobrosCliente(clienteId, reservasCliente)
+    return
+}
+```
+
+La fila virtual no existe en Supabase. Solo vive en memoria durante la sesión. Su único propósito es que `cargarCobrosCliente` detecte `reservasCliente.length > 0` y proceda a calcular el cobro final. La función `calcularTotalCobrarCliente('SFCOM')` que llama internamente devuelve el total real WEB%.
+
+Los botones Cancelar, Eliminar, Generar propuesta y Enviar bienvenida se ocultan mientras SFCOM está cargado — no tienen sentido sobre una fila virtual. Se restauran al cambiar a otro cliente en `limpiarCamposCliente`.
+
+---
+
+**`formulario.js` — función `cargarCobrosCliente` (guard)**
+
+Antes de crear el cobro final automático, comprueba que el importe es significativo:
+
+```js
+if (!hitosClienteTemp.find(h => h.esFinal)) {
+    if (cobroFinal >= 0.01) {
+        // crear y persistir cobro final
+    }
+}
+```
+
+Sin este guard, abrir cualquier cliente con reservas ya completamente pagadas (p.ej. un cliente sfcom con todas sus reservas marcadas como cobradas) crearía un cobro final de 0€ innecesario en la BD.
+
+---
+
+**`formulario.js` — función `renderTablaReservas` (null safety)**
+
+La fila virtual `SFCOM_CANAL` tiene `price_per_slot: null` (no aplica — es un agregado). El render original fallaba o mostraba `null€`. Fix:
+
+```js
+<td>${r.price_per_slot != null ? r.price_per_slot + '€' : '—'}</td>
+```
+
+---
+
+**`formulario.js` — función `limpiarCamposCliente`**
+
+Al cambiar de cliente, restaura los botones de acción que se habían ocultado al entrar en SFCOM:
+
+```js
+;['btnCancelar', 'btnEliminar', 'btnGenerarPropuesta', 'btnEnviarBienvenida'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = ''
+})
+```
+
+Sin esto, si Paula abría SFCOM y luego navegaba a otro cliente, esos botones seguían ocultos.
+
+---
+
+**`formulario.js` — handler `btnAnadirReserva` (carga automática de cargo sfcom)**
+
+Al guardar una reserva nueva con `origin_ref LIKE 'WEB%'`, inmediatamente después del INSERT en `reservations`, se crea el cargo en el cliente real:
+
+```js
+if (solicitudOriginRef?.startsWith('WEB')) {
+    await supabase.from('charges').insert({
+        client_id:      clienteActual.id,
+        amount:         plazas * precio,
+        due_date:       hoy,
+        collected:      true,
+        collected_date: hoy,
+        comments:       'Cobrado vía sfcom',
+        is_final:       false
+    })
+}
+```
+
+El importe es `plazas * precio` (mismo cálculo que `total_amount`, ya neto de comisión). `collected=true` porque el dinero ya fue cobrado por sfcom. Tras esto, `persistirCobrosCliente` recalcula el cobro final del cliente real: con el cargo sfcom como prepago, el cobro final queda en 0€ (o en el saldo de reservas no-sfcom si las hubiera).
+
+---
+
+**`formulario.js` — función `cambiarEstadoSeleccionadas` (limpieza al cancelar)**
+
+Cuando Paula cancela una reserva sfcom, el cargo `'Cobrado vía sfcom'` asociado quedaría huérfano si no se limpia. Eso haría que `persistirCobrosCliente` calculara un cobro final negativo para el cliente real. Fix: justo antes de que `persistirCobrosCliente` se ejecute, se eliminan los cargos sfcom de las reservas canceladas:
+
+```js
+if (nuevoEstado === 'Cancelada') {
+    const sfcomCanceladas = todasReservas.filter(r => ids.includes(r.id) && r.origin_ref?.startsWith('WEB'))
+    for (const r of sfcomCanceladas) {
+        await supabase.from('charges').delete()
+            .eq('client_id', r.client_id)
+            .eq('comments', 'Cobrado vía sfcom')
+            .gte('amount', parseFloat(r.total_amount) - 0.005)
+            .lte('amount', parseFloat(r.total_amount) + 0.005)
+    }
+}
+```
+
+El filtro por `amount` (con ±0.005€ de tolerancia por precisión float) es necesario porque no hay `reservation_id` en `charges`. Si el mismo cliente tiene varias reservas sfcom con el mismo importe en el mismo día, este delete podría borrar el cargo de la reserva equivocada (ver "Limitaciones conocidas" más abajo).
+
+---
+
+**`utils.js` — función `persistirCobrosCliente` (rama SFCOM + guard)**
+
+Dos cambios:
+
+1. Cálculo del total para SFCOM usa WEB% (igual que `calcularTotalCobrarCliente`):
+```js
+const total = clienteId === 'SFCOM'
+    ? todasReservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+                   .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    : todasReservas.filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
+                   .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+```
+
+2. Guard que evita crear cobro final de 0€ cuando no existe ninguno previo:
+```js
+if (!hitoFinal && cobroFinal < 0.01) return
+```
+(Si ya existe un hito final previo y el nuevo cálculo es 0, sí lo actualiza a 0 para reflejar la realidad.)
+
+---
+
+**`panel.js` — función `calcularEstadoFinanciero` (KPIs de cobros)**
+
+Los cargos de `client_id='SFCOM'` representan lo que Hilario debe a Paula — no son cobros pendientes al uso. Incluirlos en los KPIs globales causaría doble conteo: el mismo dinero aparece como `collected=true` en los clientes reales Y como pendiente en SFCOM. Fix:
+
+```js
+const chargesClientes = charges.filter(c => c.client_id !== 'SFCOM')
+const cobrosTotal    = chargesClientes.reduce((s, c) => s + parseFloat(c.amount), 0)
+const cobrado        = chargesClientes.filter(c => c.collected).reduce((s, c) => s + parseFloat(c.amount), 0)
+const pendienteCobro = cobrosTotal - cobrado
+```
+
+---
+
+**`panel.js` — función `calcularCashflow` (cashflow)**
+
+Mismo motivo: excluir SFCOM de las curvas "previsto" y "real" del cashflow:
+
+```js
+charges.filter(c => c.client_id !== 'SFCOM').forEach(c => { ... 'previsto' ... })
+charges.filter(c => c.collected && c.client_id !== 'SFCOM').forEach(c => { ... 'real' ... })
+```
+
+---
+
+**`panel.js` — función `verificarConsistenciaFinanciera` (verificación)**
+
+El bucle de consistencia por cliente compara `SUM(charges)` con `SUM(reservas activas)`. Para SFCOM, esta comparación no tiene sentido (sus `charges` representan el total WEB%, que no corresponde a sus propias reservas). Se excluye explícitamente:
+
+```js
+for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
+    if (id === 'SFCOM') continue
+    ...
+}
+```
+
+---
+
+#### Flujo completo por escenario
+
+**Pedido nuevo en sfcom:**
+1. `checkSfcomOrders` detecta el pedido → `registrarPedidosSfcom` → INSERT en `reservation_requests` con `source='WEB026_1090'`.
+2. Paula procesa la solicitud en bloque 0 de formulario.html → `btnAnadirReserva`.
+3. INSERT en `reservations` con `origin_ref='WEB026_1090'`, `client_id='GARCIA_PEDRO'`, `price_per_slot` = neto.
+4. Automáticamente: INSERT en `charges` con `client_id='GARCIA_PEDRO', collected=true, comments='Cobrado vía sfcom'`.
+5. `persistirCobrosCliente('GARCIA_PEDRO', ...)` recalcula el cobro final de GARCIA_PEDRO. Al tener ese cargo como prepago, el cobro final baja (a 0€ si solo tiene reservas sfcom, o al saldo restante si tiene también reservas directas).
+
+**Cancelación de una reserva sfcom:**
+1. Paula selecciona la reserva en bloque 4 → "Cancelar".
+2. `cambiarEstadoSeleccionadas` detecta `origin_ref LIKE 'WEB%'`.
+3. DELETE del `charges` con `comments='Cobrado vía sfcom'` y `amount ≈ total_amount` del cliente real.
+4. UPDATE de `reservations.status = 'Cancelada'`.
+5. `persistirCobrosCliente` recalcula el cobro final del cliente real correctamente (ya sin el prepago sfcom).
+
+**Paula abre el cliente SFCOM:**
+1. Autocomplete → 'SFCOM' → `cargarReservasCliente('SFCOM')`.
+2. El sistema filtra `todasReservas` por `origin_ref LIKE 'WEB%'` y `status != 'Cancelada'`.
+3. Construye la fila virtual `SFCOM_CANAL` con el recuento y total agregados.
+4. Muestra esa fila como si fuera una reserva del cliente.
+5. `cargarCobrosCliente('SFCOM', [virtualRow])` carga los hitos reales de SFCOM desde `charges`.
+6. `persistirCobrosCliente('SFCOM', todasReservas)` recalcula y upserta el cobro final en `charges` bajo `client_id='SFCOM'`.
+7. Paula ve en bloque 5 el cobro final actualizado. Puede añadir hitos parciales (señales, adelantos) y finalmente facturarle a Hilario.
+
+**Paula añade una nueva reserva directa (no sfcom):**
+Sin cambios en el flujo normal. `solicitudOriginRef` es null → no se crea cargo sfcom. `persistirCobrosCliente` calcula el cobro final normal.
+
+---
+
+#### Limitaciones conocidas y aceptadas
+
+**1. El cargo sfcom no tiene FK a la reserva.** `charges` no tiene campo `reservation_id`. El vínculo entre un cargo `'Cobrado vía sfcom'` y la reserva que lo origina es implícito: mismo `client_id`, mismo `amount`, misma `collected_date`. Si un cliente tiene dos reservas sfcom con el mismo importe exacto procesadas el mismo día, la UNIQUE constraint `(client_id, amount, due_date)` bloquearía la segunda inserción (ON CONFLICT DO NOTHING). En la práctica es improbable pero no imposible. Solución si ocurre: ajustar manualmente en Supabase.
+
+**2. La cancelación podría borrar el cargo equivocado.** Si el cliente tiene dos reservas sfcom con importe casi idéntico (diferencia < 0.005€), el DELETE por `amount ≈ total_amount` podría afectar a la reserva incorrecta. Mitigado porque en la práctica las reservas sfcom de un mismo cliente tienen precios distintos. Solución si ocurre: ajuste manual en Supabase.
+
+**3. El cobro final de SFCOM se queda obsoleto entre visitas.** Si entran nuevas reservas sfcom y Paula no abre el cliente SFCOM, el `charges` de `client_id='SFCOM'` con `is_final=true` refleja el total anterior. Se auto-corrige en la próxima apertura. No hay un mecanismo de actualización automática en background. Consecuencia: el importe mostrado en Supabase Dashboard puede ser incorrecto, pero el importe que ve Paula en el panel siempre es correcto (se recalcula al cargar).
+
+**4. Los cargos sfcom de clientes reales sí aparecen en la verificación de consistencia.** La verificación compara `SUM(charges)` con `SUM(reservas activas)` por cliente. Para un cliente solo-sfcom, los cargos sfcom (=total de sus reservas sfcom) y las reservas activas cuadran perfectamente → sin falsos positivos. Para un cliente mixto (tiene reservas directas Y sfcom), la suma de charges incluye tanto los cargos sfcom (`collected=true`) como el cobro final calculado sobre sus reservas directas → debe cuadrar igualmente. Esto se verificó con los datos reales en jun 2026.
+
+**5. Los KPIs del panel excluyen el importe pendiente de Hilario.** El "pendiente de cobro" en los KPIs excluye `client_id='SFCOM'`. Esto es intencional: ese dinero no es "por cobrar" en el sentido habitual; es una liquidación pendiente con un operador externo que se gestiona por factura separada. Si Paula quiere ver cuánto le debe Hilario, abre el cliente SFCOM.
+
+---
+
+#### Cómo facturar a Hilario
+
+1. Abrir formulario.html → buscar cliente `SFCOM`.
+2. El bloque 5 muestra el cobro final automático (= total de todas las ventas WEB% activas) y cualquier hito parcial que Paula haya añadido manualmente.
+3. Para facturar: pulsar "Facturar" en el hito deseado → se genera factura PDF en serie VSF como con cualquier otro cliente.
+4. Marcar como cobrado cuando Hilario transfiera el importe.
 
 ---
 
