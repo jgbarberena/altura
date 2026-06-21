@@ -1696,21 +1696,16 @@ Requiere conversación de diseño en claude.ai antes de escribir código.
 
 ---
 
-## 10. Deuda técnica: claridad de labels y textareas para Paula
+## 10. Claridad de labels y textareas para Paula ✅ (jun 2026)
 
-Paula gestiona el panel desde el móvil sin contexto técnico de cómo se usa cada campo en propuestas/asistente/catálogo público. Varios campos de texto libre del panel (sobre todo en `proveedores.js` / `formulario.js`, en los formularios de venue, servicio y disponibilidad) tienen labels genéricos ("Descripción", "Comentarios") que no indican: (a) dónde se usa ese texto de cara al cliente, (b) si es específico de un par venue+servicio o si cae a un fallback compartido por todos los días/proveedores de un mismo servicio, (c) qué pasa si se deja vacío.
+**Aplicado en `proveedores.html`, `proveedores.js` y `formulario.html`.**
 
-**Campos relevantes a revisar** (no exhaustivo — verificar en código real antes de tocar nada):
+**Campos "Comentarios" → "Notas internas"** (label + placeholder "Solo uso interno") en todos los campos puramente internos: proveedor, venue/balcón, disponibilidad, cliente y reserva. Deja claro que nunca llegan al cliente.
 
-`description` y `access_instructions` en el formulario de disponibilidad (`proveedores.js`): el texto se usa en propuestas, en el asistente de IA y en el catálogo público. Para servicios tipo "extra" (charla de corredor, aprender a correr, apartado, corralillos del gas, baile de la alpargata) NO tiene sentido rellenar esto por cada par venue+servicio — siempre cae al mismo contenido a nivel de servicio (mismo texto para todos los días/proveedores). El label debería advertir esto.
+**"Descripción del venue" → dinámica según tipo** (`labelAvailDesc` con `id`). Placeholder cambiado a "Va en propuestas, confirmaciones y catálogo web" para que quede claro que es texto de cara al cliente.
 
-`comments` en cliente/reserva/proveedor: NO se sincroniza ni se usa de cara al cliente en ningún sitio — es uso puramente interno. Debería quedar claro que nunca llega a un mensaje ni a una propuesta.
+**"venue" eliminado de toda la GUI de proveedores.** `_VENUE_LABELS` extendida con `desc`, `dlgTitulo`, `dlgId`, `dlgDir`, `toast` y `errorId` para los cuatro tipos (`balcon`, `barrera`, `guia`, `servicio_especial`). `_actualizarLabelsVenue` actualiza también `labelAvailDesc`. Nueva función `_actualizarLabelsDlgVenue` actualiza el diálogo de crear en tiempo real al cambiar el tipo. Toast de renombrar y mensaje de error de ID duplicado también usan el término correcto para cada tipo.
 
-El placeholder gris de los campos vacíos podría incluir una pista breve de qué tipo de contenido va ahí (ej. "Texto comercial: qué se ve, qué incluye, por qué merece la pena" vs. "Instrucciones logísticas: hora de llegada, cómo acceder").
+**Placeholder de `inputServicioDescription`** → "Descripción general del servicio (igual para todos los proveedores)", diferenciando claramente del campo específico del balcón.
 
-Campo `name` / `display_name` de venue vs. servicio: existe una convención ya establecida (servicio = categoría del evento, sin "Balcón"; venue = lugar físico, con "Balcón" si aplica) que no está documentada en ningún sitio visible para Paula.
-
-**Antes de implementar cualquier cambio de labels:**
-1. Revisar el código real de `proveedores.js`, `proveedores.html`, `formulario.js` y `formulario.html` tal como estén en ese momento — puede haber cambiado desde esta nota.
-2. Confirmar con el usuario los textos exactos de cada label antes de aplicarlos, no asumir redacción.
-3. No es una tarea de lógica, es de UX/redacción — bajo riesgo pero requiere revisión humana del resultado visual en el panel real.
+**Pendiente de revisión futura:** campos `comments` de `panel.html`, `solicitudes.html` y `tablas.html` — aplica la misma lógica "Notas internas / Solo uso interno" cuando se trabaje en esos paneles.
