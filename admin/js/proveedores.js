@@ -1590,11 +1590,11 @@ async function cargarServiciosProveedor(proveedorId, venueId) {
 function renderTablaServicios(proveedorId) {
     const cols = [
         { label: 'Servicio',     campo: 'service_id' },
+        { label: 'Reservadas',   campo: '_reservadas' },
         { label: 'Plazas',       campo: 'total_slots' },
         { label: 'Precio/plaza', campo: 'price_per_slot' },
         { label: 'Modelo',       campo: 'billing_model' },
         { label: 'Coste',        campo: '_coste' },
-        { label: 'Reservadas',   campo: '_reservadas' },
         { label: 'Clientes',     campo: '_clientes' },
     ]
 
@@ -1655,6 +1655,7 @@ function renderTablaServicios(proveedorId) {
         <tr data-disp-id="${d.id}" style="cursor:pointer">
             <td><input type="checkbox" class="chk-servicio"></td>
             <td>${d.service_id}</td>
+            <td>${d._reservadas > 0 ? d._reservadas : '—'}</td>
             <td>${d.total_slots}</td>
             <td>${fmt(d.price_per_slot)}</td>
             <td>${d.billing_model === 'consumption'
@@ -1663,7 +1664,6 @@ function renderTablaServicios(proveedorId) {
                 ? '<span style="color:var(--subtle)">Cuota fija</span>'
                 : 'Capacidad'}</td>
             <td>${fmt(d._coste)}</td>
-            <td>${d._reservadas > 0 ? d._reservadas : '—'}</td>
             <td style="font-size:11px">${d._clientesHTML || '—'}</td>
         </tr>`
     ).join('')
