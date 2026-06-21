@@ -103,17 +103,16 @@ inputId.addEventListener('focus', () => {
 })
 
 function mostrarSugerenciasCliente(val) {
-    const clientesVisibles = todosClientes.filter(c => c.id !== 'SFCOM')
     const coincidencias = val
-        ? buscarConPrioridad(clientesVisibles, val, ['id', 'name', 'company'])
-        : clientesVisibles
+        ? buscarConPrioridad(todosClientes, val, ['id', 'name', 'company'])
+        : todosClientes
 
     autoList.innerHTML = coincidencias.map(c =>
         `<div data-id="${c.id}">${c.id}</div>`
     ).join('')
     autoList.style.display = coincidencias.length > 0 ? 'block' : 'none'
 
-    const exacto = clientesVisibles.find(c => c.id === val)
+    const exacto = todosClientes.find(c => c.id === val)
     if (exacto) {
         cargarCliente(exacto)
     } else if (val) {
