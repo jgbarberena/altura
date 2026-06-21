@@ -1036,9 +1036,7 @@ El asistente ya puede redactar confirmaciones de reserva y recordatorios previos
 
 **Facturación canal sfcom.**
 
-Cuando sfcom vende, liquidan el neto. No hay mecanismo para generar facturas a sfcom ni gestionar el calendario de esos cobros. Dos opciones en análisis:
-- Opción A: cliente `SFCOM` en `clients` solo para facturación; las reservas quedan donde están.
-- Opción B: migrar todas las reservas con `origin_ref LIKE 'WEB%'` al cliente `SFCOM`.
+Cuando sfcom vende, liquidan el neto. Ver Fase 8 para el diseño completo y lo pendiente. Las reservas sfcom (`origin_ref LIKE 'WEB%'`) quedan en el cliente real; el cargo automático `'Cobrado vía sfcom'` registra el cobro ya realizado. Cliente virtual `SFCOM` pendiente de crear en Dashboard.
 
 ---
 
@@ -1675,13 +1673,32 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 
 ---
 
-### Fase 8 — 🔲 Facturación canal sfcom
+### Fase 8 — ⚙️ Facturación canal sfcom (parcialmente implementada)
 
-Decidir entre dos opciones y ejecutar:
-- Opción A: cliente `SFCOM` en `clients` solo para facturación; las reservas quedan donde están.
-- Opción B: migrar todas las reservas con `origin_ref LIKE 'WEB%'` al cliente `SFCOM`.
+Diseño decidido: Opción A — cliente `SFCOM` en `clients` como entidad virtual, las reservas quedan en los clientes reales. No hay columna nueva en `charges`; los cargos sfcom se identifican por `comments = 'Cobrado vía sfcom'` (y opcionalmente por JOIN con `reservations.origin_ref LIKE 'WEB%'`).
 
-Requiere conversación de diseño en claude.ai antes de escribir código.
+**Implementado:**
+- `persistirCobrosCliente` (utils.js): no crea "Cobro final 0€" cuando el total ya está cubierto por prepagos (`cobroFinal < 0.01 && !hitoFinal → return`).
+- `cargarCobrosCliente` (formulario.js): ídem — no añade ni persiste cobro final en memoria cuando `cobroFinal < 0.01`.
+- Al guardar una reserva sfcom (origin_ref LIKE 'WEB%'), se crea automáticamente un `charges` record: `collected=true, comments='Cobrado vía sfcom', is_final=false` por el importe exacto de la reserva.
+- El cliente `SFCOM` está filtrado del autocomplete de clientes en formulario.js.
+
+**Pendiente:**
+- **Manual:** crear cliente `SFCOM` en Supabase Dashboard (SQL Editor):
+  ```sql
+  INSERT INTO clients (id, name) VALUES ('SFCOM', 'Canal sfcom (tienda.sanfermin.com)') ON CONFLICT DO NOTHING;
+  ```
+- **Retroactivo:** añadir cargos a las reservas sfcom existentes (SQL Editor):
+  ```sql
+  INSERT INTO charges (client_id, amount, due_date, collected, collected_date, comments, is_final)
+  SELECT r.client_id, r.total_amount, CURRENT_DATE, true, CURRENT_DATE, 'Cobrado vía sfcom', false
+  FROM reservations r
+  WHERE r.origin_ref LIKE 'WEB%' AND r.status != 'Cancelada'
+  ON CONFLICT (client_id, amount, due_date) DO NOTHING;
+  ```
+  Verificar resultado: `SELECT client_id, COUNT(*), SUM(amount) FROM charges WHERE comments = 'Cobrado vía sfcom' GROUP BY client_id;`
+- **"Resumen canal" block:** vista especial cuando se carga cliente SFCOM en formulario.html con totales WEB% (diferida — bajo demanda).
+- **Liquidación con Hilario:** facturas/charges del cliente SFCOM para registrar lo que sfcom nos debe (diferido).
 
 ---
 

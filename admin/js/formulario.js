@@ -103,16 +103,17 @@ inputId.addEventListener('focus', () => {
 })
 
 function mostrarSugerenciasCliente(val) {
+    const clientesVisibles = todosClientes.filter(c => c.id !== 'SFCOM')
     const coincidencias = val
-        ? buscarConPrioridad(todosClientes, val, ['id', 'name', 'company'])
-        : todosClientes
+        ? buscarConPrioridad(clientesVisibles, val, ['id', 'name', 'company'])
+        : clientesVisibles
 
     autoList.innerHTML = coincidencias.map(c =>
         `<div data-id="${c.id}">${c.id}</div>`
     ).join('')
     autoList.style.display = coincidencias.length > 0 ? 'block' : 'none'
 
-    const exacto = todosClientes.find(c => c.id === val)
+    const exacto = clientesVisibles.find(c => c.id === val)
     if (exacto) {
         cargarCliente(exacto)
     } else if (val) {
@@ -1209,6 +1210,19 @@ btnAnadir.addEventListener('click', async () => {
         const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
         todasReservas = reservasActualizadas
 
+        if (solicitudOriginRef?.startsWith('WEB')) {
+            const { error: errChargeSfcom } = await supabase.from('charges').insert({
+                client_id:      clienteActual.id,
+                amount:         plazas * precio,
+                due_date:       hoy,
+                collected:      true,
+                collected_date: hoy,
+                comments:       'Cobrado vía sfcom',
+                is_final:       false
+            })
+            if (errChargeSfcom) console.error('Error al crear cargo sfcom:', errChargeSfcom.message)
+        }
+
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         const provIdNuevo = _getProviderIdFromVenue(venueId)
         if (provIdNuevo) await persistirPagosProveedor(supabase, provIdNuevo, todasReservas, disponibilidad)
@@ -1422,20 +1436,22 @@ async function cargarCobrosCliente(clienteId, reservas) {
     const cobroFinal = total - prepagos
 
     if (!hitosClienteTemp.find(h => h.esFinal)) {
-        // No existe en BBDD — crear y persistir inmediatamente
-        hitosClienteTemp.push({
-            esFinal:   true,
-            is_final:  true,
-            comments:  'Cobro final',
-            client_id: clienteId,
-            amount:    cobroFinal,
-            due_date:  fechaCobroDefault(),
-            collected: false
-        })
-        try {
-            await persistirHitosCliente(clienteId)
-        } catch (err) {
-            console.error('Error al crear cobro final automático:', err.message)
+        if (cobroFinal >= 0.01) {
+            // No existe en BBDD — crear y persistir inmediatamente
+            hitosClienteTemp.push({
+                esFinal:   true,
+                is_final:  true,
+                comments:  'Cobro final',
+                client_id: clienteId,
+                amount:    cobroFinal,
+                due_date:  fechaCobroDefault(),
+                collected: false
+            })
+            try {
+                await persistirHitosCliente(clienteId)
+            } catch (err) {
+                console.error('Error al crear cobro final automático:', err.message)
+            }
         }
     } else {
         const idx = hitosClienteTemp.findIndex(h => h.esFinal)

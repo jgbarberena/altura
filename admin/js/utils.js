@@ -166,6 +166,8 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
     const prepagos   = (charges ?? []).filter(c => !c.is_final).reduce((s, c) => s + parseFloat(c.amount), 0)
     const cobroFinal = total - prepagos
 
+    if (!hitoFinal && cobroFinal < 0.01) return
+
     if (!hitoFinal) {
         const { error } = await supabase.from('charges').insert({
             client_id: clienteId, amount: cobroFinal, due_date: fechaCobroDefault(),
