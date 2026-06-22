@@ -1,14 +1,14 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
-import { mostrarToast, verificarConsistenciaFinanciera } from './verificacion.js'
+import { mostrarToast, ejecutarVerificacionGlobal } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 import { crearModal } from './modal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor))
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacionGlobal(supabase, persistirCobrosCliente, persistirPagosProveedor))
 initSidebar()
 
 // ===== DATOS GLOBALES =====

@@ -1,11 +1,11 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
-import { verificarConsistenciaFinanciera } from './verificacion.js'
+import { ejecutarVerificacionGlobal } from './verificacion.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor))
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacionGlobal(supabase, persistirCobrosCliente, persistirPagosProveedor))
 initSidebar()
 
 const hoy = new Date().toISOString().split('T')[0]

@@ -3,11 +3,66 @@
 // Exporta las funciones de modal y toast para reutilizarlas en
 // formulario.js y sfcom-panel.js sin duplicar código.
 
-import { syncStockToSfcom } from './sfcom.js'
+import { syncStockToSfcom, verificarCoherencia } from './sfcom.js'
 import { crearModal } from './modal.js'
 
 // No importamos de utils.js — crearía dependencia circular (utils.js importa mostrarToast de aquí)
 const _fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
+
+function _computarFinanciero(charges, reservas, payments, disponibilidad, venues) {
+    const chargesTotales   = new Map()
+    const chargesHistorial = new Map()
+    for (const c of (charges ?? [])) {
+        chargesTotales.set(c.client_id, (chargesTotales.get(c.client_id) ?? 0) + parseFloat(c.amount || 0))
+        if (c.collected || c.invoice_number) chargesHistorial.set(c.client_id, true)
+    }
+    const reservasTotales = new Map()
+    for (const r of (reservas ?? [])) {
+        if (r.status === 'Cancelada') continue
+        reservasTotales.set(r.client_id, (reservasTotales.get(r.client_id) ?? 0) + parseFloat(r.total_amount || 0))
+    }
+    const problemasClientes = []
+    for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
+        if (id === 'SFCOM') continue
+        const c = Math.round((chargesTotales.get(id) ?? 0) * 100) / 100
+        const r = Math.round((reservasTotales.get(id) ?? 0) * 100) / 100
+        if (Math.abs(c - r) < 0.01) continue
+        problemasClientes.push({ id, enBD: c, deberiasSer: r, diff: Math.round((c - r) * 100) / 100,
+            esHuerfano: r === 0 && c > 0, tieneHistorial: chargesHistorial.get(id) ?? false })
+    }
+
+    const venueAProveedor = new Map((venues ?? []).map(v => [v.id, v.provider_id]))
+    const pagosTotales    = new Map()
+    for (const p of (payments ?? []))
+        pagosTotales.set(p.provider_id, (pagosTotales.get(p.provider_id) ?? 0) + parseFloat(p.amount || 0))
+    const costeTeorico = new Map()
+    for (const d of (disponibilidad ?? [])) {
+        const provId = venueAProveedor.get(d.venue_id)
+        if (!provId) continue
+        let coste = 0
+        if (d.billing_model === 'capacity') {
+            coste = (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneRes = (reservas ?? []).some(r =>
+                r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+            coste = tieneRes ? parseFloat(d.price_per_slot ?? 0) : 0
+        } else {
+            const slots = (reservas ?? [])
+                .filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+                .reduce((s, r) => s + r.slots, 0)
+            coste = slots * parseFloat(d.price_per_slot ?? 0)
+        }
+        costeTeorico.set(provId, (costeTeorico.get(provId) ?? 0) + coste)
+    }
+    const problemasProveedores = []
+    for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
+        const p = Math.round((pagosTotales.get(id) ?? 0) * 100) / 100
+        const t = Math.round((costeTeorico.get(id) ?? 0) * 100) / 100
+        if (Math.abs(p - t) < 0.01) continue
+        problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 100) / 100 })
+    }
+    return { problemasClientes, problemasProveedores }
+}
 
 // ─── Toast genérico ──────────────────────────────────────────────────────────
 
@@ -50,7 +105,8 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
     const tieneDiscrepanciasPendientes = discrepanciasPendientes.length > 0
     const tieneIdsMismatch             = (resultado.sfcom.idsMismatch?.length ?? 0) > 0
     const tieneFallos                  = (resultado.sfcom.fallos?.length ?? 0) > 0
-    const hayProblema                  = tieneErrores || tieneDiscrepancias || tieneIdsMismatch || tieneFallos
+    const tieneProblemasF              = !!opts.financial && ((opts.financial.problemasClientes?.length ?? 0) > 0 || (opts.financial.problemasProveedores?.length ?? 0) > 0)
+    const hayProblema                  = tieneErrores || tieneDiscrepancias || tieneIdsMismatch || tieneFallos || tieneProblemasF
 
     let secciones = ''
 
@@ -306,7 +362,42 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
             </div>`
     }
 
-    const colorTitulo = tieneErrores || tieneIdsMismatch
+    if (opts.financial) {
+        const { problemasClientes: pcF, problemasProveedores: ppF } = opts.financial
+        if (!tieneProblemasF) {
+            secciones += `
+                <div style="border-top:1px solid #f3f4f6;padding-top:12px">
+                    <div style="font-size:13px;color:#166534;display:flex;align-items:center;gap:6px">
+                        <span>✅</span> Cobros y pagos cuadran con las reservas activas
+                    </div>
+                </div>`
+        } else {
+            const hayHistorialF = pcF.some(p => p.tieneHistorial)
+            const filaF = ({ tipo, id, diff, tieneHistorial }) => `<tr>
+                <td style="font-size:12px">${tipo}</td>
+                <td style="font-size:12px">${id}${tieneHistorial ? ' ⚠️' : ''}</td>
+                <td style="font-size:12px;color:${diff > 0 ? '#92400e' : '#991b1b'}">${diff > 0 ? '+' : ''}${_fmt(diff)}</td>
+            </tr>`
+            secciones += `
+                <div style="border-top:1px solid #f3f4f6;padding-top:12px">
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+                                color:#991b1b;font-weight:700;margin-bottom:8px">
+                        ⚠️ Inconsistencias financieras
+                    </div>
+                    <table class="tabla-admin" style="width:100%;margin-bottom:8px">
+                        <thead><tr><th>Tipo</th><th>ID</th><th>Diferencia</th></tr></thead>
+                        <tbody>
+                            ${pcF.map(p => filaF({ ...p, tipo: 'Cliente' })).join('')}
+                            ${ppF.map(p => filaF({ ...p, tipo: 'Proveedor' })).join('')}
+                        </tbody>
+                    </table>
+                    ${hayHistorialF ? `<div style="font-size:12px;color:#92400e;margin-bottom:8px">⚠️ Hay cobros ya cobrados o facturados — revisa antes de corregir.</div>` : ''}
+                    ${opts.financial.onVerDetalles ? `<button id="btn-ver-financiero" class="btn btn-secondary" style="font-size:12px">Ver detalles y corregir →</button>` : ''}
+                </div>`
+        }
+    }
+
+    const colorTitulo = tieneErrores || tieneIdsMismatch || tieneProblemasF
         ? '#991b1b'
         : tieneDiscrepancias
             ? '#92400e'
@@ -315,12 +406,12 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
                 : tieneFallos
                     ? '#92400e'
                     : '#166534'
-    const iconoTitulo = tieneErrores || tieneIdsMismatch ? '❌'
-        : tieneDiscrepancias                             ? '⚠️'
-        : tieneDiscrepanciasPendientes                   ? 'ℹ️'
-        : tieneFallos                                    ? '⚠️'
+    const iconoTitulo = tieneErrores || tieneIdsMismatch || tieneProblemasF ? '❌'
+        : tieneDiscrepancias                                                 ? '⚠️'
+        : tieneDiscrepanciasPendientes                                       ? 'ℹ️'
+        : tieneFallos                                                        ? '⚠️'
         : '✅'
-    const textoTitulo = (tieneErrores || tieneIdsMismatch || tieneDiscrepancias)
+    const textoTitulo = (tieneErrores || tieneIdsMismatch || tieneDiscrepancias || tieneProblemasF)
         ? 'Inconsistencias detectadas'
         : tieneDiscrepanciasPendientes
             ? 'Pedidos sfcom pendientes de incorporar'
@@ -348,6 +439,13 @@ export function mostrarModalVerificacion(resultado, supabase, onReverify, opts =
         </div>`
 
     panel.querySelector('#btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
+
+    if (tieneProblemasF && opts.financial?.onVerDetalles) {
+        panel.querySelector('#btn-ver-financiero')?.addEventListener('click', () => {
+            overlay.remove()
+            opts.financial.onVerDetalles()
+        })
+    }
 
     if (tieneDiscrepancias) {
         panel.querySelector('#btn-actualizar-stock-sfcom').addEventListener('click', async function () {
@@ -440,60 +538,7 @@ export async function verificarConsistenciaFinanciera(supabase, persistirCobrosC
         supabase.from('venues').select('id, provider_id')
     ])
 
-    const chargesTotales   = new Map()
-    const chargesHistorial = new Map()
-    for (const c of (charges ?? [])) {
-        chargesTotales.set(c.client_id, (chargesTotales.get(c.client_id) ?? 0) + parseFloat(c.amount || 0))
-        if (c.collected || c.invoice_number) chargesHistorial.set(c.client_id, true)
-    }
-    const reservasTotales = new Map()
-    for (const r of (reservas ?? [])) {
-        if (r.status === 'Cancelada') continue
-        reservasTotales.set(r.client_id, (reservasTotales.get(r.client_id) ?? 0) + parseFloat(r.total_amount || 0))
-    }
-    const problemasClientes = []
-    for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
-        if (id === 'SFCOM') continue
-        const c = Math.round((chargesTotales.get(id) ?? 0) * 100) / 100
-        const r = Math.round((reservasTotales.get(id) ?? 0) * 100) / 100
-        if (Math.abs(c - r) < 0.01) continue
-        problemasClientes.push({ id, enBD: c, deberiasSer: r,
-            diff: Math.round((c - r) * 100) / 100,
-            esHuerfano: r === 0 && c > 0,
-            tieneHistorial: chargesHistorial.get(id) ?? false })
-    }
-
-    const venueAProveedor = new Map((venues ?? []).map(v => [v.id, v.provider_id]))
-    const pagosTotales    = new Map()
-    for (const p of (payments ?? []))
-        pagosTotales.set(p.provider_id, (pagosTotales.get(p.provider_id) ?? 0) + parseFloat(p.amount || 0))
-
-    const costeTeorico = new Map()
-    for (const d of (disponibilidad ?? [])) {
-        const provId = venueAProveedor.get(d.venue_id)
-        if (!provId) continue
-        let coste = 0
-        if (d.billing_model === 'capacity') {
-            coste = (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
-        } else if (d.billing_model === 'fixed') {
-            const tieneRes = (reservas ?? []).some(r =>
-                r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
-            coste = tieneRes ? parseFloat(d.price_per_slot ?? 0) : 0
-        } else {
-            const slots = (reservas ?? [])
-                .filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
-                .reduce((s, r) => s + r.slots, 0)
-            coste = slots * parseFloat(d.price_per_slot ?? 0)
-        }
-        costeTeorico.set(provId, (costeTeorico.get(provId) ?? 0) + coste)
-    }
-    const problemasProveedores = []
-    for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
-        const p = Math.round((pagosTotales.get(id) ?? 0) * 100) / 100
-        const t = Math.round((costeTeorico.get(id) ?? 0) * 100) / 100
-        if (Math.abs(p - t) < 0.01) continue
-        problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 100) / 100 })
-    }
+    const { problemasClientes, problemasProveedores } = _computarFinanciero(charges, reservas, payments, disponibilidad, venues)
 
     if (problemasClientes.length === 0 && problemasProveedores.length === 0) {
         mostrarToast('✓ Consistencia financiera verificada', 'var(--accent-ok)')
@@ -559,4 +604,37 @@ export async function verificarConsistenciaFinanciera(supabase, persistirCobrosC
             setTimeout(() => location.reload(), 1500)
         }
     })
+}
+
+// ─── Verificación global (botón manual) ──────────────────────────────────────
+// Ejecuta verificarCoherencia + consistencia financiera en paralelo y muestra
+// un único modal con ambos resultados. Siempre abre modal, nunca toast.
+
+export async function ejecutarVerificacionGlobal(supabase, persistirCobrosCliente, persistirPagosProveedor) {
+    const [
+        { data: charges },
+        { data: reservas },
+        { data: payments },
+        { data: disponibilidad },
+        { data: venues },
+        resultado
+    ] = await Promise.all([
+        supabase.from('charges').select('client_id, amount, collected, invoice_number'),
+        supabase.from('reservations').select('client_id, total_amount, status, venue_id, service_id, slots'),
+        supabase.from('payments').select('provider_id, amount'),
+        supabase.from('availability').select('venue_id, service_id, billing_model, total_slots, price_per_slot'),
+        supabase.from('venues').select('id, provider_id'),
+        verificarCoherencia(supabase, { checkVariationNames: false })
+    ])
+
+    const financialData = _computarFinanciero(charges, reservas, payments, disponibilidad, venues)
+
+    mostrarModalVerificacion(resultado, supabase,
+        () => ejecutarVerificacionGlobal(supabase, persistirCobrosCliente, persistirPagosProveedor),
+        {
+            financial: {
+                ...financialData,
+                onVerDetalles: () => verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor)
+            }
+        })
 }
