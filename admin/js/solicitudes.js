@@ -831,7 +831,7 @@ function _initLogListeners(sol) {
     })
 }
 
-function _preFillBorradorSiVacio(sol) {
+async function _preFillBorradorSiVacio(sol) {
     if (Array.isArray(sol.proposal_draft) && sol.proposal_draft.length > 0) return
     if (!sol.level && !sol.service_id) return
     const servicios = _serviciosUnicos()
