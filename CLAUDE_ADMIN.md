@@ -946,13 +946,9 @@ Resuelto en jun 2026. `filaEvento` y `filaProveedor` en `panel.js` tienen ahora 
 
 Campo `inputServicioImageUrl` añadido en la sección "Info del servicio" (`<details id="detailsServicioInfo">`). Se guarda vía `guardarDescripcionServicio` (autosave por `change`) y también en `btnGuardarServicio`. El auto-fill al guardar la primera foto (opción B) sigue pendiente como mejora futura — ver Fase 6 §9.
 
-**Deuda pendiente — `services.comments` obsoleta.**
+**✅ RESUELTO — `services.comments` eliminada de la BD.**
 
-El campo `services.comments` existe en la BD pero el panel dejó de usarlo: el `inputServicioComments` fue repropuesto para guardar `availability.comments`. La columna puede eliminarse:
-```sql
-ALTER TABLE services DROP COLUMN comments;
-```
-Antes de ejecutar, verificar que ninguna función SQL, trigger o vista la referencie. En el código JS ya no se usa (`guardarDescripcionServicio`, `btnGuardarServicio`, `guardarServicioNuevo` actualizadas).
+La columna fue eliminada con `ALTER TABLE services DROP COLUMN comments`. El `inputServicioComments` en proveedores.js ya guardaba en `availability.comments`, no en `services.comments`.
 
 ---
 
@@ -1042,7 +1038,7 @@ _E. Mantener el orden checkSfcomOrders → verificarCoherencia._ El código de `
 
 **Pendiente — consolidar lógica de matching sfcom:** `importarCanceladosSfcom` en `sfcom.js` duplica el matching de producto de `registrarPedidosSfcom` en `formulario.js` (búsqueda por nombre, desambiguación por día, búsqueda por IDs). La diferencia real es el status, el tratamiento del lead y la ausencia de modales. Objetivo: extraer el matching a `_resolverProductoSfcom(li, sfcomListings)` → `{ serviceId, venueId, levelToSave }` y que ambas lo consuman.
 
-**Pendiente — `created_at` con fecha real del pedido para sfcom confirmados:** los cancelados ya usan `pedido.fecha` (`order.date_created`). Los confirmados (`registrarPedidosSfcom` en `formulario.js`) siguen usando la fecha de importación. Añadir `created_at: pedido.fecha || undefined` al INSERT de `registrarPedidosSfcom`.
+**✅ RESUELTO — `created_at` con fecha real del pedido para sfcom confirmados (jun 2026).** Añadido `created_at: pedido.fecha || undefined` al INSERT de `registrarPedidosSfcom` en `formulario.js`. Ahora tanto confirmados como cancelados usan la fecha real del pedido sfcom.
 
 **Pendiente — fecha de solicitud en leads web:** las solicitudes que entran por el formulario web tienen `created_at = NOW()` (momento de inserción), no la fecha en que el cliente lo envió. Evaluar si el webhook/edge function puede pasar la fecha de envío, o si la diferencia es siempre despreciable.
 
@@ -1206,43 +1202,11 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ---
 
-**Decisión pendiente — operador `??` sobre campos de texto de Supabase.**
+**✅ RESUELTO — `valorO` y `esVacio` en `utils.js` (jun 2026).**
 
-El operador `??` (nullish coalescing) en JavaScript solo activa el fallback cuando el valor es `null` o `undefined`. Una cadena vacía `''` o una cadena de espacios `'   '` se trata como valor válido y no activa el fallback. Cualquier campo de texto que se haya guardado como `''` en Supabase (en lugar de `NULL`) hará que un patrón tipo `campo ?? fallback` muestre un string vacío en la UI en lugar de caer al fallback.
+`esVacio(v)` devuelve true si `v` es null, undefined o cadena que al recortar queda vacía. `valorO(v, fallback)` devuelve el valor recortado si tiene contenido, o el fallback en caso contrario — equivalente al patrón `||` pero seguro ante números y booleanos.
 
-**Caso confirmado en producción:** `venues.display_name` de `DAVID_UBEDA` estaba guardado como `''`. `propuesta.js:231` tiene `venue.display_name ?? svc.name ?? r.venue_id`. El `??` no activaba el fallback al `svc.name`, y la propuesta mostraba el nombre de venue en blanco.
-
-**Recomendación:** tratar como "vacío" cualquier valor que sea `null`, `undefined`, o cadena que al recortarse da `''`. En texto para display, esto se consigue con el operador `||` en lugar de `??` (ya que `''` es falsy en JS y `||` sí activa el fallback). La diferencia: `??` protege frente a `0` y `false`; `||` los trata como falsy. Para campos de texto donde `0` nunca es un valor esperado, `||` es más correcto.
-
-**Función propuesta para `utils.js`** (no implementar hasta decidir):
-```js
-// Devuelve v si tiene contenido tras recortar, o fallback en caso contrario
-export function valorO(v, fallback) {
-    return (v == null || String(v).trim() === '') ? fallback : v
-}
-```
-Estilo consistente con `fechaCobroDefault`, `normalizarId`, etc. Uso: `valorO(venue.display_name, svc.name ?? r.venue_id)`.
-
-**Fuente del problema (capa de persistencia):** los inputs de texto en el panel pueden guardar `''` cuando el usuario borra el contenido y sale sin resetear a `null`. La solución de raíz es convertir `''` a `null` al guardar (con algo como `campo: input.value.trim() || null`), pero eso requiere revisar todos los autosaves. La función `valorO` es la alternativa para la capa de presentación, sin tocar la persistencia.
-
-**Sitios concretos donde aplicar `valorO` supondría mejora real** (verificados jun 2026):
-
-| Archivo | Línea aprox. | Patrón actual | Riesgo |
-|---|---|---|---|
-| `propuesta.js` | 231, 291 | `venue.display_name ?? svc.name ?? r.venue_id` | Alto — visible en PDF al cliente |
-| `propuesta.js` | 372 | `venue.display_name ?? svc.name ?? r.service_id` | Alto — visible en PDF al cliente |
-| `propuesta.js` | 148 | `_cliente.company ?? _cliente.name ?? _cliente.id` | Alto — cabecera del PDF |
-| `propuesta.js` | 149 | `_cliente.name ?? ''` | Medio |
-| `propuesta.js` | 150 | `_cliente.address ?? ''` | Medio |
-| `propuesta.js` | 834 | `(_cliente.company ?? _cliente.name ?? _cliente.id)` (nombre de archivo) | Bajo |
-| `factura.js` | 83, 177, 348, 720 | `_cliente.company ?? _cliente.name ?? _cliente.id` | Alto — cabecera del PDF |
-| `sfcom-panel.js` | — | ~~`venue?.display_name ?? r.venue_id ?? '—'`~~ | ✅ RESUELTO — tabla reservas ahora muestra `r.venue_id` directamente (jun 2026) |
-| `sfcom-panel.js` | — | ~~`d.venue_display_name ?? d.venue_id ?? '—'`~~ | ✅ RESUELTO — tabla listings ahora muestra `d.venue_id` directamente (jun 2026) |
-| `formulario.js` | 942, 961, 967, 1009 | `srv?.name ?? r.service_id` | Bajo — `services.name` difícilmente vacío |
-
-Patrón `campo ?? ''` en relleno de inputs (ej. `input.value = cliente.name ?? ''`) es correcto — un input con `''` muestra el campo vacío, que es el comportamiento esperado.
-
-**Datos verificados como limpios (jun 2026):** `venues.display_name` sin cadenas vacías tras corregir `DAVID_UBEDA` a `NULL`. Las tablas `clients`, `providers` y `reservations` no son verificables con anon key; asumidas limpias hasta evidencia contraria.
+Aplicados en `propuesta.js` (display_name de venue, nombre/dirección/empresa del cliente, nombre del archivo PDF), `factura.js` (cabecera del PDF, NIF, dirección), y `sfcom-panel.js`. La raíz del problema (`''` guardado en BD en lugar de NULL) no se ha corregido en la capa de persistencia — se asume limpio para los campos afectados.
 
 ---
 
@@ -1339,8 +1303,7 @@ El botón "✅ Procesado" en la tabla sfcom del bloque 0 actúa directamente. Si
 **`_alUsarBoton` en el asistente marca el mensaje como enviado aunque Paula cierre el correo sin enviar (`asistente.js:346-354`).**
 Al pulsar "Enviar por correo", se abre `mailto:` y simultáneamente se registra en el log como `<Paula>` y la solicitud pasa a `respuesta_enviada`. Si Paula cierra Outlook sin enviar, el log queda con un mensaje "enviado" que el cliente nunca recibió. No hay forma de revertirlo sin editar el log manualmente.
 
-**Falta `asunto` en el `mailto:` generado por el asistente (`asistente.js:327`, `utils.js:374`).**
-La llamada a `mostrarOpcionesEnvio` desde `asistente.js` no pasa el parámetro `asunto`. El enlace `mailto:` se abre sin subject. El cliente recibe un correo sin asunto.
+**✅ RESUELTO — `asunto` añadido al `mailto:` del asistente (jun 2026).** Las dos llamadas a `mostrarOpcionesEnvio` en `asistente.js` pasan ahora `asunto: 'San Fermín 2026 · tu reserva'`.
 
 **`btnEliminarServicio`: DELETE de proveedor sin manejar error de FK (`proveedores.js:1545-1623`).**
 Al eliminar todos los servicios de un proveedor, aparece `confirm("¿Eliminar también el proveedor?")` que ejecuta DELETE en `providers`. Si el proveedor tiene otros venues con reservas activas, el DELETE fallará por FK, pero el código no maneja explícitamente ese error. La UI queda en estado inconsistente.
@@ -1366,8 +1329,16 @@ Si dos filas del bulk insert tienen el mismo `serviceId`, colisionan con UNIQUE(
 **`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada (`sfcom.js:92-95`).**
 `return result?.stock ?? {}`. Si la API responde con un JSON malformado o un error con status 200, devuelve objeto vacío. El consumidor ve todos los availability como `fallos` pero el error real (API rota) no se muestra.
 
-**`importarCanceladosSfcom`: la dedup puede ocultar una segunda cancelación del mismo cliente (`sfcom.js:1354-1372`).**
-La dedup usa email+phone+nombre. Si el mismo email cancela dos productos distintos (ej. ENCIERRO_7 y CHUPINAZO_6) simultáneamente, el segundo lead se descarta por considerarse duplicado del primero. Fix: incluir `origin_ref` del pedido en la dedup.
+**✅ RESUELTO — `importarCanceladosSfcom` dedup rediseñada (jun 2026).**
+
+La dedup antigua usaba solo email+phone+nombre+service_id, por lo que un segundo cancelado del mismo cliente para distinto service/venue/día quedaba también descartado.
+
+Nueva lógica (sfcom.js): pre-fetch único de `leadsExistentes` antes del bucle. Por cada pedido, busca lead existente con mismo cliente + mismo service_id + mismo venue_id + mismo day. Si existe:
+- Mismas plazas → skip (exacto).
+- Plazas distintas → si este pedido es más reciente (por `pedido.fecha`), actualiza slots + price_per_slot + proposal_draft del lead existente; si es más antiguo, skip.
+- Si service/venue/day difieren → no es duplicado, se crea lead nuevo.
+
+Eliminado el query per-iteration; ahora es O(1) contra array en memoria.
 
 **El parseo de `---BORRADOR---` falla silenciosamente con JSON inválido generado por Claude (`asistente.js:299-313`).**
 Si Claude devuelve JSON malformado en el bloque `---BORRADOR---`, `borradorDraft = null` sin warning visible para Paula. El mensaje al cliente sí se muestra, pero el borrador queda sin actualizar en Supabase.
@@ -1388,8 +1359,7 @@ Cuando el hito final ya está facturado y hay un cambio, dispara `alert()` bloqu
 
 #### Medio — edge cases que ocurrirán con el tiempo
 
-**`_preFillBorradorSiVacio` no usa `await` en el update a Supabase (`solicitudes.js:861-864`).**
-`supabase.from('reservation_requests').update(...).eq('id', sol.id)` sin `await`. Si el update falla, la memoria y la BD divergen silenciosamente.
+**✅ RESUELTO — `_preFillBorradorSiVacio` usa `await` en el update a Supabase (jun 2026).** Añadido `await` al `supabase.from('reservation_requests').update(...)` en `solicitudes.js:865`.
 
 **`_renderBorrador` re-renderiza el DOM entero en cada cambio, perdiendo el foco del input (`solicitudes.js:615-617`, `658`, `688`).**
 Cada cambio en una fila llama a `rebind()` que recrea todo el DOM. Con inputs numéricos, Paula puede perder el foco al escribir rápido. Fix: aplicar cambios in-place para inputs numéricos sin re-renderizar.

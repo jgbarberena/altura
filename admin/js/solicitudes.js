@@ -862,7 +862,7 @@ function _preFillBorradorSiVacio(sol) {
         price:              precioN,
         catalogo_url:       catUrl
     }]
-    supabase.from('reservation_requests').update({ proposal_draft: sol.proposal_draft }).eq('id', sol.id)
+    await supabase.from('reservation_requests').update({ proposal_draft: sol.proposal_draft }).eq('id', sol.id)
     const idx = _solicitudesActuales.findIndex(s => s.id === sol.id)
     if (idx !== -1) _solicitudesActuales[idx].proposal_draft = sol.proposal_draft
 }

@@ -1319,6 +1319,11 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
 
     const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
 
+    const { data: leadsExistentes } = await supabase
+        .from('reservation_requests')
+        .select('id, client_email, client_phone, client_name, service_id, venue_id, day, slots, created_at')
+        .eq('status', 'cancelada_sfcom')
+
     for (const pedido of pedidos) {
         const li = pedido.productos?.[0]
 
@@ -1352,29 +1357,48 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
             levelToSave = nombreExtraido || li.nombre || null
         }
 
-        if (serviceId) {
-            const { data: existsCheck } = await supabase
-                .from('reservation_requests')
-                .select('client_email, client_phone, client_name')
-                .eq('service_id', serviceId)
-                .eq('status', 'cancelada_sfcom')
-            const email  = (pedido.cliente.email   || '').toLowerCase()
-            const phone  = pedido.cliente.telefono || ''
-            const nombre = pedido.cliente.nombre   || ''
-            const esDupe = (existsCheck ?? []).some(r =>
-                (email  && r.client_email?.toLowerCase() === email)  ||
-                (phone  && r.client_phone               === phone)   ||
-                (nombre && r.client_name                === nombre)
-            )
-            if (esDupe) {
-                console.log(`[sfcom_c] Dedup: ${pedido.origin_ref} omitido (mismo cliente + servicio ${serviceId})`)
-                continue
-            }
-        }
-
         const totalBruto      = parseFloat(pedido.total ?? 0)
         const slots           = li?.cantidad ?? 1
         const precioSlotBruto = slots > 0 ? totalBruto / slots : totalBruto
+        const dia             = li ? extraerDia(li.nombre) : null
+
+        if (serviceId) {
+            const email  = (pedido.cliente.email   || '').toLowerCase().trim()
+            const phone  = pedido.cliente.telefono || ''
+            const nombre = pedido.cliente.nombre   || ''
+            const leadDupe = (leadsExistentes ?? []).find(r =>
+                r.service_id === serviceId &&
+                r.venue_id   === venueId   &&
+                r.day        === dia        &&
+                ((email  && r.client_email?.toLowerCase().trim() === email) ||
+                 (phone  && r.client_phone === phone) ||
+                 (nombre && r.client_name  === nombre))
+            )
+            if (leadDupe) {
+                if (leadDupe.slots !== slots) {
+                    const fechaPedido = pedido.fecha ? new Date(pedido.fecha) : new Date()
+                    const fechaLead   = new Date(leadDupe.created_at)
+                    if (fechaPedido >= fechaLead) {
+                        const proposalActualizado = (serviceId || venueId) ? [{
+                            service_id: serviceId,
+                            venue_id:   venueId,
+                            day:        dia,
+                            slots:      slots || null,
+                            price:      precioSlotBruto || null
+                        }] : null
+                        await supabase.from('reservation_requests')
+                            .update({ slots, price_per_slot: precioSlotBruto, proposal_draft: proposalActualizado })
+                            .eq('id', leadDupe.id)
+                        console.log(`[sfcom_c] Dedup: ${pedido.origin_ref} omitido (plazas actualizadas a ${slots})`)
+                    } else {
+                        console.log(`[sfcom_c] Dedup: ${pedido.origin_ref} omitido (lead existente más reciente)`)
+                    }
+                } else {
+                    console.log(`[sfcom_c] Dedup: ${pedido.origin_ref} omitido (exacto)`)
+                }
+                continue
+            }
+        }
         const hoy = new Date()
         const dd  = String(hoy.getDate()).padStart(2, '0')
         const mm  = String(hoy.getMonth() + 1).padStart(2, '0')
@@ -1385,7 +1409,6 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
             precioSlotBruto > 0 && `Precio: ${Math.round(precioSlotBruto)}€/p`
         ].filter(Boolean).join(' · ')
 
-        const dia = li ? extraerDia(li.nombre) : null
         const proposal_draft = (serviceId || venueId) ? [{
             service_id: serviceId,
             venue_id:   venueId,

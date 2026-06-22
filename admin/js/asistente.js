@@ -318,6 +318,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                 mostrarOpcionesEnvio({
                     email:     solicitud.client_email,
                     telefono:  solicitud.client_phone,
+                    asunto:    'San Fermín 2026 · tu reserva',
                     getTexto:  () => elMsgFinal.value,
                     container: panel.querySelector('#asistente-botones'),
                     onUsado:   _alUsarBoton
@@ -496,6 +497,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                     mostrarOpcionesEnvio({
                         email:     solicitud.client_email,
                         telefono:  solicitud.client_phone,
+                        asunto:    'San Fermín 2026 · tu reserva',
                         getTexto:  () => elMsgFinal.value,
                         container: panel.querySelector('#asistente-botones'),
                         onUsado:   _alUsarBoton

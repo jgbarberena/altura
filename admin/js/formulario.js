@@ -2614,6 +2614,7 @@ async function registrarPedidosSfcom(pedidos) {
             service_id:     serviceId,
             comments:       pedido.cliente.comentarios || null,
             price_per_slot: precioSlotBruto,
+            created_at:     pedido.fecha || undefined,
             source:         pedido.origin_ref,
             status:         'nueva'
         })
