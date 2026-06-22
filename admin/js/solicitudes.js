@@ -1038,7 +1038,7 @@ function mostrarDetalle(sol) {
     // ── Leads cancelados sfcom ────────────────────────────────────────────────
     if (esCancelada) {
         document.getElementById('btnIntentarRecuperar')?.addEventListener('click', () => {
-            abrirAsistenteRespuesta(sol, 'recuperar_sfcom')
+            abrirModalRecuperarSfcom(sol)
         })
         document.getElementById('btnMarcarNueva')?.addEventListener('click', async () => {
             const { error } = await supabase.from('reservation_requests').update({ status: 'nueva' }).eq('id', sol.id)
@@ -1063,7 +1063,7 @@ function mostrarDetalle(sol) {
 
     // ── Recordatorio ─────────────────────────────────────────────────────────
     document.getElementById('btnEnviarRecordatorio')?.addEventListener('click', () => {
-        abrirAsistenteRespuesta(sol, 'recordatorio')
+        abrirModalRecordatorio(sol)
     })
 
     // ── Abrir asistente (non-sfcom) ──────────────────────────────────────────
@@ -1125,6 +1125,145 @@ function _calcularPrecioRef(sol) {
     if (!preciosDisp.length) return null
     const fallback = Math.round(Math.max(...preciosDisp) * 1.2)
     return `~${fallback}€/plaza`
+}
+
+// ===== MENSAJES DIRECTOS (SIN IA) =====
+
+const _IDIOMA_LABELS = { es: 'Español', en: 'English', fr: 'Français', it: 'Italiano', de: 'Deutsch' }
+const _IDIOMAS       = Object.keys(_IDIOMA_LABELS)
+
+function _idiomaDefault(sol) {
+    return _IDIOMAS.includes(sol.language) ? sol.language : 'es'
+}
+
+function _textoRecordatorio(nombre, lang) {
+    const n = nombre || 'cliente'
+    const t = {
+        es: `Hola ${n},\n\nTe escribo para hacerte un seguimiento. ¿Has tenido oportunidad de revisar lo que te propusimos? Quedo a tu disposición para cualquier pregunta.\n\nUn saludo,\nPaula`,
+        en: `Hi ${n},\n\nI'm just following up on our previous message. Have you had a chance to look into what we proposed? Feel free to reach out if you have any questions.\n\nBest regards,\nPaula`,
+        fr: `Bonjour ${n},\n\nJe vous contacte pour faire un suivi. Avez-vous eu l'occasion de réfléchir à notre proposition ? Je reste disponible pour toute question.\n\nCordialement,\nPaula`,
+        it: `Ciao ${n},\n\nLa contatto per un aggiornamento sulla nostra proposta. Ha avuto modo di valutarla? Sono a disposizione per qualsiasi domanda.\n\nCordiali saluti,\nPaula`,
+        de: `Hallo ${n},\n\nIch melde mich bezüglich unseres Angebots. Hatten Sie Gelegenheit, es sich anzusehen? Bei Fragen stehe ich gerne zur Verfügung.\n\nMit freundlichen Grüßen,\nPaula`,
+    }
+    return t[lang] ?? t.es
+}
+
+function _textoRecuperarSfcom(nombre, lineas, lang) {
+    const n = nombre || 'cliente'
+    const fmtLineas = {
+        es: l => `· ${l.service_name}${l.day ? ` (${l.day} de julio)` : ''}, ${l.slots} plaza${l.slots !== 1 ? 's' : ''}`,
+        en: l => `· ${l.service_name}${l.day ? ` (July ${l.day})` : ''}, ${l.slots} person${l.slots !== 1 ? 's' : ''}`,
+        fr: l => `· ${l.service_name}${l.day ? ` (le ${l.day} juillet)` : ''}, ${l.slots} personne${l.slots !== 1 ? 's' : ''}`,
+        it: l => `· ${l.service_name}${l.day ? ` (${l.day} luglio)` : ''}, ${l.slots} persona${l.slots !== 1 ? 'e' : ''}`,
+        de: l => `· ${l.service_name}${l.day ? ` (${l.day}. Juli)` : ''}, ${l.slots} Person${l.slots !== 1 ? 'en' : ''}`,
+    }
+    const fmt  = fmtLineas[lang] ?? fmtLineas.es
+    const det  = lineas.length ? '\n' + lineas.map(fmt).join('\n') + '\n' : ''
+    const t = {
+        es: `Hola ${n},\n\nHemos visto que intentaste hacer una reserva en nuestra tienda online pero parece que no llegó a completarse, quizás por un problema con el pago u otro motivo técnico.${det}\nSi sigues interesado, podemos gestionarlo directamente contigo sin ningún problema. Escríbenos cuando puedas.\n\nUn saludo,\nPaula`,
+        en: `Hi ${n},\n\nWe noticed that your reservation through our online store didn't go through — it may have been a payment issue or a technical glitch.${det}\nIf you're still interested, we can sort it out directly with no hassle. Just let us know.\n\nBest regards,\nPaula`,
+        fr: `Bonjour ${n},\n\nNous avons vu que votre réservation sur notre boutique en ligne n'a pas abouti — peut-être un problème de paiement ou technique.${det}\nSi vous êtes toujours intéressé(e), nous pouvons le gérer directement sans aucun problème. N'hésitez pas à nous contacter.\n\nCordialement,\nPaula`,
+        it: `Ciao ${n},\n\nAbbiamo visto che la sua prenotazione sul nostro negozio online non è andata a buon fine — forse un problema di pagamento o tecnico.${det}\nSe è ancora interessato/a, possiamo gestirlo direttamente senza alcun problema. Non esiti a contattarci.\n\nCordiali saluti,\nPaula`,
+        de: `Hallo ${n},\n\nWir haben gesehen, dass Ihre Buchung in unserem Online-Shop nicht abgeschlossen wurde — möglicherweise ein Zahlungs- oder technisches Problem.${det}\nFalls Sie noch interessiert sind, können wir dies direkt und unkompliziert für Sie regeln. Melden Sie sich einfach.\n\nMit freundlichen Grüßen,\nPaula`,
+    }
+    return t[lang] ?? t.es
+}
+
+function _selectorIdioma(id, langActual) {
+    return `<select id="${id}" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+        ${Object.entries(_IDIOMA_LABELS).map(([v, l]) => `<option value="${v}"${v === langActual ? ' selected' : ''}>${l}</option>`).join('')}
+    </select>`
+}
+
+function abrirModalRecordatorio(sol) {
+    const lang            = _idiomaDefault(sol)
+    const nombre          = sol.client_name
+    const necesitaSelector = !_IDIOMAS.includes(sol.language)
+    const { overlay, panel } = crearModal('modal-recordatorio', { wide: true, scroll: true })
+
+    const renderContenido = (langActual) => {
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div class="modal-header-title">Recordatorio — ${nombre}</div>
+                <button id="btnCerrarRecordatorio" class="btn btn-secondary" style="padding:4px 10px">✕</button>
+            </div>
+            ${necesitaSelector ? `<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+                <label style="font-size:13px;color:var(--text-muted)">Idioma:</label>
+                ${_selectorIdioma('selIdiomaRec', langActual)}
+            </div>` : ''}
+            <textarea id="textoRecordatorio" class="modal-email-textarea" style="height:220px">${_textoRecordatorio(nombre, langActual)}</textarea>
+            <div id="rec-botones-envio"></div>
+            <div style="margin-top:10px;text-align:right">
+                <button class="btn btn-secondary" id="btnAsistenteRec" style="font-size:13px">✏️ Mejorar con el asistente</button>
+            </div>
+        `
+        panel.querySelector('#btnCerrarRecordatorio').addEventListener('click', () => overlay.close())
+        panel.querySelector('#btnAsistenteRec').addEventListener('click', () => {
+            overlay.close()
+            abrirAsistenteRespuesta(sol, 'recordatorio')
+        })
+        if (necesitaSelector) {
+            panel.querySelector('#selIdiomaRec').addEventListener('change', e => renderContenido(e.target.value))
+        }
+        mostrarOpcionesEnvio({
+            email:     sol.client_email || null,
+            telefono:  sol.client_phone || null,
+            asunto:    'San Fermín — seguimiento',
+            getTexto:  () => panel.querySelector('#textoRecordatorio').value,
+            container: panel.querySelector('#rec-botones-envio'),
+            onUsado:   async (texto) => {
+                await _onRespuestaUsadaEnLog(texto, sol)
+                overlay.close()
+            }
+        })
+    }
+
+    renderContenido(lang)
+}
+
+function abrirModalRecuperarSfcom(sol) {
+    const lang   = _idiomaDefault(sol)
+    const nombre = sol.client_name
+    const lineas = Array.isArray(sol.proposal_draft) ? sol.proposal_draft.filter(l => l.service_name) : []
+    const { overlay, panel } = crearModal('modal-recuperar-sfcom', { wide: true, scroll: true })
+
+    const renderContenido = (langActual) => {
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div class="modal-header-title">Intentar recuperar — ${nombre}</div>
+                <button id="btnCerrarRecuperar" class="btn btn-secondary" style="padding:4px 10px">✕</button>
+            </div>
+            <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+                <label style="font-size:13px;color:var(--text-muted)">Idioma:</label>
+                ${_selectorIdioma('selIdiomaRec2', langActual)}
+            </div>
+            <textarea id="textoRecuperar" class="modal-email-textarea" style="height:260px">${_textoRecuperarSfcom(nombre, lineas, langActual)}</textarea>
+            <div id="rec2-botones-envio"></div>
+            <div style="margin-top:10px;text-align:right">
+                <button class="btn btn-secondary" id="btnAsistenteRec2" style="font-size:13px">✏️ Mejorar con el asistente</button>
+            </div>
+        `
+        panel.querySelector('#btnCerrarRecuperar').addEventListener('click', () => overlay.close())
+        panel.querySelector('#selIdiomaRec2').addEventListener('change', e => renderContenido(e.target.value))
+        panel.querySelector('#btnAsistenteRec2').addEventListener('click', () => {
+            overlay.close()
+            abrirAsistenteRespuesta(sol, 'recuperar_sfcom')
+        })
+        mostrarOpcionesEnvio({
+            email:     sol.client_email || null,
+            telefono:  sol.client_phone || null,
+            asunto:    'San Fermín — tu experiencia',
+            getTexto:  () => panel.querySelector('#textoRecuperar').value,
+            container: panel.querySelector('#rec2-botones-envio'),
+            onUsado:   async (texto) => {
+                await _onRespuestaUsadaEnLog(texto, sol)
+                renderLista()
+                overlay.close()
+            }
+        })
+    }
+
+    renderContenido(lang)
 }
 
 // ===== NOTAS DE SESIÓN =====

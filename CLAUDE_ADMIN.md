@@ -569,6 +569,9 @@ initAsistente(supabase, {
 **`abrirAsistenteRespuesta(solicitud, modo = null)`:**
 - `modo = null`: flujo normal, Claude presenta disponibilidad y propone mensaje
 - `modo = 'recordatorio'`: Claude sabe que el cliente ya recibió respuesta y no ha contestado; genera seguimiento breve
+- `modo = 'recuperar_sfcom'`: el cliente canceló un pedido en sfcom; Claude redacta mensaje de recuperación con contexto de disponibilidad
+
+Los modos `'recordatorio'` y `'recuperar_sfcom'` **no se lanzan directamente desde los botones de solicitudes.html**. Los botones "📩 Enviar recordatorio" y "🔄 Intentar recuperar" abren modales JS directos (`abrirModalRecordatorio` / `abrirModalRecuperarSfcom` en `solicitudes.js`) que proponen un mensaje predefinido sin IA. Dentro de esos modales hay un botón "✏️ Mejorar con el asistente" que llama a `abrirAsistenteRespuesta` con el modo correspondiente, solo si Paula lo necesita.
 
 El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `web`.
 
@@ -1164,9 +1167,9 @@ Se quitó la llamada incondicional de startup (jun 2026). El chain de `checkSfco
 
 ---
 
-**Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio.**
+**✅ RESUELTO — Auto-transición `seguimiento_pendiente → respuesta_enviada` al enviar recordatorio.**
 
-Cuando Paula pulsa "📩 Enviar recordatorio" o responde a una solicitud en `seguimiento_pendiente`, el status debería volver automáticamente a `'respuesta_enviada'` (el cliente ya tiene respuesta y el contador de 3 días vuelve a correr desde ese momento). Actualmente el status no cambia al enviar. Fix: en la función que gestiona el envío del recordatorio en `solicitudes.js`, añadir `status: 'respuesta_enviada'` al UPDATE de Supabase si el status actual es `'seguimiento_pendiente'`.
+Resuelto al implementar los modales de mensaje directo (jun 2026). El modal de recordatorio (`abrirModalRecordatorio`) llama a `_onRespuestaUsadaEnLog` al pulsar cualquier botón de envío, que ya hace la transición a `respuesta_enviada` en Supabase y actualiza badge y select en el panel. El status cambia correctamente al enviar desde el modal directo, y también si Paula usa el asistente (flujo previo).
 
 ---
 
