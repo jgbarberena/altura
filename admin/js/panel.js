@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable } from './utils.js'
+import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
 import { mostrarToast, verificarConsistenciaFinanciera } from './verificacion.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 
@@ -900,8 +900,8 @@ document.addEventListener('click', e => {
 calcularResumen()
 calcularPorVender()
 calcularCashflow()
-verificarConsistenciaFinanciera(supabase)
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => verificarConsistenciaFinanciera(supabase))
+verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor)
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor))
 
 // ===== EXPORT CSV =====
 document.getElementById('btnExportPagos')?.addEventListener('click', () => {

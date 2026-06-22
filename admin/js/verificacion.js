@@ -5,7 +5,9 @@
 
 import { syncStockToSfcom } from './sfcom.js'
 import { crearModal } from './modal.js'
-import { persistirCobrosCliente, persistirPagosProveedor, fmt } from './utils.js'
+
+// No importamos de utils.js — crearía dependencia circular (utils.js importa mostrarToast de aquí)
+const _fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
 // ─── Toast genérico ──────────────────────────────────────────────────────────
 
@@ -423,7 +425,7 @@ export function mostrarModalPreCorreccion(mismatches) {
 // Comprueba por cliente (charges vs reservas activas) y por proveedor (payments vs coste teórico
 // según billing_model). Si todo cuadra → toast verde. Si hay discrepancias → modal con corrección.
 
-export async function verificarConsistenciaFinanciera(supabase) {
+export async function verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor) {
     const [
         { data: charges },
         { data: reservas },
@@ -502,8 +504,8 @@ export async function verificarConsistenciaFinanciera(supabase) {
     const fila = ({ tipo, id, enBD, deberiasSer, diff, tieneHistorial }) => `<tr>
         <td>${tipo}</td>
         <td>${id}${tieneHistorial ? ' <span title="Tiene cobros cobrados o facturados" style="color:var(--accent)">⚠️</span>' : ''}</td>
-        <td>${fmt(enBD)}</td><td>${fmt(deberiasSer)}</td>
-        <td class="${diff > 0 ? 'warn' : 'error'}">${diff > 0 ? '+' : ''}${fmt(diff)}</td>
+        <td>${_fmt(enBD)}</td><td>${_fmt(deberiasSer)}</td>
+        <td class="${diff > 0 ? 'warn' : 'error'}">${diff > 0 ? '+' : ''}${_fmt(diff)}</td>
     </tr>`
 
     const { overlay, panel } = crearModal('modal-consistencia', { wide: true, scroll: true })
@@ -545,7 +547,7 @@ export async function verificarConsistenciaFinanciera(supabase) {
                 <h2 style="margin-bottom:12px">⚠️ Corrección parcial</h2>
                 <p style="margin-bottom:8px">Los demás problemas se han corregido. Los siguientes clientes requieren acción manual (tienen cobros cobrados o facturados):</p>
                 <ul style="margin:8px 0 16px 16px;font-size:13px">
-                    ${manuales.map(p => `<li><strong>${p.id}</strong> — ${fmt(p.enBD)} en cobros, sin reservas activas</li>`).join('')}
+                    ${manuales.map(p => `<li><strong>${p.id}</strong> — ${_fmt(p.enBD)} en cobros, sin reservas activas</li>`).join('')}
                 </ul>
                 <p style="font-size:12px;color:var(--subtle)">Abre cada cliente en el panel de reservas y resuelve el historial (nota de crédito, anulación…).</p>
                 <div style="display:flex;justify-content:flex-end">
