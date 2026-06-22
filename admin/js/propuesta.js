@@ -2,7 +2,7 @@
 // Genera una propuesta en PDF para reservas seleccionadas de un cliente.
 // Se importa desde formulario.js igual que factura.js.
 
-import { mostrarOpcionesEnvio } from './utils.js'
+import { mostrarOpcionesEnvio, valorO, esVacio } from './utils.js'
 
 // ===== CONFIGURACIÓN =====
 const PROPUESTA_CONFIG = {
@@ -66,7 +66,7 @@ export async function abrirPanelPropuesta(clienteObj, reservasSeleccionadas) {
     document.getElementById('dialogPropuesta').showModal()
     requestAnimationFrame(() => _cargarImagenesPreview())
 
-    const nombre = _cliente.name ?? _cliente.id
+    const nombre = valorO(_cliente.name, _cliente.id)
     mostrarOpcionesEnvio({
         tipo:      'pdf',
         email:     _cliente.email ?? null,
@@ -105,7 +105,7 @@ function _calcularTotal() {
 // ===== DIRECCIÓN DEL PROVEEDOR =====
 function _dirProveedor(reserva) {
     const venue = _venues.find(v => v.id === reserva.venue_id)
-    return venue?.address ?? ''
+    return valorO(venue?.address, '')
 }
 
 // ===== RENDERIZADO DEL PANEL =====
@@ -145,9 +145,9 @@ function _buildPropuestaHTML(guardados = null) {
     const cierreInit      = guardados?.cierre          ?? TEXTO_CIERRE
     const ctaInit         = guardados?.cta             ?? TEXTO_CTA
     const bannerClaimInit = guardados?.bannerClaim     ?? 'Reserva tu experiencia'
-    const destInit        = guardados?.destinatario    ?? (_cliente.company ?? _cliente.name ?? _cliente.id)
-    const destSubInit     = guardados?.destinatarioSub ?? (_cliente.company ? (_cliente.name ?? '') : '')
-    const destDirInit     = guardados?.destinatarioDir ?? (_cliente.address ?? '')
+    const destInit        = guardados?.destinatario    ?? valorO(_cliente.company, valorO(_cliente.name, _cliente.id))
+    const destSubInit     = guardados?.destinatarioSub ?? (!esVacio(_cliente.company) ? valorO(_cliente.name, '') : '')
+    const destDirInit     = guardados?.destinatarioDir ?? valorO(_cliente.address, '')
     const total           = _calcularTotal()
 
     // ── Cabecera cliente (derecha del header) ─────────────────────────────────
@@ -228,7 +228,7 @@ function _buildSeccionCompacta(guardados) {
         const filaSaved = guardados?.filas?.find(f => f.id === r.id) ?? {}
 
         const tipo    = filaSaved.tipo   ?? svc.name ?? ''
-        const nombre  = filaSaved.nombre ?? venue.display_name ?? svc.name ?? r.venue_id
+        const nombre  = filaSaved.nombre ?? valorO(venue.display_name, svc.name ?? r.venue_id)
         const dia     = svc.day ? `${svc.day} de julio` : '—'
         const hora    = svc.start_time ?? '—'
         const meta    = filaSaved.meta   ?? `${dia} · ${hora}h`
@@ -288,7 +288,7 @@ function _buildSeccionCompleta(guardados) {
         const disp      = _getDisponibilidad?.()?.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
 
         const tipo    = filaSaved.tipo   ?? svc.name ?? ''
-        const nombre  = filaSaved.nombre ?? venue.display_name ?? svc.name ?? r.venue_id
+        const nombre  = filaSaved.nombre ?? valorO(venue.display_name, svc.name ?? r.venue_id)
         const dia     = svc.day ? `${svc.day} de julio` : '—'
         const hora    = svc.start_time ?? '—'
         const meta    = filaSaved.meta   ?? `${dia} · ${hora}h`
@@ -369,7 +369,7 @@ function _leerEditables() {
     const svcFallback = r => {
         const svc   = _servicios.find(s => s.id === r.service_id) ?? {}
         const venue = _venues.find(v => v.id === r.venue_id) ?? {}
-        return venue.display_name ?? svc.name ?? r.service_id
+        return valorO(venue.display_name, svc.name ?? r.service_id)
     }
 
     return {
@@ -378,9 +378,9 @@ function _leerEditables() {
         cierre:          get('cierre')          || TEXTO_CIERRE,
         cta:             get('cta')             || TEXTO_CTA,
         fecha:           get('fecha')           || new Date().toLocaleDateString('es-ES'),
-        destinatario:    get('destinatario')    || (_cliente.company ?? _cliente.name ?? _cliente.id),
-        destinatarioSub: get('destinatario-sub') || (_cliente.company ? (_cliente.name ?? '') : ''),
-        destinatarioDir: get('destinatario-dir') || (_cliente.address ?? ''),
+        destinatario:    get('destinatario')    || valorO(_cliente.company, valorO(_cliente.name, _cliente.id)),
+        destinatarioSub: get('destinatario-sub') || (!esVacio(_cliente.company) ? valorO(_cliente.name, '') : ''),
+        destinatarioDir: get('destinatario-dir') || valorO(_cliente.address, ''),
         bannerClaim:     get('banner-claim')    || 'Reserva tu experiencia',
         filas: _reservas.map(r => ({
             id:     r.id,
@@ -831,7 +831,7 @@ async function _generarPDF() {
 
     dibujarPie()
 
-    const nombreArchivo = `${_numPropuesta.replace('/', '-')}_${(_cliente.company ?? _cliente.name ?? _cliente.id).replace(/\s+/g, '_')}.pdf`
+    const nombreArchivo = `${_numPropuesta.replace('/', '-')}_${valorO(_cliente.company, valorO(_cliente.name, _cliente.id)).replace(/\s+/g, '_')}.pdf`
     doc.save(nombreArchivo)
     return { blob: doc.output('blob'), nombreArchivo }
 }

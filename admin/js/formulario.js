@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
@@ -2147,14 +2147,10 @@ function _inferirDesdeSfcom(level, day) {
 // Infiere el service_id probable a partir del slug (level) y el día
 // Solo se usa en admin al cargar una solicitud web — nunca en la web pública
 function _inferirServiceId(slug, day) {
-    if (!slug) return null
-    const partes = slug.toLowerCase().split('-')
-    if (partes.indexOf('encierro')  !== -1) return day ? 'ENCIERRO_' + day : null
-    if (partes.indexOf('chupinazo') !== -1) return 'CHUPINAZO_6'
-    if (partes.indexOf('procesion') !== -1) return 'PROCESION_7'
-    if (partes.indexOf('gigantes')  !== -1) return 'DESPEDIDA_GIGANTES_14'
-    if (partes.indexOf('pobre')     !== -1) return 'POBRE_DE_MI'
-    return null
+    const p = parsearNivel(slug)
+    if (!p) return null
+    if (p.tipo === 'encierro') return day ? 'ENCIERRO_' + day : null
+    return TIPO_SERVICIO_ID[p.tipo] ?? null
 }
 
 // Detecta si un source tiene formato sfcom (WEBxxx_nnnn)

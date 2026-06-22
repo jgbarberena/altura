@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
@@ -835,12 +835,11 @@ function _preFillBorradorSiVacio(sol) {
     const servicios = _serviciosUnicos()
     let svcId = sol.service_id || null
     if (!svcId && sol.level) {
-        const partes = sol.level.toLowerCase().split('-')
-        if (partes.includes('encierro') && sol.day)  svcId = `ENCIERRO_${sol.day}`
-        else if (partes.includes('chupinazo'))        svcId = 'CHUPINAZO_6'
-        else if (partes.includes('procesion'))        svcId = 'PROCESION_7'
-        else if (partes.includes('gigantes'))         svcId = 'DESPEDIDA_GIGANTES_14'
-        else if (partes.includes('pobre'))            svcId = 'POBRE_DE_MI'
+        const p = parsearNivel(sol.level)
+        if (p) {
+            if (p.tipo === 'encierro') svcId = sol.day ? `ENCIERRO_${sol.day}` : null
+            else svcId = TIPO_SERVICIO_ID[p.tipo] ?? null
+        }
     }
     if (!svcId) return
     const svc    = servicios.find(s => s.service_id === svcId)
@@ -1093,23 +1092,10 @@ function mostrarDetalle(sol) {
 }
 
 function _inferirServiceIds(level) {
-    if (!level) return []
-    const partes = level.toLowerCase().split('-')
-    const hint = partes.includes('encierro')  ? 'encierro'
-               : partes.includes('chupinazo') ? 'chupinazo'
-               : partes.includes('procesion') ? 'procesion'
-               : partes.includes('gigantes')  ? 'gigantes'
-               : partes.includes('pobre')     ? 'pobre_de_mi'
-               : level
-    const FIJOS = {
-        chupinazo:   ['CHUPINAZO_6'],
-        procesion:   ['PROCESION_7'],
-        gigantes:    ['DESPEDIDA_GIGANTES_14'],
-        pobre_de_mi: ['POBRE_DE_MI']
-    }
-    if (FIJOS[hint]) return FIJOS[hint]
-    if (hint === 'encierro') return [7, 8, 9, 10, 11, 12, 13, 14].map(d => `ENCIERRO_${d}`)
-    return []
+    const p = parsearNivel(level)
+    if (!p) return []
+    if (p.tipo === 'encierro') return [7, 8, 9, 10, 11, 12, 13, 14].map(d => `ENCIERRO_${d}`)
+    return TIPO_SERVICIO_ID[p.tipo] ? [TIPO_SERVICIO_ID[p.tipo]] : []
 }
 
 function _calcularPrecioRef(sol) {

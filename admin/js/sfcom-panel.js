@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, exportTable } from './utils.js'
+import { initSidebar, fmt, exportTable, valorO } from './utils.js'
 import { verificarCoherencia, verificarConfirmarSfcom } from './sfcom.js'
 import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
 
@@ -148,9 +148,9 @@ function renderReservas() {
 
         return `<tr>
             <td><code>${r.origin_ref}</code></td>
-            <td>${cli?.name  ?? r.client_id   ?? '—'}</td>
-            <td>${svc?.description ?? r.service_id  ?? '—'}</td>
-            <td>${venue?.display_name ?? r.venue_id ?? '—'}</td>
+            <td>${valorO(cli?.name, r.client_id ?? '—')}</td>
+            <td>${valorO(svc?.description, r.service_id ?? '—')}</td>
+            <td>${valorO(venue?.display_name, r.venue_id ?? '—')}</td>
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(r.price_per_slot)}</td>
             <td style="text-align:right;font-weight:600">${fmt(totalNeto)}</td>
@@ -202,8 +202,8 @@ function renderListings() {
 
         return `<tr>
             <td>${d.sfcom_service_name || '—'}</td>
-            <td>${svc?.description ?? d.service_id ?? '—'}</td>
-            <td>${d.venue_display_name ?? d.venue_id ?? '—'}</td>
+            <td>${valorO(svc?.description, d.service_id ?? '—')}</td>
+            <td>${valorO(d.venue_display_name, d.venue_id ?? '—')}</td>
             <td><span class="sfcom-badge sfcom-badge--${d.sfcom_status === 'confirmed' ? 'confirmed' : d.sfcom_status === 'pending' ? 'pending' : 'deactivation'}">${estadoInfo.label}</span></td>
             <td style="text-align:center">${listedSlots}</td>
             <td style="text-align:center">${slotsSfcom}</td>

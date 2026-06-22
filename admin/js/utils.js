@@ -50,6 +50,19 @@ export function normalizarId(str) {
     return str.trim().toUpperCase().replace(/\s+/g, '_')
 }
 
+// Devuelve true si v es null, undefined o cadena que al recortar queda vacía
+export function esVacio(v) {
+    return v == null || String(v).trim() === ''
+}
+
+// Devuelve v recortado si tiene contenido, o fallback en caso contrario.
+// Trata null, undefined y cadenas de solo espacios como ausencia de valor.
+export function valorO(v, fallback) {
+    if (v == null) return fallback
+    const t = String(v).trim()
+    return t === '' ? fallback : t
+}
+
 // Ordena un array por columna índice y dirección; getKey(item, colIdx) → valor comparable
 export function sortArr(arr, col, dir, getKey) {
     if (col === null) return arr
@@ -492,4 +505,33 @@ export function mostrarOpcionesEnvio({ tipo = 'texto', email, telefono, asunto, 
             container.appendChild(btnWA)
         }
     }
+}
+
+// ===== INFERENCIA DE TIPO DE SERVICIO =====
+
+// Mapeo fijo tipo → service_id (encierro no está: depende del día)
+export const TIPO_SERVICIO_ID = {
+    chupinazo:   'CHUPINAZO_6',
+    procesion:   'PROCESION_7',
+    gigantes:    'DESPEDIDA_GIGANTES_14',
+    pobre_de_mi: 'POBRE_DE_MI'
+}
+
+// Normaliza un slug/level/sfcom_service_name a { tipo, day } o null.
+// day: número extraído del slug si figura (ej. 'encierro-8' → 8), o null si no.
+export function parsearNivel(level) {
+    if (!level) return null
+    const partes = level.toLowerCase().split('-')
+    if (partes.includes('encierro'))  return { tipo: 'encierro',    day: _diaDesdePartes(partes) }
+    if (partes.includes('chupinazo')) return { tipo: 'chupinazo',   day: 6 }
+    if (partes.includes('procesion')) return { tipo: 'procesion',   day: 7 }
+    if (partes.includes('gigantes'))  return { tipo: 'gigantes',    day: 14 }
+    if (partes.includes('pobre'))     return { tipo: 'pobre_de_mi', day: null }
+    return null
+}
+
+function _diaDesdePartes(partes) {
+    const n = partes.map(p => parseInt(p)).find(n => !isNaN(n) && n >= 6 && n <= 14)
+    return n ?? null
+}
 }

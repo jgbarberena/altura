@@ -1,6 +1,6 @@
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
-import { mostrarOpcionesEnvio } from './utils.js'
+import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
@@ -36,23 +36,9 @@ function parsearMetaComments(comments) {
 }
 
 function expandirServiceIds(serviceHint, day, meta) {
-    if (!serviceHint) return []
-    // Normaliza slugs web/sfcom ('vivir-el-chupinazo', 'ver-el-encierro') al keyword corto
-    const partes = serviceHint.toLowerCase().split('-')
-    const hint = partes.includes('encierro')  ? 'encierro'
-               : partes.includes('chupinazo') ? 'chupinazo'
-               : partes.includes('procesion') ? 'procesion'
-               : partes.includes('gigantes')  ? 'gigantes'
-               : partes.includes('pobre')     ? 'pobre_de_mi'
-               : serviceHint
-    const FIJOS = {
-        chupinazo:   ['CHUPINAZO_6'],
-        procesion:   ['PROCESION_7'],
-        gigantes:    ['DESPEDIDA_GIGANTES_14'],
-        pobre_de_mi: ['POBRE_DE_MI']
-    }
-    if (FIJOS[hint]) return FIJOS[hint]
-    if (hint !== 'encierro') return []
+    const p = parsearNivel(serviceHint)
+    if (!p) return []
+    if (p.tipo !== 'encierro') return [TIPO_SERVICIO_ID[p.tipo]].filter(Boolean)
     const todosDias = [7, 8, 9, 10, 11, 12, 13, 14]
     if (meta.flexible || (!meta.dias && !day)) return todosDias.map(d => `ENCIERRO_${d}`)
     const dias = meta.dias?.length ? meta.dias : (day ? [day] : todosDias)

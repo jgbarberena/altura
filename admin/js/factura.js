@@ -2,7 +2,7 @@
 // Gestiona la generación, previsualización y emisión de facturas desde los hitos de cobro.
 // Se importa desde formulario.js y necesita acceso al cliente supabase y a los datos globales.
 
-import { mostrarOpcionesEnvio } from './utils.js'
+import { mostrarOpcionesEnvio, valorO, esVacio } from './utils.js'
 
 // ===== CONFIGURACIÓN — editar aquí cuando cambien datos del emisor =====
 const FACTURA_CONFIG = {
@@ -80,7 +80,7 @@ export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
 
     const base       = parseFloat(_hitoActual.amount)
     const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
-    const nombre     = _cliente.company ?? _cliente.name ?? _cliente.id
+    const nombre     = valorO(_cliente.company, valorO(_cliente.name, _cliente.id))
     mostrarOpcionesEnvio({
         tipo:      'pdf',
         email:     _cliente.email ?? null,
@@ -114,12 +114,12 @@ async function calcularSiguienteNumero() {
 // ===== RENDERIZADO DEL PANEL =====
 function renderPanelFactura() {
     document.getElementById('panel-factura-subtitulo').textContent =
-        `Hito: ${_hitoActual.comments ?? '—'}  ·  ${fmt(_hitoActual.amount)}`
+        `Hito: ${valorO(_hitoActual.comments, '—')}  ·  ${fmt(_hitoActual.amount)}`
 
     const alerta          = document.getElementById('panel-factura-alerta')
     const camposFaltantes = []
-    if (!_cliente.nif)     camposFaltantes.push('NIF/CIF del cliente')
-    if (!_cliente.address) camposFaltantes.push('dirección del cliente')
+    if (esVacio(_cliente.nif))     camposFaltantes.push('NIF/CIF del cliente')
+    if (esVacio(_cliente.address)) camposFaltantes.push('dirección del cliente')
     if (camposFaltantes.length > 0) {
         alerta.style.display = 'block'
         alerta.textContent   = `⚠️ Faltan datos editables: ${camposFaltantes.join(', ')}. Puedes completarlos directamente en la factura.`
@@ -174,12 +174,12 @@ function buildFacturaHTML() {
                 <div class="factura-party">
                     <div class="factura-party-label">Cliente</div>
                     <div class="factura-party-name factura-editable" contenteditable="true"
-                        data-field="name">${_cliente.company ?? _cliente.name ?? _cliente.id}</div>
+                        data-field="name">${valorO(_cliente.company, valorO(_cliente.name, _cliente.id))}</div>
                     <div class="factura-party-detail">
                         NIF/CIF: <span class="factura-editable" contenteditable="true"
-                            data-field="nif">${_cliente.nif ?? '— introducir NIF —'}</span><br>
+                            data-field="nif">${valorO(_cliente.nif, '— introducir NIF —')}</span><br>
                         <span class="factura-editable" contenteditable="true"
-                            data-field="address">${_cliente.address ?? '— introducir dirección —'}</span>
+                            data-field="address">${valorO(_cliente.address, '— introducir dirección —')}</span>
                     </div>
                 </div>
             </div>
@@ -193,7 +193,7 @@ function buildFacturaHTML() {
                     <tbody><tr>
                         <td>
                             <span class="factura-editable" contenteditable="true"
-                                data-field="concepto">${_hitoActual.comments ?? 'Pago'}</span>
+                                data-field="concepto">${valorO(_hitoActual.comments, 'Pago')}</span>
                             <span style="font-size:10px;color:#aaa;margin-left:6px">(editable)</span>
                         </td>
                         <td>${fmt(base)}</td>
@@ -315,7 +315,7 @@ function buildLiquidacion() {
     const filasF       = facturados.map(c => `
         <div class="factura-liq-row">
             <span class="factura-liq-label">
-                ${c.comments ?? 'Prepago'} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})
+                ${valorO(c.comments, 'Prepago')} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})
             </span>
             <span>- ${fmt(parseFloat(c.amount))}</span>
         </div>`).join('')
@@ -343,9 +343,9 @@ async function _emitir() {
     const nameEdit = preview.querySelector('[data-field="name"]')?.textContent?.trim()
 
     const updates = {}
-    if (nifEdit  && nifEdit  !== _cliente.nif    && !nifEdit.includes('—'))  updates.nif     = nifEdit
-    if (addrEdit && addrEdit !== _cliente.address && !addrEdit.includes('—')) updates.address = addrEdit
-    if (nameEdit && nameEdit !== (_cliente.company ?? _cliente.name ?? _cliente.id)) updates.name = nameEdit
+    if (!esVacio(nifEdit)  && nifEdit  !== _cliente.nif    && !nifEdit.includes('—'))  updates.nif     = nifEdit
+    if (!esVacio(addrEdit) && addrEdit !== _cliente.address && !addrEdit.includes('—')) updates.address = addrEdit
+    if (!esVacio(nameEdit) && nameEdit !== valorO(_cliente.company, valorO(_cliente.name, _cliente.id))) updates.name = nameEdit
 
     if (Object.keys(updates).length > 0) {
         const { error } = await _supabase.from('clients').update(updates).eq('id', _cliente.id)
@@ -644,7 +644,7 @@ async function generarPDF() {
             facturados.forEach(c => {
                 line(M, y - 1, W - M, y - 1, [220, 220, 220], 0.2)
                 doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(GRIS)
-                doc.text(`${c.comments ?? 'Prepago'} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})`, M + 2, y + 4)
+                doc.text(`${valorO(c.comments, 'Prepago')} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})`, M + 2, y + 4)
                 doc.text(`- ${fmt(parseFloat(c.amount))}`, W - M - 2, y + 4, { align: 'right' })
                 y += 6
             })
@@ -717,7 +717,7 @@ async function generarPDF() {
     dibujarPie()
 
     // ── Guardar ───────────────────────────────────────────────────────────────
-    const nombreArchivo = `${_numFacturaSig.replace('/', '-')}_${(_cliente.company ?? _cliente.name ?? _cliente.id).replace(/\s+/g, '_')}.pdf`
+    const nombreArchivo = `${_numFacturaSig.replace('/', '-')}_${valorO(_cliente.company, valorO(_cliente.name, _cliente.id)).replace(/\s+/g, '_')}.pdf`
     doc.save(nombreArchivo)
     return { blob: doc.output('blob'), nombreArchivo }
 }

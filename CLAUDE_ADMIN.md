@@ -317,6 +317,8 @@ Utilidades compartidas. Exports:
 | `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` | Recalcula y persiste pago final en payments. Primero busca todos los venues del proveedor para agregar disponibilidad y reservas de todos ellos. |
 | `resolverCliente(datos, todosClientes)` | **Punto de entrada obligatorio antes de generar un client_id nuevo.** `datos: { nombre, email, telefono }`. Devuelve `{ match: 'exacto'\|'ambiguo'\|'ninguno', cliente }`. Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar como subcadena de palabras (ambiguo). Evita la creación de duplicados (CLIENTE_2, CLIENTE_3) cuando llegan múltiples solicitudes de la misma persona. |
 | `mostrarOpcionesEnvio({ tipo, email, telefono, asunto, getTexto, onGenerar, container, onUsado })` | Renderiza botones de acción de envío en un contenedor DOM. **`tipo: 'texto'`** (default, asistente): 📋 Copiar al portapapeles · 📧 Enviar por correo · 💬 Enviar por WhatsApp. **`tipo: 'pdf'`** (propuesta, factura): ⬇ Solo generar PDF · ⬇ Generar PDF y preparar correo · ⬇ Generar PDF y enviar por WhatsApp. Para `tipo='pdf'` es obligatorio `onGenerar: async () => void`; al hacer clic todos los botones se deshabilitan mostrando "⏳ Generando…" mientras corre. El botón con `btn-primary` es WhatsApp si hay teléfono, Email si hay email, o la opción base si no hay contacto. Los botones de email/WA solo aparecen si `email`/`telefono` son truthy. `getTexto: () => string` se llama en el momento del clic. `onUsado` es callback opcional (para 'texto' recibe el texto; para 'pdf' sin argumento). |
+| `parsearNivel(level)` | Normaliza un slug/level/sfcom_service_name a `{ tipo, day }` o `null`. `tipo`: `'encierro'` \| `'chupinazo'` \| `'procesion'` \| `'gigantes'` \| `'pobre_de_mi'`. `day`: número si figura en el slug (ej. `'encierro-8'` → `8`), `null` si no. No expande a service_ids — eso lo hace cada llamador. |
+| `TIPO_SERVICIO_ID` | Constante: `{ chupinazo: 'CHUPINAZO_6', procesion: 'PROCESION_7', gigantes: 'DESPEDIDA_GIGANTES_14', pobre_de_mi: 'POBRE_DE_MI' }`. Encierro no está: su ID depende del día. |
 
 ### modal.js
 `crearModal(id, { wide, narrow, scroll })` — único punto de creación de modales en el admin.
@@ -1143,9 +1145,16 @@ Si hay líneas con `estado: 'hecha'` o `'descartada'` y Paula abre el asistente,
 
 ---
 
-**Lógica de inferencia `level → service_id` duplicada.**
+**✅ RESUELTO — Lógica de inferencia `level → service_id` extraída a `utils.js` (jun 2026).**
 
-Existe en `_inferirServiceId` (formulario.js), `_preFillBorradorSiVacio` (solicitudes.js) y `expandirServiceIds` (asistente.js), con pequeñas variaciones. Candidato natural para `utils.js`. Riesgo de divergencia si se añaden servicios nuevos.
+`parsearNivel(level)` y `TIPO_SERVICIO_ID` exportados desde `utils.js`. `parsearNivel` devuelve `{ tipo, day }` o `null` — solo normaliza el slug, no expande a service_ids (eso lo hace cada llamador según su contexto). Los tres sitios actualizados:
+
+- `_inferirServiceId` en `formulario.js`: usa el `day` explícito del parámetro, nunca `p.day` — para pre-fill de dropdown necesita un ID concreto o null.
+- `_preFillBorradorSiVacio` en `solicitudes.js`: igual — usa `sol.day`, no lo extrae del slug.
+- `_inferirServiceIds` en `solicitudes.js`: siempre expande encierro a todos los días (para rango de precios), ignorando `p.day`.
+- `expandirServiceIds` en `asistente.js`: usa su propio `day`/`meta`, con la lógica de `meta.dias`/`meta.flexible` intacta.
+
+Comportamiento idéntico al anterior en los cuatro sitios. Si se añaden servicios nuevos, solo hay que tocar `parsearNivel` y `TIPO_SERVICIO_ID`.
 
 ---
 
