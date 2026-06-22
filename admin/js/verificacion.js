@@ -5,6 +5,7 @@
 
 import { syncStockToSfcom } from './sfcom.js'
 import { crearModal } from './modal.js'
+import { persistirCobrosCliente, persistirPagosProveedor, fmt } from './utils.js'
 
 // ─── Toast genérico ──────────────────────────────────────────────────────────
 
@@ -415,5 +416,145 @@ export function mostrarModalPreCorreccion(mismatches) {
 
         panel.querySelector('#btn-precorr-continuar').addEventListener('click', () => { overlay.remove(); resolve('continuar') })
         panel.querySelector('#btn-precorr-corregir').addEventListener('click',  () => { overlay.remove(); resolve('corregir')  })
+    })
+}
+
+// ─── Consistencia financiera ──────────────────────────────────────────────────
+// Comprueba por cliente (charges vs reservas activas) y por proveedor (payments vs coste teórico
+// según billing_model). Si todo cuadra → toast verde. Si hay discrepancias → modal con corrección.
+
+export async function verificarConsistenciaFinanciera(supabase) {
+    const [
+        { data: charges },
+        { data: reservas },
+        { data: payments },
+        { data: disponibilidad },
+        { data: venues }
+    ] = await Promise.all([
+        supabase.from('charges').select('client_id, amount, collected, invoice_number'),
+        supabase.from('reservations').select('client_id, total_amount, status, venue_id, service_id, slots'),
+        supabase.from('payments').select('provider_id, amount'),
+        supabase.from('availability').select('venue_id, service_id, billing_model, total_slots, price_per_slot'),
+        supabase.from('venues').select('id, provider_id')
+    ])
+
+    const chargesTotales   = new Map()
+    const chargesHistorial = new Map()
+    for (const c of (charges ?? [])) {
+        chargesTotales.set(c.client_id, (chargesTotales.get(c.client_id) ?? 0) + parseFloat(c.amount || 0))
+        if (c.collected || c.invoice_number) chargesHistorial.set(c.client_id, true)
+    }
+    const reservasTotales = new Map()
+    for (const r of (reservas ?? [])) {
+        if (r.status === 'Cancelada') continue
+        reservasTotales.set(r.client_id, (reservasTotales.get(r.client_id) ?? 0) + parseFloat(r.total_amount || 0))
+    }
+    const problemasClientes = []
+    for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
+        if (id === 'SFCOM') continue
+        const c = Math.round((chargesTotales.get(id) ?? 0) * 100) / 100
+        const r = Math.round((reservasTotales.get(id) ?? 0) * 100) / 100
+        if (Math.abs(c - r) < 0.01) continue
+        problemasClientes.push({ id, enBD: c, deberiasSer: r,
+            diff: Math.round((c - r) * 100) / 100,
+            esHuerfano: r === 0 && c > 0,
+            tieneHistorial: chargesHistorial.get(id) ?? false })
+    }
+
+    const venueAProveedor = new Map((venues ?? []).map(v => [v.id, v.provider_id]))
+    const pagosTotales    = new Map()
+    for (const p of (payments ?? []))
+        pagosTotales.set(p.provider_id, (pagosTotales.get(p.provider_id) ?? 0) + parseFloat(p.amount || 0))
+
+    const costeTeorico = new Map()
+    for (const d of (disponibilidad ?? [])) {
+        const provId = venueAProveedor.get(d.venue_id)
+        if (!provId) continue
+        let coste = 0
+        if (d.billing_model === 'capacity') {
+            coste = (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneRes = (reservas ?? []).some(r =>
+                r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+            coste = tieneRes ? parseFloat(d.price_per_slot ?? 0) : 0
+        } else {
+            const slots = (reservas ?? [])
+                .filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+                .reduce((s, r) => s + r.slots, 0)
+            coste = slots * parseFloat(d.price_per_slot ?? 0)
+        }
+        costeTeorico.set(provId, (costeTeorico.get(provId) ?? 0) + coste)
+    }
+    const problemasProveedores = []
+    for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
+        const p = Math.round((pagosTotales.get(id) ?? 0) * 100) / 100
+        const t = Math.round((costeTeorico.get(id) ?? 0) * 100) / 100
+        if (Math.abs(p - t) < 0.01) continue
+        problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 100) / 100 })
+    }
+
+    if (problemasClientes.length === 0 && problemasProveedores.length === 0) {
+        mostrarToast('✓ Consistencia financiera verificada', 'var(--accent-ok)')
+        return
+    }
+
+    const hayHistorial = problemasClientes.some(p => p.tieneHistorial)
+    const fila = ({ tipo, id, enBD, deberiasSer, diff, tieneHistorial }) => `<tr>
+        <td>${tipo}</td>
+        <td>${id}${tieneHistorial ? ' <span title="Tiene cobros cobrados o facturados" style="color:var(--accent)">⚠️</span>' : ''}</td>
+        <td>${fmt(enBD)}</td><td>${fmt(deberiasSer)}</td>
+        <td class="${diff > 0 ? 'warn' : 'error'}">${diff > 0 ? '+' : ''}${fmt(diff)}</td>
+    </tr>`
+
+    const { overlay, panel } = crearModal('modal-consistencia', { wide: true, scroll: true })
+    panel.innerHTML = `
+        <h2 style="margin-top:0;color:var(--accent)">⚠ Inconsistencias financieras</h2>
+        <p style="color:var(--subtle);margin-bottom:16px">Registros que no cuadran entre la BD (charges/payments) y las reservas activas.</p>
+        <table class="tabla-admin" style="width:100%;margin-bottom:16px">
+            <thead><tr><th>Tipo</th><th>ID</th><th>En BD</th><th>Debería ser</th><th>Diferencia</th></tr></thead>
+            <tbody>
+                ${problemasClientes.map(p => fila({ ...p, tipo: 'Cliente' })).join('')}
+                ${problemasProveedores.map(p => fila({ ...p, tipo: 'Proveedor' })).join('')}
+            </tbody>
+        </table>
+        ${hayHistorial ? `<p style="font-size:12px;color:var(--accent);margin-bottom:12px">⚠️ Algunos clientes tienen cobros ya cobrados o facturados — revisa antes de corregir.</p>` : ''}
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="btn-cons-cerrar" class="btn btn-secondary">Cerrar</button>
+            <button id="btn-cons-corregir" class="btn btn-primary">Corregir automáticamente</button>
+        </div>`
+    panel.querySelector('#btn-cons-cerrar').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#btn-cons-corregir').addEventListener('click', async () => {
+        const btn = panel.querySelector('#btn-cons-corregir')
+        btn.disabled = true
+        btn.textContent = 'Corrigiendo…'
+        const manuales = []
+        for (const p of problemasClientes) {
+            if (p.esHuerfano && p.tieneHistorial) { manuales.push(p); continue }
+            if (p.esHuerfano) {
+                const { error } = await supabase.from('charges').delete().eq('client_id', p.id)
+                if (error) console.error('Error eliminando charges de', p.id, error)
+            } else {
+                await persistirCobrosCliente(supabase, p.id, reservas)
+            }
+        }
+        for (const p of problemasProveedores) {
+            await persistirPagosProveedor(supabase, p.id, reservas, disponibilidad)
+        }
+        if (manuales.length > 0) {
+            panel.innerHTML = `
+                <h2 style="margin-bottom:12px">⚠️ Corrección parcial</h2>
+                <p style="margin-bottom:8px">Los demás problemas se han corregido. Los siguientes clientes requieren acción manual (tienen cobros cobrados o facturados):</p>
+                <ul style="margin:8px 0 16px 16px;font-size:13px">
+                    ${manuales.map(p => `<li><strong>${p.id}</strong> — ${fmt(p.enBD)} en cobros, sin reservas activas</li>`).join('')}
+                </ul>
+                <p style="font-size:12px;color:var(--subtle)">Abre cada cliente en el panel de reservas y resuelve el historial (nota de crédito, anulación…).</p>
+                <div style="display:flex;justify-content:flex-end">
+                    <button id="btn-cons-ok" class="btn btn-primary">Entendido — recargar</button>
+                </div>`
+            panel.querySelector('#btn-cons-ok').addEventListener('click', () => location.reload())
+        } else {
+            btn.textContent = '✓ Hecho — recargando…'
+            setTimeout(() => location.reload(), 1500)
+        }
     })
 }
