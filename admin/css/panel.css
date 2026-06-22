@@ -69,7 +69,7 @@
 }
 
 .panel-calendario      { flex: 1 1 0; min-width: 0; }
-.panel-estado-financiero { flex: 0 0 280px; }
+.panel-resumen-negocio { flex: 0 0 300px; }
 
 /* =========================
    CALENDARIO TABS
@@ -189,21 +189,185 @@
    RESPONSIVE
 ========================= */
 @media (max-width: 768px) {
-    .panel-fila            { flex-direction: column; }
-    .panel-estado-financiero { flex: none; width: 100%; }
-    .kpi-grid--wide        { grid-template-columns: repeat(2, 1fr); }
-    .selector-mobile       { display: block; }
-
-    .panel-estado-financiero .kpi-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-    .panel-estado-financiero .kpi--separador:last-child {
-        grid-column: 1 / -1;
-    }
-
+    .panel-fila              { flex-direction: column; }
+    .panel-resumen-negocio   { flex: none; width: 100%; }
+    .kpi-grid--wide          { grid-template-columns: repeat(2, 1fr); }
+    .selector-mobile         { display: block; }
+    .ef-layout               { flex-direction: column; }
+    .ef-saldo                { flex: none; padding: 16px; }
+    .ef-grupo                { grid-template-columns: 1fr 1fr; }
+    .pv-tabla td             { padding: 6px 8px 6px 0; }
 }
 
 #grafico-cashflow {
     width: 100% !important;
     height: 220px !important;
 }
+
+/* =========================
+   KPI DUAL (resumen negocio)
+========================= */
+.kpi-dual {
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+}
+
+.kpi-dual--destacado {
+    background: var(--white);
+    border: 2px solid var(--text);
+}
+
+.kpi-dual__label {
+    font-size: 11px;
+    color: var(--subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.kpi-dual__conf {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--accent-ok);
+}
+
+.kpi-dual__conf--error { color: var(--accent); }
+
+/* Secondary value — used in combined VENDIDO card */
+.kpi-dual__sub {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent-ok);
+}
+
+.kpi-dual__pend-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.kpi-dual__sep  { font-size: 12px; color: var(--subtle); }
+.kpi-dual__pend { font-size: 13px; font-weight: 600; color: var(--accent-warn); }
+.kpi-dual__hint { font-size: 11px; color: var(--subtle); }
+
+/* Sublabel within a kpi card (small italic note below the value) */
+.kpi-sublabel {
+    font-size: 11px;
+    color: var(--subtle);
+    margin-top: 2px;
+    display: block;
+}
+
+/* =========================
+   POR VENDER
+========================= */
+.pv-resumen { margin-bottom: 20px; }
+
+.pv-seccion { margin-bottom: 4px; }
+.pv-seccion--gap { margin-top: 24px; }
+
+.pv-titulo {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+}
+
+.pv-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.pv-tabla tr { border-bottom: 1px solid var(--border); }
+.pv-tabla tr:first-child { border-top: 1px solid var(--border); }
+
+.pv-tabla td { padding: 7px 16px 7px 0; vertical-align: middle; }
+.pv-tabla td:first-child { padding-left: 4px; }
+.pv-tabla td:last-child  { padding-right: 4px; text-align: right; }
+
+.pv-venue  { font-weight: 500; white-space: nowrap; }
+.pv-evento { font-weight: 500; white-space: nowrap; }
+.pv-plazas { white-space: nowrap; font-weight: 600; }
+.pv-margen { white-space: nowrap; }
+
+.pv-gasto       { color: var(--accent); font-weight: 600; }
+.pv-sep         { color: var(--subtle); }
+.pv-ganancia    { color: var(--accent-ok); font-weight: 600; }
+.pv-ganancia--neg { color: var(--accent); }
+
+.pv-resumen-seccion {
+    font-size: 13px;
+    color: var(--subtle);
+    margin-bottom: 8px;
+    padding: 0 2px;
+    line-height: 1.6;
+}
+
+.pv-resumen-seccion strong { color: var(--text); }
+
+.pv-resto {
+    font-size: 12px;
+    color: var(--subtle);
+    padding: 5px 10px;
+    margin-top: 2px;
+}
+
+/* =========================
+   ESTADO FINANCIERO (horizontal)
+========================= */
+.ef-layout {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+}
+
+.ef-filas { flex: 1; min-width: 0; }
+
+.ef-grupo {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 12px 0;
+}
+
+.ef-grupo--pagos { border-top: 1px solid var(--border); }
+
+.ef-item { display: flex; flex-direction: column; gap: 3px; }
+
+.ef-label {
+    font-size: 11px;
+    color: var(--subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ef-valor      { font-size: 18px; font-weight: 600; color: var(--text); }
+.ef-valor.ok   { color: var(--accent-ok); }
+.ef-valor.warn { color: var(--accent-warn); }
+.ef-valor.error { color: var(--accent); }
+
+.ef-saldo {
+    flex: 0 0 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 16px 12px;
+    background: var(--white);
+    border: 2px solid var(--text);
+    border-radius: var(--radius);
+    text-align: center;
+    gap: 6px;
+}
+
+.ef-saldo .kpi-valor { font-size: 24px; }

@@ -441,9 +441,25 @@ Gestiona:
 **Tabla de servicios (`bloque-servicios-proveedor`):** `cargarServiciosProveedor(proveedorId, venueId)` filtra `todaDisponibilidad` por `d.venue_id === vid` (donde `vid = venueId ?? venueActual?.id`). Muestra solo los servicios del venue activo; nunca mezcla venues aunque el proveedor tenga varios. La tabla se refresca al cambiar de pestaña y tras cualquier operación de guardado o eliminación de servicios. El cálculo de pagos (`persistirPagosProveedor`) es distinto: agrega todos los venues del proveedor a propósito — eso es correcto y no debe verse afectado por el filtro de la tabla.
 
 ### panel.js
-Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `payments`, `charges`, `reservation_requests`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
+Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `venues`, `payments`, `charges`, `reservation_requests`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
 
-Bloques: alertas críticas (sobrereservas, pagos/cobros vencidos, solicitudes pendientes), calendario de próximos pagos/cobros (filtrable), estado financiero con Chart.js, resumen por servicio/día. Tablas con sort por columna (4 tablas). Cobros y pagos pendientes son clicables: abren formulario.html o proveedores.html con el cliente/proveedor precargado via query params.
+**Bloques (orden en pantalla):**
+1. Alertas críticas: sobrereservas, sfcom nuevos/cancelados, solicitudes pendientes, pagos/cobros vencidos.
+2. Panel principal (dos columnas): calendario de próximos pagos/cobros (filtrable 7/30/todos) + resumen de negocio (tarjetones dual a la derecha).
+3. Por vender: 4 KPI cards + tablas pareto de disponibilidad no vendida.
+4. Disponibilidad por evento.
+5. Disponibilidad por proveedor.
+6. Estado financiero (grid horizontal 2×3 + saldo neto) + gráfico cashflow.
+
+Tablas con sort por columna (4 tablas). Cobros y pagos pendientes son clicables: abren formulario.html o proveedores.html con el cliente/proveedor precargado via query params.
+
+**`calcularResumen()`:** calcula los tarjetones del bloque "Resumen de negocio". Separados en confirmadas/pendientes: `kpi-res-confirmadas`, `kpi-res-pendientes`, `kpi-plazas-confirmadas`, `kpi-plazas-pendientes`. Ingresos confirmados (`kpi-ingresos-brutos`) + pendientes (`kpi-ingresos-pendientes`). Coste proveedores = `SUM(payments.amount)` (sin importar estado). `costePendConsumo`: coste marginal adicional si las reservas pendientes confirman, solo para `billing_model = 'consumption'` (capacity ya está pagado). `kpi-coste-pend-row` se muestra solo cuando `costePendConsumo > 0`. Margen = ingresos confirmados − costes; `kpi-margen-pendientes` muestra el margen combinado si todo confirma.
+
+**`calcularPorVender()`:** calcula el bloque "Por vender". Filtra `disponibilidad` a servicios de tipo balcón (`TIPOS_BALCON`). Para cada fila calcula: `libres = total_slots − slots_activos`, `gastoAsociado` (solo `capacity`: `libres × price_per_slot`), `margen` potencial usando el precio medio de venta de reservas confirmadas de balcones. KPIs globales: `kpi-plazas-libres`, `kpi-ingreso-potencial`, `kpi-coste-adicional` (solo consumption), `kpi-margen-no-capturado`, con sublabels de precio/margen medio por plaza. Separa en dos secciones: `pv-capacity` (max 5 filas pareto) y `pv-consumption` (max 3 filas pareto).
+
+**`_paretoCorte(items, maxRows)`:** recibe items ordenados por `libres` desc. `umbral = items[0].libres / 3`. Devuelve `{ filas: items con libres ≥ umbral (máx maxRows), resto: plazas restantes, restoN: balcones restantes }`.
+
+**`_renderPVSeccion(containerId, items, maxRows, esCapacity)`:** renderiza una sección "Por vender". Llama a `_paretoCorte`, genera frase resumen (totales de las filas mostradas), tabla `<table class="pv-tabla">` con columnas venue_id / nombre evento / plazas libres / columna económica (gasto→margen en capacity; margen potencial en consumption). El campo venue_id y el nombre de servicio tienen igual prominencia (`font-weight: 500`); plazas en negrita (`font-weight: 600`). Pie con "y N plazas más en M balcones" si hay resto. La sección "Oportunidades" (consumption) lleva clase `pv-seccion--gap` para separación visual.
 
 **Filtro con autocomplete en tablas de eventos y proveedores:** encima de cada tabla (`#tabla-eventos`, `#tabla-proveedores`) hay un campo de texto con autocomplete (`#selector-evento`, `#selector-proveedor`). Al hacer foco o escribir, se despliega una lista con los ítems coincidentes (filtrado por `.includes` case-insensitive). Clic en un ítem de la lista: fija el valor en el input, cierra la lista y llama a `renderEventos(id)` / `renderProveedores(id)` con el ID exacto, mostrando esa fila en modo detalle (con filas hijo desplegadas). Borrar el texto y dejar el input vacío restablece la vista completa. Las filas de las tablas son clicables: llaman a `window._seleccionarEvento(id)` / `window._seleccionarProveedor(id)`, que actualiza el input con el ID (o lo vacía si ya estaba seleccionado ese ítem — toggle), cierra la lista y re-renderiza. Clic fuera de cualquier `.autocomplete-wrap` cierra ambas listas. Patrón CSS: `.autocomplete-wrap` + `.autocomplete-list` (el mismo que se usa en proveedores.html e id de cliente en formulario.html).
 

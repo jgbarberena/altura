@@ -610,81 +610,180 @@ window._seleccionarProveedor = function(id) {
     renderProveedores(nuevo)
 }
 
-// ===== BLOQUE 5: RESUMEN DE NEGOCIO =====
+// ===== BLOQUE 1 DERECHA: RESUMEN DE NEGOCIO =====
 function calcularResumen() {
-    const confirmadas   = reservas.filter(r => r.status === 'Confirmada')
-    const pendientes    = reservas.filter(r => r.status === 'Pendiente')
+    const confirmadas  = reservas.filter(r => r.status === 'Confirmada')
+    const pendientes   = reservas.filter(r => r.status === 'Pendiente')
 
-    const plazasConf    = confirmadas.reduce((s, r) => s + r.slots, 0)
-    const ingresos      = confirmadas.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-    const ingresosPend  = pendientes.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-    const costes        = payments.reduce((s, p) => s + parseFloat(p.amount), 0)
-    const margen        = ingresos - costes
-    const margenConPend = ingresos + ingresosPend - costes
+    const plazasConf   = confirmadas.reduce((s, r) => s + r.slots, 0)
+    const plazasPend   = pendientes.reduce((s, r) => s + r.slots, 0)
+    const ingresos     = confirmadas.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    const ingresosPend = pendientes.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    const costes       = payments.reduce((s, p) => s + parseFloat(p.amount), 0)
+    const margen       = ingresos - costes
 
-    document.getElementById('kpi-res-confirmadas').textContent    = confirmadas.length
-    document.getElementById('kpi-res-pendientes').textContent     = pendientes.length
-    document.getElementById('kpi-plazas-confirmadas').textContent = plazasConf
-    document.getElementById('kpi-ingresos-brutos').textContent    = fmt(ingresos)
-    document.getElementById('kpi-costes').textContent             = fmt(costes)
+    // Coste adicional si se confirman las pendientes en venues de tipo consumption
+    const dispMap = new Map(disponibilidad.map(d => [`${d.venue_id}:${d.service_id}`, d]))
+    const costePendConsumo = pendientes.reduce((s, r) => {
+        const d = dispMap.get(`${r.venue_id}:${r.service_id}`)
+        if (!d || d.billing_model !== 'consumption') return s
+        return s + r.slots * parseFloat(d.price_per_slot ?? 0)
+    }, 0)
+
+    const margenConPend = ingresos + ingresosPend - costes - costePendConsumo
+
+    document.getElementById('kpi-res-confirmadas').textContent     = confirmadas.length
+    document.getElementById('kpi-res-pendientes').textContent      = pendientes.length
+    document.getElementById('kpi-plazas-confirmadas').textContent  = plazasConf
+    document.getElementById('kpi-plazas-pendientes').textContent   = plazasPend
+    document.getElementById('kpi-ingresos-brutos').textContent     = fmt(ingresos)
+    document.getElementById('kpi-ingresos-pendientes').textContent = fmt(ingresosPend)
+    document.getElementById('kpi-costes').textContent              = fmt(costes)
+
+    const costePendRow = document.getElementById('kpi-coste-pend-row')
+    if (costePendConsumo > 0) {
+        document.getElementById('kpi-coste-pend-consumo').textContent = fmt(costePendConsumo)
+        costePendRow.style.display = 'flex'
+    } else {
+        costePendRow.style.display = 'none'
+    }
 
     const kpiMargen = document.getElementById('kpi-margen')
     kpiMargen.textContent = fmt(margen)
-    kpiMargen.className   = 'kpi-valor ' + (margen >= 0 ? 'ok' : 'error')
+    kpiMargen.className   = 'kpi-dual__conf ' + (margen >= 0 ? '' : 'kpi-dual__conf--error')
 
     const kpiMargenPend = document.getElementById('kpi-margen-pendientes')
     if (kpiMargenPend) {
         kpiMargenPend.textContent = pendientes.length > 0
             ? `+${fmt(ingresosPend)} si se confirman pendientes → ${fmt(margenConPend)}`
             : ''
-        kpiMargenPend.style.color = 'var(--accent-warn)'
     }
+}
 
-    // ===== FILA POTENCIAL =====
-    // Solo tipos balcón: visita_guiada y otro tienen modelo de coste fijo
-    // y distorsionarían el precio medio de venta y el margen potencial.
+// ===== BLOQUE 2: POR VENDER =====
+function calcularPorVender() {
     const svcMap = new Map(servicios.map(s => [s.id, s]))
-    const dispBalcon        = disponibilidad.filter(d => TIPOS_BALCON.includes(svcMap.get(d.service_id)?.event_type))
-    const confirmadasBalcon = confirmadas.filter(r => TIPOS_BALCON.includes(svcMap.get(r.service_id)?.event_type))
-    const plazasConfBalcon  = confirmadasBalcon.reduce((s, r) => s + r.slots, 0)
-    const ingresosBalcon    = confirmadasBalcon.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
 
+    const dispBalcon = disponibilidad.filter(d => TIPOS_BALCON.includes(svcMap.get(d.service_id)?.event_type))
+
+    // Precio medio de venta estimado a partir de reservas confirmadas en balcones
+    const confirmadasBalcon = reservas.filter(r =>
+        r.status === 'Confirmada' &&
+        TIPOS_BALCON.includes(svcMap.get(r.service_id)?.event_type)
+    )
+    const plazasConfBalcon = confirmadasBalcon.reduce((s, r) => s + r.slots, 0)
+    const ingresosBalcon   = confirmadasBalcon.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
     const precioMedioVenta = plazasConfBalcon > 0 ? ingresosBalcon / plazasConfBalcon : 0
-    const margenPorPlaza   = plazasConf > 0 ? margen / plazasConf : 0
 
-    // Plazas libres: solo balcones
-    const plazasLibres = dispBalcon.reduce((s, d) => {
+    // Construir filas con plazas libres y margen estimado por par venue+servicio
+    const filas = dispBalcon.flatMap(d => {
         const reservadas = reservas.filter(r =>
-            r.venue_id   === d.venue_id   &&
+            r.venue_id   === d.venue_id &&
             r.service_id === d.service_id &&
             r.status     !== 'Cancelada'
         ).reduce((s, r) => s + r.slots, 0)
-        return s + Math.max(0, (d.total_slots ?? 0) - reservadas)
-    }, 0)
+        const libres = Math.max(0, (d.total_slots ?? 0) - reservadas)
+        if (libres === 0) return []
 
-    // Coste adicional: plazas libres en balcones con billing consumption
-    const costeAdicional = dispBalcon
-        .filter(d => d.billing_model === 'consumption')
-        .reduce((s, d) => {
-            const reservadas = reservas.filter(r =>
-                r.venue_id   === d.venue_id   &&
-                r.service_id === d.service_id &&
-                r.status     !== 'Cancelada'
-            ).reduce((s, r) => s + r.slots, 0)
-            const libres = Math.max(0, (d.total_slots ?? 0) - reservadas)
-            return s + libres * parseFloat(d.price_per_slot ?? 0)
-        }, 0)
+        const svc          = svcMap.get(d.service_id)
+        const nombreVenue  = d.venue_id
+        const nombreEvento = svc ? (svc.name ?? svc.event_type) : d.service_id
+        const precioProv = parseFloat(d.price_per_slot ?? 0)
 
+        // Para capacity: ya se ha pagado precioProv × total_slots; el gasto no recuperado por
+        // plaza libre = precioProv. Para consumption: el coste solo aparece si se vende.
+        const gastoAsociado = d.billing_model === 'capacity' ? libres * precioProv : 0
+        const margen = d.billing_model === 'capacity'
+            ? libres * precioMedioVenta - gastoAsociado
+            : libres * (precioMedioVenta - precioProv)
+
+        return [{ libres, nombreVenue, nombreEvento, gastoAsociado, margen, precioProv, modelo: d.billing_model }]
+    })
+
+    // KPIs globales
+    const plazasLibres      = filas.reduce((s, f) => s + f.libres, 0)
     const ingresoPotencial  = plazasLibres * precioMedioVenta
+    const costeAdicional    = filas
+        .filter(f => f.modelo === 'consumption')
+        .reduce((s, f) => s + f.libres * f.precioProv, 0)
     const margenNoCapturado = ingresoPotencial - costeAdicional
 
-    document.getElementById('kpi-plazas-libres').textContent       = plazasLibres
-    document.getElementById('kpi-margen-plaza').textContent        = fmt(margenPorPlaza)
-    document.getElementById('kpi-ingreso-potencial').textContent   = fmt(ingresoPotencial)
-    document.getElementById('kpi-coste-adicional').textContent     = fmt(costeAdicional)
-    document.getElementById('kpi-margen-no-capturado').textContent = fmt(margenNoCapturado)
-    document.getElementById('kpi-margen-no-capturado').className   =
-        'kpi-valor ' + (margenNoCapturado >= 0 ? 'ok' : 'error')
+    document.getElementById('kpi-plazas-libres').textContent     = plazasLibres
+    document.getElementById('kpi-ingreso-potencial').textContent = fmt(ingresoPotencial)
+    document.getElementById('kpi-coste-adicional').textContent   = fmt(costeAdicional)
+    const elMargenNC = document.getElementById('kpi-margen-no-capturado')
+    elMargenNC.textContent = fmt(margenNoCapturado)
+    elMargenNC.className   = 'kpi-valor ' + (margenNoCapturado >= 0 ? 'ok' : 'error')
+
+    const elPrecioMedio = document.getElementById('kpi-precio-medio-plaza')
+    if (elPrecioMedio) elPrecioMedio.textContent = plazasLibres > 0 ? `${fmt(ingresoPotencial / plazasLibres)}/plaza (estimado)` : ''
+    const elMargenMedio = document.getElementById('kpi-margen-medio-plaza')
+    if (elMargenMedio) elMargenMedio.textContent = plazasLibres > 0 ? `${fmt(margenNoCapturado / plazasLibres)}/plaza` : ''
+
+    const capacity    = filas.filter(f => f.modelo === 'capacity').sort((a, b) => b.libres - a.libres)
+    const consumption = filas.filter(f => f.modelo === 'consumption').sort((a, b) => b.libres - a.libres)
+
+    _renderPVSeccion('pv-capacity',    capacity,    5, true)
+    _renderPVSeccion('pv-consumption', consumption, 3, false)
+}
+
+function _paretoCorte(items, maxRows) {
+    if (!items.length) return { filas: [], resto: 0, restoN: 0 }
+    const umbral = items[0].libres / 3
+    const significativas = items.filter(f => f.libres >= umbral).slice(0, maxRows)
+    const resto = items.slice(significativas.length)
+    return { filas: significativas, resto: resto.reduce((s, f) => s + f.libres, 0), restoN: resto.length }
+}
+
+function _renderPVSeccion(containerId, items, maxRows, esCapacity) {
+    const el = document.getElementById(containerId)
+    if (!items.length) { el.innerHTML = ''; return }
+
+    const { filas, resto, restoN } = _paretoCorte(items, maxRows)
+    const titulo = esCapacity ? 'Contratadas por llenar' : 'Oportunidades'
+
+    // Resumen de las filas mostradas
+    const totPlazas = filas.reduce((s, f) => s + f.libres, 0)
+    const totGasto  = filas.reduce((s, f) => s + (f.gastoAsociado || 0), 0)
+    const totMargen = filas.reduce((s, f) => s + f.margen, 0)
+    const margenPos = totMargen >= 0
+    const margenStr = (margenPos ? '+' : '−') + fmt(Math.abs(totMargen))
+    const margenCls = margenPos ? 'pv-ganancia' : 'pv-ganancia--neg'
+
+    let resumenHTML = ''
+    if (filas.length > 1 || restoN > 0) {
+        if (esCapacity) {
+            resumenHTML = `<p class="pv-resumen-seccion">Estas <strong>${totPlazas} plazas</strong>: <span class="pv-gasto">−${fmt(totGasto)}</span> comprometido → <span class="${margenCls}">${margenStr}</span> de margen</p>`
+        } else {
+            resumenHTML = `<p class="pv-resumen-seccion">Estas <strong>${totPlazas} plazas</strong>: <span class="${margenCls}">${margenStr}</span> de margen potencial</p>`
+        }
+    }
+
+    const filaHTML = f => {
+        const pos       = f.margen >= 0
+        const mStr      = (pos ? '+' : '−') + fmt(Math.abs(f.margen))
+        const mCls      = pos ? 'pv-ganancia' : 'pv-ganancia--neg'
+        const costeHTML = esCapacity
+            ? `<span class="pv-gasto">−${fmt(f.gastoAsociado)}</span><span class="pv-sep"> → </span>`
+            : `<span class="pv-sep">→ </span>`
+        return `<tr>
+            <td class="pv-venue">${f.nombreVenue}</td>
+            <td class="pv-evento">${f.nombreEvento}</td>
+            <td class="pv-plazas">${f.libres} libres</td>
+            <td class="pv-margen">${costeHTML}<span class="${mCls}">${mStr}</span></td>
+        </tr>`
+    }
+
+    const restoHTML = restoN > 0
+        ? `<div class="pv-resto">y ${resto} plaza${resto !== 1 ? 's' : ''} más en ${restoN} balcón${restoN !== 1 ? 'es' : ''}</div>`
+        : ''
+
+    el.innerHTML = `<div class="pv-seccion${esCapacity ? '' : ' pv-seccion--gap'}">
+        <h3 class="pv-titulo">${titulo}</h3>
+        ${resumenHTML}
+        <table class="pv-tabla">${filas.map(filaHTML).join('')}</table>
+        ${restoHTML}
+    </div>`
 }
 
 // ===== BLOQUE 2: CASHFLOW =====
@@ -930,6 +1029,7 @@ document.addEventListener('click', e => {
     }
 })
 calcularResumen()
+calcularPorVender()
 calcularCashflow()
 verificarConsistenciaFinanciera()
 
