@@ -1,9 +1,10 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
+import { crearModal } from './modal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)

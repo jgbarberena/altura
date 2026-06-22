@@ -1217,8 +1217,8 @@ Estilo consistente con `fechaCobroDefault`, `normalizarId`, etc. Uso: `valorO(ve
 | `propuesta.js` | 150 | `_cliente.address ?? ''` | Medio |
 | `propuesta.js` | 834 | `(_cliente.company ?? _cliente.name ?? _cliente.id)` (nombre de archivo) | Bajo |
 | `factura.js` | 83, 177, 348, 720 | `_cliente.company ?? _cliente.name ?? _cliente.id` | Alto — cabecera del PDF |
-| `sfcom-panel.js` | 153 | `venue?.display_name ?? r.venue_id ?? '—'` | Bajo — solo UI interna |
-| `sfcom-panel.js` | 206 | `d.venue_display_name ?? d.venue_id ?? '—'` | Bajo — solo UI interna |
+| `sfcom-panel.js` | — | ~~`venue?.display_name ?? r.venue_id ?? '—'`~~ | ✅ RESUELTO — tabla reservas ahora muestra `r.venue_id` directamente (jun 2026) |
+| `sfcom-panel.js` | — | ~~`d.venue_display_name ?? d.venue_id ?? '—'`~~ | ✅ RESUELTO — tabla listings ahora muestra `d.venue_id` directamente (jun 2026) |
 | `formulario.js` | 942, 961, 967, 1009 | `srv?.name ?? r.service_id` | Bajo — `services.name` difícilmente vacío |
 
 Patrón `campo ?? ''` en relleno de inputs (ej. `input.value = cliente.name ?? ''`) es correcto — un input con `''` muestra el campo vacío, que es el comportamiento esperado.

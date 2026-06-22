@@ -135,25 +135,32 @@ function renderReservas() {
     const sfcom = reservas.filter(r => r.origin_ref?.startsWith('WEB'))
 
     if (!sfcom.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--subtle)">No hay reservas sfcom registradas</td></tr>'
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--subtle)">No hay reservas sfcom registradas</td></tr>'
         return
     }
 
     tbody.innerHTML = sfcom.map(r => {
-        const svc   = servicios[r.service_id]
-        const venue = venues[r.venue_id]
-        const cli   = clientes[r.client_id]
+        const svc  = servicios[r.service_id]
+        const cli  = clientes[r.client_id]
+        const avail = todosLosDatos.disponibilidad.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
         const totalNeto  = parseFloat(r.total_amount) || (r.slots * parseFloat(r.price_per_slot))
         const estadoClass = r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'
+        const eventoLabel = svc?.event_type
+            ? svc.event_type.charAt(0).toUpperCase() + svc.event_type.slice(1).replace(/_/g, ' ')
+            : (r.service_id ?? '—')
+        const diaLabel = svc?.day ?? '—'
+        const sfcomNombre = avail?.sfcom_service_name || '—'
 
         return `<tr>
             <td><code>${r.origin_ref}</code></td>
             <td>${valorO(cli?.name, r.client_id ?? '—')}</td>
-            <td>${valorO(svc?.description, r.service_id ?? '—')}</td>
-            <td>${valorO(venue?.display_name, r.venue_id ?? '—')}</td>
+            <td>${eventoLabel}</td>
+            <td style="text-align:center">${diaLabel}</td>
+            <td>${sfcomNombre}</td>
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(r.price_per_slot)}</td>
             <td style="text-align:right;font-weight:600">${fmt(totalNeto)}</td>
+            <td><code>${r.venue_id ?? '—'}</code></td>
             <td class="${estadoClass}">${r.status}</td>
         </tr>`
     }).join('')
@@ -199,11 +206,15 @@ function renderListings() {
         const sfKey = `${d.sfcom_product_id}_${d.sfcom_variation_id ?? 'null'}`
         const estadoInfo = ESTADO_LABEL[d.sfcom_status] || { label: d.sfcom_status, color: '#444', bg: '#f0f0f0' }
         const stockRealTxt = stockSfcom.has(sfKey) ? stockSfcom.get(sfKey) : (d.sfcom_status === 'confirmed' ? '…' : '—')
+        const eventoLabel = svc?.event_type
+            ? svc.event_type.charAt(0).toUpperCase() + svc.event_type.slice(1).replace(/_/g, ' ')
+            : (d.service_id ?? '—')
+        const svcLabel = svc ? `${eventoLabel} ${svc.day ?? ''}`.trim() : (d.service_id ?? '—')
 
         return `<tr>
             <td>${d.sfcom_service_name || '—'}</td>
-            <td>${valorO(svc?.description, d.service_id ?? '—')}</td>
-            <td>${valorO(d.venue_display_name, d.venue_id ?? '—')}</td>
+            <td>${svcLabel}</td>
+            <td><code>${d.venue_id ?? '—'}</code></td>
             <td><span class="sfcom-badge sfcom-badge--${d.sfcom_status === 'confirmed' ? 'confirmed' : d.sfcom_status === 'pending' ? 'pending' : 'deactivation'}">${estadoInfo.label}</span></td>
             <td style="text-align:center">${listedSlots}</td>
             <td style="text-align:center">${slotsSfcom}</td>
