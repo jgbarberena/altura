@@ -534,4 +534,3 @@ function _diaDesdePartes(partes) {
     const n = partes.map(p => parseInt(p)).find(n => !isNaN(n) && n >= 6 && n <= 14)
     return n ?? null
 }
-}
