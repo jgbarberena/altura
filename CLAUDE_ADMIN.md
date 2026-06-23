@@ -170,10 +170,10 @@ UNIQUE (provider_id, amount, due_date).
 | level | text — slug del tipo de experiencia (web) o nombre del producto (sfcom) |
 | day | integer — día de julio preferido |
 | comments | Para emails: prefijo `Días: X\nOtros servicios: Y\n\n` + resumen. Para web/sfcom: texto libre. |
-| status | `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`; default `'nueva'` |
+| status | `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`; default `'nueva'`. El valor `'cancelada_sfcom'` quedó obsoleto en jun 2026 — migrado automáticamente a `'nueva'` en `_verificarTransicionesAutomaticas()`. |
 | created_at | timestamptz, default now() |
 | updated_at | timestamptz — actualizado por trigger en cada UPDATE |
-| source | null (web), `'email'` (procesado desde panel), ref del pedido sfcom (ej: `WEB123_456`) |
+| source | null (web), `'email'` (procesado desde panel), `'manual'` (+Nueva directa), `WEB\d+_\d+` (sfcom confirmado), `sfcom_c:*` (sfcom cancelado lead) |
 | price_per_slot | numeric — solo en solicitudes sfcom (precio bruto) |
 | service_id | text — sin FK; se guarda como verificación, nunca como búsqueda primaria |
 | language | `'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'` — solo para emails |
@@ -184,7 +184,12 @@ UNIQUE (provider_id, amount, due_date).
 
 **Ciclo de vida de `status`:** las solicitudes con `status IN ('convertida','descartada')` no aparecen en ninguna lista activa. Auto-transición en solicitudes.js: `respuesta_enviada` → `seguimiento_pendiente` si `updated_at` supera 3 días sin respuesta.
 
-**Detección de origen por `source`:** `source LIKE 'WEB%'` → solicitud sfcom. `source = 'email'` → email procesado desde panel. `source IS NULL` → formulario web público.
+**Detección de origen por `source` (jun 2026):** el origen es siempre el campo `source`; nunca el `status`. Detectores:
+- `/^WEB\d+_\d+$/.test(source)` → sfcom confirmado (`_esSfcom`)
+- `source?.startsWith('sfcom_c:')` → lead sfcom cancelado
+- `source === 'email'` → email parseado desde el panel
+- `source === 'manual'` → entrada directa vía +Nueva (sin email)
+- `source === null` → formulario web público
 
 **`assistant_logs`**
 | Campo | Notas |
@@ -395,13 +400,23 @@ Lee al cargar: `availability_panel` (para calcular disponibilidad en el borrador
 
 **Layout:** dos columnas en desktop (lista 320px izquierda, detalle derecha). En mobile: bottom sheet (`position:fixed; bottom:0; transform:translateY(100%)` + clase `.visible`).
 
-**Sistema de estado único (`status`):** `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`. Las solicitudes sfcom (source `WEB%`) tienen una vista simplificada: sin selector de estado, sin log, sin asistente; solo botón "→ Crear reserva" (va a formulario.html) y "✕ Descartar".
+**Sistema de estado único (`status`):** `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`. El origen nunca se guarda en el status — se detecta siempre por el campo `source`.
 
-Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `updated_at` supera 3 días. Se aplica al cargar la lista.
+Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `updated_at` supera 3 días. Migración de legacy: registros con `status === 'cancelada_sfcom'` se actualizan a `'nueva'` en `_verificarTransicionesAutomaticas()`. Ambas se aplican al cargar la lista.
 
-**Lista:** nombre, fecha, badges de origen y de status, experiencia, preview del último mensaje del log (64 chars).
+**Lista (4 secciones, jun 2026):**
+1. "Sfcom — confirmadas" — source `/^WEB\d+_\d+$/` (solo si existen)
+2. "Solicitudes" — resto (web/email/manual) con header solo cuando coexiste con otras secciones
+3. "Leads cancelados sfcom" — source `sfcom_c:*` (solo si existen)
+4. "Cerradas" — status `convertida`/`descartada` (paginadas, botón "Cargar más")
 
-**Detalle (web/email):** selector de status con autosave, botón "📩 Enviar recordatorio" (solo cuando `status === 'seguimiento_pendiente'`), tabla de borrador de propuesta, selector de venue asignado con plazas libres en tiempo real, log de conversación, botón "💬 Abrir asistente", enlace "📋 Convertir en reservas" (→ `formulario.html?solicitud_id=uuid`), botón "✕ Descartar". La URL solo lleva `solicitud_id`; formulario.js lee el resto directamente de Supabase.
+Cada item: nombre, fecha, badge de origen (sfcom/sfcom_c/email/web), badge de status, experiencia, preview del último mensaje del log (64 chars, HTML escapado).
+
+**Vista condensada vs. completa (jun 2026):** controlada por el flag `esCondensada = esSfcomConf || esCancelada`:
+- **Condensada** (sfcom confirmado + sfcom cancelado): muestra datos resumidos (experiencia, día, personas, consulta), botón "💬 Historial y gestión" que despliega borrador + log + selector de estado (disabled si sfcom confirmado) + asistente. CTA inferior: "→ Crear reserva" (sfcom conf) o "🔄 Intentar recuperar" (sfcom canc).
+- **Completa** (web/email/manual): selector de status, borrador, log, asistente, "📋 Convertir en reservas". Botón "📩 Enviar recordatorio" prominent solo cuando `status === 'seguimiento_pendiente'`.
+
+**Detección de modo en asistente:** al abrir sin modo explícito, se auto-detecta: si `conversation_notes` contiene `\n<Paula>\n` → modo `'seguimiento'`; si no → modo `'nueva'`.
 
 **Borrador de propuesta (`proposal_draft`):** tabla editable que ocupa el espacio donde antes estaba el bloque de datos iniciales (`.sol-detalle-datos`). Columnas: Servicio (select desde `availability_panel`), Día, Venue (select dinámico dependiente del servicio), Plazas, €/plaza, Total (calculado, readonly), Acciones (enlace catálogo + papelera). Flechas ↑↓ para reordenar. Fila vacía al final para añadir. Guardado automático con debounce 800ms. Si el borrador está vacío al abrir una solicitud que tiene `level`/`day`/`slots`, se pre-rellena automáticamente la primera fila con esos datos y el precio máximo de `_calcularPrecioRef`. La consulta inicial (`sol.comments`) se migra como primer mensaje `<Cliente>` del log si el log no tenía mensajes de cliente.
 
@@ -505,7 +520,7 @@ nuevoStock = Math.max(0, Math.min(
 - `syncStockToSfcom(supabase, venueId, serviceId)` — hace PUT si `sfcom_status === 'confirmed'`. Silencioso en éxito, modal de error en fallo. Llamar siempre después de cualquier operación que cambie reservas activas.
 - `checkAvailabilityBeforeSave(supabase, venueId, serviceId, plazas)` — verifica antes de guardar reserva nueva. No bloquea si el GET de sfcom falla.
 - `checkSfcomOrders(supabase)` — detecta pedidos nuevos y cancelados en sfcom, inserta en reservation_requests.
-- `importarCanceladosSfcom(supabase, sfcomListings, cancelados)` — importa pedidos cancelados como leads con `status: 'cancelada_sfcom'`.
+- `importarCanceladosSfcom(supabase, sfcomListings, cancelados)` — importa pedidos cancelados como leads con `source: 'sfcom_c:<origin_ref>'`, `status: 'nueva'`. Dedup por cliente+servicio sin condición de status.
 - `computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta, allDelta, stockMap })` — calcula stock esperado tras un delta. Acepta `stockMap` pre-cargado para evitar N GET stock-all; si es null, usa caché o hace su propio GET.
 - `confirmarStockSfcom(supabase, pares)` — modal consultivo pre-save. Hace UN GET stock-all y lo pasa a cada `computeExpectedStock`.
 - `loadSfcomListings(supabase)` — carga el mapeo WooCommerce→servicio/venue. Usada en páginas que no son formulario.html.
@@ -587,11 +602,11 @@ initAsistente(supabase, {
 - `abrirProcesarEmail()` — abre el modal de parseo de emails (sin args)
 
 **`abrirAsistenteRespuesta(solicitud, modo = null)`:**
-- `modo = null`: flujo normal, Claude presenta disponibilidad y propone mensaje
-- `modo = 'recordatorio'`: Claude sabe que el cliente ya recibió respuesta y no ha contestado; genera seguimiento breve
-- `modo = 'recuperar_sfcom'`: el cliente canceló un pedido en sfcom; Claude redacta mensaje de recuperación con contexto de disponibilidad
+- `modo = null`: auto-detecta según `conversation_notes`: si hay mensajes de Paula → `'seguimiento'`; si no → `'nueva'`
+- `modo = 'recordatorio'`: el cliente ya recibió respuesta y no ha contestado; Claude genera seguimiento breve
+- `modo = 'recuperar_lead'`: el cliente intentó reservar en sfcom pero su pedido no se completó; Claude redacta mensaje de recuperación
 
-Los modos `'recordatorio'` y `'recuperar_sfcom'` **no se lanzan directamente desde los botones de solicitudes.html**. Los botones "📩 Enviar recordatorio" y "🔄 Intentar recuperar" abren modales JS directos (`abrirModalRecordatorio` / `abrirModalRecuperarSfcom` en `solicitudes.js`) que proponen un mensaje predefinido sin IA. Dentro de esos modales hay un botón "✏️ Mejorar con el asistente" que llama a `abrirAsistenteRespuesta` con el modo correspondiente, solo si Paula lo necesita.
+Los modos `'recordatorio'` y `'recuperar_lead'` **no se lanzan directamente desde los botones de solicitudes.html**. Los botones "📩 Enviar recordatorio" y "🔄 Intentar recuperar" abren modales JS directos (`abrirModalRecordatorio` / `abrirModalRecuperarSfcom` en `solicitudes.js`) que proponen un mensaje predefinido sin IA. Dentro de esos modales hay un botón "✏️ Mejorar con el asistente" que llama a `abrirAsistenteRespuesta` con el modo correspondiente, solo si Paula lo necesita.
 
 El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `web`.
 
@@ -603,9 +618,8 @@ El tipo de solicitud se detecta automáticamente: `sfcom_reserva` / `email` / `w
         idioma,              // campo language o 'desconocido'
         comentario,          // comments sin prefijos Días:/Otros servicios:
         conversation_log,    // conversation_notes, truncado a 2000 chars si es mayor
-        assigned_venue_id,
-        status,
-        modo,
+        conversation_status, // status actual de la solicitud
+        modo,                // 'nueva' | 'seguimiento' | 'recordatorio' | 'recuperar_lead'
         proposal_draft       // array de líneas del borrador actual
     },
     disponibilidad: [...]   // un objeto por venue (ver estructura abajo)

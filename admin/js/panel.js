@@ -97,7 +97,7 @@ function calcularAlertas() {
     const solicitudesSfcom          = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source) && s.status === 'nueva')
     const solicitudesWebNuevas      = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'nueva')
     const solicitudesWebSeguimiento = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'seguimiento_pendiente')
-    const leadsCancelados           = solicitudesActivas.filter(s => s.status === 'cancelada_sfcom')
+    const leadsCancelados           = solicitudesActivas.filter(s => s.source?.startsWith('sfcom_c:'))
 
     const alertaSfcom = document.getElementById('alerta-sfcom')
     if (solicitudesSfcom.length > 0) {

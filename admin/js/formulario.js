@@ -2566,11 +2566,13 @@ async function registrarPedidosSfcom(pedidos) {
 
         // 4. Tres casos
         let serviceId   = null
+        let venueId     = null
         let levelToSave = nombreExtraido || li.nombre
 
         if (filaByName && (!filaById || filaById.id === filaByName.id)) {
             // Caso 1: nombre encontrado, IDs consistentes
             serviceId = filaByName.service_id
+            venueId   = filaByName.venue_id ?? null
 
         } else if (filaByName && filaById && filaById.id !== filaByName.id) {
             // Caso 2: nombre encontrado pero IDs apuntan a otra fila → IDs cambiaron en sfcom
@@ -2591,32 +2593,53 @@ async function registrarPedidosSfcom(pedidos) {
                 }
             }
             serviceId = filaByName.service_id
+            venueId   = filaByName.venue_id ?? null
 
         } else if (!filaByName && filaById) {
             // Caso 3: IDs apuntan a una fila pero el nombre no se reconoce
             _mostrarModalNombreNoReconocido(li.nombre, pedido.origin_ref)
             levelToSave = li.nombre  // guardar nombre raw para revisión manual
+            venueId     = filaById.venue_id ?? null
         }
         // Caso 4 (ninguno encontrado): serviceId=null, levelToSave=li.nombre raw
 
         const slots           = li.cantidad ?? 1
         const totalBruto      = parseFloat(pedido.total ?? 0)
         const precioSlotBruto = slots > 0 ? totalBruto / slots : totalBruto
+        const dia             = extraerDia(li.nombre)
+        const hoy = new Date()
+        const dd  = String(hoy.getDate()).padStart(2, '0')
+        const mm  = String(hoy.getMonth() + 1).padStart(2, '0')
+        const yy  = String(hoy.getFullYear()).slice(-2)
+        const detalleProd = [
+            levelToSave         && `Producto: ${levelToSave}`,
+                                   `Personas: ${slots}`,
+            precioSlotBruto > 0 && `Precio: ${Math.round(precioSlotBruto)}€/p`
+        ].filter(Boolean).join(' · ')
+        const proposal_draft = (serviceId || venueId) ? [{
+            service_id: serviceId,
+            venue_id:   venueId,
+            day:        dia,
+            slots:      slots || null,
+            price:      precioSlotBruto || null
+        }] : null
 
         await supabase.from('reservation_requests').insert({
-            client_name:    pedido.cliente.nombre    || 'Sin nombre',
-            client_email:   pedido.cliente.email     || null,
-            client_phone:   pedido.cliente.telefono  || null,
-            client_address: pedido.cliente.direccion || null,
+            client_name:        pedido.cliente.nombre    || 'Sin nombre',
+            client_email:       pedido.cliente.email     || null,
+            client_phone:       pedido.cliente.telefono  || null,
+            client_address:     pedido.cliente.direccion || null,
             slots,
-            day:            extraerDia(li.nombre),
-            level:          levelToSave,
-            service_id:     serviceId,
-            comments:       pedido.cliente.comentarios || null,
-            price_per_slot: precioSlotBruto,
-            created_at:     pedido.fecha || undefined,
-            source:         pedido.origin_ref,
-            status:         'nueva'
+            day:                dia,
+            level:              levelToSave,
+            service_id:         serviceId,
+            comments:           pedido.cliente.comentarios || null,
+            price_per_slot:     precioSlotBruto,
+            proposal_draft,
+            conversation_notes: `---${dd}/${mm}/${yy}---\n<Cliente>\n[Sfcom confirmado] ${detalleProd}`,
+            created_at:         pedido.fecha || undefined,
+            source:             pedido.origin_ref,
+            status:             'nueva'
         })
     }
 }

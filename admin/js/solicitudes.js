@@ -38,7 +38,6 @@ const STATUS_LABELS = {
     en_conversacion:       'En conversación',
     respuesta_enviada:     'Respuesta enviada',
     seguimiento_pendiente: 'Seguimiento pendiente',
-    cancelada_sfcom:       'Cancelada sfcom',
     convertida:            'Convertida',
     descartada:            'Descartada',
 }
@@ -333,6 +332,15 @@ async function _cargarCerradas() {
 let _solicitudesActuales = []
 
 async function _verificarTransicionesAutomaticas() {
+    // Migración puntual: cancelada_sfcom era origen, no estado — mover todo a 'nueva'
+    const legacyCanceladas = _solicitudesActuales.filter(s => s.status === 'cancelada_sfcom')
+    if (legacyCanceladas.length) {
+        await supabase.from('reservation_requests')
+            .update({ status: 'nueva' })
+            .in('id', legacyCanceladas.map(s => s.id))
+        legacyCanceladas.forEach(s => { s.status = 'nueva' })
+    }
+
     const limite3dias = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     const caducadas   = _solicitudesActuales.filter(s =>
         s.status === 'respuesta_enviada' &&
@@ -348,10 +356,13 @@ async function _verificarTransicionesAutomaticas() {
     caducadas.forEach(s => { s.status = 'seguimiento_pendiente' })
 }
 
+function _esc(s) {
+    return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function _renderItem(s, apagada = false) {
     const esSfcom     = _esSfcom(s.source)
-    const esCancelada = s.status === 'cancelada_sfcom'
-    const esSfcomC    = s.source?.startsWith('sfcom_c:')
+    const esCancelada = s.source?.startsWith('sfcom_c:')
     const esEmail     = s.source === 'email'
     const fecha      = s.created_at
         ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
@@ -360,22 +371,23 @@ function _renderItem(s, apagada = false) {
     const badgeLabel = STATUS_LABELS[convStatus] || convStatus
     const origenBadge = esSfcom
         ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
-        : (esCancelada || esSfcomC) ? `<span class="sol-badge sol-badge--sfcom-c">sfcom_c</span>`
+        : esCancelada ? `<span class="sol-badge sol-badge--sfcom-c">sfcom_c</span>`
         : esEmail ? `<span class="sol-badge sol-badge--email">email</span>`
         : `<span class="sol-badge sol-badge--web">web</span>`
-    const experiencia    = s.level || s.service_id || '—'
+    const experiencia    = _esc(s.level || s.service_id || '—')
     const notasPreview   = (() => {
         if (!s.conversation_notes) return ''
         const msgs   = _parsearLog(s.conversation_notes).filter(i => i.type === 'message')
         const ultimo = msgs[msgs.length - 1]
         const full   = ultimo ? `${ultimo.author}: ${ultimo.text}` : s.conversation_notes
-        return `<div class="sol-item-notes">${full.slice(0, 64)}${full.length > 64 ? '…' : ''}</div>`
+        const preview = full.slice(0, 64) + (full.length > 64 ? '…' : '')
+        return `<div class="sol-item-notes">${_esc(preview)}</div>`
     })()
     const esActiva = solicitudActual?.id === s.id
     const clases   = ['sol-item', apagada ? 'sol-item--apagada' : '', esActiva ? 'active' : ''].filter(Boolean).join(' ')
     return `<div class="${clases}" data-id="${s.id}">
         <div class="sol-item-header">
-            <span class="sol-item-nombre">${s.client_name || '—'}</span>
+            <span class="sol-item-nombre">${_esc(s.client_name) || '—'}</span>
             <span class="sol-item-fecha">${fecha}</span>
         </div>
         <div class="sol-item-meta">
@@ -389,22 +401,39 @@ function _renderItem(s, apagada = false) {
 
 function renderLista() {
     const lista      = document.getElementById('sol-lista')
-    const activas    = _solicitudesActuales.filter(s => s.status !== 'cancelada_sfcom')
-    const canceladas = _solicitudesActuales.filter(s => s.status === 'cancelada_sfcom')
+    const sfcomConf  = _solicitudesActuales.filter(s => _esSfcom(s.source))
+    const sfcomCanc  = _solicitudesActuales.filter(s => s.source?.startsWith('sfcom_c:') && s.status === 'nueva')
+    const activas    = _solicitudesActuales.filter(s => !_esSfcom(s.source) && !(s.source?.startsWith('sfcom_c:') && s.status === 'nueva'))
     const cerradas   = _solicitudesCerradas
+    const hayActivos = sfcomConf.length || activas.length || sfcomCanc.length
 
-    if (!activas.length && !canceladas.length && !cerradas.length) {
+    if (!hayActivos && !cerradas.length) {
         lista.innerHTML = '<div class="sol-empty">No hay solicitudes.</div>'
         return
     }
 
-    let html = activas.length
-        ? activas.map(s => _renderItem(s, false)).join('')
-        : '<div class="sol-empty">No hay solicitudes activas.</div>'
+    // "Solicitudes" header solo aparece cuando coexiste con otras secciones activas
+    const hayVariosBloques = (sfcomConf.length > 0) + (activas.length > 0) + (sfcomCanc.length > 0) > 1
 
-    if (canceladas.length) {
+    let html = ''
+
+    if (sfcomConf.length) {
+        html += `<div class="sol-sep">Sfcom — confirmadas</div>`
+        html += sfcomConf.map(s => _renderItem(s)).join('')
+    }
+
+    if (activas.length) {
+        if (hayVariosBloques) html += `<div class="sol-sep">Solicitudes</div>`
+        html += activas.map(s => _renderItem(s)).join('')
+    }
+
+    if (sfcomCanc.length) {
         html += `<div class="sol-sep">Leads cancelados sfcom</div>`
-        html += canceladas.map(s => _renderItem(s, false)).join('')
+        html += sfcomCanc.map(s => _renderItem(s)).join('')
+    }
+
+    if (!hayActivos) {
+        html += '<div class="sol-empty">No hay solicitudes activas.</div>'
     }
 
     if (cerradas.length) {
@@ -420,7 +449,7 @@ function renderLista() {
 
     lista.querySelectorAll('.sol-item').forEach(el => {
         el.addEventListener('click', () => {
-            const sol = [...activas, ...canceladas, ...cerradas].find(s => String(s.id) === el.dataset.id)
+            const sol = [...sfcomConf, ...activas, ...sfcomCanc, ...cerradas].find(s => String(s.id) === el.dataset.id)
             if (sol) mostrarDetalle(sol)
         })
     })
@@ -693,16 +722,14 @@ function _renderBorrador(sol, container) {
             const idx = parseInt(e.target.dataset.idx)
             draft[idx].slots = parseInt(e.target.value) || null
             _debounceSave(sol, getDraft)
-            rebind()
         })
     })
 
     tbody.querySelectorAll('.bor-price').forEach(inp => {
         inp.addEventListener('blur', e => {
             const idx = parseInt(e.target.dataset.idx)
-            draft[idx].price = parseFloat(e.target.value) || null
+            draft[idx].price = e.target.value !== '' ? parseFloat(e.target.value) : null
             _debounceSave(sol, getDraft)
-            rebind()
         })
     })
 
@@ -871,6 +898,15 @@ async function _preFillBorradorSiVacio(sol) {
     if (idx !== -1) _solicitudesActuales[idx].proposal_draft = sol.proposal_draft
 }
 
+function _actualizarBadgeEstado(id, nuevoEstado) {
+    const badgeEl = document.querySelector(
+        `.sol-item[data-id="${id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--sfcom-c):not(.sol-badge--email):not(.sol-badge--web)`
+    )
+    if (badgeEl) { badgeEl.className = `sol-badge sol-badge--${nuevoEstado}`; badgeEl.textContent = STATUS_LABELS[nuevoEstado] || nuevoEstado }
+    const itemEl = document.querySelector(`.sol-item[data-id="${id}"]`)
+    if (itemEl) itemEl.classList.toggle('sol-item--apagada', ['convertida', 'descartada'].includes(nuevoEstado))
+}
+
 function mostrarDetalle(sol) {
     solicitudActual = sol
 
@@ -878,33 +914,33 @@ function mostrarDetalle(sol) {
         el.classList.toggle('active', el.dataset.id === String(sol.id))
     })
 
-    const detalle     = document.getElementById('sol-detalle')
-    const esSfcom     = _esSfcom(sol.source)
-    const esCancelada = sol.status === 'cancelada_sfcom'
-    const esSfcomC    = sol.source?.startsWith('sfcom_c:')
-    const esEmail     = sol.source === 'email'
-    const convStatus  = sol.status || 'nueva'
+    const detalle       = document.getElementById('sol-detalle')
+    const esSfcomConf   = _esSfcom(sol.source)
+    const esCancelada   = sol.source?.startsWith('sfcom_c:')
+    const esSfcomLead   = esCancelada && sol.status === 'nueva'
+    const esCondensada  = esSfcomConf || esSfcomLead
+    const esSeguimiento = sol.status === 'seguimiento_pendiente'
+    const esEmail       = sol.source === 'email'
+    const convStatus    = sol.status || 'nueva'
 
     const contactoTel   = sol.client_phone ? `<a href="tel:${sol.client_phone}">${sol.client_phone}</a>` : null
     const contactoEmail = sol.client_email ? `<a href="mailto:${sol.client_email}">${sol.client_email}</a>` : null
     const contactoHTML  = [contactoTel, contactoEmail].filter(Boolean).join(' · ') || '—'
 
-    // Identificación de cliente existente (issue 7)
-    const matchResult    = resolverCliente({ nombre: sol.client_name || '', email: sol.client_email || '', telefono: sol.client_phone || '' }, todosClientes)
+    const matchResult     = resolverCliente({ nombre: sol.client_name || '', email: sol.client_email || '', telefono: sol.client_phone || '' }, todosClientes)
     const clienteConocido = matchResult.match !== 'ninguno' ? matchResult.cliente : null
 
     const estadoOptions = Object.entries(STATUS_LABELS).map(([v, l]) =>
         `<option value="${v}"${convStatus === v ? ' selected' : ''}>${l}</option>`
     ).join('')
 
-    // Pre-rellenar borrador si está vacío (non-sfcom inmediatamente; sfcom al abrir el toggle)
-    if (!esSfcom) _preFillBorradorSiVacio(sol)
+    if (!esCondensada) _preFillBorradorSiVacio(sol)
 
     const urlReserva = `formulario.html?solicitud_id=${sol.id}`
 
-    const origenLabel = esSfcom ? '· <strong style="color:#dc2626">sfcom</strong>'
-                      : (esCancelada || esSfcomC) ? '· <strong style="color:#9d174d">sfcom_c</strong>'
-                      : esEmail ? '· email'
+    const origenLabel = esSfcomConf ? '· <strong style="color:#dc2626">sfcom</strong>'
+                      : esCancelada ? '· <strong style="color:#9d174d">sfcom_c</strong>'
+                      : esEmail     ? '· email'
                       : '· web'
 
     const fechaCompleta = sol.created_at
@@ -913,46 +949,53 @@ function mostrarDetalle(sol) {
 
     const logItems = _parsearLog(sol.conversation_notes)
 
+    const ctaHTML = esSfcomConf
+        ? `<a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>`
+        : esSfcomLead
+        ? `<button class="btn btn-primary" id="btnIntentarRecuperar" style="min-height:44px">🔄 Intentar recuperar</button>`
+        : `<button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
+           <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>`
+
     detalle.innerHTML = `
         <div class="sol-detalle-inner">
 
             <div class="sol-detalle-header">
                 <div style="min-width:0">
-                    <div class="sol-detalle-nombre">${sol.client_name || '—'}</div>
+                    <div class="sol-detalle-nombre">${_esc(sol.client_name) || '—'}</div>
                     <div class="sol-detalle-contacto">${contactoHTML}</div>
                     <div style="font-size:11px;color:var(--subtle);margin-top:3px">
                         ${fechaCompleta} ${origenLabel}
                     </div>
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:8px;flex-shrink:0">
-                    ${!esSfcom ? `<select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>` : ''}
+                    ${!esCondensada ? `<select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>` : ''}
                     <button class="btn-cerrar-detalle" id="btnCerrarDetalle" title="Cerrar">✕</button>
                 </div>
             </div>
 
             ${clienteConocido ? `
             <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:9px 14px;margin-bottom:12px;font-size:13px;color:#1e40af">
-                <strong>👤 Cliente conocido:</strong> ${clienteConocido.id}${clienteConocido.name ? ` — ${clienteConocido.name}` : ''}
+                <strong>👤 Cliente conocido:</strong> ${_esc(clienteConocido.id)}${clienteConocido.name ? ` — ${_esc(clienteConocido.name)}` : ''}
             </div>` : ''}
 
-            ${!esSfcom && convStatus === 'seguimiento_pendiente' ? `
+            ${!esCondensada && esSeguimiento ? `
             <div style="margin-bottom:16px">
                 <button class="btn btn-primary" id="btnEnviarRecordatorio" style="width:100%;min-height:44px">📩 Enviar recordatorio</button>
             </div>` : ''}
 
-            ${!esSfcom ? `<div id="sol-borrador-container"></div>` : `
+            ${esCondensada ? `
             <div class="sol-detalle-datos">
-                <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${sol.level || sol.service_id || '—'}</span></div>
+                <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${_esc(sol.level || sol.service_id || '—')}</span></div>
                 <div class="sol-dato"><span class="sol-dato-label">Día</span><span class="sol-dato-valor">${sol.day ? sol.day + ' julio' : '—'}</span></div>
                 <div class="sol-dato"><span class="sol-dato-label">Personas</span><span class="sol-dato-valor">${sol.slots || '—'}</span></div>
-                ${sol.comments ? `<div class="sol-dato sol-dato--full"><span class="sol-dato-label">Consulta</span><span class="sol-dato-valor">${sol.comments}</span></div>` : ''}
+                ${sol.comments ? `<div class="sol-dato sol-dato--full"><span class="sol-dato-label">Consulta</span><span class="sol-dato-valor">${_esc(sol.comments)}</span></div>` : ''}
             </div>
             <div style="margin-top:12px;margin-bottom:4px">
-                <button class="btn btn-secondary" id="btnSfcomGestion" style="width:100%;min-height:40px;font-size:13px">💬 Historial y gestión</button>
+                <button class="btn btn-secondary" id="btnGestion" style="width:100%;min-height:40px;font-size:13px">💬 Historial y gestión</button>
             </div>
-            <div id="sol-sfcom-extra" style="display:none;margin-top:4px">
+            <div id="sol-extra" style="display:none;margin-top:4px">
                 <div style="margin-bottom:12px">
-                    <select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>
+                    <select id="sol-select-estado" class="sol-estado-select"${esSfcomConf ? ' disabled' : ''}>${estadoOptions}</select>
                 </div>
                 <div id="sol-borrador-container"></div>
                 ${_logSection(logItems)}
@@ -960,19 +1003,12 @@ function mostrarDetalle(sol) {
                     <button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
                     <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">📋 Convertir en reservas</a>
                 </div>
-            </div>`}
-
-            ${!esSfcom ? _logSection(logItems) : ''}
+            </div>` : `
+            <div id="sol-borrador-container"></div>
+            ${_logSection(logItems)}`}
 
             <div class="sol-acciones">
-                ${esCancelada
-                    ? `<button class="btn btn-primary" id="btnIntentarRecuperar" style="min-height:44px">🔄 Intentar recuperar</button>
-                       <button class="btn btn-secondary" id="btnMarcarNueva" style="min-height:40px">↩ Marcar como nueva</button>`
-                    : esSfcom
-                    ? `<a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>`
-                    : `<button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
-                       <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>`
-                }
+                ${ctaHTML}
                 <button class="btn btn-danger" id="btnDescartarSolicitud">✕ Descartar</button>
             </div>
 
@@ -981,21 +1017,19 @@ function mostrarDetalle(sol) {
 
     detalle.classList.add('visible')
 
-    // ── Borrador y log para solicitudes no-sfcom ─────────────────────────────
-    if (!esSfcom) {
+    // ── Borrador y log: vistas completas ─────────────────────────────────────
+    if (!esCondensada) {
         const borradorContainer = document.getElementById('sol-borrador-container')
         if (borradorContainer) {
             _renderBorrador(sol, borradorContainer)
-            if (!esCancelada) {
-                _migrarConsultaAlLog(sol).then(() => {
-                    const logArea = document.getElementById('sol-log-area')
-                    if (logArea) {
-                        logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
-                        _initEditListeners(sol, logArea)
-                        setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
-                    }
-                })
-            }
+            _migrarConsultaAlLog(sol).then(() => {
+                const logArea = document.getElementById('sol-log-area')
+                if (logArea) {
+                    logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
+                    _initEditListeners(sol, logArea)
+                    setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 0)
+                }
+            })
         }
         const logArea = document.getElementById('sol-log-area')
         if (logArea) {
@@ -1005,13 +1039,13 @@ function mostrarDetalle(sol) {
         _initLogListeners(sol)
     }
 
-    // ── Toggle historial sfcom ────────────────────────────────────────────────
-    if (esSfcom) {
-        document.getElementById('btnSfcomGestion').addEventListener('click', () => {
-            const extra   = document.getElementById('sol-sfcom-extra')
+    // ── Toggle historial: vistas condensadas ─────────────────────────────────
+    if (esCondensada) {
+        document.getElementById('btnGestion').addEventListener('click', () => {
+            const extra   = document.getElementById('sol-extra')
             const visible = extra.style.display !== 'none'
             extra.style.display = visible ? 'none' : ''
-            document.getElementById('btnSfcomGestion').textContent = visible ? '💬 Historial y gestión' : '▲ Ocultar historial'
+            document.getElementById('btnGestion').textContent = visible ? '💬 Historial y gestión' : '▲ Ocultar historial'
             if (!visible && !extra.dataset.inited) {
                 extra.dataset.inited = '1'
                 _preFillBorradorSiVacio(sol)
@@ -1026,44 +1060,35 @@ function mostrarDetalle(sol) {
                     }
                 })
                 _initLogListeners(sol)
-                document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
-                    const nuevoEstado = e.target.value
-                    const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
-                    if (error) { console.error('Error actualizando estado:', error); return }
-                    sol.status = nuevoEstado
-                    const badgeEl = document.querySelector(`.sol-item[data-id="${sol.id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--email)`)
-                    if (badgeEl) { badgeEl.className = `sol-badge sol-badge--${nuevoEstado}`; badgeEl.textContent = STATUS_LABELS[nuevoEstado] || nuevoEstado }
-                    const itemEl = document.querySelector(`.sol-item[data-id="${sol.id}"]`)
-                    if (itemEl) itemEl.classList.toggle('sol-item--apagada', ['convertida', 'descartada'].includes(nuevoEstado))
-                })
+                if (!esSfcomConf) {
+                    document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
+                        const nuevoEstado = e.target.value
+                        const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
+                        if (error) { console.error('Error actualizando estado:', error); return }
+                        sol.status = nuevoEstado
+                        _actualizarBadgeEstado(sol.id, nuevoEstado)
+                    })
+                }
                 document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => abrirAsistenteRespuesta(sol))
             }
         })
     }
 
-    // ── Leads cancelados sfcom ────────────────────────────────────────────────
-    if (esCancelada) {
+    // ── Lead sfcom cancelado: CTA recuperar ──────────────────────────────────
+    if (esSfcomLead) {
         document.getElementById('btnIntentarRecuperar')?.addEventListener('click', () => {
             abrirModalRecuperarSfcom(sol)
         })
-        document.getElementById('btnMarcarNueva')?.addEventListener('click', async () => {
-            const { error } = await supabase.from('reservation_requests').update({ status: 'nueva' }).eq('id', sol.id)
-            if (error) { console.error('Error marcando como nueva:', error); return }
-            await cargarSolicitudes()
-        })
     }
 
-    // ── Estado (non-sfcom) ───────────────────────────────────────────────────
-    if (!esSfcom) {
+    // ── Estado: vistas completas ─────────────────────────────────────────────
+    if (!esCondensada) {
         document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
             const nuevoEstado = e.target.value
             const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
             if (error) { console.error('Error actualizando estado:', error); return }
             sol.status = nuevoEstado
-            const badgeEl = document.querySelector(`.sol-item[data-id="${sol.id}"] .sol-badge:not(.sol-badge--sfcom):not(.sol-badge--email)`)
-            if (badgeEl) { badgeEl.className = `sol-badge sol-badge--${nuevoEstado}`; badgeEl.textContent = STATUS_LABELS[nuevoEstado] || nuevoEstado }
-            const itemEl = document.querySelector(`.sol-item[data-id="${sol.id}"]`)
-            if (itemEl) itemEl.classList.toggle('sol-item--apagada', ['convertida', 'descartada'].includes(nuevoEstado))
+            _actualizarBadgeEstado(sol.id, nuevoEstado)
         })
     }
 
@@ -1072,8 +1097,8 @@ function mostrarDetalle(sol) {
         abrirModalRecordatorio(sol)
     })
 
-    // ── Abrir asistente (non-sfcom) ──────────────────────────────────────────
-    if (!esSfcom) {
+    // ── Asistente: vistas completas ──────────────────────────────────────────
+    if (!esCondensada) {
         document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => {
             abrirAsistenteRespuesta(sol)
         })
@@ -1253,7 +1278,7 @@ function abrirModalRecuperarSfcom(sol) {
         panel.querySelector('#selIdiomaRec2').addEventListener('change', e => renderContenido(e.target.value))
         panel.querySelector('#btnAsistenteRec2').addEventListener('click', () => {
             overlay.close()
-            abrirAsistenteRespuesta(sol, 'recuperar_sfcom')
+            abrirAsistenteRespuesta(sol, 'recuperar_lead')
         })
         mostrarOpcionesEnvio({
             email:     sol.client_email || null,

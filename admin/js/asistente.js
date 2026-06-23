@@ -168,8 +168,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     const { overlay, panel } = crearModal('modal-asistente-respuesta', { wide: true, scroll: true })
 
     const contacto      = [solicitud.client_email, solicitud.client_phone].filter(Boolean).join(' · ') || '—'
-    const tipoSolicitud = _esSfcom(solicitud.source) ? 'sfcom_reserva'
-                        : solicitud.source === 'email' ? 'email'
+    const tipoSolicitud = _esSfcom(solicitud.source)                  ? 'sfcom_reserva'
+                        : solicitud.source?.startsWith('sfcom_c:') ? 'sfcom_lead'
+                        : solicitud.source === 'email'             ? 'email'
                         : 'web'
 
     panel.innerHTML = `
@@ -395,6 +396,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         ? '[... conversación anterior truncada ...]\n' + rawLog.slice(-2000)
         : rawLog
 
+    const hasConversation = solicitud.conversation_notes?.includes('\n<Paula>\n') ?? false
+    const modoEfectivo    = modo ?? (hasConversation ? 'seguimiento' : 'nueva')
+
     const contextoObj = {
         solicitud: {
             tipo:                tipoSolicitud,
@@ -405,9 +409,8 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             idioma:              solicitud.language || 'desconocido',
             comentario:          comentarioLimpio,
             conversation_log:    conversationLog,
-            assigned_venue_id:   solicitud.assigned_venue_id   || null,
             conversation_status: solicitud.status || 'nueva',
-            modo:                modo || null,
+            modo:                modoEfectivo,
             proposal_draft:      solicitud.proposal_draft || []
         },
         disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null, solicitud.slots || null)
@@ -665,6 +668,7 @@ export async function abrirProcesarEmail() {
             errDiv.style.display = 'none'
             try {
                 const solicitud = await _insertarEmailParseado(getCampos())
+                if (solicitud === null) { btnGR.disabled = btnSG.disabled = false; return }
                 await _onEmailSaved()
                 overlay.close()
                 if (abrirAsistente) abrirAsistenteRespuesta(solicitud)
@@ -685,6 +689,25 @@ export async function abrirProcesarEmail() {
 }
 
 async function _insertarEmailParseado(campos) {
+    // Dedup: avisar si ya hay una solicitud abierta para este cliente
+    if (campos.client_email || campos.client_phone) {
+        const orClauses = [
+            campos.client_email ? `client_email.eq.${campos.client_email.toLowerCase().trim()}` : null,
+            campos.client_phone ? `client_phone.eq.${campos.client_phone.trim()}` : null
+        ].filter(Boolean).join(',')
+        const { data: dupes } = await _supabase
+            .from('reservation_requests')
+            .select('id, client_name, status')
+            .not('status', 'in', '("convertida","descartada")')
+            .or(orClauses)
+            .limit(3)
+        if (dupes?.length) {
+            const nombres = dupes.map(d => `${d.client_name} (${d.status})`).join(', ')
+            const ok = confirm(`Ya existe una solicitud abierta para este cliente: ${nombres}\n¿Crear de todas formas?`)
+            if (!ok) return null
+        }
+    }
+
     let prefix = ''
     if (campos.days_flexible) {
         prefix += 'Días: cualquiera\n'
@@ -698,21 +721,29 @@ async function _insertarEmailParseado(campos) {
         ? prefix + '\n' + campos.comments_resumen
         : campos.comments_resumen
 
+    const hoy = new Date()
+    const dd  = String(hoy.getDate()).padStart(2, '0')
+    const mm  = String(hoy.getMonth() + 1).padStart(2, '0')
+    const yy  = String(hoy.getFullYear()).slice(-2)
+    const conversation_notes = campos._emailRaw
+        ? `---${dd}/${mm}/${yy}---\n<Cliente>\n${campos._emailRaw}`
+        : null
+
     const { data, error } = await _supabase
         .from('reservation_requests')
         .insert({
-            client_name:  campos.client_name  || 'Sin nombre',
-            client_email: campos.client_email || null,
-            client_phone: campos.client_phone || null,
-            service_id:   null,
-            slots:        campos.slots        || null,
-            day:          campos.day          || null,
-            level:        campos.service_hint || null,
-            comments:     finalComments,
-            source:       'email',
-            status:       'nueva',
-            language:     campos.language     || 'es',
-            email_raw:    campos._emailRaw    || null
+            client_name:        campos.client_name  || 'Sin nombre',
+            client_email:       campos.client_email || null,
+            client_phone:       campos.client_phone || null,
+            service_id:         null,
+            slots:              campos.slots        || null,
+            day:                campos.day          || null,
+            level:              campos.service_hint || null,
+            comments:           finalComments,
+            source:             'email',
+            status:             'nueva',
+            language:           campos.language     || 'es',
+            conversation_notes
         })
         .select()
         .single()

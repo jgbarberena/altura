@@ -1303,7 +1303,7 @@ export async function loadSfcomListings(supabase) {
     })).filter(r => r.venue_id)
 }
 
-// Registra pedidos cancelados de sfcom como leads cancelada_sfcom.
+// Registra pedidos cancelados de sfcom como leads (source: sfcom_c:*, status: nueva).
 // Matching silencioso (sin modales), dedup por cliente+servicio.
 export async function importarCanceladosSfcom(supabase, sfcomListings, cancelados) {
     if (!cancelados?.length) return
@@ -1382,7 +1382,7 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
         )
 
         if (leadDupe) {
-            if (leadDupe.status === 'cancelada_sfcom' && leadDupe.slots !== slots) {
+            if (leadDupe.slots !== slots) {
                 const fechaPedido = pedido.fecha ? new Date(pedido.fecha) : new Date()
                 const fechaLead   = new Date(leadDupe.created_at)
                 if (fechaPedido >= fechaLead) {
@@ -1437,7 +1437,7 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
             created_at:         pedido.fecha || undefined,
             conversation_notes: `---${dd}/${mm}/${yy}---\n<Cliente>\n[Sfcom cancelado] ${detalleProd}`,
             source:             pedido.origin_ref,
-            status:             'cancelada_sfcom'
+            status:             'nueva'
         })
         if (error) console.error('[sfcom_c] Error registrando:', error.message, pedido.origin_ref)
     }
