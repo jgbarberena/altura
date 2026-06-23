@@ -358,9 +358,11 @@ function _renderItem(s, apagada = false) {
         : '—'
     const convStatus = s.status || 'nueva'
     const badgeLabel = STATUS_LABELS[convStatus] || convStatus
-    const origenBadge = (esSfcom || esCancelada || esSfcomC)
+    const origenBadge = esSfcom
         ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
-        : esEmail ? `<span class="sol-badge sol-badge--email">email</span>` : ''
+        : (esCancelada || esSfcomC) ? `<span class="sol-badge sol-badge--sfcom-c">sfcom_c</span>`
+        : esEmail ? `<span class="sol-badge sol-badge--email">email</span>`
+        : `<span class="sol-badge sol-badge--web">web</span>`
     const experiencia    = s.level || s.service_id || '—'
     const notasPreview   = (() => {
         if (!s.conversation_notes) return ''
@@ -900,7 +902,8 @@ function mostrarDetalle(sol) {
 
     const urlReserva = `formulario.html?solicitud_id=${sol.id}`
 
-    const origenLabel = (esSfcom || esCancelada || esSfcomC) ? '· <strong style="color:#dc2626">sfcom</strong>'
+    const origenLabel = esSfcom ? '· <strong style="color:#dc2626">sfcom</strong>'
+                      : (esCancelada || esSfcomC) ? '· <strong style="color:#9d174d">sfcom_c</strong>'
                       : esEmail ? '· email'
                       : '· web'
 

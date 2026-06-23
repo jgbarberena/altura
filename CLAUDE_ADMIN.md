@@ -1138,6 +1138,14 @@ Evaluar si merece la pena invalidar por item (borrar el item de caché tras cada
 
 ---
 
+**Auditoría de sistemas de inferencia.**
+
+El panel tiene varios mecanismos que infieren datos (día, nivel, servicio, texto de borrador…) a partir de otras fuentes y los escriben en BD o los muestran en pantalla. Se han detectado bugs causados por cobertura incompleta de casos (ej: `extraerDia` fallaba con "Chupinazo Día 6 julio"; dedup de `importarCanceladosSfcom` fallaba al cambiar de estado una solicitud recuperada). Hay que hacer un recorrido sistemático de todos estos sistemas para documentar: qué leen, qué infieren, qué condiciones cubren, dónde y cuándo escriben el resultado, y qué pasa si la inferencia falla o produce null.
+
+Sistemas conocidos a auditar: `extraerDia` (sfcom.js), `parsearNivel` (sfcom.js), lógica de `service_id` / `TIPO_SERVICIO_ID` en importación sfcom, `_preFillBorradorSiVacio` (solicitudes.js / asistente.js), dedup de `importarCanceladosSfcom` (sfcom.js).
+
+---
+
 ### 7.5 Mejoras de código
 
 **Asistente usa nombre de balcón en lugar de nombre de venue/proveedor.**

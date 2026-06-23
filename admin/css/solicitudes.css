@@ -140,7 +140,9 @@
 .sol-badge--respuesta_enviada     { background: #dbeafe; color: #1e40af; }
 .sol-badge--seguimiento_pendiente { background: #fef9c3; color: #854d0e; }
 .sol-badge--sfcom              { background: #fee2e2; color: #991b1b; }
+.sol-badge--sfcom-c            { background: #fce7f3; color: #9d174d; }
 .sol-badge--email              { background: #dbeafe; color: #1e40af; }
+.sol-badge--web                { background: #f3f4f6; color: #6b7280; }
 
 /* =========================
    PLACEHOLDER DETALLE
