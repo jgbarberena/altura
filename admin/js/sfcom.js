@@ -94,6 +94,14 @@ async function apiFetchStockAll() {
     return result?.stock ?? {}
 }
 
+// Stock sfcom = lo que queda de la cuota de sfcom, sin superar la capacidad total disponible.
+function _calcularStockSfcom(sfcomListado, sfcomVendidas, totalSlots, todasOcupadas) {
+    return Math.max(0, Math.min(
+        sfcomListado - sfcomVendidas,
+        totalSlots   - todasOcupadas
+    ))
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // FLUJO B: syncStockToSfcom
 // Llama tras guardar, editar o cancelar cualquier reserva en Supabase.
@@ -140,10 +148,7 @@ export async function syncStockToSfcom(supabase, venueId, serviceId) {
     // 4. Calcular nuevo stock y hacer el PUT
     const sfcomVendidas = (sfcomData  ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
     const todasOcupadas = (allData    ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
-    const nuevoStock    = Math.max(0, Math.min(
-        avail.sfcom_slots_listed - sfcomVendidas,
-        avail.total_slots        - todasOcupadas
-    ))
+    const nuevoStock    = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
     const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
     try {
@@ -289,10 +294,7 @@ export async function checkAvailabilityBeforeSave(supabase, venueId, serviceId, 
     ])
     const sfcomVendidas  = (sfcomData ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
     const todasOcupadas  = (allData   ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
-    const stockEsperado  = Math.max(0, Math.min(
-        avail.sfcom_slots_listed - sfcomVendidas,
-        avail.total_slots        - todasOcupadas
-    ))
+    const stockEsperado  = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
 
     // Aviso si sfcom muestra menos stock del esperado (puede haber pedidos pendientes de procesar)
     if (stockSfcom < stockEsperado) {
@@ -319,7 +321,7 @@ export async function checkAvailabilityBeforeSave(supabase, venueId, serviceId, 
 
 // sfcomDelta: plazas que se añaden/quitan con origin_ref WEB% (reservas de sfcom)
 // allDelta:   plazas totales que se añaden/quitan (sfcom + propias)
-export async function computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta = 0, allDelta = 0 } = {}) {
+export async function computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta = 0, allDelta = 0, stockMap = null } = {}) {
     const { data: avail } = await supabase
         .from('availability_with_sfcom')
         .select('sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, total_slots')
@@ -341,10 +343,7 @@ export async function computeExpectedStock(supabase, venueId, serviceId, { sfcom
 
     const sfcomVendidas = (sfcomData ?? []).reduce((s, r) => s + (r.slots ?? 0), 0) + sfcomDelta
     const todasOcupadas = (allData   ?? []).reduce((s, r) => s + (r.slots ?? 0), 0) + allDelta
-    const nuevoStock    = Math.max(0, Math.min(
-        avail.sfcom_slots_listed - sfcomVendidas,
-        avail.total_slots        - todasOcupadas
-    ))
+    const nuevoStock    = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
 
     let stockActual = null
     const _cached2 = _cacheGet(avail.sfcom_product_id, avail.sfcom_variation_id)
@@ -352,9 +351,9 @@ export async function computeExpectedStock(supabase, venueId, serviceId, { sfcom
         stockActual = _cached2
     } else {
         try {
-            const stockMap = await apiFetchStockAll()
+            const map      = stockMap ?? await apiFetchStockAll()
             const lookupId = String(avail.sfcom_variation_id ?? avail.sfcom_product_id)
-            stockActual    = lookupId in stockMap ? stockMap[lookupId] : null
+            stockActual    = lookupId in map ? map[lookupId] : null
             _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockActual)
         } catch (e) {
             console.warn(`[sfcom] No se pudo leer stock actual de ${avail.sfcom_service_name}: ${e.message}`)
@@ -369,9 +368,13 @@ export async function computeExpectedStock(supabase, venueId, serviceId, { sfcom
 // Devuelve 'sync' (guardar + PUT a sfcom), 'save' (solo guardar) o 'cancel' (abortar).
 // Devuelve 'sync' directamente si ningún par tiene sfcom activo (sin modal).
 export async function confirmarStockSfcom(supabase, pares) {
+    // Un único GET stock-all para todos los pares; evita N llamadas con caché frío.
+    let stockMap = null
+    try { stockMap = await apiFetchStockAll() } catch { /* fallback individual en computeExpectedStock */ }
+
     const cambios = []
     for (const { venueId, serviceId, sfcomDelta = 0, allDelta = 0 } of pares) {
-        const cambio = await computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta, allDelta })
+        const cambio = await computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta, allDelta, stockMap })
         if (cambio) cambios.push(cambio)
     }
     if (cambios.length === 0) return 'sync'
@@ -748,10 +751,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
             )
             const sfcomVendidas = resParProp.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
             const todasOcupadas = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
-            const stockEsperado = Math.max(0, Math.min(
-                avail.sfcom_slots_listed - sfcomVendidas,
-                avail.total_slots        - todasOcupadas
-            ))
+            const stockEsperado = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
 
             if (stockReal !== stockEsperado) {
                 const diferencia   = stockReal - stockEsperado

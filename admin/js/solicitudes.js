@@ -351,13 +351,14 @@ async function _verificarTransicionesAutomaticas() {
 function _renderItem(s, apagada = false) {
     const esSfcom     = _esSfcom(s.source)
     const esCancelada = s.status === 'cancelada_sfcom'
+    const esSfcomC    = s.source?.startsWith('sfcom_c:')
     const esEmail     = s.source === 'email'
     const fecha      = s.created_at
         ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
         : '—'
     const convStatus = s.status || 'nueva'
     const badgeLabel = STATUS_LABELS[convStatus] || convStatus
-    const origenBadge = (esSfcom || esCancelada)
+    const origenBadge = (esSfcom || esCancelada || esSfcomC)
         ? `<span class="sol-badge sol-badge--sfcom">sfcom</span>`
         : esEmail ? `<span class="sol-badge sol-badge--email">email</span>` : ''
     const experiencia    = s.level || s.service_id || '—'
@@ -878,6 +879,7 @@ function mostrarDetalle(sol) {
     const detalle     = document.getElementById('sol-detalle')
     const esSfcom     = _esSfcom(sol.source)
     const esCancelada = sol.status === 'cancelada_sfcom'
+    const esSfcomC    = sol.source?.startsWith('sfcom_c:')
     const esEmail     = sol.source === 'email'
     const convStatus  = sol.status || 'nueva'
 
@@ -898,7 +900,7 @@ function mostrarDetalle(sol) {
 
     const urlReserva = `formulario.html?solicitud_id=${sol.id}`
 
-    const origenLabel = (esSfcom || esCancelada) ? '· <strong style="color:#dc2626">sfcom</strong>'
+    const origenLabel = (esSfcom || esCancelada || esSfcomC) ? '· <strong style="color:#dc2626">sfcom</strong>'
                       : esEmail ? '· email'
                       : '· web'
 

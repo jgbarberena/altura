@@ -499,11 +499,15 @@ nuevoStock = Math.max(0, Math.min(
 
 **Comisión sfcom:** 15%. Precio neto = precio bruto / 1.15. Aplicado al precargar precio desde solicitudes sfcom en formulario.js.
 
+**Riesgo de atomicidad (deuda técnica conocida):** la secuencia guardar-en-Supabase → PUT-a-sfcom no es atómica. Si el INSERT/UPDATE en Supabase tiene éxito pero el PUT a sfcom falla, la reserva queda registrada en BD pero sfcom no actualiza su stock. El modal de error de PUT incluye un correo preformateado para Hilario. La verificación manual con "Verificar datos" detecta la discrepancia y permite sincronizar. No hay rollback automático.
+
 **Exports principales:**
 - `syncStockToSfcom(supabase, venueId, serviceId)` — hace PUT si `sfcom_status === 'confirmed'`. Silencioso en éxito, modal de error en fallo. Llamar siempre después de cualquier operación que cambie reservas activas.
 - `checkAvailabilityBeforeSave(supabase, venueId, serviceId, plazas)` — verifica antes de guardar reserva nueva. No bloquea si el GET de sfcom falla.
 - `checkSfcomOrders(supabase)` — detecta pedidos nuevos y cancelados en sfcom, inserta en reservation_requests.
 - `importarCanceladosSfcom(supabase, sfcomListings, cancelados)` — importa pedidos cancelados como leads con `status: 'cancelada_sfcom'`.
+- `computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta, allDelta, stockMap })` — calcula stock esperado tras un delta. Acepta `stockMap` pre-cargado para evitar N GET stock-all; si es null, usa caché o hace su propio GET.
+- `confirmarStockSfcom(supabase, pares)` — modal consultivo pre-save. Hace UN GET stock-all y lo pasa a cada `computeExpectedStock`.
 - `loadSfcomListings(supabase)` — carga el mapeo WooCommerce→servicio/venue. Usada en páginas que no son formulario.html.
 - `verificarCoherencia(supabase)` — véase abajo.
 - `mostrarModalConfirmacionSfcom(cambios)` — modal consultivo antes de PUTs. Devuelve `Promise<'sync'|'save'|'cancel'>`. Callers: `if (result === 'cancel') return` para abortar, `if (result === 'sync') await syncStockToSfcom(...)` para el PUT.
