@@ -177,9 +177,9 @@ UNIQUE (provider_id, amount, due_date).
 | price_per_slot | numeric — solo en solicitudes sfcom (precio bruto) |
 | service_id | text — sin FK; se guarda como verificación, nunca como búsqueda primaria |
 | language | `'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'` — solo para emails |
-| email_raw | Texto completo del email original (referencia, no se muestra en panel) |
+| email_raw | Texto completo del email original (nunca se muestra en el panel; **pendiente eliminar** — ver §7.5) |
 | conversation_notes | Log interno formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto` |
-| assigned_venue_id | FK→venues — venue asignado (opcional) |
+| assigned_venue_id | FK→venues — venue asignado (**nunca se escribe; pendiente eliminar** — ver §7.5) |
 | proposal_draft | jsonb, default `'[]'` — array de líneas del borrador de propuesta. Cada línea: `{ service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url, estado }`. `estado`: `'pendiente'` (default), `'hecha'`, `'descartada'` — solo presente cuando la solicitud pasa por el bloque de conversión en formulario.html. Actualizado por la tabla del borrador en solicitudes.js, por `_persistirEstadoLineas()` en formulario.js, y automáticamente cuando el asistente emite `---BORRADOR---`. |
 
 **Ciclo de vida de `status`:** las solicitudes con `status IN ('convertida','descartada')` no aparecen en ninguna lista activa. Auto-transición en solicitudes.js: `respuesta_enviada` → `seguimiento_pendiente` si `updated_at` supera 3 días sin respuesta.
@@ -825,6 +825,20 @@ Fix (diferido a Fase 9): en `eliminarSeleccionadas` de `formulario.js`, antes de
 
 ---
 
+**Venue no aparece en el borrador de solicitudes sfcom en "Historial y gestión".**
+
+`registrarPedidosSfcom` en `formulario.js` (línea 2606-2620) guarda la solicitud sin `proposal_draft` → la BD usa el default vacío `'[]'`. Cuando Paula abre el toggle "Historial y gestión" en `solicitudes.js`, `_preFillBorradorSiVacio` detecta que el borrador está vacío y crea una línea con `service_id` inferido pero `venue_id: null` — la función no tiene mecanismo para derivar el venue. `_renderBorrador` muestra el servicio correctamente pero el select de venue queda en blanco.
+
+Contraste: `importarCanceladosSfcom` en `sfcom.js` extrae `venueId` de `sfcomListings` y lo incluye en `proposal_draft` → los pedidos cancelados SÍ tienen el venue en el borrador. `cargarDesdeSolicitud` en `formulario.js` usa `_inferirDesdeSfcom` para re-derivar el venue desde el nombre del producto → aparece bien al procesar en `formulario.html`.
+
+Fix principal: en `registrarPedidosSfcom` (`formulario.js`), extraer `venueId` desde `filaByName?.venue_id ?? filaById?.venue_id ?? null` (mismo patrón que `importarCanceladosSfcom`) e incluirlo en `proposal_draft` al INSERT.
+
+Fix secundario (para solicitudes ya creadas con `venue_id: null` en el borrador): en `_preFillBorradorSiVacio` (`solicitudes.js`), si el draft tiene líneas con `service_id` pero `venue_id: null`, auto-seleccionar el venue si `_venuesPorServicio` devuelve exactamente uno para ese servicio.
+
+Relacionado con el ítem de §7.3 "consolidar lógica de matching sfcom": al extraer `_resolverProductoSfcom`, el fix del primer punto quedaría automático para ambos flujos.
+
+---
+
 **✅ RESUELTO — `_onBorradorActualizado` preserva ahora el campo `estado` al actualizar desde el asistente.**
 
 Fix en `solicitudes.js`: antes de persistir el nuevo draft recibido del asistente, cada línea nueva se empareja con la existente por `service_id + venue_id` y copia el campo `estado` de la versión en memoria. Las líneas nuevas (sin pareja) quedan sin `estado` (interpretado como `'pendiente'`). El array resultante se persiste en Supabase y se usa para refrescar la tabla del borrador.
@@ -1219,6 +1233,37 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 `esVacio(v)` devuelve true si `v` es null, undefined o cadena que al recortar queda vacía. `valorO(v, fallback)` devuelve el valor recortado si tiene contenido, o el fallback en caso contrario — equivalente al patrón `||` pero seguro ante números y booleanos.
 
 Aplicados en `propuesta.js` (display_name de venue, nombre/dirección/empresa del cliente, nombre del archivo PDF), `factura.js` (cabecera del PDF, NIF, dirección), y `sfcom-panel.js`. La raíz del problema (`''` guardado en BD en lugar de NULL) no se ha corregido en la capa de persistencia — se asume limpio para los campos afectados.
+
+---
+
+**`assigned_venue_id` — columna muerta, eliminar de BD y código.**
+
+La columna existe en `reservation_requests` con FK→venues (`ON DELETE SET NULL`). Nunca se escribe desde ningún JS del panel: no hay UI para asignarla, no hay INSERT ni UPDATE que la toque. Se lee únicamente en `asistente.js` línea 408 para pasarla al contexto de la IA, donde el prompt (`asistente-config.js` línea 106) la describe como "venue ya asignado si Paula lo ha seleccionado en el panel" — lo que nunca ocurre.
+
+`proposal_draft[].venue_id` cubre esa función: el asistente ya recibe el `proposal_draft` completo en el contexto (línea 411 de `asistente.js`).
+
+Eliminar de:
+- BD: `ALTER TABLE reservation_requests DROP COLUMN assigned_venue_id;`
+- `asistente.js` línea 408: `assigned_venue_id: solicitud.assigned_venue_id || null`
+- `asistente-config.js` línea 106: párrafo sobre `assigned_venue_id`
+- `CLAUDE_ADMIN.md` §2: fila `assigned_venue_id` de la tabla `reservation_requests`
+
+---
+
+**`email_raw` — columna sin uso; el primer email del cliente debe ir a `conversation_notes`.**
+
+La columna se escribe en `asistente.js` línea 715 al crear una solicitud de tipo email vía "Procesar email": guarda `campos._emailRaw || null` (texto crudo del email, ≤2000 caracteres). No se lee ni muestra en ningún punto del panel.
+
+`_migrarConsultaAlLog` (`solicitudes.js` línea 739-758) migra el campo `comments` (resumen parseado por Claude) al log como `<Cliente>` cuando se abre la solicitud por primera vez. Pero el texto original del email (lo que el cliente escribió literalmente) nunca llega a `conversation_notes`.
+
+Fix: al hacer el INSERT en `asistente.js` (línea 706-718), construir también `conversation_notes` inicial con la fecha y el texto raw del email como bloque `<Cliente>`. El primer mensaje real del cliente queda en el log desde la creación, sin depender de la migración lazy.
+
+Una vez hecho, `email_raw` es redundante. Eliminar de:
+- BD: `ALTER TABLE reservation_requests DROP COLUMN email_raw;`
+- `asistente.js` línea 715: `email_raw: campos._emailRaw || null`
+- `CLAUDE_ADMIN.md` §2: fila `email_raw` de la tabla `reservation_requests`
+
+Nota: solicitudes existentes con `email_raw` relleno pero sin texto raw en el log perderán esa referencia al borrar la columna. No afecta al funcionamiento.
 
 ---
 
