@@ -642,6 +642,9 @@ function _renderBorrador(sol, container) {
             ? `<span style="font-size:9px;color:#9ca3af;font-weight:700;margin-right:3px" title="Descartada">✗</span>`
             : ''
 
+        const svc = servicios.find(s => s.service_id === linea.service_id)
+        const diaEncodado = !!svc?.day
+
         return `<tr data-idx="${idx}"${rowStyle}>
             <td style="padding:0 2px">
                 <button class="bor-up" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--subtle);padding:1px 3px" title="Subir">↑</button>
@@ -654,7 +657,9 @@ function _renderBorrador(sol, container) {
                 </select>
             </td>
             <td style="padding:2px">
-                <input class="bor-dia" data-idx="${idx}" type="number" min="6" max="14" value="${linea.day || ''}" placeholder="—" style="width:48px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px">
+                <input class="bor-dia" data-idx="${idx}" type="number" min="6" max="14" value="${linea.day || ''}" placeholder="—"
+                    style="width:48px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px${diaEncodado ? ';background:var(--bg-subtle,#f9fafb);color:var(--subtle)' : ''}"
+                    ${diaEncodado ? 'readonly title="El día está fijado por el servicio seleccionado"' : ''}>
             </td>
             <td style="padding:2px">
                 <select class="bor-venue" data-idx="${idx}" style="font-size:12px;width:100%;min-height:36px"${!linea.service_id ? ' disabled' : ''}>

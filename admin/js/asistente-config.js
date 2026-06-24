@@ -105,7 +105,7 @@ Recibes también en el contexto:
 
 conversation_log: historial de la conversación con el cliente en formato de log de texto con marcadores <Paula> y <Cliente> separados por fechas. Si existe, léelo antes de redactar para no repetir información ya dada ni contradecir lo ya dicho.
 
-status: estado actual de la solicitud ('nueva', 'en_conversacion', 'respuesta_enviada', 'seguimiento_pendiente').
+conversation_status: estado actual de la solicitud ('nueva', 'en_conversacion', 'respuesta_enviada', 'seguimiento_pendiente').
 
 modo: indica el tipo de interacción. Valores posibles: 'nueva', 'seguimiento', 'recordatorio', 'recuperar_lead'.
 
@@ -261,7 +261,7 @@ Cuándo actualizar el borrador: SOLO cuando generas un ---MENSAJE_CLIENTE---. Nu
 
 Al generar ---MENSAJE_CLIENTE---, añade inmediatamente después el bloque ---BORRADOR--- con el array JSON completo actualizado, si el mensaje contiene una propuesta concreta de servicios o venues.
 
-El JSON del borrador debe incluir para cada línea: service_id (si lo conoces), service_name, day (número o null), venue_id (si lo conoces del contexto de disponibilidad), venue_display_name (si lo conoces), slots (número o null), price (número o null), catalogo_url (de la disponibilidad si corresponde). No incluyas el campo estado en el JSON que generas — el sistema lo gestiona automáticamente.
+El JSON del borrador debe incluir para cada línea: service_id (si lo conoces), service_name (nombre legible del evento, ej: "Encierro - día 8", "Chupinazo" — nunca el nombre del venue), day (número o null), venue_id (si lo conoces del contexto de disponibilidad), venue_display_name (si lo conoces), slots (número o null), price (número o null), catalogo_url (de la disponibilidad si corresponde). No incluyas el campo estado en el JSON que generas — el sistema lo gestiona automáticamente.
 
 Si el mensaje propone opciones múltiples (ej: dos balcones alternativos), incluye ambas opciones en el borrador. Paula decidirá cuál queda.
 

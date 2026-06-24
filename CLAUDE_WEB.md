@@ -188,7 +188,7 @@ Lee el JSON embebido en `<script id="guias-data" type="application/json">` (gene
 ## 6. Formulario de solicitudes (frontend)
 
 ### solicitudDialog.html — Dialog reutilizable
-Se activa desde cualquier botón con `data-solicitud="slug"`. Campos: nombre, email, teléfono, personas, día, comentarios. Escribe en `reservation_requests` con `level = slug`. Si falla el guardado en Supabase, fallback por WhatsApp o email.
+Se activa desde cualquier botón con `data-solicitud="slug"`. Campos: nombre, email, teléfono, personas, día, comentarios. Escribe en `reservation_requests` con `conversation_notes = JSON.stringify({slug, day, slots, comment})` — estado temporal que el admin convierte a `proposal_draft` + log mediante `_procesarWebFormsSinProcesar()`. Si falla el guardado en Supabase, fallback por WhatsApp o email.
 
 **Para activar en una página:**
 1. `<div id="solicitud-dialog-placeholder"></div>` en el HTML
