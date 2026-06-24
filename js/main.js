@@ -1244,20 +1244,24 @@ function initSolicitudDialog(root) {
         var dia      = selectDia.value     ? parseInt(selectDia.value)     : null
 
         // ---- Guardar en Supabase ----
-        // service_id no se infiere desde la web — lo asigna el admin al gestionar la solicitud
+        // Los datos del formulario se guardan en conversation_notes como JSON.
+        // El panel de administración los procesa al cargar y construye proposal_draft.
         var guardadoOk = false
         if (window.supabasePublic) {
             try {
+                var rawData = JSON.stringify({
+                    slug:  slugVal || null,
+                    day:   dia,
+                    slots: personas
+                })
                 var result = await window.supabasePublic
                     .from('reservation_requests')
                     .insert({
-                        client_name:  nombre,
-                        client_email: email    || null,
-                        client_phone: tel      || null,
-                        slots:        personas,
-                        level:        slugVal  || null,
-                        comments:     inputComents.value.trim() || null,
-                        day:          dia      || null
+                        client_name:        nombre,
+                        client_email:       email    || null,
+                        client_phone:       tel      || null,
+                        comments:           inputComents.value.trim() || null,
+                        conversation_notes: rawData
                     })
                 if (result.error) throw result.error
                 guardadoOk = true

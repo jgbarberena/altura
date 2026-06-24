@@ -2205,15 +2205,16 @@ async function cargarSolicitudes() {
     if (sfcomPendientes.length === 0) return
 
     tbody.innerHTML = sfcomPendientes.map(s => {
+        const d0       = s.proposal_draft?.[0] ?? null
         const fecha    = s.created_at
             ? new Date(s.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
             : '—'
         const contacto   = [s.client_email, s.client_phone].filter(Boolean).join(' / ') || '—'
-        const dia        = s.day ? s.day + '/jul' : '—'
+        const dia        = d0?.day ? d0.day + '/jul' : '—'
         const comentario = s.comments || '—'
-        const experiencia = s.level || s.comments || '—'
-        const importe = s.price_per_slot && s.slots
-            ? `${(s.price_per_slot * s.slots).toFixed(0)}€ bruto<br><strong>${(s.price_per_slot * s.slots / 1.15).toFixed(0)}€ neto</strong>`
+        const experiencia = d0?.service_name || s.comments || '—'
+        const importe = d0?.price && d0?.slots
+            ? `${(d0.price * d0.slots).toFixed(0)}€ bruto<br><strong>${(d0.price * d0.slots / 1.15).toFixed(0)}€ neto</strong>`
             : '—'
 
         return `<tr class="fila-solicitud" style="cursor:pointer;background:#fff0f0;border-left:3px solid #dc2626"
@@ -2223,17 +2224,17 @@ async function cargarSolicitudes() {
             data-email="${(s.client_email || '').replace(/"/g, '&quot;')}"
             data-telefono="${(s.client_phone || '').replace(/"/g, '&quot;')}"
             data-address="${(s.client_address || '').replace(/"/g, '&quot;')}"
-            data-level="${(s.level || '').replace(/"/g, '&quot;')}"
-            data-service-id="${(s.service_id || '').replace(/"/g, '&quot;')}"
-            data-day="${s.day || ''}"
-            data-slots="${s.slots || ''}"
-            data-price-per-slot="${s.price_per_slot || ''}"
+            data-level="${(d0?.service_name || '').replace(/"/g, '&quot;')}"
+            data-service-id="${(d0?.service_id || '').replace(/"/g, '&quot;')}"
+            data-day="${d0?.day || ''}"
+            data-slots="${d0?.slots || ''}"
+            data-price-per-slot="${d0?.price || ''}"
             data-comments="${comentario.replace(/"/g, '&quot;')}">
             <td><span style="font-size:10px;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px">sfcom</span>${fecha}</td>
             <td>${s.client_name || '—'}</td>
             <td>${contacto}</td>
             <td>${experiencia}</td>
-            <td>${s.slots || '—'}</td>
+            <td>${d0?.slots || '—'}</td>
             <td>${dia}</td>
             <td style="font-size:12px">${importe}</td>
             <td>${comentario}</td>
@@ -2616,12 +2617,13 @@ async function registrarPedidosSfcom(pedidos) {
                                    `Personas: ${slots}`,
             precioSlotBruto > 0 && `Precio: ${Math.round(precioSlotBruto)}€/p`
         ].filter(Boolean).join(' · ')
-        const proposal_draft = (serviceId || venueId) ? [{
-            service_id: serviceId,
-            venue_id:   venueId,
-            day:        dia,
-            slots:      slots || null,
-            price:      precioSlotBruto || null
+        const proposal_draft = (serviceId || venueId || levelToSave) ? [{
+            service_name: levelToSave,
+            service_id:   serviceId,
+            venue_id:     venueId,
+            day:          dia,
+            slots:        slots || null,
+            price:        precioSlotBruto || null
         }] : null
 
         await supabase.from('reservation_requests').insert({
@@ -2629,12 +2631,7 @@ async function registrarPedidosSfcom(pedidos) {
             client_email:       pedido.cliente.email     || null,
             client_phone:       pedido.cliente.telefono  || null,
             client_address:     pedido.cliente.direccion || null,
-            slots,
-            day:                dia,
-            level:              levelToSave,
-            service_id:         serviceId,
             comments:           pedido.cliente.comentarios || null,
-            price_per_slot:     precioSlotBruto,
             proposal_draft,
             conversation_notes: `---${dd}/${mm}/${yy}---\n<Cliente>\n[Sfcom confirmado] ${detalleProd}`,
             created_at:         pedido.fecha || undefined,
@@ -2908,18 +2905,19 @@ async function _finalizarConversion() {
     if (!solicitudId) return
     const { data: sol } = await supabase.from('reservation_requests').select('*').eq('id', solicitudId).single()
     if (!sol) return
+    const d0 = sol.proposal_draft?.[0] ?? null
     await cargarDesdeSolicitud({
         id:             sol.id,
         source:         sol.source || '',
-        nombre:         sol.client_name   || '',
-        email:          sol.client_email  || '',
-        telefono:       sol.client_phone  || '',
+        nombre:         sol.client_name    || '',
+        email:          sol.client_email   || '',
+        telefono:       sol.client_phone   || '',
         address:        sol.client_address || '',
-        level:          sol.level || '',
-        serviceId:      sol.service_id || '',
-        day:            String(sol.day || ''),
-        slots:          String(sol.slots || ''),
-        pricePerSlot:   String(sol.price_per_slot || ''),
+        level:          d0?.service_name || '',
+        serviceId:      d0?.service_id || '',
+        day:            String(d0?.day || ''),
+        slots:          String(d0?.slots || ''),
+        pricePerSlot:   String(d0?.price || ''),
         comments:       sol.comments || '',
         proposal_draft: sol.proposal_draft || []
     })

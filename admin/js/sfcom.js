@@ -573,7 +573,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         supabase.from('clients').select('id, name'),
         supabase.from('venues').select('id'),
         supabase.from('services').select('id'),
-        supabase.from('reservation_requests').select('id, source, client_name, service_id, slots, level, day').eq('status', 'nueva')
+        supabase.from('reservation_requests').select('id, source, client_name, proposal_draft').eq('status', 'nueva')
     ])
 
     if (eRes || eAvail || eClients || eVenues || eServices || eSol) {
@@ -760,13 +760,14 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                 const sfcomPendPar = diferencia < 0
                     ? (solicitudes ?? []).filter(s => {
                           if (!s.source || !/^WEB\d+_\d+$/.test(s.source)) return false
-                          if (s.service_id === avail.service_id) return true
-                          if (s.level && avail.sfcom_service_name) {
+                          const d0 = s.proposal_draft?.[0] ?? null
+                          if (d0?.service_id === avail.service_id) return true
+                          if (d0?.service_name && avail.sfcom_service_name) {
                               const levelMatch =
-                                  s.level === avail.sfcom_service_name ||
-                                  s.level.startsWith(avail.sfcom_service_name + ' ')
+                                  d0.service_name === avail.sfcom_service_name ||
+                                  d0.service_name.startsWith(avail.sfcom_service_name + ' ')
                               if (levelMatch) {
-                                  const solDay = typeof s.day === 'number' ? s.day : null
+                                  const solDay = typeof d0.day === 'number' ? d0.day : null
                                   const m      = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
                                   const svcDay = m ? parseInt(m[1]) : null
                                   if (svcDay === null) return true
@@ -776,7 +777,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                           return false
                       })
                     : []
-                const pendingSlots    = sfcomPendPar.reduce((sum, s) => sum + (s.slots ?? 0), 0)
+                const pendingSlots    = sfcomPendPar.reduce((sum, s) => sum + (s.proposal_draft?.[0]?.slots ?? 0), 0)
                 const pendingExplains = diferencia < 0 && gap > 0 && pendingSlots >= gap
 
                 resultado.sfcom.discrepancias.push({
@@ -800,7 +801,7 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
                     pendingRequests: sfcomPendPar.map(s => ({
                         id:         s.id,
                         source:     s.source,
-                        slots:      s.slots ?? 0,
+                        slots:      s.proposal_draft?.[0]?.slots ?? 0,
                         clientName: s.client_name
                     })),
                     pendingExplains
@@ -1310,7 +1311,7 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
 
     const { data: existentes } = await supabase
         .from('reservation_requests')
-        .select('id, source, client_email, client_phone, client_name, service_id, slots, created_at, status')
+        .select('id, source, client_email, client_phone, client_name, proposal_draft, created_at, status')
         .not('source', 'is', null)
 
     const sourcesRegistrados = new Set((existentes ?? []).map(r => r.source))
@@ -1378,23 +1379,26 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
 
         const leadDupe = (leadsExistentes ?? []).find(r =>
             clienteMatch(r) &&
-            (serviceId ? r.service_id === serviceId : !r.service_id)
+            (serviceId
+                ? r.proposal_draft?.[0]?.service_id === serviceId
+                : !r.proposal_draft?.[0]?.service_id)
         )
 
         if (leadDupe) {
-            if (leadDupe.slots !== slots) {
+            if ((leadDupe.proposal_draft?.[0]?.slots ?? null) !== slots) {
                 const fechaPedido = pedido.fecha ? new Date(pedido.fecha) : new Date()
                 const fechaLead   = new Date(leadDupe.created_at)
                 if (fechaPedido >= fechaLead) {
                     const proposalActualizado = (serviceId || venueId) ? [{
-                        service_id: serviceId,
-                        venue_id:   venueId,
-                        day:        dia,
-                        slots:      slots || null,
-                        price:      precioSlotBruto || null
+                        service_name: levelToSave,
+                        service_id:   serviceId,
+                        venue_id:     venueId,
+                        day:          dia,
+                        slots:        slots || null,
+                        price:        precioSlotBruto || null
                     }] : null
                     await supabase.from('reservation_requests')
-                        .update({ slots, price_per_slot: precioSlotBruto, proposal_draft: proposalActualizado })
+                        .update({ proposal_draft: proposalActualizado })
                         .eq('id', leadDupe.id)
                     console.log(`[sfcom_c] Dedup: ${pedido.origin_ref} omitido (plazas actualizadas a ${slots})`)
                 } else {
@@ -1415,12 +1419,13 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
             precioSlotBruto > 0 && `Precio: ${Math.round(precioSlotBruto)}€/p`
         ].filter(Boolean).join(' · ')
 
-        const proposal_draft = (serviceId || venueId) ? [{
-            service_id: serviceId,
-            venue_id:   venueId,
-            day:        dia,
-            slots:      slots || null,
-            price:      precioSlotBruto || null
+        const proposal_draft = (serviceId || venueId || levelToSave) ? [{
+            service_name: levelToSave,
+            service_id:   serviceId,
+            venue_id:     venueId,
+            day:          dia,
+            slots:        slots || null,
+            price:        precioSlotBruto || null
         }] : null
 
         const { error } = await supabase.from('reservation_requests').insert({
@@ -1428,11 +1433,6 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
             client_email:       pedido.cliente.email     || null,
             client_phone:       pedido.cliente.telefono  || null,
             client_address:     pedido.cliente.direccion || null,
-            slots,
-            day:                dia,
-            level:              levelToSave,
-            service_id:         serviceId,
-            price_per_slot:     precioSlotBruto,
             proposal_draft,
             created_at:         pedido.fecha || undefined,
             conversation_notes: `---${dd}/${mm}/${yy}---\n<Cliente>\n[Sfcom cancelado] ${detalleProd}`,

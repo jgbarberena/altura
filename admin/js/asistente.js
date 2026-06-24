@@ -1,6 +1,6 @@
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
-import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
+import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador } from './utils.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
@@ -189,9 +189,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         <div style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:12px;color:#444;display:grid;grid-template-columns:1fr 1fr;gap:5px 16px">
             <div><strong>Cliente:</strong> ${solicitud.client_name || '—'}</div>
             <div><strong>Contacto:</strong> ${contacto}</div>
-            <div><strong>Evento:</strong> ${solicitud.level || solicitud.service_id || 'No especificado'}</div>
-            <div><strong>Día:</strong> ${solicitud.day ? solicitud.day + ' julio' : 'No especificado'}</div>
-            <div><strong>Personas:</strong> ${solicitud.slots || 'No especificado'}</div>
+            <div><strong>Evento:</strong> ${solicitud.proposal_draft?.[0]?.service_name || solicitud.proposal_draft?.[0]?.service_id || 'No especificado'}</div>
+            <div><strong>Día:</strong> ${solicitud.proposal_draft?.[0]?.day ? solicitud.proposal_draft[0].day + ' julio' : 'No especificado'}</div>
+            <div><strong>Personas:</strong> ${solicitud.proposal_draft?.[0]?.slots || 'No especificado'}</div>
             <div><strong>Idioma:</strong> ${solicitud.language || 'desconocido'}</div>
             <div style="grid-column:1/-1"><strong>Consulta:</strong> ${solicitud.comments || '—'}</div>
         </div>
@@ -381,11 +381,11 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     })
 
     // Contexto inicial
+    const draft0     = solicitud.proposal_draft?.[0] ?? null
     const meta       = parsearMetaComments(solicitud.comments)
-    const svcPrinc   = expandirServiceIds(solicitud.level || null, solicitud.day, meta)
+    const svcPrinc   = expandirServiceIds(draft0?.service_name || null, draft0?.day || null, meta)
     const svcExtra   = meta.extra.flatMap(h => expandirServiceIds(h, null, { dias: null, flexible: true, extra: [] }))
-    // Si level es null pero hay service_id directo (ej. solicitudes sfcom o email sin level), lo usamos como fallback
-    const svcFromId  = (!svcPrinc.length && !svcExtra.length && solicitud.service_id) ? [solicitud.service_id] : []
+    const svcFromId  = (!svcPrinc.length && !svcExtra.length && draft0?.service_id) ? [draft0.service_id] : []
     const serviceIds = [...new Set([...svcPrinc, ...svcExtra, ...svcFromId])]
 
     const comentarioLimpio = (solicitud.comments || '')
@@ -403,9 +403,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         solicitud: {
             tipo:                tipoSolicitud,
             nombre:              solicitud.client_name  || null,
-            evento:              solicitud.level || solicitud.service_id || null,
-            dia:                 solicitud.day   || null,
-            personas:            solicitud.slots || null,
+            evento:              draft0?.service_name || draft0?.service_id || null,
+            dia:                 draft0?.day   || null,
+            personas:            draft0?.slots || null,
             idioma:              solicitud.language || 'desconocido',
             comentario:          comentarioLimpio,
             conversation_log:    conversationLog,
@@ -413,7 +413,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             modo:                modoEfectivo,
             proposal_draft:      solicitud.proposal_draft || []
         },
-        disponibilidad: disponibilidadParaAsistente(serviceIds, solicitud.day || null, solicitud.slots || null)
+        disponibilidad: disponibilidadParaAsistente(serviceIds, draft0?.day || null, draft0?.slots || null)
     }
 
     const storageKey = solicitud.id ? `asistente_conv_${solicitud.id}` : null
@@ -430,7 +430,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         const { error } = await _supabase.from('assistant_logs').insert({
             solicitud_id:     solicitud.id    || null,
             client_name:      solicitud.client_name || null,
-            event_hint:       solicitud.level || solicitud.service_id || null,
+            event_hint:       draft0?.service_name || draft0?.service_id || null,
             messages:         mensajes,
             context_snapshot: contextoObj
         })
@@ -729,16 +729,17 @@ async function _insertarEmailParseado(campos) {
         ? `---${dd}/${mm}/${yy}---\n<Cliente>\n${campos._emailRaw}`
         : null
 
+    const emailDraft = (campos.service_hint || campos.day || campos.slots)
+        ? [construirItemBorrador({ service_name: campos.service_hint || null, day: campos.day || null, slots: campos.slots || null })]
+        : null
+
     const { data, error } = await _supabase
         .from('reservation_requests')
         .insert({
             client_name:        campos.client_name  || 'Sin nombre',
             client_email:       campos.client_email || null,
             client_phone:       campos.client_phone || null,
-            service_id:         null,
-            slots:              campos.slots        || null,
-            day:                campos.day          || null,
-            level:              campos.service_hint || null,
+            proposal_draft:     emailDraft,
             comments:           finalComments,
             source:             'email',
             status:             'nueva',

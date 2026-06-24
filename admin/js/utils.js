@@ -534,3 +534,26 @@ function _diaDesdePartes(partes) {
     const n = partes.map(p => parseInt(p)).find(n => !isNaN(n) && n >= 6 && n <= 14)
     return n ?? null
 }
+
+// Extrae el qualifier de lead (vivir/ver/entender) del slug del formulario web.
+// Devuelve 'vivir' | 'ver' | 'entender' | null.
+export function extraerQualifier(slug) {
+    if (!slug) return null
+    const primera = slug.toLowerCase().split('-')[0]
+    return ['vivir', 'ver', 'entender'].includes(primera) ? primera : null
+}
+
+// Construye un item vacío/parcial de proposal_draft con todos los campos presentes.
+// Úsalo como único punto de creación de items para garantizar estructura consistente.
+export function construirItemBorrador({
+    service_name        = null,
+    service_id          = null,
+    venue_id            = null,
+    venue_display_name  = null,
+    day                 = null,
+    slots               = null,
+    price               = null,
+    catalogo_url        = null
+} = {}) {
+    return { service_name, service_id, venue_id, venue_display_name, day, slots, price, catalogo_url, estado: 'pendiente' }
+}

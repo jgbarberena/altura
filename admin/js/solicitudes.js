@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier } from './utils.js'
 import { mostrarToast, ejecutarVerificacionGlobal } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
@@ -300,6 +300,7 @@ async function cargarSolicitudes() {
 
     _solicitudesActuales = data ?? []
     await _verificarTransicionesAutomaticas()
+    await _procesarWebFormsSinProcesar()
 
     _cerradasOffset    = 0
     _solicitudesCerradas = []
@@ -356,6 +357,84 @@ async function _verificarTransicionesAutomaticas() {
     caducadas.forEach(s => { s.status = 'seguimiento_pendiente' })
 }
 
+// Detecta solicitudes del formulario web que tienen datos raw en conversation_notes
+// (formato JSON: {"slug","day","slots"}) y las convierte al formato estructurado completo.
+// Solo actúa sobre registros donde main.js hizo el INSERT con el nuevo formato.
+async function _procesarWebFormsSinProcesar() {
+    const sinProcesar = _solicitudesActuales.filter(s =>
+        s.source === null &&
+        (!s.proposal_draft || s.proposal_draft.length === 0) &&
+        s.conversation_notes?.startsWith('{')
+    )
+    if (!sinProcesar.length) return
+
+    const TIPO_LABELS = {
+        encierro:    'Encierro',
+        chupinazo:   'Chupinazo',
+        procesion:   'Procesión',
+        gigantes:    'Despedida Gigantes',
+        pobre_de_mi: 'Pobre de Mí'
+    }
+
+    for (const sol of sinProcesar) {
+        let rawData = {}
+        try { rawData = JSON.parse(sol.conversation_notes) } catch { continue }
+
+        const { slug, day, slots } = rawData
+
+        // Inferir service_id desde el slug
+        const parsed    = parsearNivel(slug)
+        let serviceId   = null
+        if (parsed) {
+            if (parsed.tipo === 'encierro') serviceId = day ? `ENCIERRO_${day}` : null
+            else serviceId = TIPO_SERVICIO_ID[parsed.tipo] ?? null
+        }
+
+        const draft = [construirItemBorrador({
+            service_name: slug      || null,
+            service_id:   serviceId,
+            day:          day       || null,
+            slots:        slots     || null
+        })]
+
+        // Construir entrada inicial del log a partir de los datos del formulario
+        const fecha = sol.created_at ? new Date(sol.created_at) : new Date()
+        const dd    = String(fecha.getDate()).padStart(2, '0')
+        const mm    = String(fecha.getMonth() + 1).padStart(2, '0')
+        const yy    = String(fecha.getFullYear()).slice(-2)
+
+        const qualifier = extraerQualifier(slug)
+        const tipoLabel = parsed ? TIPO_LABELS[parsed.tipo] : null
+        const slugLabel = tipoLabel
+            ? (qualifier
+                ? qualifier.charAt(0).toUpperCase() + qualifier.slice(1) + ' ' + tipoLabel.toLowerCase()
+                : tipoLabel)
+            : (slug ? slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : null)
+
+        const partes = []
+        if (slugLabel) partes.push(slugLabel)
+        if (day)   partes.push(`${day} jul`)
+        if (slots) partes.push(`${slots} ${slots === 1 ? 'persona' : 'personas'}`)
+
+        const comentarioLimpio = (sol.comments || '').replace(/^(Días|Otros servicios):[^\n]*\n?/gm, '').trim()
+        let msgCliente = partes.join(' · ')
+        if (comentarioLimpio) msgCliente += (msgCliente ? '\n' : '') + comentarioLimpio
+        if (!msgCliente) msgCliente = 'Solicitud desde web'
+
+        const notasFormateadas = `---${dd}/${mm}/${yy}---\n<Cliente>\n${msgCliente}`
+
+        const { error } = await supabase.from('reservation_requests').update({
+            proposal_draft:     draft,
+            conversation_notes: notasFormateadas
+        }).eq('id', sol.id)
+
+        if (!error) {
+            sol.proposal_draft      = draft
+            sol.conversation_notes  = notasFormateadas
+        }
+    }
+}
+
 function _esc(s) {
     return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -374,7 +453,7 @@ function _renderItem(s, apagada = false) {
         : esCancelada ? `<span class="sol-badge sol-badge--sfcom-c">sfcom_c</span>`
         : esEmail ? `<span class="sol-badge sol-badge--email">email</span>`
         : `<span class="sol-badge sol-badge--web">web</span>`
-    const experiencia    = _esc(s.level || s.service_id || '—')
+    const experiencia    = _esc(s.proposal_draft?.[0]?.service_name || s.proposal_draft?.[0]?.service_id || '—')
     const notasPreview   = (() => {
         if (!s.conversation_notes) return ''
         const msgs   = _parsearLog(s.conversation_notes).filter(i => i.type === 'message')
@@ -773,10 +852,11 @@ async function _migrarConsultaAlLog(sol) {
 
     let texto = comentarioLimpio
     if (!texto) {
+        const d0     = sol.proposal_draft?.[0] ?? null
         const partes = []
-        if (sol.level)  partes.push(sol.level)
-        if (sol.day)    partes.push(`día ${sol.day}`)
-        if (sol.slots)  partes.push(`${sol.slots} personas`)
+        if (d0?.service_name) partes.push(d0.service_name)
+        if (d0?.day)          partes.push(`día ${d0.day}`)
+        if (d0?.slots)        partes.push(`${d0.slots} personas`)
         texto = partes.length ? `[Solicitud inicial] ${partes.join(' · ')}` : ''
     }
     if (!texto) return
@@ -862,37 +942,30 @@ function _initLogListeners(sol) {
 }
 
 async function _preFillBorradorSiVacio(sol) {
-    if (Array.isArray(sol.proposal_draft) && sol.proposal_draft.length > 0) return
-    if (!sol.level && !sol.service_id) return
+    if (!Array.isArray(sol.proposal_draft) || !sol.proposal_draft.length) return
     const servicios = _serviciosUnicos()
-    let svcId = sol.service_id || null
-    if (!svcId && sol.level) {
-        const p = parsearNivel(sol.level)
-        if (p) {
-            if (p.tipo === 'encierro') svcId = sol.day ? `ENCIERRO_${sol.day}` : null
-            else svcId = TIPO_SERVICIO_ID[p.tipo] ?? null
+    let changed = false
+    for (const item of sol.proposal_draft) {
+        const svcId = item.service_id
+        if (!svcId) continue
+        if (item.price == null) {
+            const precioR = _calcularPrecioRef(sol)
+            if (precioR) {
+                const nums = precioR.match(/\d+(?:\.\d+)?/g)?.map(Number)
+                if (nums?.length) { item.price = Math.max(...nums); changed = true }
+            }
+        }
+        if (!item.catalogo_url) {
+            const venues = _venuesPorServicio(svcId)
+            const catUrl = venues[0]?.catalogo_url || null
+            if (catUrl) { item.catalogo_url = catUrl; changed = true }
+        }
+        if (!item.service_name) {
+            const svc = servicios.find(s => s.service_id === svcId)
+            if (svc?.label) { item.service_name = svc.label; changed = true }
         }
     }
-    if (!svcId) return
-    const svc    = servicios.find(s => s.service_id === svcId)
-    const venues = _venuesPorServicio(svcId)
-    const catUrl = venues[0]?.catalogo_url || null
-    const precioR = _calcularPrecioRef(sol)
-    const precioN = (() => {
-        if (!precioR) return null
-        const nums = precioR.match(/\d+(?:\.\d+)?/g)?.map(Number)
-        return nums?.length ? Math.max(...nums) : null
-    })()
-    sol.proposal_draft = [{
-        service_id:         svcId,
-        service_name:       svc?.label || svcId,
-        day:                svc?.day || sol.day || null,
-        venue_id:           null,
-        venue_display_name: null,
-        slots:              sol.slots || null,
-        price:              precioN,
-        catalogo_url:       catUrl
-    }]
+    if (!changed) return
     await supabase.from('reservation_requests').update({ proposal_draft: sol.proposal_draft }).eq('id', sol.id)
     const idx = _solicitudesActuales.findIndex(s => s.id === sol.id)
     if (idx !== -1) _solicitudesActuales[idx].proposal_draft = sol.proposal_draft
@@ -985,9 +1058,9 @@ function mostrarDetalle(sol) {
 
             ${esCondensada ? `
             <div class="sol-detalle-datos">
-                <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${_esc(sol.level || sol.service_id || '—')}</span></div>
-                <div class="sol-dato"><span class="sol-dato-label">Día</span><span class="sol-dato-valor">${sol.day ? sol.day + ' julio' : '—'}</span></div>
-                <div class="sol-dato"><span class="sol-dato-label">Personas</span><span class="sol-dato-valor">${sol.slots || '—'}</span></div>
+                <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${_esc(sol.proposal_draft?.[0]?.service_name || sol.proposal_draft?.[0]?.service_id || '—')}</span></div>
+                <div class="sol-dato"><span class="sol-dato-label">Día</span><span class="sol-dato-valor">${sol.proposal_draft?.[0]?.day ? sol.proposal_draft[0].day + ' julio' : '—'}</span></div>
+                <div class="sol-dato"><span class="sol-dato-label">Personas</span><span class="sol-dato-valor">${sol.proposal_draft?.[0]?.slots || '—'}</span></div>
                 ${sol.comments ? `<div class="sol-dato sol-dato--full"><span class="sol-dato-label">Consulta</span><span class="sol-dato-valor">${_esc(sol.comments)}</span></div>` : ''}
             </div>
             <div style="margin-top:12px;margin-bottom:4px">
@@ -1131,9 +1204,10 @@ function _inferirServiceIds(level) {
 }
 
 function _calcularPrecioRef(sol) {
-    const serviceIds = sol.service_id
-        ? [sol.service_id]
-        : _inferirServiceIds(sol.level)
+    const d0         = sol.proposal_draft?.[0] ?? null
+    const serviceIds = d0?.service_id
+        ? [d0.service_id]
+        : _inferirServiceIds(d0?.service_name || null)
     if (!serviceIds.length) return null
 
     const precios = (todasReservas || [])

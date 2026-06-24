@@ -35,7 +35,7 @@ async function cargarDatos() {
     ] = await Promise.all([
         supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,origin_ref').order('id', { ascending: false }),
         supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status'),
-        supabase.from('reservation_requests').select('id,client_name,client_email,source,service_id,level,day,slots,price_per_slot,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
+        supabase.from('reservation_requests').select('id,client_name,client_email,source,proposal_draft,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
         supabase.from('services').select('id,event_type,day,description'),
         supabase.from('venues').select('id,display_name,provider_id'),
         supabase.from('clients').select('id,name')
@@ -108,19 +108,20 @@ function renderSolicitudes() {
 
     bloque.style.display = ''
     tbody.innerHTML = solicitudes.map(s => {
-        const fecha = s.created_at ? new Date(s.created_at).toLocaleDateString('es-ES') : '—'
-        const svcLabel = s.service_id && servicios[s.service_id]
-            ? (servicios[s.service_id].description || s.service_id)
-            : (s.level ? `${s.level}${s.day ? ' día ' + s.day : ''}` : '—')
-        const precioUnit = s.price_per_slot ? fmt(parseFloat(s.price_per_slot)) : '—'
-        const total      = (s.price_per_slot && s.slots) ? fmt(parseFloat(s.price_per_slot) * s.slots) : '—'
+        const d0         = s.proposal_draft?.[0] ?? null
+        const fecha      = s.created_at ? new Date(s.created_at).toLocaleDateString('es-ES') : '—'
+        const svcLabel   = d0?.service_id && servicios[d0.service_id]
+            ? (servicios[d0.service_id].description || d0.service_id)
+            : (d0?.service_name ? `${d0.service_name}${d0.day ? ' día ' + d0.day : ''}` : '—')
+        const precioUnit = d0?.price ? fmt(parseFloat(d0.price)) : '—'
+        const total      = (d0?.price && d0?.slots) ? fmt(parseFloat(d0.price) * d0.slots) : '—'
 
         return `<tr class="fila-sfcom-pendiente">
             <td>${fecha}</td>
             <td><code>${s.source || '—'}</code></td>
             <td>${s.client_name || '—'}</td>
             <td>${svcLabel}</td>
-            <td style="text-align:center">${s.slots ?? '—'}</td>
+            <td style="text-align:center">${d0?.slots ?? '—'}</td>
             <td style="text-align:right">${precioUnit}</td>
             <td style="text-align:right;font-weight:600">${total}</td>
         </tr>`
