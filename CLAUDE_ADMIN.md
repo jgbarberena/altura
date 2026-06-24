@@ -805,21 +805,23 @@ Fix parcial aplicado (jun 2026): se añadió umbral mínimo de 5 caracteres para
 
 ---
 
-**✅ CONFIRMADO — Marcar cobro como cobrado no persiste en Supabase.**
+**✅ RESUELTO — Marcar cobro como cobrado persiste correctamente en Supabase.**
 
-Confirmado en jun 2026 (prueba Fase 0d): marcar el cobro como cobrado en `formulario.js` bloque 5 muestra el check verde en la UI y cambia el botón a "marcar pendiente", pero `collected` sigue a `false` y `collected_date` sigue a `null` en Supabase tras la operación. La UI actualiza el estado solo visualmente; el UPDATE no se ejecuta o falla silenciosamente. Investigar: (1) añadir log de error visible en el handler de "marcar cobrado" en bloque 5 de `formulario.js`, (2) verificar que el listener existe en el elemento correcto y no hay un re-render que lo elimine antes del clic.
-
----
-
-**Cobros facturados pero no cobrados no se pueden editar.**
-
-Si un hito tiene `invoice_number IS NOT NULL` (se generó una factura), el sistema bloquea la edición del importe aunque `collected = false`. En la práctica, las reservas cambian en el último momento y la factura original queda desfasada. La función `persistirCobrosCliente` crea un "hito de ajuste" automáticamente, pero ese mecanismo no es operable ni visible desde la UI del cliente en `formulario.js`. El criterio de editabilidad debería ser `collected = false`, no `invoice_number IS NULL`. Fix: revisar `formulario.js` bloque 5 para permitir editar el `amount` de un hito mientras `collected = false`, aunque haya `invoice_number`, y añadir una advertencia visible de que la factura emitida ha quedado desfasada.
+Auditado jun 2026: `toggleCobroCliente` actualiza `h.collected` y `h.collected_date` en memoria, luego llama a `persistirHitosCliente` que hace UPDATE a Supabase con esos dos campos. Si el cobro tiene `invoice_number`, el bloque dedicado en `persistirHitosCliente` ejecuta igualmente el UPDATE de `collected`/`collected_date` (línea ~1412 de `formulario.js`). El bug original de Fase 0d estaba en una versión anterior del código; ya no existe.
 
 ---
 
-**Botón "Facturar" no aparece hasta recargar la página.**
+**ACLARADO — "Cobros facturados no se pueden editar" no es un bug de UI.**
 
-Al añadir un cobro nuevo en bloque 5 de `formulario.js`, el cobro aparece en la tabla pero el botón "Facturar" no se renderiza hasta recargar la vista. Causa raíz: patrón genérico de UI desactualizada tras efectos secundarios — ver §7.2. Fix: llamar a `cargarCobrosCliente(clienteId)` tras el INSERT del cobro en lugar de solo actualizar el estado local.
+`renderCobrosCliente()` muestra `amount` y `comments` como texto plano para todos los cobros, facturados o no. No hay inputs de edición para esos campos en la tabla — no se puede intentar editarlos desde la UI. El backend intencionalmente protege el importe de cobros facturados (solo permite cambiar `collected` y `collected_date`), y la UI es coherente con eso porque no ofrece input de edición para el importe.
+
+Edge case menor: si el cobro final (`esFinal`) está facturado, muestra un `<input type="date">` para cambiar `due_date`. Si Paula lo cambia, `persistirHitosCliente` ignorará el cambio (solo actualiza `collected`/`collected_date` para cobros facturados). Hasta que recargue verá la fecha editada en UI pero no estará en Supabase. Impacto mínimo — no vale la pena fijar salvo que se detecte confusión real.
+
+---
+
+**✅ RESUELTO — Botón "Facturar" aparece sin recargar la página.**
+
+Auditado jun 2026: tras el INSERT de un cobro nuevo, `formulario.js` llama a `renderCobrosCliente()` explícitamente y el id devuelto por Supabase se asigna a `h.id` (línea ~1443). El botón "Facturar" aparece en el re-render porque la condición `!yaFacturado && h.id` ya es verdadera. Hay incluso un comentario en el código que lo documenta. El bug original ya no existe.
 
 ---
 
@@ -1169,15 +1171,15 @@ Sistemas conocidos a auditar: `extraerDia` (sfcom.js), `parsearNivel` (sfcom.js)
 
 ### 7.5 Mejoras de código
 
-**Asistente usa nombre de balcón en lugar de nombre de venue/proveedor.**
+**✅ RESUELTO — Asistente usa `venue_display_name` como identificador principal.**
 
-En el contexto que recibe el asistente, la disponibilidad se identifica con el nombre del balcón (id técnico o `services.name`), pero Javier habla siempre en términos del venue/proveedor (`venues.display_name`). El asistente debería mostrar y usar `venues.display_name` como referencia principal al hablar de opciones disponibles. Fix: revisar cómo se construye la sección de disponibilidad en el system prompt de `asistente-config.js` y sustituir el identificador actual por `display_name`.
+`disponibilidadParaAsistente` en `asistente.js` incluye `venue_display_name` en cada entrada; el system prompt en `asistente-config.js` instruye a Claude a usarlo siempre. Confirmado en auditoría jun 2026.
 
 ---
 
-**Asistente interpreta precios como precio total en lugar de precio por persona.**
+**✅ RESUELTO — Asistente interpreta precios siempre por persona.**
 
-Cuando Javier le indica un precio al asistente ("ofrece tal balcón a X euros"), el asistente entiende que es el precio total del balcón. El criterio correcto es que cualquier precio mencionado es siempre **por persona**. Fix: añadir instrucción explícita en `SYSTEM_PROMPT_ASISTENTE` o en las instrucciones de contexto de `asistente-config.js`.
+`SYSTEM_PROMPT_ASISTENTE` tiene instrucción explícita en dos secciones (Lógica Comercial y Cómo debe ser el mensaje al cliente): cualquier precio mencionado por Paula es siempre por persona/plaza, nunca total del grupo. Confirmado en auditoría jun 2026.
 
 ---
 
@@ -1218,9 +1220,9 @@ Resuelto al implementar los modales de mensaje directo (jun 2026). El modal de r
 
 ---
 
-**`service_name` en el borrador con formato inconsistente.**
+**`service_name` en el borrador — parcialmente verificado.**
 
-Desde `solicitudes.js` se genera como `"Encierro - día 7"`; desde `formulario.js` usa `svc.name` sin el día. El bloque de conversión funciona porque usa `service_name` y `day` por separado, pero el contexto que ve el asistente puede quedar incompleto. Fix: unificar el formato de `service_name` al construir las líneas del borrador.
+En `solicitudes.js` y `asistente.js` confirmado consistente (siempre nombre legible del evento, ej: "Encierro - día 8"). En `formulario.js` no auditado explícitamente — puede que `svc.name` sin el día siga siendo el formato. Pendiente verificar si el bloque de pre-fill de borrador en `formulario.js` genera `service_name` en el mismo formato.
 
 ---
 
