@@ -996,7 +996,9 @@ function mostrarDetalle(sol) {
     const esSfcomConf   = _esSfcom(sol.source)
     const esCancelada   = sol.source?.startsWith('sfcom_c:')
     const esSfcomLead   = esCancelada && sol.status === 'nueva'
-    const esCondensada  = esSfcomConf || esSfcomLead
+    const esSfcomNueva  = esSfcomConf && sol.status === 'nueva'
+    const esCerrada     = sol.status === 'convertida' || sol.status === 'descartada'
+    const esCondensada  = esCerrada || esSfcomNueva || esSfcomLead
     const esSeguimiento = sol.status === 'seguimiento_pendiente'
     const esEmail       = sol.source === 'email'
     const convStatus    = sol.status || 'nueva'
@@ -1027,12 +1029,37 @@ function mostrarDetalle(sol) {
 
     const logItems = _parsearLog(sol.conversation_notes)
 
-    const ctaHTML = esSfcomConf
-        ? `<a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>`
+    // Bloque CTA contextual: solo cuando hay una acción primaria específica
+    const ctaBlockHTML = esSfcomNueva
+        ? `<div class="sol-acciones" style="margin-bottom:12px">
+               <a class="btn btn-primary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;min-height:44px">→ Crear reserva</a>
+               <button class="btn btn-danger sol-btn-descartar" style="min-height:44px">✕ Descartar</button>
+           </div>`
         : esSfcomLead
-        ? `<button class="btn btn-primary" id="btnIntentarRecuperar" style="min-height:44px">🔄 Intentar recuperar</button>`
-        : `<button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
-           <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>`
+        ? `<div class="sol-acciones" style="margin-bottom:12px">
+               <button class="btn btn-primary" id="btnIntentarRecuperar" style="min-height:44px">🔄 Intentar recuperar</button>
+               <button class="btn btn-danger sol-btn-descartar" style="min-height:44px">✕ Descartar</button>
+           </div>`
+        : esSeguimiento
+        ? `<div style="margin-bottom:16px">
+               <button class="btn btn-primary" id="btnEnviarRecordatorio" style="width:100%;min-height:44px">📩 Enviar recordatorio</button>
+           </div>`
+        : ''
+
+    // Botones en toggle (Descartar lo tiene el CTA para sfcom activas; cerradas no lo necesitan)
+    const accionesToggleHTML = `
+        <div class="sol-acciones" style="margin-top:12px">
+            <button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
+            <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>
+        </div>`
+
+    // Botones en vista extendida (incluye Descartar)
+    const accionesExtHTML = `
+        <div class="sol-acciones" style="margin-top:12px">
+            <button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
+            <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center">📋 Convertir en reservas</a>
+            <button class="btn btn-danger sol-btn-descartar">✕ Descartar</button>
+        </div>`
 
     detalle.innerHTML = `
         <div class="sol-detalle-inner">
@@ -1056,46 +1083,38 @@ function mostrarDetalle(sol) {
                 <strong>👤 Cliente conocido:</strong> ${_esc(clienteConocido.id)}${clienteConocido.name ? ` — ${_esc(clienteConocido.name)}` : ''}
             </div>` : ''}
 
-            ${!esCondensada && esSeguimiento ? `
-            <div style="margin-bottom:16px">
-                <button class="btn btn-primary" id="btnEnviarRecordatorio" style="width:100%;min-height:44px">📩 Enviar recordatorio</button>
-            </div>` : ''}
-
-            ${esCondensada ? `
+            ${esCondensada && (esSfcomConf || esSfcomLead) ? `
             <div class="sol-detalle-datos">
                 <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${_esc(sol.proposal_draft?.[0]?.service_name || sol.proposal_draft?.[0]?.service_id || '—')}</span></div>
                 <div class="sol-dato"><span class="sol-dato-label">Día</span><span class="sol-dato-valor">${sol.proposal_draft?.[0]?.day ? sol.proposal_draft[0].day + ' julio' : '—'}</span></div>
                 <div class="sol-dato"><span class="sol-dato-label">Personas</span><span class="sol-dato-valor">${sol.proposal_draft?.[0]?.slots || '—'}</span></div>
                 ${sol.comments ? `<div class="sol-dato sol-dato--full"><span class="sol-dato-label">Consulta</span><span class="sol-dato-valor">${_esc(sol.comments)}</span></div>` : ''}
-            </div>
-            <div style="margin-top:12px;margin-bottom:4px">
+            </div>` : ''}
+
+            ${ctaBlockHTML}
+
+            ${esCondensada ? `
+            <div style="margin-top:4px;margin-bottom:4px">
                 <button class="btn btn-secondary" id="btnGestion" style="width:100%;min-height:40px;font-size:13px">💬 Historial y gestión</button>
             </div>
             <div id="sol-extra" style="display:none;margin-top:4px">
                 <div style="margin-bottom:12px">
-                    <select id="sol-select-estado" class="sol-estado-select"${esSfcomConf ? ' disabled' : ''}>${estadoOptions}</select>
+                    <select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>
                 </div>
                 <div id="sol-borrador-container"></div>
                 ${_logSection(logItems)}
-                <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
-                    <button class="btn btn-primary" id="btnAbrirAsistente" style="min-height:44px">💬 Abrir asistente</button>
-                    <a class="btn btn-secondary" href="${urlReserva}" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">📋 Convertir en reservas</a>
-                </div>
+                ${accionesToggleHTML}
             </div>` : `
             <div id="sol-borrador-container"></div>
-            ${_logSection(logItems)}`}
-
-            <div class="sol-acciones">
-                ${ctaHTML}
-                <button class="btn btn-danger" id="btnDescartarSolicitud">✕ Descartar</button>
-            </div>
+            ${_logSection(logItems)}
+            ${accionesExtHTML}`}
 
         </div>
     `
 
     detalle.classList.add('visible')
 
-    // ── Borrador y log: vistas completas ─────────────────────────────────────
+    // ── Borrador y log: vistas extendidas ────────────────────────────────────
     if (!esCondensada) {
         const borradorContainer = document.getElementById('sol-borrador-container')
         if (borradorContainer) {
@@ -1138,15 +1157,13 @@ function mostrarDetalle(sol) {
                     }
                 })
                 _initLogListeners(sol)
-                if (!esSfcomConf) {
-                    document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
-                        const nuevoEstado = e.target.value
-                        const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
-                        if (error) { console.error('Error actualizando estado:', error); return }
-                        sol.status = nuevoEstado
-                        _actualizarBadgeEstado(sol.id, nuevoEstado)
-                    })
-                }
+                document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
+                    const nuevoEstado = e.target.value
+                    const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
+                    if (error) { console.error('Error actualizando estado:', error); return }
+                    sol.status = nuevoEstado
+                    _actualizarBadgeEstado(sol.id, nuevoEstado)
+                })
                 document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => abrirAsistenteRespuesta(sol))
             }
         })
@@ -1159,7 +1176,7 @@ function mostrarDetalle(sol) {
         })
     }
 
-    // ── Estado: vistas completas ─────────────────────────────────────────────
+    // ── Estado: vistas extendidas ─────────────────────────────────────────────
     if (!esCondensada) {
         document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
             const nuevoEstado = e.target.value
@@ -1175,22 +1192,24 @@ function mostrarDetalle(sol) {
         abrirModalRecordatorio(sol)
     })
 
-    // ── Asistente: vistas completas ──────────────────────────────────────────
+    // ── Asistente: vistas extendidas ──────────────────────────────────────────
     if (!esCondensada) {
         document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => {
             abrirAsistenteRespuesta(sol)
         })
     }
 
-    // ── Descartar solicitud ──────────────────────────────────────────────────
-    document.getElementById('btnDescartarSolicitud').addEventListener('click', async () => {
-        if (!confirm('¿Descartar esta solicitud? Se marcará como descartada y dejará de aparecer en la lista activa.')) return
-        const { error } = await supabase.from('reservation_requests').update({ status: 'descartada' }).eq('id', sol.id)
-        if (error) { alert('Error al descartar: ' + error.message); return }
-        detalle.classList.remove('visible')
-        solicitudActual = null
-        detalle.innerHTML = '<div class="sol-detalle-placeholder">Selecciona una solicitud para ver el detalle</div>'
-        await cargarSolicitudes()
+    // ── Descartar (por clase — puede estar en CTA o en acciones) ─────────────
+    detalle.querySelectorAll('.sol-btn-descartar').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('¿Descartar esta solicitud? Se marcará como descartada y dejará de aparecer en la lista activa.')) return
+            const { error } = await supabase.from('reservation_requests').update({ status: 'descartada' }).eq('id', sol.id)
+            if (error) { alert('Error al descartar: ' + error.message); return }
+            detalle.classList.remove('visible')
+            solicitudActual = null
+            detalle.innerHTML = '<div class="sol-detalle-placeholder">Selecciona una solicitud para ver el detalle</div>'
+            await cargarSolicitudes()
+        })
     })
 
     // ── Cerrar detalle (móvil) ───────────────────────────────────────────────

@@ -522,178 +522,257 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
 // ===== PROCESAR EMAIL MANUAL =====
 
 export async function abrirProcesarEmail() {
-    const { overlay, panel } = crearModal('modal-parsear-email', { wide: true, scroll: true })
-    let textoEmail = ''
+    const { overlay, panel } = crearModal('modal-nueva-solicitud', { wide: true, scroll: true })
 
-    function mostrarPaso1() {
-        panel.innerHTML = `
-            <h3 style="margin-top:0">📧 Procesar email de cliente</h3>
-            <p style="color:#555;font-size:14px;margin-bottom:12px">Pega el texto completo del email. Puede incluir cabeceras, texto de reenvío, firmas, etc.</p>
-            <textarea id="ep-textarea" rows="13" style="width:100%;box-sizing:border-box;font-size:13px;font-family:monospace;padding:8px;border:1px solid #d1d5db;border-radius:4px;resize:vertical" placeholder="Pega aquí el texto del email..."></textarea>
-            <div id="ep-error" style="display:none;color:#dc2626;font-size:13px;margin-top:8px"></div>
-            <div class="btn-row" style="margin-top:16px">
-                <button class="btn btn-primary" id="ep-btn-procesar">Procesar con Claude</button>
-                <button class="btn btn-secondary" id="ep-btn-cancelar">Cancelar</button>
+    const IDIOMAS = [['es','Español'],['en','Inglés'],['fr','Francés'],['it','Italiano'],['de','Alemán'],['other','Otro']]
+    const esc = v => (v ?? '').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+
+    // Cargar servicios desde availability_panel
+    let servicios = []
+    const { data: dispData } = await _supabase
+        .from('availability_panel')
+        .select('service_id, event_type')
+        .order('service_id')
+    const svcMap = new Map()
+    for (const d of (dispData || [])) {
+        if (svcMap.has(d.service_id)) continue
+        const diaNum = parseInt(d.service_id.match(/_(\d+)$/)?.[1]) || null
+        const etLabel = {encierro:'Encierro',chupinazo:'Chupinazo',procesion:'Procesión',gigantes:'Gigantes',pobre_de_mi:'Pobre de Mí'}[d.event_type] || d.event_type || d.service_id
+        svcMap.set(d.service_id, { service_id: d.service_id, label: diaNum ? `${etLabel} - día ${diaNum}` : etLabel, event_type: d.event_type, day: diaNum })
+    }
+    servicios = [...svcMap.values()].sort((a, b) => {
+        const ord = ['chupinazo','procesion','encierro','gigantes','pobre_de_mi']
+        const ai = ord.indexOf(a.event_type), bi = ord.indexOf(b.event_type)
+        if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+        return (a.day || 0) - (b.day || 0)
+    })
+
+    // Estado local del borrador (en memoria, sin autosave)
+    let modalDraft = [{ service_id: null, service_name: null, day: null, slots: null, price: null, venue_id: null, venue_display_name: null, catalogo_url: null }]
+
+    function _renderBorradorModal() {
+        const serviceOpts = servicios.map(s => `<option value="${s.service_id}">${s.label}</option>`).join('')
+        const filas = modalDraft.map((item, idx) => {
+            const svc = servicios.find(s => s.service_id === item.service_id)
+            const diaEnc = !!svc?.day
+            return `<tr data-idx="${idx}">
+                <td style="padding:2px">
+                    <select class="mn-svc" data-idx="${idx}" style="font-size:12px;width:100%;min-height:36px">
+                        <option value="">— Servicio —</option>
+                        ${serviceOpts.replace(`value="${item.service_id}"`,`value="${item.service_id}" selected`)}
+                    </select>
+                </td>
+                <td style="padding:2px">
+                    <input class="mn-dia" data-idx="${idx}" type="number" min="6" max="14" value="${item.day||''}" placeholder="—"
+                        style="width:48px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px${diaEnc?';background:var(--bg-subtle,#f9fafb);color:var(--subtle)':''}"
+                        ${diaEnc?'readonly':''}>
+                </td>
+                <td style="padding:2px">
+                    <input class="mn-slots" data-idx="${idx}" type="number" min="1" value="${item.slots||''}" placeholder="—"
+                        style="width:52px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px">
+                </td>
+                <td style="padding:2px;text-align:center">
+                    <button class="mn-del" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--subtle)">🗑️</button>
+                </td>
+            </tr>`
+        }).join('')
+        return `
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--subtle)">Borrador de propuesta</span>
+            <div style="overflow-x:auto;margin-top:6px">
+                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                    <thead><tr style="border-bottom:1px solid var(--border)">
+                        <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Servicio</th>
+                        <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:56px">Día</th>
+                        <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:60px">Plazas</th>
+                        <th style="width:32px"></th>
+                    </tr></thead>
+                    <tbody id="mn-tbody">${filas}</tbody>
+                </table>
             </div>
-        `
-        panel.querySelector('#ep-textarea').value = textoEmail
+            <button id="mn-add-row" style="margin-top:6px;background:none;border:1px dashed var(--border);border-radius:4px;padding:4px 10px;font-size:12px;color:var(--subtle);cursor:pointer;width:100%">+ Añadir servicio</button>`
+    }
 
-        panel.querySelector('#ep-btn-cancelar').addEventListener('click', () => overlay.close())
-
-        panel.querySelector('#ep-btn-procesar').addEventListener('click', async () => {
-            textoEmail = panel.querySelector('#ep-textarea').value.trim()
-            const errorDiv = panel.querySelector('#ep-error')
-            if (!textoEmail) {
-                errorDiv.textContent = 'Pega el contenido del email antes de procesar.'
-                errorDiv.style.display = 'block'
-                return
-            }
-            const btn = panel.querySelector('#ep-btn-procesar')
-            btn.disabled = true
-            btn.textContent = 'Procesando…'
-            errorDiv.style.display = 'none'
-            try {
-                const { data, error } = await _supabase.functions.invoke('claude-proxy', {
-                    body: {
-                        model:      'claude-haiku-4-5-20251001',
-                        max_tokens: 500,
-                        system:     SYSTEM_PROMPT_PARSING,
-                        messages:   [{ role: 'user', content: textoEmail }]
-                    }
-                })
-                if (error) throw new Error(error.message || 'Error al invocar claude-proxy')
-                const rawText   = String(data?.content?.[0]?.text ?? '').trim()
-                const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-                if (!jsonMatch) throw new Error('Claude no devolvió JSON válido')
-                const parsed = JSON.parse(jsonMatch[0])
-                mostrarPasoRevision({ ...parsed, _emailRaw: textoEmail.slice(0, 2000) })
-            } catch (err) {
-                errorDiv.textContent = `Error: ${err.message}`
-                errorDiv.style.display = 'block'
-                btn.disabled = false
-                btn.textContent = 'Procesar con Claude'
-            }
+    function _bindBorrador() {
+        const wrap = panel.querySelector('#mn-borrador-wrap')
+        wrap.querySelectorAll('.mn-svc').forEach(sel => {
+            sel.addEventListener('change', e => {
+                const idx = parseInt(e.target.dataset.idx)
+                const svc = servicios.find(s => s.service_id === e.target.value)
+                modalDraft[idx].service_id   = e.target.value || null
+                modalDraft[idx].service_name = svc?.label || null
+                modalDraft[idx].day          = svc?.day || modalDraft[idx].day
+                _rebind()
+            })
+        })
+        wrap.querySelectorAll('.mn-dia').forEach(inp => inp.addEventListener('change', e => {
+            modalDraft[parseInt(e.target.dataset.idx)].day = parseInt(e.target.value) || null
+        }))
+        wrap.querySelectorAll('.mn-slots').forEach(inp => inp.addEventListener('change', e => {
+            modalDraft[parseInt(e.target.dataset.idx)].slots = parseInt(e.target.value) || null
+        }))
+        wrap.querySelectorAll('.mn-del').forEach(btn => btn.addEventListener('click', e => {
+            modalDraft.splice(parseInt(e.target.dataset.idx), 1)
+            if (!modalDraft.length) modalDraft.push({ service_id:null, service_name:null, day:null, slots:null, price:null, venue_id:null, venue_display_name:null, catalogo_url:null })
+            _rebind()
+        }))
+        wrap.querySelector('#mn-add-row')?.addEventListener('click', () => {
+            modalDraft.push({ service_id:null, service_name:null, day:null, slots:null, price:null, venue_id:null, venue_display_name:null, catalogo_url:null })
+            _rebind()
         })
     }
 
-    function mostrarPasoRevision(parsed) {
-        const EVENTOS = [
-            ['', '— No identificado —'], ['encierro', 'Encierro'],
-            ['chupinazo', 'Chupinazo'], ['procesion', 'Procesión'],
-            ['gigantes', 'Gigantes'], ['pobre_de_mi', 'Pobre de Mí'],
-            ['personalizada', 'Personalizada'], ['empresa', 'Empresa'], ['hotel', 'Hotel']
-        ]
-        const IDIOMAS = [
-            ['es', 'Español'], ['en', 'Inglés'], ['fr', 'Francés'],
-            ['it', 'Italiano'], ['de', 'Alemán'], ['other', 'Otro']
-        ]
-        const extras = [
-            parsed.days_all?.length > 1        ? `Días detectados: ${parsed.days_all.join(', ')}` : null,
-            parsed.days_flexible               ? 'Flexible con el día' : null,
-            parsed.service_hint_extra?.length  ? `Otros eventos: ${parsed.service_hint_extra.join(', ')}` : null
-        ].filter(Boolean).join(' · ')
+    function _rebind() {
+        panel.querySelector('#mn-borrador-wrap').innerHTML = _renderBorradorModal()
+        _bindBorrador()
+    }
 
-        const esc = v => (v ?? '').toString()
-            .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    function _leerDOMEnDraft() {
+        panel.querySelectorAll('#mn-tbody tr').forEach(row => {
+            const idx = parseInt(row.dataset.idx)
+            if (isNaN(idx) || idx >= modalDraft.length) return
+            const sel = row.querySelector('.mn-svc')
+            const dia = row.querySelector('.mn-dia')
+            const sl  = row.querySelector('.mn-slots')
+            if (sel) { const svc = servicios.find(s => s.service_id === sel.value); modalDraft[idx].service_id = sel.value||null; modalDraft[idx].service_name = svc?.label||null }
+            if (dia && !dia.readOnly) modalDraft[idx].day   = parseInt(dia.value)  || null
+            if (sl)                   modalDraft[idx].slots = parseInt(sl.value)   || null
+        })
+    }
 
+    function _getDraftFiltrado() {
+        _leerDOMEnDraft()
+        return modalDraft.filter(d => d.service_id || d.service_name || d.slots)
+    }
+
+    function _rellenarDesdeParseado(parsed) {
+        if (parsed.client_name)  panel.querySelector('#mn-nombre').value = parsed.client_name
+        if (parsed.client_email) panel.querySelector('#mn-email').value  = parsed.client_email
+        if (parsed.client_phone) panel.querySelector('#mn-tel').value    = parsed.client_phone
+        if (parsed.language)     panel.querySelector('#mn-idioma').value = parsed.language
+
+        const hints = [parsed.service_hint, ...(parsed.service_hint_extra||[])].filter(Boolean)
+        if (hints.length) {
+            modalDraft = hints.map(hint => {
+                const svc = servicios.find(s => s.event_type === hint && (!parsed.day || s.day === parsed.day))
+                         || servicios.find(s => s.event_type === hint)
+                if (svc) return { service_id: svc.service_id, service_name: svc.label, day: svc.day || parsed.day || null, slots: parsed.slots || null, price: null, venue_id: null, venue_display_name: null, catalogo_url: null }
+                return { service_id: null, service_name: hint, day: parsed.day || null, slots: parsed.slots || null, price: null, venue_id: null, venue_display_name: null, catalogo_url: null }
+            })
+        } else if (parsed.day || parsed.slots) {
+            if (modalDraft[0]) {
+                if (parsed.day   && !modalDraft[0].day)   modalDraft[0].day   = parsed.day
+                if (parsed.slots && !modalDraft[0].slots) modalDraft[0].slots = parsed.slots
+            }
+        }
+        _rebind()
+    }
+
+    function _validar() {
+        const nombre = panel.querySelector('#mn-nombre').value.trim()
+        const email  = panel.querySelector('#mn-email').value.trim()
+        const tel    = panel.querySelector('#mn-tel').value.trim()
+        if (!nombre)          return 'El nombre del cliente es obligatorio.'
+        if (!email && !tel)   return 'Indica al menos un contacto: email o teléfono.'
+        const draft = _getDraftFiltrado()
+        if (!draft.length)    return 'Añade al menos un servicio en el borrador.'
+        return null
+    }
+
+    function _render() {
         panel.innerHTML = `
-            <h3 style="margin-top:0">📋 Datos parseados — revisa y corrige</h3>
-            ${extras ? `<p style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:8px 12px;font-size:12px;color:#1e40af;margin-bottom:16px">${extras}</p>` : ''}
-            <div class="form-grid">
-                <div class="form-field">
-                    <label>Nombre</label>
-                    <input id="ep-nombre" type="text" value="${esc(parsed.client_name || '')}" placeholder="Nombre del cliente">
-                </div>
-                <div class="form-field">
-                    <label>Email</label>
-                    <input id="ep-email" type="text" value="${esc(parsed.client_email || '')}" placeholder="Email">
-                </div>
-                <div class="form-field">
-                    <label>Teléfono</label>
-                    <input id="ep-tel" type="text" value="${esc(parsed.client_phone || '')}" placeholder="Teléfono">
-                </div>
-                <div class="form-field">
-                    <label>Evento principal</label>
-                    <select id="ep-evento">
-                        ${EVENTOS.map(([v, l]) => `<option value="${v}"${parsed.service_hint === v ? ' selected' : ''}>${l}</option>`).join('')}
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label>Día de julio</label>
-                    <input id="ep-dia" type="number" min="6" max="14" value="${parsed.day || ''}" placeholder="6–14">
-                </div>
-                <div class="form-field">
-                    <label>Personas</label>
-                    <input id="ep-personas" type="number" min="1" value="${parsed.slots || ''}" placeholder="Nº personas">
-                </div>
-                <div class="form-field">
-                    <label>Idioma</label>
-                    <select id="ep-idioma">
-                        ${IDIOMAS.map(([v, l]) => `<option value="${v}"${parsed.language === v ? ' selected' : ''}>${l}</option>`).join('')}
-                    </select>
-                </div>
+            <h3 style="margin-top:0">➕ Nueva consulta</h3>
+            <div class="form-grid" style="margin-bottom:16px">
+                <div class="form-field"><label>Nombre *</label><input id="mn-nombre" type="text" placeholder="Nombre del cliente"></div>
+                <div class="form-field"><label>Email</label><input id="mn-email" type="text" placeholder="Email"></div>
+                <div class="form-field"><label>Teléfono</label><input id="mn-tel" type="text" placeholder="Teléfono"></div>
+                <div class="form-field"><label>Idioma</label><select id="mn-idioma">${IDIOMAS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
             </div>
-            <div class="form-field" style="margin-top:12px">
-                <label>Resumen (editable)</label>
-                <textarea id="ep-resumen" rows="4" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid #d1d5db;border-radius:4px">${esc(parsed.comments || '')}</textarea>
+            <div id="mn-borrador-wrap" style="margin-bottom:16px">${_renderBorradorModal()}</div>
+            <div style="margin-bottom:6px">
+                <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--subtle)">Mensaje / hilo del cliente</label>
+                <textarea id="mn-texto" rows="8" style="width:100%;box-sizing:border-box;font-size:13px;font-family:monospace;padding:8px;border:1px solid #d1d5db;border-radius:4px;resize:vertical;margin-top:6px" placeholder="Pega aquí el email, mensaje de WhatsApp, hilo de conversación..."></textarea>
             </div>
-            <div id="ep-error2" style="display:none;color:#dc2626;font-size:13px;margin-top:8px"></div>
-            <div class="btn-row" style="margin-top:16px">
-                <button class="btn btn-primary" id="ep-btn-guardar-responder">💬 Guardar y responder</button>
-                <button class="btn btn-secondary" id="ep-btn-solo-guardar">Solo guardar</button>
-                <button class="btn btn-secondary" id="ep-btn-volver">← Volver</button>
+            <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+                <button class="btn btn-secondary" id="mn-btn-parsear" style="font-size:12px">🤖 Procesar con IA</button>
+                <span id="mn-parsear-status" style="font-size:12px;color:var(--subtle)"></span>
             </div>
-        `
+            <div id="mn-error" style="display:none;color:#dc2626;font-size:13px;margin-bottom:8px"></div>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="mn-btn-gr">💬 Guardar y responder</button>
+                <button class="btn btn-secondary" id="mn-btn-sg">Solo guardar</button>
+                <button class="btn btn-secondary" id="mn-btn-cancel">Cancelar</button>
+            </div>`
 
-        const getCampos = () => ({
-            client_name:        panel.querySelector('#ep-nombre').value.trim()      || null,
-            client_email:       panel.querySelector('#ep-email').value.trim()       || null,
-            client_phone:       panel.querySelector('#ep-tel').value.trim()         || null,
-            service_hint:       panel.querySelector('#ep-evento').value             || null,
-            day:                parseInt(panel.querySelector('#ep-dia').value)      || null,
-            slots:              parseInt(panel.querySelector('#ep-personas').value) || null,
-            language:           panel.querySelector('#ep-idioma').value,
-            comments_resumen:   panel.querySelector('#ep-resumen').value.trim(),
-            days_all:           parsed.days_all           || [],
-            days_flexible:      parsed.days_flexible      || false,
-            service_hint_extra: parsed.service_hint_extra || [],
-            _emailRaw:          parsed._emailRaw          || null
+        _bindBorrador()
+
+        panel.querySelector('#mn-btn-cancel').addEventListener('click', () => overlay.close())
+
+        panel.querySelector('#mn-btn-parsear').addEventListener('click', async () => {
+            const texto  = panel.querySelector('#mn-texto').value.trim()
+            const status = panel.querySelector('#mn-parsear-status')
+            if (!texto) { status.textContent = 'Pega un texto primero.'; status.style.color = 'var(--subtle)'; return }
+            const btn = panel.querySelector('#mn-btn-parsear')
+            btn.disabled = true; btn.textContent = '⏳ Procesando…'; status.textContent = ''
+            try {
+                const { data, error } = await _supabase.functions.invoke('claude-proxy', {
+                    body: { model: 'claude-haiku-4-5-20251001', max_tokens: 500, system: SYSTEM_PROMPT_PARSING, messages: [{ role: 'user', content: texto }] }
+                })
+                if (error) throw new Error(error.message || 'Error al invocar claude-proxy')
+                const rawText = String(data?.content?.[0]?.text ?? '').trim()
+                const match   = rawText.match(/\{[\s\S]*\}/)
+                if (!match) throw new Error('Claude no devolvió JSON válido')
+                _rellenarDesdeParseado(JSON.parse(match[0]))
+                status.textContent = '✓ Datos rellenados — revisa y corrige si hace falta'
+                status.style.color = '#16a34a'
+            } catch (err) {
+                status.textContent = `Error: ${err.message}`
+                status.style.color = '#dc2626'
+            } finally {
+                btn.disabled = false; btn.textContent = '🤖 Procesar con IA'
+            }
         })
 
         async function guardar(abrirAsistente) {
-            const btnGR  = panel.querySelector('#ep-btn-guardar-responder')
-            const btnSG  = panel.querySelector('#ep-btn-solo-guardar')
-            const errDiv = panel.querySelector('#ep-error2')
-            btnGR.disabled = btnSG.disabled = true
+            const errDiv = panel.querySelector('#mn-error')
+            const err = _validar()
+            if (err) { errDiv.textContent = err; errDiv.style.display = 'block'; return }
             errDiv.style.display = 'none'
+            const btnGR = panel.querySelector('#mn-btn-gr')
+            const btnSG = panel.querySelector('#mn-btn-sg')
+            btnGR.disabled = btnSG.disabled = true
             try {
-                const solicitud = await _insertarEmailParseado(getCampos())
-                if (solicitud === null) { btnGR.disabled = btnSG.disabled = false; return }
+                const campos = {
+                    nombre: panel.querySelector('#mn-nombre').value.trim(),
+                    email:  panel.querySelector('#mn-email').value.trim()  || null,
+                    tel:    panel.querySelector('#mn-tel').value.trim()    || null,
+                    idioma: panel.querySelector('#mn-idioma').value,
+                    texto:  panel.querySelector('#mn-texto').value.trim()  || null,
+                }
+                const solicitud = await _insertarNuevaSolicitud(campos, _getDraftFiltrado())
+                if (!solicitud) { btnGR.disabled = btnSG.disabled = false; return }
                 await _onEmailSaved()
                 overlay.close()
                 if (abrirAsistente) abrirAsistenteRespuesta(solicitud)
-            } catch (err) {
-                errDiv.textContent = `Error al guardar: ${err.message}`
+            } catch (e) {
+                errDiv.textContent = `Error al guardar: ${e.message}`
                 errDiv.style.display = 'block'
                 btnGR.disabled = btnSG.disabled = false
             }
         }
 
-        panel.querySelector('#ep-btn-guardar-responder').addEventListener('click', () => guardar(true))
-        panel.querySelector('#ep-btn-solo-guardar').addEventListener('click', () => guardar(false))
-        panel.querySelector('#ep-btn-volver').addEventListener('click', mostrarPaso1)
+        panel.querySelector('#mn-btn-gr').addEventListener('click', () => guardar(true))
+        panel.querySelector('#mn-btn-sg').addEventListener('click', () => guardar(false))
     }
 
-    mostrarPaso1()
+    _render()
     overlay.showModal()
 }
 
-async function _insertarEmailParseado(campos) {
-    // Dedup: avisar si ya hay una solicitud abierta para este cliente
-    if (campos.client_email || campos.client_phone) {
+async function _insertarNuevaSolicitud(campos, draft) {
+    if (campos.email || campos.tel) {
         const orClauses = [
-            campos.client_email ? `client_email.eq.${campos.client_email.toLowerCase().trim()}` : null,
-            campos.client_phone ? `client_phone.eq.${campos.client_phone.trim()}` : null
+            campos.email ? `client_email.eq.${campos.email.toLowerCase().trim()}` : null,
+            campos.tel   ? `client_phone.eq.${campos.tel.trim()}` : null
         ].filter(Boolean).join(',')
         const { data: dupes } = await _supabase
             .from('reservation_requests')
@@ -703,47 +782,33 @@ async function _insertarEmailParseado(campos) {
             .limit(3)
         if (dupes?.length) {
             const nombres = dupes.map(d => `${d.client_name} (${d.status})`).join(', ')
-            const ok = confirm(`Ya existe una solicitud abierta para este cliente: ${nombres}\n¿Crear de todas formas?`)
-            if (!ok) return null
+            if (!confirm(`Ya existe una solicitud abierta para este cliente: ${nombres}\n¿Crear de todas formas?`)) return null
         }
     }
-
-    let prefix = ''
-    if (campos.days_flexible) {
-        prefix += 'Días: cualquiera\n'
-    } else if (campos.days_all.length > 1) {
-        prefix += `Días: ${campos.days_all.join(', ')}\n`
-    }
-    if (campos.service_hint_extra.length > 0) {
-        prefix += `Otros servicios: ${campos.service_hint_extra.join(', ')}\n`
-    }
-    const finalComments = prefix
-        ? prefix + '\n' + campos.comments_resumen
-        : campos.comments_resumen
 
     const hoy = new Date()
     const dd  = String(hoy.getDate()).padStart(2, '0')
     const mm  = String(hoy.getMonth() + 1).padStart(2, '0')
     const yy  = String(hoy.getFullYear()).slice(-2)
-    const conversation_notes = campos._emailRaw
-        ? `---${dd}/${mm}/${yy}---\n<Cliente>\n${campos._emailRaw}`
-        : null
 
-    const emailDraft = (campos.service_hint || campos.day || campos.slots)
-        ? [construirItemBorrador({ service_name: campos.service_hint || null, day: campos.day || null, slots: campos.slots || null })]
-        : null
+    let conversation_notes = null
+    if (campos.texto) {
+        conversation_notes = `---${dd}/${mm}/${yy}---\n<Cliente>\n${campos.texto.slice(0, 2000)}`
+    } else if (draft.length) {
+        const resumen = draft.map(d => [d.service_name||d.service_id, d.day?`día ${d.day}`:null, d.slots?`${d.slots} personas`:null].filter(Boolean).join(', ')).join(' · ')
+        conversation_notes = `---${dd}/${mm}/${yy}---\n<Cliente>\n[Entrada manual: ${resumen}]`
+    }
 
     const { data, error } = await _supabase
         .from('reservation_requests')
         .insert({
-            client_name:        campos.client_name  || 'Sin nombre',
-            client_email:       campos.client_email || null,
-            client_phone:       campos.client_phone || null,
-            proposal_draft:     emailDraft,
-            comments:           finalComments,
+            client_name:        campos.nombre || null,
+            client_email:       campos.email  || null,
+            client_phone:       campos.tel    || null,
+            language:           campos.idioma || 'es',
             source:             'email',
             status:             'nueva',
-            language:           campos.language     || 'es',
+            proposal_draft:     draft.length ? draft : null,
             conversation_notes
         })
         .select()
