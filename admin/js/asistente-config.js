@@ -314,7 +314,9 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin markdown, 
   "days_flexible": boolean,
   "slots": número entero o null,
   "language": string de dos letras (es/en/fr/it/de/other),
-  "comments": string
+  "comments": string,
+  "venue_hint": string o null,
+  "price_hint": número o null
 }
 
 REGLAS DE EXTRACCIÓN:
@@ -339,4 +341,17 @@ slots: número de personas o plazas que solicitan. Null si no se menciona númer
 
 language: idioma principal en que está escrita la consulta del cliente (no el texto de reenvío interno). Valores: "es", "en", "fr", "it", "de", "other".
 
-comments: resumen en español en 2-4 frases, en tercera persona, con el tono de una nota interna para el equipo de ventas. NO copies el texto original: interpreta, resume y añade contexto útil. Incluye: qué quieren, para cuándo, perfil aproximado del cliente (particular, grupo, empresa, hotel, medio de comunicación, uso no estándar, etc.), y cualquier detalle relevante sobre sus necesidades, urgencia, flexibilidad o restricción especial. Ejemplo: "Grupo de 6 amigos, primera vez en San Fermín, interesados en ver el encierro desde balcón para el día 9. Tono informal y entusiasta, parecen decididos. No mencionan presupuesto."`
+comments: resumen en español en 2-4 frases, en tercera persona, con el tono de una nota interna para el equipo de ventas. NO copies el texto original: interpreta, resume y añade contexto útil. Incluye: qué quieren, para cuándo, perfil aproximado del cliente (particular, grupo, empresa, hotel, medio de comunicación, uso no estándar, etc.), y cualquier detalle relevante sobre sus necesidades, urgencia, flexibilidad o restricción especial. Ejemplo: "Grupo de 6 amigos, primera vez en San Fermín, interesados en ver el encierro desde balcón para el día 9. Tono informal y entusiasta, parecen decididos. No mencionan presupuesto."
+
+venue_hint: si en el texto (especialmente en mensajes de Paula) aparece mencionada una ubicación concreta de un balcón o venue, extráela como texto libre. Ejemplos de lo que buscar: "balcón en plaza del ayuntamiento", "tengo en estafeta", "algo en mercaderes", "balcón en santo domingo". Devuelve solo el nombre o descripción de la ubicación (ej: "plaza del ayuntamiento", "estafeta", "mercaderes"). Null si no se menciona ninguna ubicación concreta.
+
+price_hint: si en el texto aparece mencionado un precio por persona (ya sea por el cliente o por Paula), extráelo como número sin símbolo de moneda. Busca frases como "a 125€", "cuesta 200€ por persona", "te lo doy a 150", "el precio es 180 por plaza", "lo ofrezco a 200". Es SIEMPRE precio por persona, nunca precio total del grupo. Null si no aparece ningún precio concreto.
+
+CUANDO EL TEXTO ES UN HILO DE CONVERSACIÓN:
+Si el texto incluye mensajes de múltiples personas (por ejemplo, Paula y el cliente alternando), lee ambos lados para enriquecer la extracción:
+- client_name, client_email, client_phone: busca siempre en el lado del cliente, nunca en el de Paula.
+- service_hint, day, slots: extrae tanto de lo que pide el cliente como de lo que Paula confirma o propone. Si Paula dice "te propongo encierro el día 8 y chupinazo" y el cliente responde "OK" o "perfecto" o similar, esos servicios y días son los principales a extraer.
+- Si Paula menciona varios días disponibles ("además del día 7 tengo para el 10 en estafeta") y el cliente no ha rechazado, incluye todos en days_all.
+- venue_hint: extrae de mensajes de Paula (no del cliente). Si Paula menciona varias ubicaciones, pon la primera o la más concreta.
+- price_hint: extrae preferentemente de mensajes de Paula. Si Paula da un precio y el cliente lo acepta, ese es el price_hint.
+- language: determínalo por el idioma del cliente, no el de Paula (que siempre escribe en español).`

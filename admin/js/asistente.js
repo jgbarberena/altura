@@ -557,39 +557,49 @@ export async function abrirProcesarEmail() {
             const diaEnc = !!svc?.day
             return `<tr data-idx="${idx}">
                 <td style="padding:2px">
-                    <select class="mn-svc" data-idx="${idx}" style="font-size:12px;width:100%;min-height:36px">
+                    <select class="mn-svc" data-idx="${idx}" style="font-size:12px;width:100%;min-height:30px">
                         <option value="">— Servicio —</option>
                         ${serviceOpts.replace(`value="${item.service_id}"`,`value="${item.service_id}" selected`)}
                     </select>
                 </td>
                 <td style="padding:2px">
                     <input class="mn-dia" data-idx="${idx}" type="number" min="6" max="14" value="${item.day||''}" placeholder="—"
-                        style="width:48px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px${diaEnc?';background:var(--bg-subtle,#f9fafb);color:var(--subtle)':''}"
+                        style="width:42px;font-size:12px;min-height:30px;padding:3px;border:1px solid var(--border);border-radius:4px${diaEnc?';background:var(--bg-subtle,#f9fafb);color:var(--subtle)':''}"
                         ${diaEnc?'readonly':''}>
                 </td>
                 <td style="padding:2px">
                     <input class="mn-slots" data-idx="${idx}" type="number" min="1" value="${item.slots||''}" placeholder="—"
-                        style="width:52px;font-size:12px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:4px">
+                        style="width:46px;font-size:12px;min-height:30px;padding:3px;border:1px solid var(--border);border-radius:4px">
+                </td>
+                <td style="padding:2px">
+                    <input class="mn-venue" data-idx="${idx}" type="text" value="${esc(item.venue_display_name||'')}" placeholder="Venue / balcón"
+                        style="width:100%;min-width:70px;font-size:12px;min-height:30px;padding:3px 4px;border:1px solid var(--border);border-radius:4px">
+                </td>
+                <td style="padding:2px">
+                    <input class="mn-price" data-idx="${idx}" type="number" min="0" value="${item.price||''}" placeholder="—"
+                        style="width:54px;font-size:12px;min-height:30px;padding:3px;border:1px solid var(--border);border-radius:4px">
                 </td>
                 <td style="padding:2px;text-align:center">
-                    <button class="mn-del" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--subtle)">🗑️</button>
+                    <button class="mn-del" data-idx="${idx}" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--subtle)">🗑</button>
                 </td>
             </tr>`
         }).join('')
         return `
-            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--subtle)">Borrador de propuesta</span>
-            <div style="overflow-x:auto;margin-top:6px">
+            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--subtle)">Borrador de propuesta</span>
+            <div style="overflow-x:auto;margin-top:4px">
                 <table style="width:100%;border-collapse:collapse;font-size:12px">
                     <thead><tr style="border-bottom:1px solid var(--border)">
-                        <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Servicio</th>
-                        <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:56px">Día</th>
-                        <th style="text-align:left;padding:4px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:60px">Plazas</th>
-                        <th style="width:32px"></th>
+                        <th style="text-align:left;padding:3px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Servicio</th>
+                        <th style="text-align:left;padding:3px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:50px">Día</th>
+                        <th style="text-align:left;padding:3px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:52px">Pax</th>
+                        <th style="text-align:left;padding:3px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase">Venue</th>
+                        <th style="text-align:left;padding:3px 2px;font-size:10px;color:var(--subtle);font-weight:600;text-transform:uppercase;width:62px">€/pax</th>
+                        <th style="width:26px"></th>
                     </tr></thead>
                     <tbody id="mn-tbody">${filas}</tbody>
                 </table>
             </div>
-            <button id="mn-add-row" style="margin-top:6px;background:none;border:1px dashed var(--border);border-radius:4px;padding:4px 10px;font-size:12px;color:var(--subtle);cursor:pointer;width:100%">+ Añadir servicio</button>`
+            <button id="mn-add-row" style="margin-top:4px;background:none;border:1px dashed var(--border);border-radius:4px;padding:3px 8px;font-size:12px;color:var(--subtle);cursor:pointer;width:100%">+ Añadir servicio</button>`
     }
 
     function _bindBorrador() {
@@ -609,6 +619,12 @@ export async function abrirProcesarEmail() {
         }))
         wrap.querySelectorAll('.mn-slots').forEach(inp => inp.addEventListener('change', e => {
             modalDraft[parseInt(e.target.dataset.idx)].slots = parseInt(e.target.value) || null
+        }))
+        wrap.querySelectorAll('.mn-venue').forEach(inp => inp.addEventListener('change', e => {
+            modalDraft[parseInt(e.target.dataset.idx)].venue_display_name = e.target.value.trim() || null
+        }))
+        wrap.querySelectorAll('.mn-price').forEach(inp => inp.addEventListener('change', e => {
+            modalDraft[parseInt(e.target.dataset.idx)].price = parseFloat(e.target.value) || null
         }))
         wrap.querySelectorAll('.mn-del').forEach(btn => btn.addEventListener('click', e => {
             modalDraft.splice(parseInt(e.target.dataset.idx), 1)
@@ -630,12 +646,16 @@ export async function abrirProcesarEmail() {
         panel.querySelectorAll('#mn-tbody tr').forEach(row => {
             const idx = parseInt(row.dataset.idx)
             if (isNaN(idx) || idx >= modalDraft.length) return
-            const sel = row.querySelector('.mn-svc')
-            const dia = row.querySelector('.mn-dia')
-            const sl  = row.querySelector('.mn-slots')
-            if (sel) { const svc = servicios.find(s => s.service_id === sel.value); modalDraft[idx].service_id = sel.value||null; modalDraft[idx].service_name = svc?.label||null }
-            if (dia && !dia.readOnly) modalDraft[idx].day   = parseInt(dia.value)  || null
-            if (sl)                   modalDraft[idx].slots = parseInt(sl.value)   || null
+            const sel   = row.querySelector('.mn-svc')
+            const dia   = row.querySelector('.mn-dia')
+            const sl    = row.querySelector('.mn-slots')
+            const venue = row.querySelector('.mn-venue')
+            const price = row.querySelector('.mn-price')
+            if (sel)   { const svc = servicios.find(s => s.service_id === sel.value); modalDraft[idx].service_id = sel.value||null; modalDraft[idx].service_name = svc?.label||null }
+            if (dia && !dia.readOnly) modalDraft[idx].day               = parseInt(dia.value)     || null
+            if (sl)                   modalDraft[idx].slots             = parseInt(sl.value)      || null
+            if (venue)                modalDraft[idx].venue_display_name = venue.value.trim()     || null
+            if (price)                modalDraft[idx].price             = parseFloat(price.value) || null
         })
     }
 
@@ -655,13 +675,15 @@ export async function abrirProcesarEmail() {
             modalDraft = hints.map(hint => {
                 const svc = servicios.find(s => s.event_type === hint && (!parsed.day || s.day === parsed.day))
                          || servicios.find(s => s.event_type === hint)
-                if (svc) return { service_id: svc.service_id, service_name: svc.label, day: svc.day || parsed.day || null, slots: parsed.slots || null, price: null, venue_id: null, venue_display_name: null, catalogo_url: null }
-                return { service_id: null, service_name: hint, day: parsed.day || null, slots: parsed.slots || null, price: null, venue_id: null, venue_display_name: null, catalogo_url: null }
+                if (svc) return { service_id: svc.service_id, service_name: svc.label, day: svc.day || parsed.day || null, slots: parsed.slots || null, price: parsed.price_hint || null, venue_id: null, venue_display_name: parsed.venue_hint || null, catalogo_url: null }
+                return { service_id: null, service_name: hint, day: parsed.day || null, slots: parsed.slots || null, price: parsed.price_hint || null, venue_id: null, venue_display_name: parsed.venue_hint || null, catalogo_url: null }
             })
         } else if (parsed.day || parsed.slots) {
             if (modalDraft[0]) {
-                if (parsed.day   && !modalDraft[0].day)   modalDraft[0].day   = parsed.day
-                if (parsed.slots && !modalDraft[0].slots) modalDraft[0].slots = parsed.slots
+                if (parsed.day        && !modalDraft[0].day)                modalDraft[0].day                = parsed.day
+                if (parsed.slots      && !modalDraft[0].slots)              modalDraft[0].slots              = parsed.slots
+                if (parsed.venue_hint && !modalDraft[0].venue_display_name) modalDraft[0].venue_display_name = parsed.venue_hint
+                if (parsed.price_hint && !modalDraft[0].price)              modalDraft[0].price              = parsed.price_hint
             }
         }
         _rebind()
@@ -680,19 +702,31 @@ export async function abrirProcesarEmail() {
 
     function _render() {
         panel.innerHTML = `
-            <h3 style="margin-top:0">➕ Nueva consulta</h3>
-            <div class="form-grid" style="margin-bottom:16px">
-                <div class="form-field"><label>Nombre *</label><input id="mn-nombre" type="text" placeholder="Nombre del cliente"></div>
-                <div class="form-field"><label>Email</label><input id="mn-email" type="text" placeholder="Email"></div>
-                <div class="form-field"><label>Teléfono</label><input id="mn-tel" type="text" placeholder="Teléfono"></div>
-                <div class="form-field"><label>Idioma</label><select id="mn-idioma">${IDIOMAS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+            <h3 style="margin:0 0 8px;font-size:14px;font-weight:600">➕ Nueva consulta</h3>
+            <div style="display:grid;grid-template-columns:2fr 2fr 2fr 60px;gap:6px;margin-bottom:10px;align-items:end">
+                <div>
+                    <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--subtle);display:block;margin-bottom:2px">Nombre *</label>
+                    <input id="mn-nombre" type="text" placeholder="Nombre del cliente" style="width:100%;box-sizing:border-box">
+                </div>
+                <div>
+                    <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--subtle);display:block;margin-bottom:2px">Email</label>
+                    <input id="mn-email" type="text" placeholder="email@..." style="width:100%;box-sizing:border-box">
+                </div>
+                <div>
+                    <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--subtle);display:block;margin-bottom:2px">Teléfono</label>
+                    <input id="mn-tel" type="text" placeholder="+34..." style="width:100%;box-sizing:border-box">
+                </div>
+                <div>
+                    <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--subtle);display:block;margin-bottom:2px">Idioma</label>
+                    <select id="mn-idioma" style="width:100%">${IDIOMAS.map(([v])=>`<option value="${v}">${v==='other'?'…':v.toUpperCase()}</option>`).join('')}</select>
+                </div>
             </div>
-            <div id="mn-borrador-wrap" style="margin-bottom:16px">${_renderBorradorModal()}</div>
-            <div style="margin-bottom:6px">
-                <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--subtle)">Mensaje / hilo del cliente</label>
-                <textarea id="mn-texto" rows="8" style="width:100%;box-sizing:border-box;font-size:13px;font-family:monospace;padding:8px;border:1px solid #d1d5db;border-radius:4px;resize:vertical;margin-top:6px" placeholder="Pega aquí el email, mensaje de WhatsApp, hilo de conversación..."></textarea>
+            <div id="mn-borrador-wrap" style="margin-bottom:10px">${_renderBorradorModal()}</div>
+            <div style="margin-bottom:8px">
+                <label style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--subtle)">Mensaje / hilo del cliente</label>
+                <textarea id="mn-texto" rows="5" style="width:100%;box-sizing:border-box;font-size:12px;font-family:monospace;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;resize:vertical;margin-top:4px" placeholder="Pega aquí el email, mensaje de WhatsApp, hilo de conversación..."></textarea>
             </div>
-            <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+            <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
                 <button class="btn btn-secondary" id="mn-btn-parsear" style="font-size:12px">🤖 Procesar con IA</button>
                 <span id="mn-parsear-status" style="font-size:12px;color:var(--subtle)"></span>
             </div>
