@@ -3,8 +3,8 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
-import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, verificarCoherencia, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
-import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
+import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { initAsistente } from './asistente.js'
 
@@ -50,6 +50,11 @@ let _modoConversionActivo  = false
 let _solicitudConversionId = null   // UUID de la solicitud en conversión
 let _draftConversion       = []     // líneas con campo estado ('pendiente'|'hecha'|'descartada')
 let _lineaActualIndex      = null   // índice de la línea cargada en bloque 2
+
+// ===== ESTADO DEL ASISTENTE DE BIENVENIDAS =====
+let _modoColaBienvenidas = false
+let _colaClienteIds      = []       // IDs de cliente en orden de envío
+let _colaSaltadas        = new Set()
 const hoy             = new Date().toISOString().split('T')[0]
 
 // ===== REFERENCIAS DOM =====
@@ -1056,6 +1061,7 @@ function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
             )
             actualizarBotonBienvenida()
             mostrarToast('✅ Bienvenida enviada')
+            _onBienvenidaEnviada()
         }
     })
 }
@@ -2899,6 +2905,129 @@ async function _finalizarConversion() {
     _solicitudConversionId = null
 }
 
+// ===== ASISTENTE DE BIENVENIDAS =====
+
+function _initBloqueColaBienvenidas(ids) {
+    _modoColaBienvenidas = true
+    _colaClienteIds      = ids
+    _colaSaltadas        = new Set()
+
+    let bloque = document.getElementById('bloque-cola-bienvenidas')
+    if (!bloque) {
+        bloque = document.createElement('div')
+        bloque.id        = 'bloque-cola-bienvenidas'
+        bloque.className = 'bloque'
+        document.getElementById('bloque-cliente').before(bloque)
+    }
+    _renderTablaColaBienvenidas()
+}
+
+function _renderTablaColaBienvenidas() {
+    const bloque = document.getElementById('bloque-cola-bienvenidas')
+    if (!bloque) return
+
+    const pendientes = _colaClienteIds.filter(id => {
+        if (_colaSaltadas.has(id)) return false
+        const confirmadas = todasReservas.filter(r => r.client_id === id && r.status === 'Confirmada')
+        return confirmadas.length > 0 && !confirmadas.every(r => r.welcome_sent_at)
+    })
+    const enviadas = _colaClienteIds.filter(id => {
+        const confirmadas = todasReservas.filter(r => r.client_id === id && r.status === 'Confirmada')
+        return confirmadas.length > 0 && confirmadas.every(r => r.welcome_sent_at)
+    })
+
+    if (pendientes.length === 0) {
+        bloque.style.cssText = 'background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px;margin-bottom:16px'
+        const nEnv  = enviadas.length
+        const nSalt = _colaSaltadas.size
+        bloque.innerHTML = `
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <span style="font-size:20px">✅</span>
+                <div>
+                    <strong>Bienvenidas completadas</strong>
+                    <div style="font-size:13px;color:var(--subtle);margin-top:2px">${nEnv} enviada${nEnv !== 1 ? 's' : ''}${nSalt > 0 ? `, ${nSalt} saltada${nSalt !== 1 ? 's' : ''}` : ''}</div>
+                </div>
+                <button id="cola-btn-cerrar" class="btn btn-secondary" style="margin-left:auto">Cerrar</button>
+            </div>`
+        bloque.querySelector('#cola-btn-cerrar').addEventListener('click', () => {
+            _modoColaBienvenidas = false
+            bloque.remove()
+        })
+        return
+    }
+
+    bloque.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:16px'
+
+    const filas = _colaClienteIds.map(id => {
+        const esSfcom = todasReservas.some(r => r.client_id === id && r.origin_ref?.startsWith('WEB'))
+        const canal   = esSfcom ? ' <span style="color:#dc2626;font-size:11px">[sfcom]</span>' : ''
+        const confirmadas = todasReservas.filter(r => r.client_id === id && r.status === 'Confirmada')
+        const yaEnviada   = confirmadas.length > 0 && confirmadas.every(r => r.welcome_sent_at)
+
+        if (yaEnviada) {
+            return `<tr style="color:var(--subtle)">
+                <td><code>${id}</code>${canal}</td>
+                <td style="color:#16a34a;white-space:nowrap">✅ Enviada</td>
+                <td></td>
+            </tr>`
+        }
+        if (_colaSaltadas.has(id)) {
+            return `<tr style="color:var(--subtle)">
+                <td><code>${id}</code>${canal}</td>
+                <td style="white-space:nowrap">— Saltada</td>
+                <td></td>
+            </tr>`
+        }
+        const esCargada  = clienteActual?.id === id
+        const btnCargar  = `background:${esCargada ? 'var(--accent);color:#fff;border-color:var(--accent)' : 'inherit'}`
+        return `<tr>
+            <td><code>${id}</code>${canal}</td>
+            <td style="white-space:nowrap;color:var(--accent-warn)">⏳ Pendiente</td>
+            <td style="display:flex;gap:6px">
+                <button class="btn btn-secondary cola-cargar" data-id="${id}" style="font-size:12px;${btnCargar}">↓ Cargar</button>
+                <button class="btn btn-secondary cola-saltar" data-id="${id}" style="font-size:12px">Saltar</button>
+            </td>
+        </tr>`
+    }).join('')
+
+    const total = _colaClienteIds.length
+    const n     = pendientes.length
+    bloque.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h2 style="margin:0;font-size:16px;color:#1d4ed8">📩 Asistente de bienvenidas — ${n} pendiente${n !== 1 ? 's' : ''} de ${total}</h2>
+            <button id="cola-btn-cancelar" class="btn btn-secondary" style="font-size:12px">✕ Cancelar</button>
+        </div>
+        <div class="table-wrapper"><table><tbody>${filas}</tbody></table></div>`
+
+    bloque.querySelector('#cola-btn-cancelar').addEventListener('click', () => {
+        if (!confirm('¿Cancelar el asistente de bienvenidas?')) return
+        _modoColaBienvenidas = false
+        bloque.remove()
+    })
+    bloque.querySelectorAll('.cola-cargar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const c = todosClientes.find(c => c.id === btn.dataset.id)
+            if (c) {
+                cargarCliente(c)
+                _renderTablaColaBienvenidas()
+                document.getElementById('bloque-cliente')?.scrollIntoView({ behavior: 'smooth' })
+            }
+        })
+    })
+    bloque.querySelectorAll('.cola-saltar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _colaSaltadas.add(btn.dataset.id)
+            if (clienteActual?.id === btn.dataset.id) limpiarFormularioReserva()
+            _renderTablaColaBienvenidas()
+        })
+    })
+}
+
+function _onBienvenidaEnviada() {
+    if (!_modoColaBienvenidas) return
+    _renderTablaColaBienvenidas()
+}
+
 // Si venimos de solicitudes.html con ?solicitud_id=uuid, pre-cargar datos
 ;(async () => {
     const solicitudId = new URLSearchParams(location.search).get('solicitud_id')
@@ -2926,6 +3055,18 @@ async function _finalizarConversion() {
     if (!_modoConversionActivo) solicitudOriginRef = sol.id
 })()
 
+// Cola de bienvenidas enviada desde el panel de control
+{
+    const raw = sessionStorage.getItem('colaBienvenidas')
+    if (raw) {
+        sessionStorage.removeItem('colaBienvenidas')
+        try {
+            const ids = JSON.parse(raw)
+            if (Array.isArray(ids) && ids.length > 0) _initBloqueColaBienvenidas(ids)
+        } catch {}
+    }
+}
+
 // Comprobar pedidos nuevos en sfcom y luego verificar coherencia.
 // El orden es importante: los pedidos registrados por checkSfcomOrders influyen
 // en pendingExplains de verificarCoherencia (solicitudes sfcom pendientes que
@@ -2947,59 +3088,13 @@ checkSfcomOrders(supabase)
         cargarSolicitudes()
     })
     .finally(() => {
-        ejecutarVerificacion(false).catch(e => console.error('[verificacion] Error al inicio:', e.message))
+        ejecutarVerificacion(supabase, { modoManual: false, incluirSfcom: true, incluirFinanciero: false })
+            .catch(e => console.error('[verificacion] Error al inicio:', e.message))
     })
 
-async function ejecutarVerificacion(modoManual = false) {
-    const toastEl = mostrarToast('🔍 Verificando coherencia…', '#374151')
-
-    let resultado
-    try {
-        resultado = await verificarCoherencia(supabase, { checkVariationNames: modoManual })
-    } finally {
-        toastEl?.remove()
-    }
-    const hayMismatch = (resultado.sfcom.idsMismatch?.length ?? 0) > 0
-
-    if (hayMismatch) {
-        const decision = await mostrarModalPreCorreccion(resultado.sfcom.idsMismatch)
-        if (decision === 'corregir') {
-            for (const m of resultado.sfcom.idsMismatch) {
-                await verificarConfirmarSfcom(supabase, m.availId, m.servicio, m.serviceId)
-            }
-            const resultadoCorregido = await verificarCoherencia(supabase, { checkVariationNames: true })
-            mostrarModalVerificacion(resultadoCorregido, supabase, () => ejecutarVerificacion(true))
-        } else {
-            mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true), { sinBotonCorregir: true })
-        }
-        return
-    }
-
-    const discRepReal   = (resultado.sfcom.discrepancias ?? []).filter(d => !d.pendingExplains)
-    const hayPendientes = (resultado.sfcom.discrepancias ?? []).some(d => d.pendingExplains)
-    const hayFallos     = (resultado.sfcom.fallos?.length ?? 0) > 0
-    const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0
-
-    if (hayProblema) {
-        mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
-    } else if (hayPendientes) {
-        if (modoManual) {
-            mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
-        } else {
-            const nPendientes = (resultado.sfcom.discrepancias ?? []).filter(d => d.pendingExplains).length
-            mostrarToast(`ℹ️ ${nPendientes} pedido(s) sfcom pendiente(s) de incorporar`, '#1d4ed8')
-        }
-    } else if (modoManual) {
-        mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
-    } else if (!resultado.sfcom.verificado) {
-        mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e')
-    } else {
-        mostrarToast('✅ Coherencia de reservas, plazas y sfcom verificada y correcta')
-    }
-}
-
 document.getElementById('btnVerificarDatos').addEventListener('click', () => {
-    ejecutarVerificacion(true).catch(e => console.error('[verificacion] Error:', e.message))
+    ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor })
+        .catch(e => console.error('[verificacion] Error:', e.message))
 })
 
 document.getElementById('btnExportReservasCliente')?.addEventListener('click', () => {

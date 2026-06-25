@@ -156,7 +156,8 @@ UNIQUE (client_id, amount, due_date).
 | due_date | date |
 | paid | boolean, default false |
 | paid_date | date |
-| comments | El hito final se identifica por `comments === 'Pago final'` (no hay campo is_final en esta tabla) |
+| is_final | boolean — hito final del pago a proveedor |
+| comments | text — nota opcional sobre el hito |
 
 UNIQUE (provider_id, amount, due_date).
 
@@ -332,11 +333,19 @@ Tamaños: default 560px; `--wide` 640px; `--narrow` 480px. `--scroll` activa `ma
 Clases de botones del admin: `.btn`, `.btn-primary` (rojo), `.btn-secondary` (borde gris), `.btn-danger` (borde rojo).
 
 ### verificacion.js
-Módulo ES6. Importa `syncStockToSfcom` de sfcom.js y `crearModal` de modal.js. Exports:
+Módulo ES6. Importa `syncStockToSfcom`, `verificarSfcom`, `verificarConfirmarSfcom` de `sfcom.js` y `crearModal` de `modal.js`. Solo dos exports públicos:
 
-- `mostrarToast(mensaje, color)` — toast fijo en la parte superior, ~3.5s. Devuelve el elemento DOM para poder eliminarlo antes del timeout.
-- `mostrarModalVerificacion(resultado, supabase, onReverify, opts)` — modal completo de resultados. Cuatro estados visuales: rojo (errores BD), naranja (discrepancias sfcom reales), azul (discrepancias explicadas por pedidos pendientes), verde (OK). `opts.sinBotonCorregir` evita el bucle infinito de corrección.
-- `mostrarModalPreCorreccion(mismatches)` — modal previo cuando hay IDs de variación incorrectos. Devuelve `Promise<'corregir'|'continuar'>`.
+- `mostrarToast(mensaje, color)` — toast fijo en la parte superior, ~3.5s. Devuelve el elemento DOM. No se puede importar desde `utils.js` porque crearía dependencia circular (utils.js ya importa `mostrarToast` de aquí).
+- `ejecutarVerificacion(supabase, opts)` — punto de entrada único. `opts`: `{ modoManual, incluirSfcom, incluirFinanciero, persistirCobros, persistirPagos }`. Carga todos los datos en paralelo, ejecuta los tres dominios de verificación y muestra el resultado (modal o toast según modo y severidad). Devuelve el objeto resultado o `null` si hay error de conexión.
+
+**Dominios internos (privados):**
+- `_cargarDatos(supabase)` — carga en paralelo: reservations, availability_with_sfcom, clients, venues, services, providers, reservation_requests (nueva), charges (*), payments (*).
+- `_verificarBD(dados)` → `{ errores, avisos, advertencias }`. Errores: FK rotas en reservas/cobros/pagos, slots≤0, sobrereserva, múltiples hitos finales por cliente, variation_id duplicado en sfcom. Advertencias (solo modoManual): inconsistencias collected/date, paid/date, invoiced/invoice_number. Avisos (solo modoManual): solicitudes pendientes.
+- `_computarFinanciero(dados)` → `{ problemasClientes, problemasProveedores, advertencias }`. Compara charges vs reservas por cliente (incluye SFCOM por separado: cobros SFCOM vs total reservas WEB). Compara payments vs coste teórico por proveedor (según billing_model). Advertencias (solo modoManual): cobros/pagos a cero.
+- `_mostrarResultado` — decide toast vs modal. En auto: abre modal solo si hay errores BD, discrepancias sfcom no explicadas, idsMismatch o problemas financieros. En manual: siempre abre modal con todo.
+- `_mostrarModal` — modal unificado con secciones: BD errores, sfcom discrepancias (reales y pendientes), sfcom fallos, financiero, BD advertencias, BD avisos, financiero advertencias.
+- `_corregirFinanciero` — ejecuta corrección automática de cobros/pagos usando `persistirCobros` y `persistirPagos` pasados por el llamador.
+- `_mostrarModalPreCorreccion` — flujo de corrección de idsMismatch (dead en la práctica — API sfcom no expone nombres de variaciones).
 
 ### formulario.js (~2600 líneas)
 Módulo ES6. Importa de `supabase.js`, `auth.js`, `utils.js`, `factura.js`, `propuesta.js`, `sfcom.js`, `verificacion.js`, `modal.js`, `asistente.js`.
@@ -385,8 +394,16 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 - **`actualizarBotonBienvenida()`** — muestra/oculta el botón (`#btnEnviarBienvenida`, el propio elemento, con `display:'flex'/'none'`) según si el cliente tiene reservas activas. En una segunda línea dentro del botón (`<span id="bienvenida-status">`) aparece "✅ Enviado el DD/MM" si todas las confirmadas tienen `welcome_sent_at`.
 - **`componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarcadas, disponibilidad, opts)`** — genera el texto adaptando la intro según días hasta el 6 de julio (>1 día / mañana / ya estamos en SF). `diasParaSanFermin()` usa siempre el año en curso y **no salta al año siguiente** tras las fiestas (a diferencia de `fechaCobroDefault`). Incluye un bloque por reserva con nombre del evento, día, hora, `venue_display_name`, plazas e instrucciones de acceso si `availability.access_instructions` está relleno. Cuando hay varias reservas, los bloques se separan con `— — — — —`. Cierre firmado por Paula.
-- **`abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas)`** — modal con el texto como `<textarea>` editable. Si `pendientesNoMarcadas` no está vacío, muestra un banner de advertencia con checkbox para añadir una nota sobre ellas al final del mensaje. Usa `mostrarOpcionesEnvio` (`tipo:'texto'`) para WhatsApp/email. Al usar cualquier botón de envío escribe `welcome_sent_at` solo en `reservasIncluidas` (nunca en las que solo aparecen en el banner) y llama a `actualizarBotonBienvenida()`.
+- **`abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas)`** — modal con el texto como `<textarea>` editable. Si `pendientesNoMarcadas` no está vacío, muestra un banner de advertencia con checkbox para añadir una nota sobre ellas al final del mensaje. Usa `mostrarOpcionesEnvio` (`tipo:'texto'`) para WhatsApp/email. Al usar cualquier botón de envío escribe `welcome_sent_at` solo en `reservasIncluidas` (nunca en las que solo aparecen en el banner), llama a `actualizarBotonBienvenida()` y a `_onBienvenidaEnviada()` si el asistente está activo.
 - Al pulsar el botón, `reservasIncluidas` contiene siempre todas las reservas **Confirmadas** del cliente más las **Pendientes** que Paula haya marcado con el checkbox en la tabla. Las Pendientes no marcadas van a `pendientesNoMarcadas` y aparecen solo en el banner de advertencia del modal.
+
+**Asistente de bienvenidas (jun 2026):** flujo para enviar bienvenidas en lote desde el panel de control, sin tener que ir cliente a cliente.
+
+- `panel.html` → alerta discreta `#alerta-bienvenidas` en el bloque de alertas: "N clientes sin mensaje de bienvenida enviado · Abrir asistente →". Solo visible cuando hay pendientes (`reservations.status = 'Confirmada' AND welcome_sent_at IS NULL`). Al hacer clic abre `_abrirModalSeleccionBienvenidas`.
+- **`_abrirModalSeleccionBienvenidas(idsPendientes)`** en `panel.js` — modal con tabla de selección: `client_id` | canal (sfcom en rojo / propio) | nº reservas confirmadas pendientes. Todos marcados por defecto, sfcom ordenados primero. Enlace "Solo sfcom" para desmarcar los propios. Botón "Iniciar asistente (N)" escribe los IDs seleccionados en `sessionStorage('colaBienvenidas')` y navega a `formulario.html`.
+- **`_initBloqueColaBienvenidas(ids)`** en `formulario.js` — se activa al cargar si `sessionStorage('colaBienvenidas')` está presente (se borra tras leerlo). Crea un bloque azul (`#bloque-cola-bienvenidas`) encima del formulario, modelado sobre `bloque-conversion-propuesta`.
+- **`_renderTablaColaBienvenidas()`** — una fila por cliente: `client_id` + tag [sfcom] | estado derivado de `todasReservas` (⏳ Pendiente / ✅ Enviada / — Saltada) | botones "↓ Cargar" y "Saltar". El estado ✅ se deriva directamente de `welcome_sent_at` en `todasReservas` (fuente de verdad, sin estado adicional). Al completar todos, el bloque vira a verde con botón "Cerrar".
+- **`_onBienvenidaEnviada()`** — llamada desde el `onUsado` de `abrirModalBienvenida`. Solo re-renderiza la cola; el estado ya está actualizado en `todasReservas`.
 
 ### solicitudes.js
 Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js` (`initSidebar`, `buildCatalogUrl`, `resolverCliente`), `mostrarToast` de `verificacion.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
@@ -453,10 +470,10 @@ Gestiona:
 **Tabla de servicios (`bloque-servicios-proveedor`):** `cargarServiciosProveedor(proveedorId, venueId)` filtra `todaDisponibilidad` por `d.venue_id === vid` (donde `vid = venueId ?? venueActual?.id`). Muestra solo los servicios del venue activo; nunca mezcla venues aunque el proveedor tenga varios. La tabla se refresca al cambiar de pestaña y tras cualquier operación de guardado o eliminación de servicios. El cálculo de pagos (`persistirPagosProveedor`) es distinto: agrega todos los venues del proveedor a propósito — eso es correcto y no debe verse afectado por el filtro de la tabla.
 
 ### panel.js
-Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `venues`, `payments`, `charges`, `reservation_requests`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
+Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `venues`, `payments`, `charges`, `reservation_requests`, `clients`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
 
 **Bloques (orden en pantalla):**
-1. Alertas críticas: sobrereservas, sfcom nuevos/cancelados, solicitudes pendientes, pagos/cobros vencidos.
+1. Alertas críticas: sobrereservas, sfcom nuevos/cancelados, solicitudes pendientes, pagos/cobros vencidos, bienvenidas pendientes.
 2. Panel principal (dos columnas): calendario de próximos pagos/cobros (filtrable 7/30/todos) + resumen de negocio (tarjetones dual a la derecha).
 3. Por vender: 4 KPI cards + tablas pareto de disponibilidad no vendida.
 4. Disponibilidad por evento.
@@ -521,15 +538,15 @@ nuevoStock = Math.max(0, Math.min(
 - `computeExpectedStock(supabase, venueId, serviceId, { sfcomDelta, allDelta, stockMap })` — calcula stock esperado tras un delta. Acepta `stockMap` pre-cargado para evitar N GET stock-all; si es null, usa caché o hace su propio GET.
 - `confirmarStockSfcom(supabase, pares)` — modal consultivo pre-save. Hace UN GET stock-all y lo pasa a cada `computeExpectedStock`.
 - `loadSfcomListings(supabase)` — carga el mapeo WooCommerce→servicio/venue. Usada en páginas que no son formulario.html.
-- `verificarCoherencia(supabase)` — véase abajo.
+- `verificarSfcom({ reservas, availability, solicitudes })` — véase abajo.
 - `mostrarModalConfirmacionSfcom(cambios)` — modal consultivo antes de PUTs. Devuelve `Promise<'sync'|'save'|'cancel'>`. Callers: `if (result === 'cancel') return` para abortar, `if (result === 'sync') await syncStockToSfcom(...)` para el PUT.
 - `verificarConfirmarSfcom(supabase, dispId, productName, serviceId, excludeNames)` — véase abajo.
 
-**`verificarCoherencia(supabase)`**
+**`verificarSfcom({ reservas, availability, solicitudes })`**
 
-Devuelve `{ ok, errores[], avisos[], sfcom: { verificado, discrepancias[], idsMismatch[], fallos[], error } }`.
+Recibe datos pre-cargados (no hace queries Supabase propias). Devuelve `{ verificado, discrepancias[], idsMismatch[], fallos[], avisos[], error }`. Llamado desde `verificacion.js` como parte de `ejecutarVerificacion`.
 
-Comprobaciones que realiza (todas en cada llamada, automática o manual):
+Comprobaciones que realiza:
 1. Integridad FK: reservas con venue/service/client que no existen en sus tablas maestras.
 2. Sobrereserva: plazas activas superiores al total del venue/servicio.
 3. Solicitudes pendientes: sfcom sin atender (aviso) y web sin atender (aviso).
@@ -550,7 +567,7 @@ Flujo interno: `getSfcomProducts()` (Supabase) → `_inferirProductoEnSfcom()` (
 **Discrepancias `pendingExplains`:** cuando sfcom muestra más stock del esperado y el gap está cubierto íntegramente por solicitudes sfcom pendientes de procesar, la discrepancia no es un error. No aparece con botón de sincronización; el "Sincronizar todos" las ignora.
 
 ### sfcom-panel.js
-Módulo ES6. Panel de gestión sfcom con KPIs, solicitudes pendientes, reservas con sfcom_order_ref, y listings activos con stock. Lee `availability_with_sfcom`. No escribe en BD. Reutiliza `verificarCoherencia`, `mostrarModalVerificacion` y `mostrarModalPreCorreccion` de `verificacion.js`.
+Módulo ES6. Panel de gestión sfcom con KPIs, solicitudes pendientes, reservas con sfcom_order_ref, y listings activos con stock. Lee `availability_with_sfcom`. No escribe en BD. Usa `ejecutarVerificacion` y `mostrarToast` de `verificacion.js`. La función local `_ejecutarVerificacionPanel(modoManual)` llama a `ejecutarVerificacion` y después actualiza la columna de stock real de la tabla de listings vía `actualizarStockDesdeVerificacion`.
 
 KPIs incluyen: total neto de ventas sfcom, coste de proveedores, y margen neto (cruza cada reserva sfcom activa con disponibilidad para calcular coste unitario según billing_model).
 
@@ -1024,38 +1041,11 @@ Fix: añadir un botón "⬆ Subir" en el footer del carousel junto a `🗑`. Al 
 
 ### 7.3 Funcionalidades pendientes
 
-**Botón "Verificar todo" global en el sidebar.**
+**✅ RESUELTO jun 2026 — Botón "Verificar datos" unificado y verificación consolidada.**
 
-Actualmente hay dos botones de verificación repartidos por el panel, con alcances distintos y sin presencia en todas las páginas:
+`ejecutarVerificacion(supabase, opts)` en `verificacion.js` es el único punto de entrada. Tres dominios integrados: integridad de BD (`_verificarBD`), coherencia financiera (`_computarFinanciero`) y stock sfcom (`verificarSfcom`). El botón `🔍 Verificar datos` existe en todas las páginas; sfcom.html unificó su texto. Las funciones locales duplicadas de `formulario.js` y `sfcom-panel.js` se eliminaron.
 
-- `formulario.html` → `🔍 Verificar datos` → ejecuta `verificarCoherencia` (coherencia reservas/plazas + stock sfcom + IDs de variación). Modo manual: siempre muestra modal. Modo auto (al cargar): modal solo si hay problemas.
-- `sfcom.html` → `🔍 Comprobar stock / corregir` → ejecuta la misma `verificarCoherencia`, con código duplicado en `sfcom-panel.js` (función `ejecutarVerificacion` casi idéntica a la de `formulario.js`).
-- `panel.html` → ejecuta `verificarConsistenciaFinanciera()` automáticamente al cargar. No hay botón manual para forzarla desde ninguna página. Comprueba: SUM(charges) == SUM(reservas no canceladas) por cliente; SUM(payments) ≈ coste teórico por proveedor según `billing_model`.
-- `solicitudes.html`, `proveedores.html`, `tablas.html` → ninguna verificación de ningún tipo.
-
-El objetivo es un único botón en el sidebar de todas las páginas que:
-1. Ejecute las dos comprobaciones: `verificarCoherencia` + `verificarConsistenciaFinanciera`.
-2. Siempre muestre el resultado en modal (no toast), aunque todo esté correcto.
-3. Sustituya los dos botones actuales (o al menos los unifique).
-
-**Trabajo necesario:**
-
-_A. Añadir el botón a los HTML que no lo tienen._ El sidebar está duplicado en cada `.html`. Hay que editar `panel.html`, `solicitudes.html`, `proveedores.html` y `tablas.html` para añadir el mismo `<button id="btnVerificarDatos">` que ya tiene `formulario.html`. Unificar el label (hoy formulario usa "Verificar datos" y sfcom usa "Comprobar stock / corregir").
-
-_B. Extraer `verificarConsistenciaFinanciera` a un módulo compartido._ Actualmente es una función closure en `panel.js` que cierra sobre variables locales (`charges`, `reservas`, `payments`, `disponibilidad`, `venues`). Para llamarla desde otras páginas necesita: recibir `supabase` como parámetro y hacer sus propias consultas, o exportar los datos que necesita a un módulo común. La opción limpia es extraerla a `verificacion.js` como `async function verificarConsistenciaFinanciera(supabase)` con sus propios SELECTs. Los datos que necesita son: `charges`, `reservas` (no canceladas), `payments`, `availability` (join con `venues` para obtener `provider_id`).
-
-_C. Consolidar la función `ejecutarVerificacion`._ Existe casi idéntica en `formulario.js` y `sfcom-panel.js`. Candidato natural para `verificacion.js` como función exportada que acepte `supabase` y `modoManual`. Las dos copias actuales se reemplazarían por un import.
-
-_D. Diseñar el modal combinado._ Dos opciones:
-- Opción A (sencilla): encadenar los dos modales — primero el de `verificarCoherencia`, luego el de consistencia financiera — con un botón "Siguiente" al cerrar el primero.
-- Opción B (completa): un único modal con dos secciones. Más trabajo de UI pero más limpio.
-
-_E. Mantener el orden checkSfcomOrders → verificarCoherencia._ El código de `formulario.js` documenta por qué importa este orden: los pedidos que registra `checkSfcomOrders` afectan a `pendingExplains` en la verificación. Desde páginas sin `checkSfcomOrders` (panel, solicitudes…) la verificación puede arrancar directamente; desde formulario y sfcom hay que respetar el orden.
-
-**Dudas pendientes de decidir (anotar respuesta cuando se vaya a implementar):**
-1. ¿Modal encadenado (opción A) o modal unificado (opción B)?
-2. En `panel.html`, la verificación financiera ya corre sola al cargar. ¿El botón global la vuelve a ejecutar igualmente (redundante pero inofensivo), o en `panel.html` el botón solo ejecuta `verificarCoherencia` (la parte que ahora falta allí)?
-3. ¿Renombramos el botón en `sfcom.html` para unificarlo ("Verificar datos" en lugar de "Comprobar stock / corregir"), o mantenemos el label diferenciado en esa página?
+Comportamiento por página: ver §4 `verificacion.js` para la tabla de opts por página. El orden `checkSfcomOrders → ejecutarVerificacion` se mantiene en `formulario.js` vía `.finally()` para que los pedidos sfcom nuevos ya estén insertados antes del check de `pendingExplains`.
 
 ---
 
@@ -1399,8 +1389,7 @@ Si Claude devuelve JSON malformado en el bloque `---BORRADOR---`, `borradorDraft
 **Tres paneles distintos enriquecen `availability_panel` con datos sfcom de formas diferentes (`proveedores.js:16-33`, `formulario.js:20-32`, `sfcom-panel.js:37`).**
 `proveedores.js` y `formulario.js` hacen dos queries separadas y mezclan sfcom en memoria manualmente. `sfcom-panel.js` usa la vista `availability_with_sfcom` directamente. Un cambio de esquema rompe los dos primeros sin afectar al tercero. Fix: usar `availability_with_sfcom` consistentemente en todos los paneles que necesiten campos sfcom.
 
-**`verificarCoherencia`: el check de nombres de variación (`idsMismatch`) es código muerto con UI engañosa (`sfcom.js:689, 721`).**
-El parámetro `checkVariationNames` se acepta pero `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone ese endpoint. `idsMismatch[]` nunca se rellena. El código sigue corriendo la comprobación y preparando modales para un caso que nunca puede ocurrir. Fix: eliminar la lógica `idsMismatch` o documentarla explícitamente como no implementada.
+**`idsMismatch` en verificarSfcom es código muerto en la práctica.** `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone un endpoint de nombres de variaciones. Se mantiene la estructura por si Hilario añade ese endpoint en el futuro, pero `idsMismatch[]` nunca se rellena. Documentado explícitamente en el código.
 
 **El sort de "Cobrado/Pagado" en `tablas.js` ordena por emoji — resultado confuso (`tablas.js:253-256`).**
 `valorCelda` para esa columna devuelve strings como "✅ 2026-07-06", "❌ Vencido", "⏳ No". `localeCompare` los ordena alfabéticamente por el emoji inicial, no agrupando cobrados vs pendientes de forma útil. Fix: usar el raw value booleano para el sort y formatear solo en display.
@@ -1657,6 +1646,7 @@ Implementado en puro JS desde `formulario.js`, sin asistente. El diseño final d
 3. ✅ **`abrirModalBienvenida()`** — modal con `<textarea>` editable + `mostrarOpcionesEnvio` (`tipo:'texto'`). Al enviar escribe `welcome_sent_at` en las reservas incluidas.
 4. ✅ **`welcome_sent_at`** en `reservations` — campo timestamptz, null hasta el primer envío. El botón muestra "✅ Enviado el DD/MM" cuando todas las confirmadas lo tienen.
 5. ✅ **Manejo de pendientes** — las reservas Pendientes **no marcadas** con el checkbox de la tabla (antes de abrir el modal) van al parámetro `pendientesNoMarcadas` y aparecen en un banner de advertencia dentro del modal. Un checkbox en el banner permite añadir una nota sobre ellas al final del texto, sin escribir `welcome_sent_at` en esas reservas.
+6. ✅ **Asistente de bienvenidas en lote** (jun 2026) — alerta en `panel.html` + modal de selección en `panel.js` (`_abrirModalSeleccionBienvenidas`) + cola en `formulario.js` (`_initBloqueColaBienvenidas`, `_renderTablaColaBienvenidas`). Ver detalle completo en §4 `formulario.js`.
 
 ---
 

@@ -532,103 +532,32 @@ function mostrarModalAvisoOrders() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// verificarCoherencia
-// Lee Supabase completo y verifica la integridad interna + disponibilidad sfcom.
+// verificarSfcom
+// Verifica la disponibilidad de stock en sfcom usando datos pre-cargados.
+// Llamado desde verificacion.js como parte del flujo unificado.
 //
 // Devuelve:
 //   {
-//     ok: boolean,              — false si hay errores de coherencia en Supabase
-//     errores: string[],        — problemas críticos (FK rotas, sobrereservas, etc.)
-//     avisos: string[],         — impactos potenciales sin ser errores (solicitudes pendientes)
-//     sfcom: {
-//       verificado: boolean,    — true si todos los GETs a sfcom completaron
-//       discrepancias: [...],   — stocks que no coinciden con lo esperado
-//       error: string | null    — mensaje si algún GET falló
-//     }
+//     verificado: boolean,    — true si todos los GETs a sfcom completaron
+//     discrepancias: [...],   — stocks que no coinciden con lo esperado
+//     idsMismatch: [],        — siempre vacío (API no expone nombres de variaciones)
+//     fallos: [...],          — pares que no pudieron verificarse
+//     avisos: string[],       — confirmed sin product_id (informativos)
+//     error: string | null
 //   }
-//
-// Si algún GET a sfcom falla, sfcom.verificado queda false y sfcom.error contiene
-// el motivo. Los errores y avisos de Supabase se devuelven igualmente.
 // ────────────────────────────────────────────────────────────────────────────
 
-export async function verificarCoherencia(supabase, { checkVariationNames = false } = {}) {
+export async function verificarSfcom({ reservas, availability, solicitudes }) {
     const resultado = {
-        ok:     true,
-        errores: [],
-        avisos:  [],
-        sfcom: { verificado: false, discrepancias: [], idsMismatch: [], fallos: [], error: null }
+        verificado:   false,
+        discrepancias: [],
+        idsMismatch:  [],
+        fallos:       [],
+        avisos:       [],
+        error:        null
     }
 
-    // ── Carga en paralelo ───────────────────────────────────────────
-    const [
-        { data: reservas,     error: eRes },
-        { data: availability, error: eAvail },
-        { data: clients,      error: eClients },
-        { data: venues,       error: eVenues },
-        { data: services,     error: eServices },
-        { data: solicitudes,  error: eSol }
-    ] = await Promise.all([
-        supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, origin_ref'),
-        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name'),
-        supabase.from('clients').select('id, name'),
-        supabase.from('venues').select('id'),
-        supabase.from('services').select('id'),
-        supabase.from('reservation_requests').select('id, source, client_name, proposal_draft').eq('status', 'nueva')
-    ])
-
-    if (eRes || eAvail || eClients || eVenues || eServices || eSol) {
-        resultado.errores.push('Error al leer datos de Supabase — verifica la conexión')
-        resultado.ok = false
-        return resultado
-    }
-
-    // ── Sets para lookup rápido ─────────────────────────────────────
-    const clienteIds = new Set((clients   ?? []).map(c => c.id))
-    const clientsMap = Object.fromEntries((clients ?? []).map(c => [c.id, c.name ?? c.id]))
-    const venueIds   = new Set((venues    ?? []).map(v => v.id))
-    const servicioIds = new Set((services ?? []).map(s => s.id))
-    const availKeys  = new Set((availability ?? []).map(a => `${a.venue_id}|${a.service_id}`))
-
-    // ── Coherencia de FK en reservas ────────────────────────────────
-    for (const r of (reservas ?? [])) {
-        if (!clienteIds.has(r.client_id))
-            resultado.errores.push(`Reserva ${r.id}: cliente "${r.client_id}" no existe en la BD`)
-        if (!venueIds.has(r.venue_id))
-            resultado.errores.push(`Reserva ${r.id}: venue "${r.venue_id}" no existe en la BD`)
-        if (!servicioIds.has(r.service_id))
-            resultado.errores.push(`Reserva ${r.id}: servicio "${r.service_id}" no existe en la BD`)
-        if (r.status !== 'Cancelada' && !availKeys.has(`${r.venue_id}|${r.service_id}`))
-            resultado.errores.push(`Reserva ${r.id}: sin fila availability para ${r.venue_id} / ${r.service_id}`)
-    }
-
-    // ── Sobrereserva por par venue/servicio ─────────────────────────
-    for (const avail of (availability ?? [])) {
-        const plazasActivas = (reservas ?? [])
-            .filter(r =>
-                r.venue_id   === avail.venue_id &&
-                r.service_id === avail.service_id &&
-                r.status     !== 'Cancelada'
-            )
-            .reduce((sum, r) => sum + (r.slots ?? 0), 0)
-
-        if (plazasActivas > avail.total_slots) {
-            resultado.errores.push(
-                `Sobrereserva: ${avail.venue_id} / ${avail.service_id} — ` +
-                `${plazasActivas} plazas reservadas sobre ${avail.total_slots} plazas totales`
-            )
-        }
-    }
-
-    // ── Solicitudes pendientes (aviso, no error) ────────────────────
-    const sfcomPend = (solicitudes ?? []).filter(s => s.source && /^WEB\d+_\d+$/.test(s.source))
-    const webPend   = (solicitudes ?? []).filter(s => !s.source || !/^WEB\d+_\d+$/.test(s.source))
-
-    if (sfcomPend.length > 0)
-        resultado.avisos.push(`${sfcomPend.length} solicitud(es) de sfcom sin atender`)
-    if (webPend.length > 0)
-        resultado.avisos.push(`${webPend.length} solicitud(es) web sin atender`)
-
-    // ── Servicios confirmados sin product_id ───────────────────────────────
+    // Confirmados sin product_id (aviso informativo)
     for (const avail of (availability ?? [])) {
         if (avail.sfcom_status === 'confirmed' && !avail.sfcom_product_id) {
             resultado.avisos.push(
@@ -638,181 +567,165 @@ export async function verificarCoherencia(supabase, { checkVariationNames = fals
         }
     }
 
-    // ── Verificación de stock en sfcom ──────────────────────────────
     const mappedAvails = (availability ?? []).filter(a =>
         a.sfcom_product_id && a.sfcom_slots_listed !== null && a.sfcom_service_name
     )
 
     if (mappedAvails.length === 0) {
-        resultado.sfcom.verificado = true
-    } else {
-        // ── Un único GET stock-all para obtener todo el stock en una llamada ──
-        // Sin límite de uso, no toca WooCommerce directamente.
-        let stockMap = {}
-        try {
-            stockMap = await apiFetchStockAll()
-            for (const avail of mappedAvails) {
-                const lookupId = String(avail.sfcom_variation_id ?? avail.sfcom_product_id)
-                if (lookupId in stockMap) _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockMap[lookupId])
-            }
-        } catch (e) {
-            for (const avail of mappedAvails) {
-                resultado.sfcom.fallos.push({
+        resultado.verificado = true
+        return resultado
+    }
+
+    // Un único GET stock-all para todo el stock
+    let stockMap = {}
+    try {
+        stockMap = await apiFetchStockAll()
+        for (const avail of mappedAvails) {
+            const lookupId = String(avail.sfcom_variation_id ?? avail.sfcom_product_id)
+            if (lookupId in stockMap) _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockMap[lookupId])
+        }
+    } catch (e) {
+        for (const avail of mappedAvails) {
+            resultado.fallos.push({
+                servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
+                venueId:   avail.venue_id,
+                serviceId: avail.service_id,
+                error:     e.message
+            })
+        }
+        resultado.error      = e.message
+        resultado.verificado = false
+        return resultado
+    }
+
+    // Variation_id duplicado por mismo producto (error crítico → se retorna en bd.errores desde verificacion.js)
+    // Aquí lo detectamos de todos modos para que idsMismatch pueda incluirlo si en el futuro se añade
+    const _varPorProducto = new Map()
+    for (const avail of mappedAvails) {
+        if (!avail.sfcom_variation_id) continue
+        const pid = String(avail.sfcom_product_id)
+        if (!_varPorProducto.has(pid)) _varPorProducto.set(pid, new Map())
+        const varMap = _varPorProducto.get(pid)
+        const vid    = String(avail.sfcom_variation_id)
+        if (!varMap.has(vid)) varMap.set(vid, { venue_id: avail.venue_id, service_id: avail.service_id })
+    }
+
+    const varNombreMap = new Map()   // siempre vacío: sf-api-paula.php no expone endpoints de variaciones
+
+    // Procesar cada par
+    for (const avail of mappedAvails) {
+        const yaEnFallos = resultado.fallos.some(f => f.venueId === avail.venue_id && f.serviceId === avail.service_id)
+        if (yaEnFallos) continue
+
+        const lookupId  = String(avail.sfcom_variation_id ?? avail.sfcom_product_id)
+        const stockReal = lookupId in stockMap ? stockMap[lookupId] : undefined
+
+        if (stockReal === undefined) {
+            if (avail.sfcom_status === 'deactivation_pending') {
+                resultado.avisos.push(
+                    `${avail.sfcom_service_name} (${avail.venue_id}): producto ya retirado de sfcom ` +
+                    `— puedes confirmar la baja en proveedores.html`
+                )
+            } else {
+                resultado.fallos.push({
                     servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
                     venueId:   avail.venue_id,
                     serviceId: avail.service_id,
-                    error:     e.message
+                    error:     'ID no encontrado en stock-all'
                 })
             }
-            resultado.sfcom.error      = e.message
-            resultado.sfcom.verificado = false
+            continue
         }
 
-        // ── Check interno: variation_id duplicado por mismo producto ────────────
-        // Dos servicios con el mismo sfcom_product_id no pueden compartir sfcom_variation_id.
-        // Corre en todas las verificaciones (automática y manual).
-        const _varPorProducto = new Map()   // product_id → Map<variation_id → {venue_id, service_id}>
-        for (const avail of mappedAvails) {
-            if (!avail.sfcom_variation_id) continue
-            const pid = String(avail.sfcom_product_id)
-            if (!_varPorProducto.has(pid)) _varPorProducto.set(pid, new Map())
-            const varMap = _varPorProducto.get(pid)
-            const vid    = String(avail.sfcom_variation_id)
-            if (varMap.has(vid)) {
-                const otro = varMap.get(vid)
-                resultado.errores.push(
-                    `ID de variación duplicado: variation_id ${avail.sfcom_variation_id} ` +
-                    `asignado a ${avail.service_id} (${avail.venue_id}) ` +
-                    `y también a ${otro.service_id} (${otro.venue_id})`
-                )
-            } else {
-                varMap.set(vid, { venue_id: avail.venue_id, service_id: avail.service_id })
-            }
-        }
+        const variacionNombre = avail.sfcom_variation_id ? (varNombreMap.get(avail.sfcom_variation_id) ?? null) : null
 
-        const varNombreMap = new Map()   // siempre vacío: sf-api-paula.php no expone endpoints de variaciones
-
-        // ── Procesar cada par ─────────────────────────────────────────────────
-        for (const avail of mappedAvails) {
-            const yaEnFallos = resultado.sfcom.fallos.some(
-                f => f.venueId === avail.venue_id && f.serviceId === avail.service_id
-            )
-            if (yaEnFallos) continue
-
-            const lookupId  = String(avail.sfcom_variation_id ?? avail.sfcom_product_id)
-            const stockReal = lookupId in stockMap ? stockMap[lookupId] : undefined
-
-            if (stockReal === undefined) {
-                if (avail.sfcom_status === 'deactivation_pending') {
-                    resultado.avisos.push(
-                        `${avail.sfcom_service_name} (${avail.venue_id}): producto ya retirado de sfcom ` +
-                        `— puedes confirmar la baja en proveedores.html`
-                    )
-                } else {
-                    resultado.sfcom.fallos.push({
-                        servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
-                        venueId:   avail.venue_id,
-                        serviceId: avail.service_id,
-                        error:     'ID no encontrado en stock-all'
-                    })
-                }
+        // idsMismatch: solo si varNombreMap tiene datos (API no lo soporta actualmente)
+        if (avail.sfcom_variation_id && varNombreMap.size > 0) {
+            const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
+            const serviceDay      = serviceDayMatch ? parseInt(serviceDayMatch[1]) : null
+            const varDay          = variacionNombre ? extraerDia(variacionNombre) : null
+            if (serviceDay !== null && varDay !== null && serviceDay !== varDay) {
+                resultado.idsMismatch.push({
+                    servicio:          avail.sfcom_service_name,
+                    variacionNombre,
+                    dayStored:         varDay,
+                    dayExpected:       serviceDay,
+                    venueId:           avail.venue_id,
+                    serviceId:         avail.service_id,
+                    availId:           avail.id,
+                    storedVariationId: avail.sfcom_variation_id,
+                    storedProductId:   avail.sfcom_product_id
+                })
                 continue
             }
-
-            const variacionNombre = avail.sfcom_variation_id ? (varNombreMap.get(avail.sfcom_variation_id) ?? null) : null
-
-            // idsMismatch: solo si tenemos nombres de variación (checkVariationNames = true)
-            if (avail.sfcom_variation_id && varNombreMap.size > 0) {
-                const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
-                const serviceDay      = serviceDayMatch ? parseInt(serviceDayMatch[1]) : null
-                const varDay          = variacionNombre ? extraerDia(variacionNombre) : null
-                if (serviceDay !== null && varDay !== null && serviceDay !== varDay) {
-                    resultado.sfcom.idsMismatch.push({
-                        servicio:          avail.sfcom_service_name,
-                        variacionNombre,
-                        dayStored:         varDay,
-                        dayExpected:       serviceDay,
-                        venueId:           avail.venue_id,
-                        serviceId:         avail.service_id,
-                        availId:           avail.id,
-                        storedVariationId: avail.sfcom_variation_id,
-                        storedProductId:   avail.sfcom_product_id
-                    })
-                    continue  // la comparación de stock sería engañosa; la saltamos
-                }
-            }
-
-            if (stockReal === null) continue  // producto sin gestión de stock en sfcom
-
-            const resParProp    = (reservas ?? []).filter(r =>
-                r.venue_id   === avail.venue_id &&
-                r.service_id === avail.service_id &&
-                r.status     !== 'Cancelada'
-            )
-            const sfcomVendidas = resParProp.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
-            const todasOcupadas = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
-            const stockEsperado = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
-
-            if (stockReal !== stockEsperado) {
-                const diferencia   = stockReal - stockEsperado
-                const gap          = stockEsperado - stockReal
-
-                const sfcomPendPar = diferencia < 0
-                    ? (solicitudes ?? []).filter(s => {
-                          if (!s.source || !/^WEB\d+_\d+$/.test(s.source)) return false
-                          const d0 = s.proposal_draft?.[0] ?? null
-                          if (d0?.service_id === avail.service_id) return true
-                          if (d0?.service_name && avail.sfcom_service_name) {
-                              const levelMatch =
-                                  d0.service_name === avail.sfcom_service_name ||
-                                  d0.service_name.startsWith(avail.sfcom_service_name + ' ')
-                              if (levelMatch) {
-                                  const solDay = typeof d0.day === 'number' ? d0.day : null
-                                  const m      = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
-                                  const svcDay = m ? parseInt(m[1]) : null
-                                  if (svcDay === null) return true
-                                  if (solDay !== null) return solDay === svcDay
-                              }
-                          }
-                          return false
-                      })
-                    : []
-                const pendingSlots    = sfcomPendPar.reduce((sum, s) => sum + (s.proposal_draft?.[0]?.slots ?? 0), 0)
-                const pendingExplains = diferencia < 0 && gap > 0 && pendingSlots >= gap
-
-                resultado.sfcom.discrepancias.push({
-                    servicio:           avail.sfcom_service_name,
-                    variacionNombre,
-                    venueId:            avail.venue_id,
-                    serviceId:          avail.service_id,
-                    sfcom_slots_listed: avail.sfcom_slots_listed,
-                    total_slots:        avail.total_slots,
-                    sfcomVendidas,
-                    todasOcupadas,
-                    stockSfcom:         stockReal,
-                    stockEsperado,
-                    diferencia,
-                    reservasPar:        resParProp.map(r => ({
-                        id:         r.id,
-                        clientName: r.client_id,
-                        slots:      r.slots ?? 0,
-                        sfcomRef:   r.origin_ref?.startsWith('WEB') ? r.origin_ref : null
-                    })),
-                    pendingRequests: sfcomPendPar.map(s => ({
-                        id:         s.id,
-                        source:     s.source,
-                        slots:      s.proposal_draft?.[0]?.slots ?? 0,
-                        clientName: s.client_name
-                    })),
-                    pendingExplains
-                })
-            }
         }
 
-        resultado.sfcom.verificado = resultado.sfcom.fallos.length === 0
+        if (stockReal === null) continue  // producto sin gestión de stock en sfcom
+
+        const resParProp    = (reservas ?? []).filter(r =>
+            r.venue_id === avail.venue_id && r.service_id === avail.service_id && r.status !== 'Cancelada'
+        )
+        const sfcomVendidas = resParProp.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
+        const todasOcupadas = resParProp.reduce((s, r) => s + (r.slots ?? 0), 0)
+        const stockEsperado = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
+
+        if (stockReal !== stockEsperado) {
+            const diferencia = stockReal - stockEsperado
+            const gap        = stockEsperado - stockReal
+
+            const sfcomPendPar = diferencia < 0
+                ? (solicitudes ?? []).filter(s => {
+                      if (!s.source || !/^WEB\d+_\d+$/.test(s.source)) return false
+                      const d0 = s.proposal_draft?.[0] ?? null
+                      if (d0?.service_id === avail.service_id) return true
+                      if (d0?.service_name && avail.sfcom_service_name) {
+                          const levelMatch =
+                              d0.service_name === avail.sfcom_service_name ||
+                              d0.service_name.startsWith(avail.sfcom_service_name + ' ')
+                          if (levelMatch) {
+                              const solDay = typeof d0.day === 'number' ? d0.day : null
+                              const m      = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
+                              const svcDay = m ? parseInt(m[1]) : null
+                              if (svcDay === null) return true
+                              if (solDay !== null) return solDay === svcDay
+                          }
+                      }
+                      return false
+                  })
+                : []
+            const pendingSlots    = sfcomPendPar.reduce((sum, s) => sum + (s.proposal_draft?.[0]?.slots ?? 0), 0)
+            const pendingExplains = diferencia < 0 && gap > 0 && pendingSlots >= gap
+
+            resultado.discrepancias.push({
+                servicio:           avail.sfcom_service_name,
+                variacionNombre,
+                venueId:            avail.venue_id,
+                serviceId:          avail.service_id,
+                sfcom_slots_listed: avail.sfcom_slots_listed,
+                total_slots:        avail.total_slots,
+                sfcomVendidas,
+                todasOcupadas,
+                stockSfcom:         stockReal,
+                stockEsperado,
+                diferencia,
+                reservasPar: resParProp.map(r => ({
+                    id:         r.id,
+                    clientName: r.client_id,
+                    slots:      r.slots ?? 0,
+                    sfcomRef:   r.origin_ref?.startsWith('WEB') ? r.origin_ref : null
+                })),
+                pendingRequests: sfcomPendPar.map(s => ({
+                    id:         s.id,
+                    source:     s.source,
+                    slots:      s.proposal_draft?.[0]?.slots ?? 0,
+                    clientName: s.client_name
+                })),
+                pendingExplains
+            })
+        }
     }
 
-    resultado.ok = resultado.errores.length === 0 && resultado.sfcom.idsMismatch.length === 0
+    resultado.verificado = resultado.fallos.length === 0
     return resultado
 }
 

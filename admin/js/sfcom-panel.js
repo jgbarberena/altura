@@ -1,8 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, exportTable, valorO } from './utils.js'
-import { verificarCoherencia, verificarConfirmarSfcom } from './sfcom.js'
-import { mostrarToast, mostrarModalVerificacion, mostrarModalPreCorreccion } from './verificacion.js'
+import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -238,53 +237,20 @@ function actualizarColumnaStockReal() {
     })
 }
 
-// ─── Verificación (misma lógica que formulario.js) ───────────────────────────
+// ─── Verificación ─────────────────────────────────────────────────────────────
 
-async function ejecutarVerificacion(modoManual = false) {
-    const toastEl = mostrarToast('🔍 Verificando coherencia…', '#374151')
-
-    let resultado
-    try {
-        resultado = await verificarCoherencia(supabase, { checkVariationNames: true })
-    } finally {
-        toastEl?.remove()
-    }
-
-    // Actualizar columna de stock real con los datos de la verificación
-    actualizarStockDesdeVerificacion(resultado)
-
-    const hayMismatch = (resultado.sfcom?.idsMismatch?.length ?? 0) > 0
-
-    if (hayMismatch) {
-        const decision = await mostrarModalPreCorreccion(resultado.sfcom.idsMismatch)
-        if (decision === 'corregir') {
-            for (const m of resultado.sfcom.idsMismatch) {
-                await verificarConfirmarSfcom(supabase, m.availId, m.servicio, m.serviceId)
-            }
-            const resultadoCorregido = await verificarCoherencia(supabase, { checkVariationNames: true })
-            actualizarStockDesdeVerificacion(resultadoCorregido)
-            mostrarModalVerificacion(resultadoCorregido, supabase, () => ejecutarVerificacion(true))
-        } else {
-            mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true), { sinBotonCorregir: true })
-        }
-        return
-    }
-
-    const discRepReal   = (resultado.sfcom?.discrepancias ?? []).filter(d => !d.pendingExplains)
-    const hayPendientes = (resultado.sfcom?.discrepancias ?? []).some(d => d.pendingExplains)
-    const hayProblema   = resultado.errores.length > 0 || discRepReal.length > 0
-
-    if (modoManual || hayProblema || hayPendientes) {
-        mostrarModalVerificacion(resultado, supabase, () => ejecutarVerificacion(true))
-    } else if (!resultado.sfcom?.verificado) {
+async function _ejecutarVerificacionPanel(modoManual) {
+    const resultado = await ejecutarVerificacion(supabase, {
+        modoManual,
+        incluirSfcom:      true,
+        incluirFinanciero: modoManual
+    })
+    if (resultado?.sfcom) {
+        actualizarStockDesdeVerificacion(resultado)
         const statusEl = document.getElementById('txt-sfcom-fetch-status')
-        if (statusEl) statusEl.textContent = '⚠️ No se pudo consultar el stock real de sfcom. Los datos pueden estar desactualizados.'
-        mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e')
-    } else {
-        const statusEl = document.getElementById('txt-sfcom-fetch-status')
-        if (statusEl) statusEl.textContent = ''
-        mostrarToast('✅ Coherencia de reservas, plazas y sfcom verificada y correcta')
+        if (statusEl) statusEl.textContent = resultado.sfcom.verificado ? '' : '⚠️ No se pudo consultar el stock real de sfcom. Los datos pueden estar desactualizados.'
     }
+    return resultado
 }
 
 function actualizarStockDesdeVerificacion(resultado) {
@@ -367,15 +333,15 @@ document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () 
 })
 
 document.getElementById('btnVerificarDatos').addEventListener('click', () => {
-    ejecutarVerificacion(true).catch(e => console.error('[sfcom-panel] verificacion:', e))
+    _ejecutarVerificacionPanel(true).catch(e => console.error('[sfcom-panel] verificacion:', e))
 })
 
 document.getElementById('btnActualizarSfcom').addEventListener('click', () => {
-    ejecutarVerificacion(false).catch(e => console.error('[sfcom-panel] verificacion:', e))
+    _ejecutarVerificacionPanel(false).catch(e => console.error('[sfcom-panel] verificacion:', e))
 })
 
 // ─── Arranque ─────────────────────────────────────────────────────────────────
 
 cargarDatos().then(() => {
-    ejecutarVerificacion(false).catch(e => console.error('[sfcom-panel] verificacion inicial:', e))
+    _ejecutarVerificacionPanel(false).catch(e => console.error('[sfcom-panel] verificacion inicial:', e))
 })

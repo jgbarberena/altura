@@ -1,8 +1,9 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
-import { mostrarToast, verificarConsistenciaFinanciera, ejecutarVerificacionGlobal } from './verificacion.js'
+import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
+import { crearModal } from './modal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -35,7 +36,8 @@ const [
     { data: payments },
     { data: charges },
     { data: solicitudesNuevas },
-    { data: venues }
+    { data: venues },
+    { data: clientes }
 ] = await Promise.all([
     supabase.from('reservations').select('*'),
     supabase.from('availability').select('*'),
@@ -43,7 +45,8 @@ const [
     supabase.from('payments').select('*').order('due_date'),
     supabase.from('charges').select('*').order('due_date'),
     supabase.from('reservation_requests').select('id, source, status').not('status', 'in', '("convertida","descartada")'),
-    supabase.from('venues').select('id, provider_id')
+    supabase.from('venues').select('id, provider_id'),
+    supabase.from('clients').select('id, name')
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -125,9 +128,125 @@ function calcularAlertas() {
         document.getElementById('txt-solicitudes').textContent = `Solicitudes web — ${partes.join(', ')}`
     }
 
+    // Bienvenidas pendientes — clientes con al menos una confirmada sin welcome_sent_at
+    const clientesBienvenidaPendiente = [...new Set(
+        reservas
+            .filter(r => r.status === 'Confirmada' && !r.welcome_sent_at)
+            .map(r => r.client_id)
+    )]
+    const alertaBienvenidas = document.getElementById('alerta-bienvenidas')
+    if (clientesBienvenidaPendiente.length > 0) {
+        const n = clientesBienvenidaPendiente.length
+        alertaBienvenidas.style.display = 'flex'
+        document.getElementById('txt-bienvenidas').textContent =
+            `${n} cliente${n !== 1 ? 's' : ''} sin mensaje de bienvenida enviado`
+        document.getElementById('link-bienvenidas').addEventListener('click', e => {
+            e.preventDefault()
+            _abrirModalSeleccionBienvenidas(clientesBienvenidaPendiente)
+        })
+    }
+
     bloqueAlertas.style.display =
         (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
-        || solicitudesSfcom.length > 0 || hayWeb || leadsCancelados.length > 0) ? 'block' : 'none'
+        || solicitudesSfcom.length > 0 || hayWeb || leadsCancelados.length > 0
+        || clientesBienvenidaPendiente.length > 0) ? 'block' : 'none'
+}
+
+// ===== MODAL DE SELECCIÓN DE BIENVENIDAS =====
+
+function _abrirModalSeleccionBienvenidas(idsPendientes) {
+    const conSfcom = new Set(
+        reservas.filter(r => r.origin_ref?.startsWith('WEB')).map(r => r.client_id)
+    )
+    // sfcom primero, luego alfabético
+    const ordenados = [...idsPendientes].sort((a, b) => {
+        const diff = (conSfcom.has(a) ? 0 : 1) - (conSfcom.has(b) ? 0 : 1)
+        return diff !== 0 ? diff : a.localeCompare(b)
+    })
+
+    const seleccionados = new Set(ordenados)
+
+    const { overlay, panel } = crearModal('modal-seleccion-bienvenidas', { wide: true, scroll: true })
+
+    function renderModal() {
+        const n = seleccionados.size
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div class="modal-header-title">📩 Seleccionar clientes para bienvenida</div>
+                <button id="mb-cerrar" class="btn btn-secondary" style="padding:4px 10px">✕</button>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;font-size:13px">
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+                    <input type="checkbox" id="mb-chk-todos" ${n === ordenados.length ? 'checked' : n === 0 ? '' : 'indeterminate'}> Todos
+                </label>
+                <a id="mb-solo-sfcom" href="#" style="color:var(--accent);text-decoration:underline">Solo sfcom</a>
+                <span style="margin-left:auto;color:var(--subtle)">${n} seleccionado${n !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="table-wrapper" style="max-height:380px;overflow-y:auto">
+                <table>
+                    <thead><tr>
+                        <th style="width:32px"></th>
+                        <th>Cliente</th>
+                        <th>Canal</th>
+                        <th>Res. confirmadas pendientes</th>
+                    </tr></thead>
+                    <tbody>
+                        ${ordenados.map(id => {
+                            const nRes = reservas.filter(r => r.client_id === id && r.status === 'Confirmada' && !r.welcome_sent_at).length
+                            const esSfcom = conSfcom.has(id)
+                            return `<tr>
+                                <td><input type="checkbox" class="mb-chk-cliente" data-id="${id}" ${seleccionados.has(id) ? 'checked' : ''}></td>
+                                <td><code>${id}</code></td>
+                                <td>${esSfcom ? '<span style="color:#dc2626;font-size:11px;font-weight:600">sfcom</span>' : 'propio'}</td>
+                                <td style="text-align:center">${nRes}</td>
+                            </tr>`
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-actions" style="margin-top:14px">
+                <button id="mb-cancelar" class="btn btn-secondary">Cancelar</button>
+                <button id="mb-iniciar" class="btn btn-primary" ${n === 0 ? 'disabled' : ''}>
+                    Iniciar asistente (${n})
+                </button>
+            </div>`
+
+        const chkTodos = panel.querySelector('#mb-chk-todos')
+        if (n > 0 && n < ordenados.length) chkTodos.indeterminate = true
+
+        panel.querySelector('#mb-cerrar').addEventListener('click', () => overlay.close())
+        panel.querySelector('#mb-cancelar').addEventListener('click', () => overlay.close())
+
+        panel.querySelector('#mb-chk-todos').addEventListener('change', e => {
+            if (e.target.checked) ordenados.forEach(id => seleccionados.add(id))
+            else seleccionados.clear()
+            renderModal()
+        })
+
+        panel.querySelector('#mb-solo-sfcom').addEventListener('click', e => {
+            e.preventDefault()
+            seleccionados.clear()
+            ordenados.filter(id => conSfcom.has(id)).forEach(id => seleccionados.add(id))
+            renderModal()
+        })
+
+        panel.querySelectorAll('.mb-chk-cliente').forEach(chk => {
+            chk.addEventListener('change', () => {
+                if (chk.checked) seleccionados.add(chk.dataset.id)
+                else seleccionados.delete(chk.dataset.id)
+                renderModal()
+            })
+        })
+
+        panel.querySelector('#mb-iniciar').addEventListener('click', () => {
+            const ids = ordenados.filter(id => seleccionados.has(id))
+            if (!ids.length) return
+            sessionStorage.setItem('colaBienvenidas', JSON.stringify(ids))
+            window.location.href = 'formulario.html'
+        })
+    }
+
+    renderModal()
 }
 
 // ===== BLOQUE 1: CALENDARIO =====
@@ -900,8 +1019,8 @@ document.addEventListener('click', e => {
 calcularResumen()
 calcularPorVender()
 calcularCashflow()
-verificarConsistenciaFinanciera(supabase, persistirCobrosCliente, persistirPagosProveedor)
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacionGlobal(supabase, persistirCobrosCliente, persistirPagosProveedor))
+ejecutarVerificacion(supabase, { modoManual: false, incluirSfcom: false, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor })
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor }))
 
 // ===== EXPORT CSV =====
 document.getElementById('btnExportPagos')?.addEventListener('click', () => {
