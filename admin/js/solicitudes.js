@@ -443,8 +443,8 @@ function _renderItem(s, apagada = false) {
     const esSfcom     = _esSfcom(s.source)
     const esCancelada = s.source?.startsWith('sfcom_c:')
     const esEmail     = s.source === 'email'
-    const fecha      = s.created_at
-        ? new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
+    const fecha      = (s.updated_at ?? s.created_at)
+        ? new Date(s.updated_at ?? s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
         : '—'
     const convStatus = s.status || 'nueva'
     const badgeLabel = STATUS_LABELS[convStatus] || convStatus
@@ -1023,8 +1023,8 @@ function mostrarDetalle(sol) {
                       : esEmail     ? '· email'
                       : '· web'
 
-    const fechaCompleta = sol.created_at
-        ? new Date(sol.created_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const fechaCompleta = (sol.updated_at ?? sol.created_at)
+        ? new Date(sol.updated_at ?? sol.created_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
         : '—'
 
     const logItems = _parsearLog(sol.conversation_notes)
