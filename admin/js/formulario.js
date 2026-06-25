@@ -3,7 +3,7 @@ import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
-import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom } from './sfcom.js'
+import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom, resolverProductoSfcom } from './sfcom.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { initAsistente } from './asistente.js'
@@ -393,6 +393,8 @@ function actualizarProveedores() {
                     precioStatus.style.color = 'var(--accent-warn)'
                 }
             }
+        } else if (plazas > 0) {
+            mostrarToast(`ℹ️ ${proveedorActual} no tiene capacidad para ${plazas} plaza${plazas !== 1 ? 's' : ''} — selecciona otro proveedor`)
         }
     }
 
@@ -508,6 +510,12 @@ async function cargarReservasCliente(clienteId) {
         service_description: r.services?.description ?? null,
         services: undefined  // limpiar el objeto anidado
     }))
+
+    // Sincronizar todasReservas con datos frescos del cliente cargado
+    todasReservas = [
+        ...todasReservas.filter(r => r.client_id !== clienteId),
+        ...reservas
+    ]
 
     const bloque = document.getElementById('bloque-reservas-cliente')
 
@@ -759,8 +767,10 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         for (const { venueId, servicioId } of afectadas) {
             const provId = _getProviderIdFromVenue(venueId)
             if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
-            if (pairsConCambioSet.has(`${venueId}|${servicioId}`) && sfcomResultEstado === 'sync')
-                await syncStockToSfcom(supabase, venueId, servicioId)
+            if (pairsConCambioSet.has(`${venueId}|${servicioId}`) && sfcomResultEstado === 'sync') {
+                const sr = await syncStockToSfcom(supabase, venueId, servicioId)
+                if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+            }
         }
         cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
@@ -878,7 +888,10 @@ async function eliminarSeleccionadas() {
     for (const { venueId, servicioId, cancelada } of afectadas) {
         const provId = _getProviderIdFromVenue(venueId)
         if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
-        if (!cancelada && sfcomResultElim === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
+        if (!cancelada && sfcomResultElim === 'sync') {
+            const sr = await syncStockToSfcom(supabase, venueId, servicioId)
+            if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+        }
     }
 
     limpiarFormularioReserva()
@@ -1182,8 +1195,12 @@ btnAnadir.addEventListener('click', async () => {
             const provIdAnterior = _getProviderIdFromVenue(venueIdAnterior)
             if (provIdAnterior) await persistirPagosProveedor(supabase, provIdAnterior, todasReservas, disponibilidad)
         }
-        for (const p of pairsParaModal)
-            if (sfcomResultEdit === 'sync') await syncStockToSfcom(supabase, p.venueId, p.serviceId)
+        for (const p of pairsParaModal) {
+            if (sfcomResultEdit === 'sync') {
+                const sr = await syncStockToSfcom(supabase, p.venueId, p.serviceId)
+                if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? p.venueId}: más reservas que plazas disponibles`)
+            }
+        }
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         limpiarFormularioReserva()
@@ -1266,7 +1283,10 @@ btnAnadir.addEventListener('click', async () => {
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         const provIdNuevo = _getProviderIdFromVenue(venueId)
         if (provIdNuevo) await persistirPagosProveedor(supabase, provIdNuevo, todasReservas, disponibilidad)
-        if (sfcomResultNuevo === 'sync') await syncStockToSfcom(supabase, venueId, servicioId)
+        if (sfcomResultNuevo === 'sync') {
+            const sr = await syncStockToSfcom(supabase, venueId, servicioId)
+            if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+        }
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
         if (_modoConversionActivo && _lineaActualIndex !== null) {
@@ -2529,8 +2549,6 @@ async function registrarPedidosSfcom(pedidos) {
     const nuevos = pedidos.filter(p => !sourcesRegistrados.has(p.origin_ref))
     if (!nuevos.length) return
 
-    const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
-
     for (const pedido of nuevos) {
 
         if ((pedido.productos?.length ?? 0) > 1) {
@@ -2542,39 +2560,12 @@ async function registrarPedidosSfcom(pedidos) {
         const li = pedido.productos?.[0]
         if (!li) continue
 
-        // 1. Extraer nombre canónico del producto (primary lookup key)
-        const nombreExtraido = extraerNombreProducto(li.nombre, nombresConocidos)
+        const { filaByName, filaById, levelToSave: levelToSaveBase } = resolverProductoSfcom(li, sfcomListings)
 
-        // 2. Buscar por nombre (primary). Si hay varios candidatos con el mismo nombre
-        //    (p.ej. "Balcon Estafeta mitad" para múltiples días), desambiguar por día.
-        let filaByName = null
-        if (nombreExtraido) {
-            const candidatos = sfcomListings.filter(d => d.sfcom_service_name === nombreExtraido)
-            if (candidatos.length === 1) {
-                filaByName = candidatos[0]
-            } else if (candidatos.length > 1) {
-                const diaExtraid = extraerDia(li.nombre)
-                if (diaExtraid !== null) {
-                    filaByName = candidatos.find(c => {
-                        const m = /^ENCIERRO_(\d+)$/.exec(c.service_id)
-                        return m ? parseInt(m[1]) === diaExtraid : false
-                    }) ?? candidatos[0]
-                } else {
-                    filaByName = candidatos[0]
-                }
-            }
-        }
-
-        // 3. Buscar por IDs (verification)
-        const filaById = sfcomListings.find(d =>
-            d.sfcom_product_id == li.product_id &&
-            (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
-        )
-
-        // 4. Tres casos
+        // Tres casos según coincidencia de nombre vs IDs
         let serviceId   = null
         let venueId     = null
-        let levelToSave = nombreExtraido || li.nombre
+        let levelToSave = levelToSaveBase
 
         if (filaByName && (!filaById || filaById.id === filaByName.id)) {
             // Caso 1: nombre encontrado, IDs consistentes

@@ -167,13 +167,13 @@ UNIQUE (provider_id, amount, due_date).
 | id | uuid PK, gen_random_uuid() |
 | client_name | text NOT NULL |
 | client_email, client_phone, client_address | text |
-| comments | Para emails: prefijo `Días: X\nOtros servicios: Y\n\n` + resumen. Para web/sfcom: texto libre. |
+| comments | Columna legacy. Ya no se escribe desde ningún flujo activo. La web pública solía escribir aquí el comentario libre del formulario; desde jun 2026 ese dato va dentro del JSON de `conversation_notes`. Los registros antiguos pueden tener valor; `_procesarWebFormsSinProcesar` lo usa como fallback (`rawData.comment \|\| sol.comments`). Pendiente de DROP en Fase 10. |
 | status | `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`; default `'nueva'`. El valor `'cancelada_sfcom'` quedó obsoleto en jun 2026 — migrado automáticamente a `'nueva'` en `_verificarTransicionesAutomaticas()`. |
 | created_at | timestamptz, default now() |
 | updated_at | timestamptz — actualizado por trigger en cada UPDATE |
-| source | null (web), `'email'` (procesado desde panel), `'manual'` (+Nueva directa), `WEB\d+_\d+` (sfcom confirmado), `sfcom_c:*` (sfcom cancelado lead) |
+| source | null (formulario web público), `'email'` (procesado desde panel), `'manual'` (+Nueva directa), `WEB\d+_\d+` (sfcom confirmado), `sfcom_c:*` (sfcom cancelado lead) |
 | language | `'es'`, `'en'`, `'fr'`, `'it'`, `'de'`, `'other'` — solo para emails |
-| conversation_notes | Log interno formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto`. Excepción: solicitudes web recién insertadas por `main.js` antes de ser procesadas por el panel — el campo contiene temporalmente un JSON `{"slug","day","slots"}` como primer contacto raw. `_procesarWebFormsSinProcesar()` en `solicitudes.js` detecta este estado y lo convierte al formato log normal, rellenando también `proposal_draft`. |
+| conversation_notes | Log interno formato: `---DD/MM/AA---\n<Paula>\nTexto\n<Cliente>\nTexto`. Excepción: solicitudes web recién insertadas por `main.js` antes de ser procesadas por el panel — el campo contiene temporalmente un JSON `{"slug","day","slots","comment"}` como primer contacto raw. El campo `comment` recoge el texto libre del formulario web (desde jun 2026; antes iba a la columna `comments` legacy). `_procesarWebFormsSinProcesar()` en `solicitudes.js` detecta este estado y lo convierte al formato log normal, rellenando también `proposal_draft`. |
 | proposal_draft | jsonb, default `'[]'` — array de líneas del borrador de propuesta. Cada línea: `{ service_id, service_name, day, venue_id, venue_display_name, slots, price, catalogo_url, estado }`. `service_name`: slug web original o nombre sfcom del producto. `price`: precio bruto por plaza (para sfcom = precio WooCommerce; para otros = precio de venta estimado). `estado`: `'pendiente'` (default), `'hecha'`, `'descartada'` — solo presente cuando la solicitud pasa por el bloque de conversión en formulario.html. Actualizado por la tabla del borrador en solicitudes.js, por `_persistirEstadoLineas()` en formulario.js, y automáticamente cuando el asistente emite `---BORRADOR---`. Nunca vacío en registros correctamente creados: lo pueblan el INSERT en cada flujo (web/email/sfcom) o `_procesarWebFormsSinProcesar()` al cargar solicitudes.html. |
 
 **Ciclo de vida de `status`:** las solicitudes con `status IN ('convertida','descartada')` no aparecen en ninguna lista activa. Auto-transición en solicitudes.js: `respuesta_enviada` → `seguimiento_pendiente` si `updated_at` supera 3 días sin respuesta.
@@ -209,7 +209,7 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 **`trg_uppercase_venues`** — BEFORE INSERT OR UPDATE en `venues`. Usa su propia función `trg_uppercase_venues_fn()`, separada de `uppercase_ids`. Además de `UPPER()`, normaliza espacios a guiones bajos en `id` y `provider_id` (`REPLACE(NEW.id, ' ', '_')`).
 
-**`notificar-solicitud`** — AFTER INSERT en `reservation_requests`. Usa la función interna de Supabase `http_request()` (vía `net.http_post`) para llamar a la Edge Function del mismo nombre con los datos del INSERT. Se dispara en cada INSERT (desde la web pública y desde `checkSfcomOrders`). Transparente para el JS.
+**`notificar-solicitud`** — AFTER INSERT en `reservation_requests`. Usa la función interna de Supabase `http_request()` (vía `net.http_post`) para llamar a la Edge Function del mismo nombre con los datos del INSERT. Se dispara en cada INSERT (desde la web pública, desde `checkSfcomOrders` y desde el asistente). La Edge Function filtra por `source`: solo envía email para inserciones del formulario web público (`source IS NULL`); las entradas manuales (`source = 'email'`) y sfcom (`source LIKE 'WEB%'` o `source LIKE 'sfcom_c:%'`) reciben una respuesta 200 OK sin enviar correo (ya están visibles en el panel en el momento de la inserción). Transparente para el JS.
 
 **`trg_reservation_requests_updated_at`** — BEFORE UPDATE en `reservation_requests`. Función `update_reservation_requests_updated_at()`. Actualiza automáticamente el campo `updated_at` en cada cambio.
 
@@ -808,8 +808,8 @@ Fix (jun 2026): añadido paso de normalización `split('-')` al inicio de `expan
 
 **✅ RESUELTO — Solicitudes ya atendidas aparecían como pendientes en panel y formulario.**
 
-Dos cambios aplicados (jun 2026):
-- `panel.js` `calcularAlertas()`: `solicitudesSfcom` filtra `status === 'nueva'`; las web se dividen en `solicitudesWebNuevas` (`status === 'nueva'`) y `solicitudesWebSeguimiento` (`status === 'seguimiento_pendiente'`), mostradas en la misma alerta con etiquetas separadas ("X nuevas sin atender, Y en seguimiento pendiente").
+Varios cambios aplicados (jun 2026):
+- `panel.js` `calcularAlertas()`: `solicitudesSfcom` filtra `status === 'nueva'`; las web se dividen en `solicitudesWebNuevas` (`status === 'nueva'`) y `solicitudesWebSeguimiento` (`status === 'seguimiento_pendiente'`), mostradas en la misma alerta con etiquetas separadas ("X nuevas sin atender, Y en seguimiento pendiente"). `leadsCancelados` filtra además `status === 'nueva'` para no alertar de leads ya en `respuesta_enviada` u otro estado atendido. Adicionalmente, `solicitudesWebNuevas` y `solicitudesWebSeguimiento` excluyen registros con `source.startsWith('sfcom_c:')` (que deben aparecer solo como `leadsCancelados`, no como solicitudes web).
 - `formulario.js` `cargarSolicitudes()`: `otrasActivas` usa `status === 'nueva'` (antes `status !== 'respuesta_enviada'`).
 
 ---
@@ -1053,7 +1053,7 @@ Comportamiento por página: ver §4 `verificacion.js` para la tabla de opts por 
 
 **Pendiente — dedup multi-venue/multi-día:** si un mismo cliente cancela el mismo encierro en venue A y venue B (o el mismo venue en días distintos), hoy se crean dos leads por separado. Plan: detectar en la importación y fusionar `proposal_draft` en la solicitud existente, o mostrar un aviso manual. No hay urgencia hasta que ocurra en producción.
 
-**Pendiente — consolidar lógica de matching sfcom:** `importarCanceladosSfcom` en `sfcom.js` duplica el matching de producto de `registrarPedidosSfcom` en `formulario.js` (búsqueda por nombre, desambiguación por día, búsqueda por IDs). La diferencia real es el status, el tratamiento del lead y la ausencia de modales. Objetivo: extraer el matching a `_resolverProductoSfcom(li, sfcomListings)` → `{ serviceId, venueId, levelToSave }` y que ambas lo consuman.
+**✅ RESUELTO — Consolidar lógica de matching sfcom (jun 2026).** `resolverProductoSfcom(li, sfcomListings)` exportada desde `sfcom.js` devuelve `{ filaByName, filaById, nombreExtraido, levelToSave }`. `importarCanceladosSfcom` la usa directamente (silencioso: `filaByName ?? filaById`). `registrarPedidosSfcom` en `formulario.js` la usa y añade sus tres casos con modales de conflicto. El código duplicado de matching fue eliminado de ambas funciones.
 
 **✅ RESUELTO — `created_at` con fecha real del pedido para sfcom confirmados (jun 2026).** Añadido `created_at: pedido.fecha || undefined` al INSERT de `registrarPedidosSfcom` en `formulario.js`. Ahora tanto confirmados como cancelados usan la fecha real del pedido sfcom.
 
@@ -1319,8 +1319,7 @@ Lee `conversation_notes`, parsea, añade mensaje, persiste. Si dos eventos se di
 
 #### Alto — comportamiento incorrecto en casuísticas reales
 
-**`actualizarProveedores`: el venue activo desaparece del select silenciosamente al cambiar las plazas (`formulario.js:344-399`).**
-Al filtrar proveedores por capacidad, si el venue previamente seleccionado no tiene plazas suficientes para el nuevo número de plazas, se excluye del select sin aviso. `selectProveedor.value = proveedorActual` falla porque la opción ya no existe y el select queda en blanco. Paula puede guardar la reserva sin venue seleccionado.
+**✅ RESUELTO — `actualizarProveedores`: venue desaparece silenciosamente (jun 2026).** Añadido `else if (plazas > 0)` cuando `!opcionExiste`: muestra un `mostrarToast` informando que el venue seleccionado no tiene capacidad para las plazas indicadas. El sistema ya protege contra guardar sin venue seleccionado.
 
 **`_inferirDesdeSfcom`: matching por día no funciona para servicios no-ENCIERRO con múltiples filas (`formulario.js:1834-1838`).**
 Si hay varios candidatos con el mismo `sfcom_service_name` que no son ENCIERRO (ej. dos configuraciones de CHUPINAZO), busca `'ENCIERRO_' + day` → no encuentra nada → devuelve `filas[0]` arbitrariamente. Impacto: asignación de servicio incorrecta en solicitudes sfcom.
@@ -1331,11 +1330,9 @@ Si un UPDATE falla a media operación, intenta revertir con `Promise.allSettled`
 **`cambiarEstadoSeleccionadas`: reactivar una reserva cancelada no verifica capacidad propia (`formulario.js:651-672`).**
 Al reactivar Cancelada → Confirmada/Pendiente, solo se verifica sfcom, no si el hueco que había al cancelar sigue libre. Entre la cancelación y la reactivación pueden haberse creado otras reservas que ocupen ese espacio. Impacto: sobrereserva posible.
 
-**`cargarReservasCliente` no sincroniza el array global `todasReservas` (`formulario.js:489-514`).**
-Filtra reservas solo del cliente activo y guarda en `reservasCliente`. `todasReservas` (usado para cálculos de disponibilidad en el resto del panel) queda con datos de la carga inicial. Si otra sesión añadió reservas mientras tanto, los cálculos de disponibilidad están desfasados.
+**✅ RESUELTO — `cargarReservasCliente` sincroniza `todasReservas` (jun 2026).** Tras cargar las reservas del cliente, `todasReservas` se actualiza filtrando los datos del cliente cargado y reemplazándolos con los frescos de Supabase. Cubre también el caso de 0 reservas (limpia las entradas del cliente del global).
 
-**`cobroFinal` puede resultar negativo sin aviso para Paula (`formulario.js:1179, 1199`).**
-`cobroFinal = total - prepagos`. Si un cliente sobrepagó o se cancelaron reservas tras cobrar el adelanto, `cobroFinal < 0`. Se persiste silenciosamente y aparece como importe negativo en la tabla de cobros.
+**✅ RESUELTO — `cobroFinal` negativo muestra modal (jun 2026).** En `persistirCobrosCliente` (`utils.js`), si `cobroFinal < -0.01` se abre un modal identificando el cliente y el importe, explicando la causa probable. El valor se persiste igualmente (refleja el estado real), pero Paula recibe aviso explícito.
 
 **`reorgCambiarServicio`: cambia el venue silenciosamente al primero disponible si el actual no ofrece el nuevo servicio (`formulario.js:1530-1554`).**
 En el panel de reorganización, al cambiar el servicio de una reserva, si el venue actual no ofrece ese servicio, la reserva se mueve al primer venue disponible del nuevo servicio sin pedir confirmación. Paula puede no darse cuenta.
@@ -1363,8 +1360,7 @@ En modo edición múltiple, solo actualiza campos de `availability`. Los inputs 
 **Asistente múltiple no valida `service_id` duplicado entre filas antes de insertar (`proveedores.js:2216-2293`).**
 Si dos filas del bulk insert tienen el mismo `serviceId`, colisionan con UNIQUE(venue_id, service_id) en `availability`. El código muestra `alert` con el error de BD pero no previene la colisión.
 
-**`syncStockToSfcom` enmascara sobrereservas poniendo 0 sin alertar (`sfcom.js:143-146`).**
-`Math.max(0, Math.min(...))` eleva el stock negativo a 0. El PUT a sfcom es correcto (no se ofrecen plazas de más), pero Paula no recibe ningún aviso de que hay una sobrereserva. El problema queda enmascarado.
+**✅ RESUELTO — `syncStockToSfcom` avisa de sobrereserva (jun 2026).** `syncStockToSfcom` calcula `stockBruto` antes del `Math.max(0,...)` y devuelve `sobrereserva: true` cuando es negativo. Los 4 call sites en `formulario.js` capturan el resultado y muestran un `mostrarToast` de advertencia identificando el servicio.
 
 **`verificarBajaSfcom` confunde "stock 0 porque todo está vendido" con "Hilario retiró el producto" (`sfcom.js:1141-1152`).**
 `gone = stock === 0 || stock === null`. Un producto vendido al 100% tiene stock 0 sin que Hilario lo haya retirado. Esto puede mostrar el botón "Confirmar baja" para un producto activo en sfcom.
@@ -1383,8 +1379,7 @@ Nueva lógica (sfcom.js): pre-fetch único de `leadsExistentes` antes del bucle.
 
 Eliminado el query per-iteration; ahora es O(1) contra array en memoria.
 
-**El parseo de `---BORRADOR---` falla silenciosamente con JSON inválido generado por Claude (`asistente.js:299-313`).**
-Si Claude devuelve JSON malformado en el bloque `---BORRADOR---`, `borradorDraft = null` sin warning visible para Paula. El mensaje al cliente sí se muestra, pero el borrador queda sin actualizar en Supabase.
+**✅ RESUELTO — `---BORRADOR---` JSON inválido muestra toast (jun 2026).** El `catch` en `asistente.js` llama a `mostrarToast` avisando que el borrador no se actualizó pero el texto del mensaje sí es correcto. El `console.warn` se mantiene para diagnóstico.
 
 **Tres paneles distintos enriquecen `availability_panel` con datos sfcom de formas diferentes (`proveedores.js:16-33`, `formulario.js:20-32`, `sfcom-panel.js:37`).**
 `proveedores.js` y `formulario.js` hacen dos queries separadas y mezclan sfcom en memoria manualmente. `sfcom-panel.js` usa la vista `availability_with_sfcom` directamente. Un cambio de esquema rompe los dos primeros sin afectar al tercero. Fix: usar `availability_with_sfcom` consistentemente en todos los paneles que necesiten campos sfcom.
@@ -1549,9 +1544,12 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 6 | ✅ Completa | Panel: tablas navegables ✅ · image_url editable ✅ · pestañas par/servicio ✅ · fotos 16:9 ✅ · reordenar fotos ✅ · auto-fill image_url ✅ |
 | 6b | ✅ Completa | Asistente: fix mensajes editados + auto-save logs toggle |
 | 6c | ✅ Completa | Bugs §7.9: marcarAtendida ✅ · verificarConsistencia ✅ · reactivar capacidad ✅ · reversión falsa ✅ |
+| 6d | ✅ Completa | Bugs §7.9 (segunda tanda): venue toast ✅ · sync todasReservas ✅ · cobro negativo modal ✅ · borrador JSON toast ✅ · sobrereserva toast ✅ · matching sfcom consolidado (resolverProductoSfcom) ✅ |
 | 7 | ✅ Completa | Mejoras de propuestas: display_name ✅ · fallback descripción ✅ · fotos 16:9 ✅ · modos Compacto/Completo ✅ |
 | 8 | ✅ Completa | Facturación canal sfcom |
-| 9 | 🔲 Pendiente | Refactors y cierre |
+| 9 | ✅ Completa | Refactors y cierre (inferencia level→service_id ✅ · reglas nombres ✅ · caché sfcom aceptada ✅) |
+| 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
+| 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos |
 
 ### Dependencias duras entre fases
 
@@ -2083,13 +2081,133 @@ Sin cambios en el flujo normal. `solicitudOriginRef` es null → no se crea carg
 
 ---
 
-### Fase 9 — 🔲 Refactors y cierre
+### Fase 9 — ✅ Refactors y cierre (jun 2026)
 
-- Inferencia `level → service_id` unificada en `utils.js` (extraer de formulario.js, solicitudes.js, asistente.js).
-- ✅ Reglas de nombres venue/evento documentadas en §3.
-- Evaluar granularidad caché sfcom en sfcom.js.
-- Tablas.js edición directa + Supabase Storage (incluye limpieza de PDFs huérfanos — ver §7.1).
-- Split de formulario.js (solo si el tamaño es problema práctico, siempre al final).
+- ✅ **Inferencia `level → service_id`:** `parsearNivel` y `TIPO_SERVICIO_ID` ya estaban en `utils.js` desde Fase 4. Matching de producto sfcom consolidado en `resolverProductoSfcom` (Fase 6d). Todos los módulos consumen funciones compartidas.
+- ✅ **Reglas de nombres venue/evento** documentadas en §3.
+- ✅ **Caché sfcom granularidad:** verificada y aceptada. Ya es por item (`productId:variationId`) via `_stockCache` (Map). Se invalida tras cada PUT. No requiere cambios.
+- ✅ **Bugs §7.9 segunda tanda** (Fase 6d): resueltos 5 bugs de §7.9 "Alto" + consolidación matching sfcom.
+- 🔲 **Split de `formulario.js`** — diferido conscientemente. Hacer solo si el tamaño se convierte en problema práctico.
+- ⬇️ **Tablas.js edición + Storage + eliminar cliente + PDFs huérfanos** → movido a **Fase 10** (sesión específica de tablas.js).
+
+---
+
+### Fase 9b — ✅ Mejoras asistente + fixes arquitectura web form + Edge Function (jun 2026)
+
+**Archivos modificados:** `admin/js/asistente.js`, `admin/js/asistente-config.js`, `admin/js/solicitudes.js`, `admin/js/panel.js`, `admin/formulario.html`, `js/main.js`. Edge Function `notificar-solicitud` (Supabase Dashboard, no en git).
+
+---
+
+**1. Modal "Nueva consulta" en el asistente — mejoras visuales y funcionales**
+
+`_renderBorradorModal()` y `_bindBorrador()` en `asistente.js`:
+- Campos de cliente en grid de 4 columnas (`2fr 2fr 2fr 60px`) en lugar de la clase `form-grid`. Más compacto en una sola fila.
+- Opciones de idioma reducidas a código (`es`, `en`, `fr`, `it`, `de`, `…`) sin texto expandido.
+- Añadidas columnas **Venue** (`.mn-venue`, input texto) y **€/pax** (`.mn-price`, input número) a la tabla del borrador.
+- `_leerDOMEnDraft()` actualizado para leer `venue_display_name` y `price` de los nuevos inputs.
+- `_rellenarDesdeParseado()` usa `parsed.venue_hint` y `parsed.price_hint` para prerellenar los nuevos campos.
+- Reducidos márgenes y alturas de fila para que el modal sea más compacto.
+
+---
+
+**2. `SYSTEM_PROMPT_PARSING` en `asistente-config.js` — hilos de conversación y nuevos campos**
+
+- JSON de salida ampliado: `venue_hint` (string o null) y `price_hint` (número o null).
+- Nueva sección **"CUANDO EL TEXTO ES UN HILO DE CONVERSACIÓN"**: instrucciones para extraer datos de mensajes de ambos lados; `venue_hint` de los mensajes de Paula; `price_hint` de los precios que menciona Paula; idioma solo del lado del cliente; si el cliente acepta la propuesta de Paula, esos servicios son los principales.
+
+---
+
+**3. Fix alertas panel.js — leads sfcom cancelados con status ya atendido**
+
+`calcularAlertas()` en `panel.js`:
+- `leadsCancelados` ahora filtra `s.status === 'nueva'`. Antes mostraba alerta para leads ya en `respuesta_enviada` u otros estados atendidos.
+- `solicitudesWebNuevas` y `solicitudesWebSeguimiento` excluyen registros con `source.startsWith('sfcom_c:')` para evitar que leads cancelados cuenten como solicitudes web.
+
+---
+
+**4. Fix fecha en listado de solicitudes — `updated_at` con fallback a `created_at`**
+
+`solicitudes.js`:
+- `_renderFila()`: fecha muestra `updated_at ?? created_at` en formato `dd/mm`.
+- `mostrarDetalle()`: fecha completa usa igualmente `updated_at ?? created_at`.
+
+---
+
+**5. Fix flash de `bloque-solicitudes` en `formulario.html`**
+
+Añadido `style="display:none"` directamente en el elemento HTML del `#bloque-solicitudes`. Antes se ocultaba vía JS tras carga asíncrona, causando un flash visible al cargar la página.
+
+---
+
+**6. Fix arquitectura: comentario del formulario web en `conversation_notes`**
+
+`js/main.js` — INSERT en `reservation_requests`:
+- El comentario libre del formulario (`inputComents.value`) ahora se incluye como campo `comment` dentro del JSON de `conversation_notes` (`rawData`).
+- Eliminado el campo `comments` del INSERT: ya no se escribe la columna `comments` desde la web.
+
+`solicitudes.js` — `_procesarWebFormsSinProcesar()`:
+- Lee `rawData.comment || sol.comments` (fallback a la columna legacy para registros anteriores a jun 2026).
+- La limpieza de prefijos `Días:` / `Otros servicios:` aplicada antes del fallback.
+
+La columna `comments` sigue existiendo en BD como legacy; no se dropea hasta Fase 10.
+
+---
+
+**7. Edge Function `notificar-solicitud` — reescritura completa (Supabase Dashboard)**
+
+La función anterior leía columnas legacy (`level`, `slots`, `day`, `comments`) que ya no existen. Reescrita para:
+- Leer `conversation_notes` (formato JSON para web; formato log para manual/sfcom) y `proposal_draft[0]` (para entradas sfcom/manual ya procesadas).
+- **Filtro de origen:** si `source` no es null/vacío y no es un formulario web (`source === 'email'`, `source LIKE 'WEB%'`, `source LIKE 'sfcom_c:%'`), retorna inmediatamente sin enviar email. Solo el formulario público dispara notificación.
+- Lógica de extracción: si `conversation_notes` empieza por `{` → parsea JSON y extrae `slug`, `day`, `slots`, `comment`; si no → extrae mensaje del cliente del log con regex `<Cliente>`.
+- Cuerpo del email limpio sin campo "Origen" (innecesario si solo llegan formularios web).
+
+El código completo de la función está documentado en el historial de la sesión jun 2026 (no en git).
+
+---
+
+### Fase 10 — 🔲 Sesión de tablas: edición directa + Storage + cliente + PDFs
+
+**Criterio de agrupación:** todo toca `tablas.js` o gestión de datos/archivos sin pasar por los flujos normales de reserva. Una sola sesión de trabajo.
+
+**1. Edición directa en `tablas.js`**
+
+Actualmente `tablas.js` es solo lectura (el único botón activo es ✏️ para renombrar IDs). Objetivo: editar cualquier campo de cualquier tabla directamente desde la UI.
+
+Diseño:
+- Celdas editables con doble clic o botón de lápiz por columna. Al confirmar → UPDATE a Supabase con feedback de error.
+- Para campos FK (`venue_id` en `availability`, `provider_id` en `venues`, `client_id` en `reservations`, etc.): mostrar select con las opciones válidas en lugar de input libre.
+- Aviso cuando el cambio tiene impacto en cascada (ej. cambiar `billing_model` en un availability con reservas activas).
+- Columnas de solo lectura (campos calculados como `total_amount`, campos `id` ya cubiertos por el renombrador): mantenerlas no editables.
+
+**2. Eliminar cliente sin reservas**
+
+No existe flujo de borrado directo de un cliente que ya no tiene reservas activas. El workaround actual (crear reserva temporal + eliminarla) es absurdo.
+
+Diseño:
+- En `formulario.js` / `formulario.html`: botón "Eliminar cliente" visible solo cuando `reservasCliente.length === 0` y el cliente está cargado.
+- Modal de confirmación que liste también si el cliente tiene `charges` o `reservation_requests` activos antes de eliminar.
+- DELETE en cascada: primero `charges`, luego `reservation_requests` (donde `client_name` coincide, si aplica), luego `clients`.
+- También incluible en la vista de tablas.js (fila de Clientes sin reservas → botón borrar).
+
+**3. Gestión de Supabase Storage desde el panel**
+
+No hay UI para ver qué hay en los buckets ni borrar archivos huérfanos.
+
+Diseño:
+- Nueva sección en `tablas.html` o pestaña separada: "Archivos".
+- Lista los archivos de `proposals/` e `invoices/` con su tamaño y fecha.
+- Detecta huérfanos: archivos cuya ruta no coincide con ningún `reservations.proposal_path` o `charges.invoice_path` activo.
+- Botón "Eliminar huérfanos" con confirmación; botón de descarga por archivo individual.
+- Lectura vía `supabase.storage.from('proposals').list()` / `.from('invoices').list()`.
+
+**4. Limpieza de PDFs al eliminar reservas/charges**
+
+Actualmente `eliminarSeleccionadas` en `formulario.js` borra reservas y cobros sin limpiar los PDFs en Storage.
+
+Fix (unas 15 líneas en `formulario.js`):
+- Antes del DELETE de reservas: recoger `proposal_path` de las filas a eliminar → `supabase.storage.from('proposals').remove([...paths.filter(Boolean)])`.
+- En el caso `isLastReservation`: ampliar el SELECT de charges para incluir `invoice_path`; recoger los no nulos → `supabase.storage.from('invoices').remove([...paths])`.
+- Errores de Storage no son bloqueantes: si el remove falla, continuar con el DELETE igualmente (el archivo es recuperable manualmente desde el Dashboard de Supabase).
 
 ---
 

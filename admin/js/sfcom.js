@@ -148,14 +148,16 @@ export async function syncStockToSfcom(supabase, venueId, serviceId) {
     // 4. Calcular nuevo stock y hacer el PUT
     const sfcomVendidas = (sfcomData  ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
     const todasOcupadas = (allData    ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const stockBruto    = Math.min(avail.sfcom_slots_listed - sfcomVendidas, avail.total_slots - todasOcupadas)
+    const sobrereserva  = stockBruto < 0
     const nuevoStock    = _calcularStockSfcom(avail.sfcom_slots_listed, sfcomVendidas, avail.total_slots, todasOcupadas)
-    const endpoint        = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
+    const endpoint      = buildStockEndpoint(avail.sfcom_product_id, avail.sfcom_variation_id)
 
     try {
         await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
 
         _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, nuevoStock)
-        return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas }
+        return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas, sobrereserva, serviceName: avail.sfcom_service_name }
     } catch (e) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
         mostrarModalError({
@@ -1217,6 +1219,31 @@ export async function loadSfcomListings(supabase) {
     })).filter(r => r.venue_id)
 }
 
+// Matching compartido para un item de pedido sfcom: devuelve filaByName, filaById y levelToSave.
+// Usado por registrarPedidosSfcom (formulario.js) e importarCanceladosSfcom.
+export function resolverProductoSfcom(li, sfcomListings) {
+    if (!li) return { filaByName: null, filaById: null, nombreExtraido: null, levelToSave: null }
+    const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
+    const nombreExtraido   = extraerNombreProducto(li.nombre, nombresConocidos)
+    let filaByName = null
+    if (nombreExtraido) {
+        const candidatos = sfcomListings.filter(d => d.sfcom_service_name === nombreExtraido)
+        if (candidatos.length === 1) {
+            filaByName = candidatos[0]
+        } else if (candidatos.length > 1) {
+            const diaExtraid = extraerDia(li.nombre)
+            filaByName = diaExtraid !== null
+                ? (candidatos.find(c => { const m = /^ENCIERRO_(\d+)$/.exec(c.service_id); return m ? parseInt(m[1]) === diaExtraid : false }) ?? candidatos[0])
+                : candidatos[0]
+        }
+    }
+    const filaById = sfcomListings.find(d =>
+        d.sfcom_product_id == li.product_id &&
+        (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
+    )
+    return { filaByName, filaById, nombreExtraido, levelToSave: nombreExtraido || li.nombre || null }
+}
+
 // Registra pedidos cancelados de sfcom como leads (source: sfcom_c:*, status: nueva).
 // Matching silencioso (sin modales), dedup por cliente+servicio.
 export async function importarCanceladosSfcom(supabase, sfcomListings, cancelados) {
@@ -1232,8 +1259,6 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
     const pedidos = cancelados.filter(p => !sourcesRegistrados.has(p.origin_ref))
     if (!pedidos.length) return
 
-    const nombresConocidos = [...new Set(sfcomListings.map(d => d.sfcom_service_name).filter(Boolean))]
-
     const leadsExistentes = (existentes ?? []).filter(r => r.source?.startsWith('sfcom_c:'))
 
     for (const pedido of pedidos) {
@@ -1244,29 +1269,13 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
         let levelToSave = li?.nombre ?? null
 
         if (li) {
-            const nombreExtraido = extraerNombreProducto(li.nombre, nombresConocidos)
-            let filaByName = null
-            if (nombreExtraido) {
-                const candidatos = sfcomListings.filter(d => d.sfcom_service_name === nombreExtraido)
-                if (candidatos.length === 1) {
-                    filaByName = candidatos[0]
-                } else if (candidatos.length > 1) {
-                    const diaExtraid = extraerDia(li.nombre)
-                    filaByName = diaExtraid !== null
-                        ? (candidatos.find(c => { const m = /^ENCIERRO_(\d+)$/.exec(c.service_id); return m ? parseInt(m[1]) === diaExtraid : false }) ?? candidatos[0])
-                        : candidatos[0]
-                }
-            }
-            const filaById = sfcomListings.find(d =>
-                d.sfcom_product_id == li.product_id &&
-                (li.variation_id ? d.sfcom_variation_id == li.variation_id : !d.sfcom_variation_id)
-            )
+            const { filaByName, filaById, levelToSave: lvl } = resolverProductoSfcom(li, sfcomListings)
             const filaResolved = filaByName ?? filaById ?? null
             if (filaResolved) {
                 serviceId = filaResolved.service_id
                 venueId   = filaResolved.venue_id ?? null
             }
-            levelToSave = nombreExtraido || li.nombre || null
+            levelToSave = lvl
         }
 
         const totalBruto      = parseFloat(pedido.total ?? 0)

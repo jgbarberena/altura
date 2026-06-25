@@ -295,7 +295,10 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                 if (borradorIdx !== -1) {
                     mensajeFinal = resto.slice(0, borradorIdx).trim()
                     const jsonStr = resto.slice(borradorIdx + MARKER_BORRADOR.length).trim()
-                    try { borradorDraft = JSON.parse(jsonStr) } catch(e) { console.warn('[borrador] JSON inválido:', jsonStr) }
+                    try { borradorDraft = JSON.parse(jsonStr) } catch(e) {
+                        console.warn('[borrador] JSON inválido:', jsonStr)
+                        mostrarToast('⚠️ El asistente devolvió un borrador no válido — el texto del mensaje sí es correcto, pero el borrador no se ha actualizado')
+                    }
                 } else {
                     mensajeFinal = resto.trim()
                 }

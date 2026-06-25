@@ -181,6 +181,20 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
     const prepagos   = (charges ?? []).filter(c => !c.is_final).reduce((s, c) => s + parseFloat(c.amount), 0)
     const cobroFinal = total - prepagos
 
+    if (cobroFinal < -0.01) {
+        const { overlay, panel } = crearModal('aviso-cobro-negativo')
+        panel.innerHTML = `
+            <div>
+                <div class="modal-header-title">⚠️ Cobro final negativo</div>
+                <div class="modal-header-desc">El cobro final de <strong>${clienteId}</strong> ha resultado <strong>${fmt(cobroFinal)}</strong>.<br><br>
+                Esto suele ocurrir cuando se cancelan reservas después de haber registrado cobros o adelantos. Revisa los cobros de este cliente.</div>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cobro-neg-ok" class="btn btn-primary" autofocus>Entendido</button>
+            </div>`
+        panel.querySelector('#btn-cobro-neg-ok').onclick = () => overlay.close()
+    }
+
     if (!hitoFinal && cobroFinal < 0.01) return
 
     if (!hitoFinal) {
