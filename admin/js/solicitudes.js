@@ -416,7 +416,7 @@ async function _procesarWebFormsSinProcesar() {
         if (day)   partes.push(`${day} jul`)
         if (slots) partes.push(`${slots} ${slots === 1 ? 'persona' : 'personas'}`)
 
-        const comentarioLimpio = (sol.comments || '').replace(/^(Días|Otros servicios):[^\n]*\n?/gm, '').trim()
+        const comentarioLimpio = (rawData.comment || sol.comments || '').replace(/^(Días|Otros servicios):[^\n]*\n?/gm, '').trim()
         let msgCliente = partes.join(' · ')
         if (comentarioLimpio) msgCliente += (msgCliente ? '\n' : '') + comentarioLimpio
         if (!msgCliente) msgCliente = 'Solicitud desde web'

@@ -1250,9 +1250,10 @@ function initSolicitudDialog(root) {
         if (window.supabasePublic) {
             try {
                 var rawData = JSON.stringify({
-                    slug:  slugVal || null,
-                    day:   dia,
-                    slots: personas
+                    slug:    slugVal || null,
+                    day:     dia,
+                    slots:   personas,
+                    comment: inputComents.value.trim() || null
                 })
                 var result = await window.supabasePublic
                     .from('reservation_requests')
@@ -1260,7 +1261,6 @@ function initSolicitudDialog(root) {
                         client_name:        nombre,
                         client_email:       email    || null,
                         client_phone:       tel      || null,
-                        comments:           inputComents.value.trim() || null,
                         conversation_notes: rawData
                     })
                 if (result.error) throw result.error
