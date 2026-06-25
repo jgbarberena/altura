@@ -2,16 +2,16 @@
 // Genera una propuesta en PDF para reservas seleccionadas de un cliente.
 // Se importa desde formulario.js igual que factura.js.
 
-import { mostrarOpcionesEnvio, valorO, esVacio } from './utils.js'
+import { mostrarOpcionesEnvio, valorO, esVacio, anioTemporada } from './utils.js'
 
 // ===== CONFIGURACIÓN =====
 const PROPUESTA_CONFIG = {
     empresa_nombre:   'Vive San Fermín a medida',
     web:              'experienciasanfermin.com',
     serie:            'PRP',
-    email_asunto_tpl: () => `Tu propuesta San Fermín 2026 — experienciasanfermin.com`,
+    email_asunto_tpl: () => `Tu propuesta San Fermín ${anioTemporada()} — experienciasanfermin.com`,
     email_cuerpo_tpl: (nombreCliente) =>
-        `Estimado/a ${nombreCliente},\n\nAdjunto encontrará su propuesta personalizada para San Fermín 2026.\n\nEstamos a su disposición para cualquier consulta o ajuste.\n\nUn saludo,\nPaula Díaz Echalecu\nVive San Fermín a medida\nwww.experienciasanfermin.com`,
+        `Estimado/a ${nombreCliente},\n\nAdjunto encontrará su propuesta personalizada para San Fermín ${anioTemporada()}.\n\nEstamos a su disposición para cualquier consulta o ajuste.\n\nUn saludo,\nPaula Díaz Echalecu\nVive San Fermín a medida\nwww.experienciasanfermin.com`,
 }
 
 const LOGO_URL_P     = '../img/logos/sanfermin-logo-red.png'
@@ -260,7 +260,7 @@ function _buildSeccionCompacta(guardados) {
 
     return `
     <div class="prop-seccion">
-        <div class="factura-section-label">Tu experiencia San Fermín 2026</div>
+        <div class="factura-section-label">Tu experiencia San Fermín ${anioTemporada()}</div>
         <table class="prop-tabla">
             <thead><tr>
                 <th class="prop-col-img"></th>
@@ -338,7 +338,7 @@ function _buildSeccionCompleta(guardados) {
 
     return `
     <div class="prop-seccion">
-        <div class="factura-section-label">Tu experiencia San Fermín 2026</div>
+        <div class="factura-section-label">Tu experiencia San Fermín ${anioTemporada()}</div>
         ${bloques}
         <div class="prop-total-completo">
             <span>Total propuesta</span>
@@ -596,7 +596,7 @@ async function _generarPDF() {
     // ── Sección servicios ─────────────────────────────────────────────────────
     checkPage(24)
     doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
-    doc.text('TU EXPERIENCIA SAN FERMIN 2026', M, y)
+    doc.text(`TU EXPERIENCIA SAN FERMIN ${anioTemporada()}`, M, y)
     y += 5
 
     let totalGlobal = 0

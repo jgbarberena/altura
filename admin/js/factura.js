@@ -2,7 +2,7 @@
 // Gestiona la generación, previsualización y emisión de facturas desde los hitos de cobro.
 // Se importa desde formulario.js y necesita acceso al cliente supabase y a los datos globales.
 
-import { mostrarOpcionesEnvio, valorO, esVacio } from './utils.js'
+import { mostrarOpcionesEnvio, valorO, esVacio, anioTemporada } from './utils.js'
 
 // ===== CONFIGURACIÓN — editar aquí cuando cambien datos del emisor =====
 const FACTURA_CONFIG = {
@@ -301,7 +301,7 @@ function buildNota() {
     <div class="factura-nota">
         Pago parcial a cuenta del total de servicios contratados (${fmt(totalGlobal)}).
         Este anticipo no incluye la prestación del servicio, que se realizará
-        durante San Fermín 2026 (6–14 de julio).
+        durante San Fermín ${anioTemporada()} (6–14 de julio).
     </div>`
 }
 
@@ -617,7 +617,7 @@ async function generarPDF() {
             checkPage(18)
             rectFill(M, y, 0.8, 14, ROJO)
             doc.setFontSize(8); doc.setFont('helvetica', 'italic'); setColor(GRIS)
-            const nota = `Pago parcial a cuenta del total de servicios contratados (${fmt(totalGlobal)}). Este anticipo no incluye la prestacion del servicio, que se realizara durante San Fermin 2026 (6-14 de julio).`
+            const nota = `Pago parcial a cuenta del total de servicios contratados (${fmt(totalGlobal)}). Este anticipo no incluye la prestacion del servicio, que se realizara durante San Fermin ${anioTemporada()} (6-14 de julio).`
             const notaLines = doc.splitTextToSize(nota, CW - 8)
             doc.text(notaLines, M + 4, y + 4)
             y += notaLines.length * 4.5 + 6

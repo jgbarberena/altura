@@ -2093,14 +2093,42 @@ window.cambiarFechaPagoFinal = async function(idx, valor) {
     }
 }
 
+function _pedirFechaPago() {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-fecha-pago-prov', { narrow: true })
+        panel.innerHTML = `
+            <div>
+                <div class="modal-header-title">Fecha de pago</div>
+                <div class="modal-header-desc">Dejar vacío para registrar hoy (${hoy}).</div>
+            </div>
+            <div style="padding:8px 0">
+                <input id="modal-fecha-pago-input" type="text" placeholder="${hoy}"
+                    style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;font-size:14px">
+            </div>
+            <div class="modal-actions">
+                <button id="modal-fecha-pago-cancel" class="btn btn-secondary">Cancelar</button>
+                <button id="modal-fecha-pago-ok" class="btn btn-primary" autofocus>Confirmar</button>
+            </div>`
+        const input = panel.querySelector('#modal-fecha-pago-input')
+        panel.querySelector('#modal-fecha-pago-cancel').onclick = () => { overlay.close(); resolve(null) }
+        panel.querySelector('#modal-fecha-pago-ok').onclick = () => {
+            overlay.close(); resolve(input.value.trim() || hoy)
+        }
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { overlay.close(); resolve(input.value.trim() || hoy) }
+        })
+        setTimeout(() => input.focus(), 50)
+    })
+}
+
 window.togglePagoProvCobrado = async function(idx) {
     const h        = hitosProvTemp[idx]
     const prevPaid = h.paid
     const prevDate = h.paid_date
     if (!h.paid) {
-        const fecha = prompt('Fecha de pago (dejar vacío para hoy):', hoy)
+        const fecha = await _pedirFechaPago()
         if (fecha === null) return
-        h.paid = true; h.paid_date = fecha.trim() || hoy
+        h.paid = true; h.paid_date = fecha
     } else {
         h.paid = false; h.paid_date = null
     }

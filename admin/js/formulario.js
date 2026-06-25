@@ -469,7 +469,7 @@ function validarPrecio() {
         inputPrecio.className    = 'warn'
         precioStatus.style.color = 'var(--accent-warn)'
         precioStatus.textContent = `⚠️ Al coste exacto, sin margen`
-    } else if (margen < 0.10) {
+    } else if (margen < 0.15) {
         inputPrecio.className    = 'warn'
         precioStatus.style.color = 'var(--accent-warn)'
         precioStatus.textContent = `⚠️ Margen bajo — coste: ${coste}€/plaza`

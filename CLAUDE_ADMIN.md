@@ -484,7 +484,9 @@ Tablas con sort por columna (4 tablas). Cobros y pagos pendientes son clicables:
 
 **`calcularResumen()`:** calcula los tarjetones del bloque "Resumen de negocio". Separados en confirmadas/pendientes: `kpi-res-confirmadas`, `kpi-res-pendientes`, `kpi-plazas-confirmadas`, `kpi-plazas-pendientes`. Ingresos confirmados (`kpi-ingresos-brutos`) + pendientes (`kpi-ingresos-pendientes`). Coste proveedores = `SUM(payments.amount)` (sin importar estado). `costePendConsumo`: coste marginal adicional si las reservas pendientes confirman, solo para `billing_model = 'consumption'` (capacity ya está pagado). `kpi-coste-pend-row` se muestra solo cuando `costePendConsumo > 0`. Margen = ingresos confirmados − costes; `kpi-margen-pendientes` muestra el margen combinado si todo confirma.
 
-**`calcularPorVender()`:** calcula el bloque "Por vender". Filtra `disponibilidad` a servicios de tipo balcón (`TIPOS_BALCON`). Para cada fila calcula: `libres = total_slots − slots_activos`, `gastoAsociado` (solo `capacity`: `libres × price_per_slot`), `margen` potencial usando el precio medio de venta de reservas confirmadas de balcones. KPIs globales: `kpi-plazas-libres`, `kpi-ingreso-potencial`, `kpi-coste-adicional` (solo consumption), `kpi-margen-no-capturado`, con sublabels de precio/margen medio por plaza. Separa en dos secciones: `pv-capacity` (max 5 filas pareto) y `pv-consumption` (max 3 filas pareto).
+**`calcularPorVender()`:** calcula el bloque "Por vender". Filtra `disponibilidad` a servicios de tipo balcón (`TIPOS_BALCON`). Para cada fila calcula: `libres = total_slots − slots_activos`, `gastoAsociado` (solo `capacity`: `libres × price_per_slot`), `margen` potencial usando `_precioRef`. KPIs globales: `kpi-plazas-libres`, `kpi-ingreso-potencial`, `kpi-coste-adicional` (solo consumption), `kpi-margen-no-capturado`, con sublabels de precio/margen medio por plaza. Separa en dos secciones: `pv-capacity` (max 5 filas pareto) y `pv-consumption` (max 3 filas pareto).
+
+**`_precioRef(venueId, serviceId, precioProv)`:** función local de `calcularPorVender`. Precio de referencia por par venue+servicio, con fallback en cascada: (1) precio medio de reservas confirmadas en ese par exacto; (2) si es encierro: precio medio de reservas confirmadas en cualquier encierro del mismo venue; (3) `precioProv × 1.15`. `ingresoPotencial` y `margen` de cada fila usan el `precioRef` de esa fila, no un promedio global. Umbral de margen razonable: 15% (coherente con `_margenIndicador` y con `validarPrecio` en `formulario.js`).
 
 **`_paretoCorte(items, maxRows)`:** recibe items ordenados por `libres` desc. `umbral = items[0].libres / 3`. Devuelve `{ filas: items con libres ≥ umbral (máx maxRows), resto: plazas restantes, restoN: balcones restantes }`.
 
@@ -921,6 +923,14 @@ Edge case menor aceptado: si un venue quedó sin availability en una sesión ant
 
 ---
 
+**En móvil, el botón ✕ para cerrar el detalle de una solicitud desaparece al hacer scroll.**
+
+El panel de detalle es un bottom sheet (`position: fixed; max-height: 85vh; overflow-y: auto`). El botón ✕ (`#btnCerrarDetalle`, en `solicitudes.js:1091`) está dentro del header de `.sol-detalle-inner`, que forma parte del área scrollable. Cuando el contenido es largo y Paula hace scroll hacia abajo, el header (y con él el ✕) desaparece fuera de la ventana. La única salida conocida es recargar la página, que devuelve a la vista de listado.
+
+Fix: extraer el ✕ del flujo scrollable. Opciones: (a) `position: sticky; top: 0` en `.sol-detalle-header` dentro del contexto del bottom sheet — requiere `background` opaco para no transparentar el contenido que pasa por detrás; o (b) mover el ✕ a un overlay `position: absolute` dentro del contenedor fijo, fuera de `.sol-detalle-inner`. La opción (a) es más sencilla.
+
+---
+
 ### 7.2 UX — puntos de fricción en el uso diario
 
 **UI no refleja datos derivados ni efectos secundarios hasta recargar la página.**
@@ -1039,6 +1049,14 @@ Fix: añadir un botón "⬆ Subir" en el footer del carousel junto a `🗑`. Al 
 
 ---
 
+**CSS del panel en móvil — tarjetas de datos económicos y otras secciones con layout incorrecto.**
+
+En dispositivos móviles varias partes del panel de administración no se ven correctamente. Confirmado (aunque puede haber factor de caché): las tarjetas de KPIs económicos del panel principal y posiblemente otras secciones. No se ha realizado una auditoría completa del CSS móvil — puede haber más zonas afectadas. Prioridad media: el panel es de uso principalmente en desktop, pero Paula lo usa desde el móvil.
+
+Acción antes de intervenir: reproducir con caché limpia (Ctrl+Shift+R o modo incógnito) para confirmar qué es real y qué es caché. Documentar pantallas específicas afectadas. No abordar sin ese diagnóstico previo.
+
+---
+
 ### 7.3 Funcionalidades pendientes
 
 **✅ RESUELTO jun 2026 — Botón "Verificar datos" unificado y verificación consolidada.**
@@ -1111,6 +1129,16 @@ Paula puede editar un texto libre en la barra superior de `solicitudes.html` (an
 **UI en `solicitudes.js`:** campo de una línea que expande al hacer clic (inline, no modal). Al perder foco con contenido nuevo → INSERT silencioso (sin feedback visual explícito). Variable módulo `_notasSesion` con `_cargarNotasSesion()` al inicio.
 
 **Integración en `asistente.js`:** `getNotasSesion` como parámetro opcional de `initAsistente`. `asistente.js` construye `system` como array con dos bloques con `cache_control: ephemeral`: el primero con `SYSTEM_PROMPT_ASISTENTE`, el segundo (solo si hay notas) con las notas de Paula. El penúltimo mensaje del historial también lleva `cache_control: ephemeral` para conversaciones largas. Ver detalle en la sección `asistente.js` (§4) y en la sección Edge Function `claude-proxy`.
+
+---
+
+**Respuesta manual a solicitudes — Paula debe poder contestar sin usar el asistente.**
+
+Actualmente el único flujo para enviar una respuesta a un cliente desde el detalle de una solicitud es a través del asistente. Paula necesita también poder escribir la respuesta directamente, y que esa respuesta tenga exactamente el mismo tratamiento que la generada por el asistente: se guarda en el log de conversación, cambia el `status` a `respuesta_enviada`, y muestra los mismos botones de acción (Copiar / Enviar por correo / Enviar por WhatsApp) via `mostrarOpcionesEnvio`.
+
+Diseño propuesto: añadir en el detalle de solicitud un bloque de respuesta manual que conviva con el botón de "Abrir asistente". El bloque contiene un `<textarea>` con un botón "Enviar respuesta". Al confirmar: (1) guarda la respuesta en `conversation_log` con el mismo formato que usa `_onRespuestaUsadaEnLog` en `asistente.js` (campo `role: 'assistant'`, `content: texto`), (2) llama a `_actualizarEstadoSolicitud('respuesta_enviada')`, (3) llama a `mostrarOpcionesEnvio` con `tipo: 'texto'` y el texto de la respuesta.
+
+La función `_onRespuestaUsadaEnLog` en `asistente.js` y `mostrarOpcionesEnvio` en `utils.js` ya hacen exactamente esto — reutilizar directamente o extraer la lógica compartida a `utils.js` si hay duplicación.
 
 ---
 
@@ -1315,6 +1343,9 @@ La columna "Stock real" en la tabla de discrepancias del panel sfcom siempre mos
 **`_insertarMensaje` no protege contra escrituras concurrentes al log de conversación (`solicitudes.js:132-151`).**
 Lee `conversation_notes`, parsea, añade mensaje, persiste. Si dos eventos se disparan casi simultáneamente (asistente cierra modal mientras Paula guarda una edición), el segundo UPDATE sobreescribe el primero sin control de versión. Fix: usar optimistic locking o encolar los writes.
 
+**`cambiarEstadoSeleccionadas`: elimina todos los charges sfcom con el mismo importe del cliente al cancelar una reserva sfcom (`formulario.js:~753`).**
+El `DELETE` en `charges` usa `comments = 'Cobrado vía sfcom'` más filtro de importe `gte(amount − 0.005)` / `lte(amount + 0.005)`. Si el mismo cliente tiene varias reservas sfcom al mismo precio (frecuente en grupos que compran el mismo tipo de balcón), se eliminan todos los charges que caen en ese rango, no solo el de la reserva cancelada. Impacto: cancelar una reserva de un grupo de 4 personas con el mismo balcón y precio borra los 4 cargos sfcom del cliente. Fix: vincular el `origin_ref` de la reserva al charge en el momento de su creación (por ejemplo incluyéndolo en `comments` o en un campo dedicado) para poder identificarlo de forma inequívoca al cancelar.
+
 ---
 
 #### Alto — comportamiento incorrecto en casuísticas reales
@@ -1392,32 +1423,35 @@ Eliminado el query per-iteration; ahora es O(1) contra array en memoria.
 **`persistirCobrosCliente` lanza `alert()` síncrono bloqueante en flujo destructivo (`utils.js:188`).**
 Cuando el hito final ya está facturado y hay un cambio, dispara `alert()` bloqueante. Esta función se llama desde múltiples contextos sin que el caller pueda reaccionar al resultado. Fix: sustituir por modal informativo y devolver un resultado al caller.
 
+**`sfcomDelta` incorrecto en el modal pre-save para solicitudes no-sfcom (`formulario.js:~1227`).**
+`sfcomDelta: solicitudOriginRef ? plazas : 0` debería ser `solicitudOriginRef?.startsWith('WEB') ? plazas : 0`. Para solicitudes web o email cuyo `origin_ref` es un UUID (no empieza por `WEB`), `sfcomDelta` toma el valor de las plazas en lugar de 0. El modal `confirmarStockSfcom` muestra un stock esperado incorrecto, como si la reserva fuera a descontar stock de sfcom cuando no lo hará. La sincronización real (`syncStockToSfcom`) es correcta porque lee de BD con `origin_ref LIKE 'WEB%'`, pero Paula ve un dato engañoso antes de confirmar.
+
+**`syncStockToSfcom` falla silenciosamente si la consulta de reservas en Supabase falla antes del PUT (`sfcom.js:~133`).**
+Si el SELECT de reservas activas devuelve error, la función registra el fallo en consola y retorna `{ ok: false }` sin notificar a Paula. El stock en sfcom queda desactualizado sin ningún aviso visible. Los callers en `formulario.js` solo muestran toast cuando falla el PUT a sfcom, no cuando falla esta lectura previa. Un error de red o una sesión expirada a mitad de la operación deja sfcom con datos obsoletos sin que Paula lo sepa.
+
 ---
 
 #### Medio — edge cases que ocurrirán con el tiempo
 
 **✅ RESUELTO — `_preFillBorradorSiVacio` usa `await` en el update a Supabase (jun 2026).** Añadido `await` al `supabase.from('reservation_requests').update(...)` en `solicitudes.js:865`.
 
-**`_renderBorrador` re-renderiza el DOM entero en cada cambio, perdiendo el foco del input (`solicitudes.js:615-617`, `658`, `688`).**
-Cada cambio en una fila llama a `rebind()` que recrea todo el DOM. Con inputs numéricos, Paula puede perder el foco al escribir rápido. Fix: aplicar cambios in-place para inputs numéricos sin re-renderizar.
+**✅ RESUELTO — `_renderBorrador`: `rebind()` preserva el foco de inputs numéricos.**
+Antes de re-renderizar, guarda el valor del input activo (`.bor-slots`/`.bor-price`) en `draft` y restaura el foco después del re-render.
 
-**`session_context` crece indefinidamente — cada edición inserta una fila nueva (`solicitudes.js:1169-1178`).**
-No hay DELETE de versiones antiguas ni UPSERT. Solo se lee `ORDER BY created_at DESC LIMIT 1` pero la tabla acumula sin límite. Fix: UPSERT en una fila única o borrado periódico de versiones antiguas.
+**✅ DECISIÓN — `session_context` es un log histórico append-only (`solicitudes.js:1169-1178`).**
+Cada edición de Paula genera un INSERT deliberado. Se lee con `ORDER BY created_at DESC LIMIT 1`. La tabla crece, pero esto es intencionado: permite revisar en el futuro qué contexto tenía Paula en cada momento de la temporada. No se hará UPSERT ni purga de versiones antiguas.
 
-**El parseo del log de conversación es frágil ante contenido inesperado (`solicitudes.js:62-95`).**
-`_parsearLog` distingue líneas por regex `^---DD/MM/AA---$` y `^<Paula>` / `^<Cliente>`. Si un cliente escribe textualmente `<Paula>` en un mensaje, el parser lo trata como marcador de autor y asigna los mensajes siguientes al autor incorrecto.
+**✅ RESUELTO — Paula puede editar mensajes de cualquier fecha.**
+Eliminada la condición `isToday`. El botón de edición aparece en todos los mensajes de Paula (no en los del cliente).
 
-**Paula no puede editar mensajes del día anterior (`solicitudes.js:123, 154-207`).**
-`_initEditListeners` activa el botón de edición solo si el mensaje es del día actual (`isToday`). Un typo del día anterior no tiene solución desde la UI.
-
-**`_onBorradorActualizado` falla silenciosamente si la solicitud no está en los arrays en memoria (`solicitudes.js:264-287`).**
-Si la solicitud se movió entre estados durante la sesión, `sol` es `undefined`. El borrador se guarda en BD pero no se actualiza en memoria → la tabla del borrador visible queda desactualizada.
+**✅ RESUELTO — `_onBorradorActualizado` actualiza el DOM aunque la solicitud no esté en los arrays.**
+Si `sol` es `undefined` pero la solicitud está abierta (`solicitudActual`), se actualiza `solicitudActual.proposal_draft` directamente y se re-renderiza el borrador.
 
 **Race condition por `setTimeout(50ms/100ms/150ms)` para sincronizar selects (`formulario.js:601-606`, `2044-2059`).**
 Se usan delays hardcodeados para esperar a que un `dispatchEvent` popule las opciones del siguiente select. En dispositivos lentos, el timeout puede agotarse antes de que el listener async haya corrido. Fix: hacer `actualizarProveedores` retornar una Promise y encadenar con `await`.
 
-**`togglePagoProvCobrado` usa `prompt()` nativo para la fecha de pago (`proveedores.js:1762`).**
-`prompt()` es bloqueante, no permite validación de formato de fecha, y es inconsistente con el resto del panel que usa modales propios.
+**✅ RESUELTO — `togglePagoProvCobrado` usa modal propio para la fecha de pago.**
+Reemplazado `prompt()` por `_pedirFechaPago()`: modal `crearModal` con input de texto + Enter/Cancelar/Confirmar. Coherente con el resto del panel.
 
 **`_savePhotos` sobreescribe el array entero — race condition si dos tabs editan (`proveedores.js:144-156`).**
 Add/remove de foto siempre escribe el array completo en BD. Si Paula tiene el panel en dos tabs y ambas editan fotos del mismo servicio, gana el último en guardar.
@@ -1464,6 +1498,21 @@ Con valores como `123.456789`, el parseFloat puede introducir error de redondeo 
 **`parseInt(value) || null` convierte explícitamente `0` en `null` en varios sitios (`solicitudes.js:622-630`).**
 `parseInt(0) = 0` es falsy → se guarda `null`. Si Paula introduce 0 plazas intencionadamente, se interpreta como "sin valor".
 
+**`mostrarSugerenciasCliente` no limpia `inputAddress` ni `inputNif` al cambiar de cliente (`formulario.js:~127`).**
+Al seleccionar un cliente del autocomplete, se cargan `name`, `company`, `phone` y `email`, pero `inputAddress` e `inputNif` retienen el valor del cliente anterior. Si Paula modifica cualquier campo, el autosave escribe esos valores residuales en Supabase. Fix: añadir `inputAddress.value = cliente.address ?? ''` e `inputNif.value = cliente.nif ?? ''` en el bloque de carga de datos del cliente en `mostrarSugerenciasCliente`.
+
+**`toggleCobroCliente` acepta fechas sin validación de formato (`formulario.js:~1598`).**
+Usa `prompt()` nativo para recoger la fecha y envía el valor directamente a Supabase como `collected_date`. Si el formato no es `YYYY-MM-DD`, PostgreSQL rechaza el UPDATE con un error de tipo de dato; Paula recibe el mensaje crudo de la BD en lugar de una validación clara. Fix coherente con el resto del panel: sustituir `prompt()` por un modal con `<input type="date">`, igual que ya se hizo en `togglePagoProvCobrado`.
+
+**`_computarFinanciero` muestra `"SFCOM"` como ID de cliente en el modal de inconsistencias financieras sin explicación (`verificacion.js`).**
+Cuando hay desajuste entre cobros con `comments = 'Cobrado vía sfcom'` y el total de reservas WEB del cliente, la tabla del modal muestra el literal `SFCOM` en la columna "Cliente". Paula puede confundirlo con un ID de cliente real o no entender a qué se refiere. Fix: cambiar el texto a `"Canal sfcom (WooCommerce)"` y añadir una nota explicativa en esa sección del modal.
+
+**Sin detección de sesión expirada — los errores de autorización se presentan como errores de datos (`auth.js`).**
+`requireAuth()` solo verifica la sesión al cargar la página. Si la sesión expira durante el uso (token caducado, refresh fallido), las operaciones de Supabase devuelven error 401, que el JS trata igual que cualquier error inesperado. Paula no recibe ningún aviso de "sesión expirada, recarga la página". Fix: interceptar errores 401 en un wrapper centralizado de llamadas a Supabase y mostrar un toast o modal claro con botón de recarga.
+
+**`persistirPagosProveedor` actualiza el importe del hito final pero no resetea `paid` ni `paid_date` si ya estaba marcado como pagado (`utils.js:~288`).**
+Si un hito de pago final fue marcado `paid: true` y luego una reserva nueva o eliminada cambia el importe calculado, el UPSERT actualiza `amount` pero deja `paid: true` y `paid_date` intactos. El hito queda marcado como "pagado" por el importe original aunque el importe en BD haya cambiado. El dinero real pagado y el importe registrado quedan desincronizados sin ningún aviso para Paula.
+
 ---
 
 #### Bajo — pulido y consistencia
@@ -1477,8 +1526,7 @@ Los nombres de columna actuales son seguros, pero si en el futuro se añade una 
 **El nombre del archivo de export en `tablas.js` usa extensión `.csv` aunque se genera `.xlsx` (`tablas.js:356-357`).**
 `exportTable(..., '${tablaActual}.csv')` y `utils.exportTable` reemplaza la extensión por `.xlsx`. Discrepancia que confunde al leer el código.
 
-**`document.execCommand('copy')` está deprecado en navegadores modernos (`sfcom.js:493`, `1127`, `1206`, `1274`).**
-Fix: sustituir por `navigator.clipboard.writeText()` con fallback.
+**✅ RESUELTO — `execCommand('copy')` sustituido por `navigator.clipboard.writeText()` en los 4 lugares de `sfcom.js`.**
 
 **El logo de propuesta y las imágenes de vista previa se re-fetchean en cada apertura del panel, sin caché (`propuesta.js:230-241`).**
 Para propuestas con 5+ servicios con imagen, hay 5+ fetches en paralelo en cada apertura.
@@ -1486,11 +1534,14 @@ Para propuestas con 5+ servicios con imagen, hay 5+ fetches en paralelo en cada 
 **Los errores de Supabase solo van a `console.error` — Paula no sabe que ocurrieron sin abrir DevTools.**
 No hay reporting central ni toast de error genérico para operaciones secundarias.
 
-**Textos "San Fermín 2026" y "6-14 de julio" hardcodeados en `propuesta.js` (líneas 12, 22) y `factura.js` (línea 21).**
-Para 2027, hay que buscarlos y actualizarlos manualmente en varios archivos. No hay constante de temporada centralizada.
+**✅ RESUELTO — Textos "San Fermín 2026" hardcodeados sustituidos por `anioTemporada()` (jun 2026).**
+`anioTemporada()` en `utils.js`: devuelve el año actual de enero a julio, el año siguiente de agosto a diciembre (cutoff 1 ago). Aplicado en `propuesta.js` (3 lugares), `factura.js` (2 lugares, incluido el bloque PDF), `asistente.js` (asunto de email, 2 lugares). Las fechas "6-14 de julio" se dejan hardcodeadas — son las fechas de San Fermín y nunca cambian.
 
 **`window.*` global handlers (sortReservasCliente, facturarHito, etc.) pueden colisionar entre módulos en un refactor futuro.**
 El patrón `onclick=` inline con funciones en `window` es propenso a colisiones silenciosas si dos módulos definen el mismo nombre.
+
+**Uso mixto de `overlay.close()` y `overlay.remove()` para cerrar modales — trampa para futuras extensiones (`modal.js`).**
+`crearModal` registra `dialog.addEventListener('close', () => dialog.remove())`: el evento `close` se dispara al llamar `overlay.close()` (método nativo de `<dialog>`). Sin embargo, varios callers del panel llaman directamente a `overlay.remove()`, que no dispara el evento `close`. Si en el futuro se añade lógica en ese listener (limpieza de estado, analytics), los usos directos de `.remove()` la saltarán silenciosamente. Fix: unificar todos los callers para usar siempre `overlay.close()` y dejar que el listener gestione el `remove`.
 
 ---
 
@@ -1582,8 +1633,8 @@ Las fases 1b y 2 son independientes de todo lo demás y pueden hacerse en cualqu
 | 6 | 6 reservas activas con total_amount = 0 | Investigar | ✅ Investigado: son invitaciones/0€ intencionados |
 | 7 | Email duplicado (giovanni.soliman@gmail.com) | Fusionar o eliminar | ✅ Eliminado (no tenía reservas) |
 | 8 | MARTIKO y NACHO_GALLARDO: cobros sin reservas activas | Investigar | ✅ Investigado: cobros a 0€ intencionados |
-| 9 | `assistant_logs` sin RLS | Evaluar | 🔲 Conocido, baja prioridad |
-| 10 | 55 servicios en `services` (solo 12-14 activos documentados) | Revisar en Dashboard | 🔲 Pendiente revisión visual |
+| 9 | `assistant_logs` sin RLS | Habilitar RLS en Supabase Dashboard | 🔲 Pendiente acción en Dashboard |
+| 10 | 55 servicios en `services` | ✅ No es deuda — todos los servicios son voluntarios o necesarios |
 
 **`event_type` confirmado:** es columna directa en `services` (posición 3). Las vistas simplemente la leen desde ahí. Cierra la deuda 7.6 que lo describía como pendiente de verificar.
 
@@ -2162,6 +2213,42 @@ La función anterior leía columnas legacy (`level`, `slots`, `day`, `comments`)
 - Cuerpo del email limpio sin campo "Origen" (innecesario si solo llegan formularios web).
 
 El código completo de la función está documentado en el historial de la sesión jun 2026 (no en git).
+
+---
+
+### Fase 9c — ✅ Bugs §7 Medio/Bajo + año dinámico (jun 2026)
+
+**Archivos modificados:** `admin/js/utils.js`, `admin/js/propuesta.js`, `admin/js/factura.js`, `admin/js/asistente.js`, `admin/js/sfcom.js`, `admin/js/solicitudes.js`, `admin/js/proveedores.js`, `admin/js/formulario.js`.
+
+**1. `anioTemporada()` — función utilitaria en `utils.js`**
+
+Nueva función exportada. Cutoff: 1 de agosto. De enero a julio devuelve el año actual; de agosto a diciembre devuelve el año siguiente. Aplicada en:
+- `propuesta.js`: cabecera de tabla HTML, bloque completo, encabezado PDF (3 puntos).
+- `factura.js`: nota HTML del adelanto y nota PDF (2 puntos).
+- `asistente.js`: asunto del email/WhatsApp que se ofrece al enviar respuesta (2 puntos).
+
+Las fechas "6–14 de julio" se dejan hardcodeadas — son las fechas de San Fermín y no varían.
+
+**2. Bugs §7 Medio resueltos (ver marcas ✅ en §7.9)**
+
+- **`rebind()` en `_renderBorrador`** — antes de re-renderizar, guarda el valor del input activo (`.bor-slots` o `.bor-price`) en `draft` y restaura el foco tras el re-render. Paula ya no pierde lo que está escribiendo al cambiar servicio o venue en la misma fila.
+- **Edición de mensajes sin restricción de fecha** — eliminada la condición `isToday`. El botón de edición aparece en todos los mensajes de Paula, no solo los del día.
+- **`_onBorradorActualizado` sin fallo silencioso** — si la solicitud no está en `_solicitudesActuales` ni en `_solicitudesCerradas`, se actualiza `solicitudActual` directamente y se re-renderiza el borrador.
+- **`togglePagoProvCobrado` con modal propio** — eliminado `prompt()`. Nueva función `_pedirFechaPago()` abre modal con input de texto, Enter y botones Cancelar/Confirmar. Compatible con iOS/móvil.
+- **`execCommand('copy')` → `navigator.clipboard.writeText()`** en los 4 botones de copia de `sfcom.js`.
+
+**3. Bugs §7 Alto resueltos en sesión anterior (misma sesión, antes de compactación)**
+
+- `resolverProductoSfcom` exportado desde `sfcom.js` — consolida la lógica de matching duplicada entre `importarCanceladosSfcom` y `registrarPedidosSfcom`.
+- `syncStockToSfcom` devuelve `{ sobrereserva, serviceName }` — callers en `formulario.js` muestran toast si hay sobrereserva.
+- `actualizarProveedores` — toast cuando el proveedor activo queda fuera del filtro de capacidad.
+- `cargarReservasCliente` — sincroniza `todasReservas` tras cargar reservas del cliente.
+- `persistirCobrosCliente` — modal de aviso cuando `cobroFinal` resulta negativo.
+- `asistente.js` — toast cuando el JSON de `---BORRADOR---` no es válido.
+
+**4. `assistant_logs` sin RLS — pendiente acción en Dashboard**
+
+Toda la lógica de RLS para `assistant_logs` requiere acción manual en Supabase (ver instrucciones en §7.2 auditoría, fila 9). No modificable desde código.
 
 ---
 

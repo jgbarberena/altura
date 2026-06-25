@@ -6,6 +6,13 @@ import { mostrarToast } from './verificacion.js'
 // Formatea un número como moneda EUR
 export const fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
+// Año de la temporada activa: el año en curso si estamos antes del 1 de agosto,
+// el siguiente si no (a partir de agosto la temporada vigente es la del año siguiente).
+export function anioTemporada() {
+    const hoy = new Date()
+    return hoy.getMonth() < 7 ? hoy.getFullYear() : hoy.getFullYear() + 1
+}
+
 // Fecha por defecto para cobros al cliente: 6 de julio
 // del anio en curso si estamos antes del 15 de julio, del siguiente si no
 export function fechaCobroDefault() {

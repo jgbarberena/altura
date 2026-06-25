@@ -495,10 +495,10 @@ function mostrarModalError({ servicio, venueId, serviceId, endpoint, nuevoStock,
     panel.querySelector('#sfcom-btn-copiar').addEventListener('click', () => {
         const ta  = panel.querySelector('#sfcom-email-texto')
         const btn = panel.querySelector('#sfcom-btn-copiar')
-        ta.select()
-        document.execCommand('copy')
-        btn.textContent = '✅ Copiado'
-        setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        navigator.clipboard.writeText(ta.value).then(() => {
+            btn.textContent = '✅ Copiado'
+            setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        })
     })
 
     panel.querySelector('#sfcom-btn-cerrar').addEventListener('click', () => overlay.remove())
@@ -1041,9 +1041,10 @@ export function mostrarModalCorreoCancelacionSfcom(nombreProducto, proveedor) {
     panel.querySelector('#sfcom-cancel-copiar').addEventListener('click', () => {
         const ta  = panel.querySelector('#sfcom-correo-cancel-texto')
         const btn = panel.querySelector('#sfcom-cancel-copiar')
-        ta.select(); document.execCommand('copy')
-        btn.textContent = '✅ Copiado'
-        setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        navigator.clipboard.writeText(ta.value).then(() => {
+            btn.textContent = '✅ Copiado'
+            setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        })
     })
     panel.querySelector('#sfcom-cancel-cerrar').addEventListener('click', () => overlay.remove())
 }
@@ -1119,9 +1120,10 @@ export function mostrarModalCorreoBajaSfcom(nombreProducto, proveedor) {
         panel.querySelector('#sfcom-baja-copiar').addEventListener('click', () => {
             const ta  = panel.querySelector('#sfcom-correo-baja-texto')
             const btn = panel.querySelector('#sfcom-baja-copiar')
-            ta.select(); document.execCommand('copy')
-            btn.textContent = '✅ Copiado'
-            setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+            navigator.clipboard.writeText(ta.value).then(() => {
+                btn.textContent = '✅ Copiado'
+                setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+            })
         })
         panel.querySelector('#sfcom-baja-cancelar').addEventListener('click', () => { overlay.remove(); resolve('cancel') })
         panel.querySelector('#sfcom-baja-ok').addEventListener('click',       () => { overlay.remove(); resolve('ok')     })
@@ -1188,9 +1190,10 @@ export function mostrarModalCorreoHilario(nombreProducto, variaciones, proveedor
     panel.querySelector('#sfcom-correo-copiar').addEventListener('click', () => {
         const ta  = panel.querySelector('#sfcom-correo-texto')
         const btn = panel.querySelector('#sfcom-correo-copiar')
-        ta.select(); document.execCommand('copy')
-        btn.textContent = '✅ Copiado'
-        setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        navigator.clipboard.writeText(ta.value).then(() => {
+            btn.textContent = '✅ Copiado'
+            setTimeout(() => { btn.textContent = '📋 Copiar texto' }, 2000)
+        })
     })
 
     if (opciones.withOkCancel) {

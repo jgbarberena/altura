@@ -784,14 +784,29 @@ function calcularPorVender() {
 
     const dispBalcon = disponibilidad.filter(d => TIPOS_BALCON.includes(svcMap.get(d.service_id)?.event_type))
 
-    // Precio medio de venta estimado a partir de reservas confirmadas en balcones
+    // Reservas confirmadas en balcones — base para estimaciones de precio
     const confirmadasBalcon = reservas.filter(r =>
         r.status === 'Confirmada' &&
         TIPOS_BALCON.includes(svcMap.get(r.service_id)?.event_type)
     )
-    const plazasConfBalcon = confirmadasBalcon.reduce((s, r) => s + r.slots, 0)
-    const ingresosBalcon   = confirmadasBalcon.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-    const precioMedioVenta = plazasConfBalcon > 0 ? ingresosBalcon / plazasConfBalcon : 0
+
+    // Precio de referencia por par venue+servicio, con fallback en cascada:
+    // 1) medio de reservas confirmadas en ese par exacto
+    // 2) si encierro: medio de reservas confirmadas en cualquier encierro del mismo venue
+    // 3) coste proveedor + 15%
+    function _precioRef(venueId, serviceId, precioProv) {
+        const resVS = confirmadasBalcon.filter(r => r.venue_id === venueId && r.service_id === serviceId)
+        if (resVS.length > 0) {
+            return resVS.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0) / resVS.reduce((s, r) => s + r.slots, 0)
+        }
+        if (svcMap.get(serviceId)?.event_type === 'encierro') {
+            const resVE = confirmadasBalcon.filter(r => r.venue_id === venueId && svcMap.get(r.service_id)?.event_type === 'encierro')
+            if (resVE.length > 0) {
+                return resVE.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0) / resVE.reduce((s, r) => s + r.slots, 0)
+            }
+        }
+        return precioProv * 1.15
+    }
 
     // Construir filas con plazas libres y margen estimado por par venue+servicio
     const filas = dispBalcon.flatMap(d => {
@@ -806,21 +821,22 @@ function calcularPorVender() {
         const svc          = svcMap.get(d.service_id)
         const nombreVenue  = d.venue_id
         const nombreEvento = svc ? (svc.name ?? svc.event_type) : d.service_id
-        const precioProv = parseFloat(d.price_per_slot ?? 0)
+        const precioProv   = parseFloat(d.price_per_slot ?? 0)
+        const precioRef    = _precioRef(d.venue_id, d.service_id, precioProv)
 
         // Para capacity: ya se ha pagado precioProv × total_slots; el gasto no recuperado por
         // plaza libre = precioProv. Para consumption: el coste solo aparece si se vende.
         const gastoAsociado = d.billing_model === 'capacity' ? libres * precioProv : 0
         const margen = d.billing_model === 'capacity'
-            ? libres * precioMedioVenta - gastoAsociado
-            : libres * (precioMedioVenta - precioProv)
+            ? libres * precioRef - gastoAsociado
+            : libres * (precioRef - precioProv)
 
-        return [{ libres, nombreVenue, nombreEvento, gastoAsociado, margen, precioProv, modelo: d.billing_model }]
+        return [{ libres, nombreVenue, nombreEvento, gastoAsociado, margen, precioProv, precioRef, modelo: d.billing_model }]
     })
 
     // KPIs globales
     const plazasLibres      = filas.reduce((s, f) => s + f.libres, 0)
-    const ingresoPotencial  = plazasLibres * precioMedioVenta
+    const ingresoPotencial  = filas.reduce((s, f) => s + f.libres * f.precioRef, 0)
     const costeAdicional    = filas
         .filter(f => f.modelo === 'consumption')
         .reduce((s, f) => s + f.libres * f.precioProv, 0)

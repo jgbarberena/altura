@@ -118,9 +118,8 @@ function _renderizarLog(items) {
             return `<div class="sol-log-date">${item.label}</div>`
         }
         const isPaula = item.author === 'Paula'
-        const isToday = item.date === hoy
         const esc     = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        const editBtn = isToday
+        const editBtn = isPaula
             ? `<button class="sol-log-edit" data-index="${item.index}" title="Editar">✏️</button>`
             : ''
         return `<div class="sol-log-msg${isPaula ? ' sol-log-msg--paula' : ' sol-log-msg--cliente'}">
@@ -278,12 +277,11 @@ async function _onBorradorActualizado(solicitudId, draft) {
         .eq('id', solicitudId)
     if (error) { console.error('[borrador] Error guardando:', error); return }
 
-    if (sol) {
-        sol.proposal_draft = draftConEstado
-        if (solicitudActual?.id === solicitudId) {
-            const container = document.getElementById('sol-borrador-container')
-            if (container) _renderBorrador(sol, container)
-        }
+    if (sol) sol.proposal_draft = draftConEstado
+    if (solicitudActual?.id === solicitudId) {
+        if (!sol) solicitudActual.proposal_draft = draftConEstado
+        const container = document.getElementById('sol-borrador-container')
+        if (container) _renderBorrador(sol ?? solicitudActual, container)
     }
 }
 
@@ -735,7 +733,23 @@ function _renderBorrador(sol, container) {
     }
 
     function rebind() {
+        const active = document.activeElement
+        let restore = null
+        if (active && tbody.contains(active)) {
+            const idx = parseInt(active.dataset.idx)
+            if (active.classList.contains('bor-slots')) {
+                draft[idx].slots = parseInt(active.value) || null
+                restore = { cls: '.bor-slots', idx }
+            } else if (active.classList.contains('bor-price')) {
+                draft[idx].price = active.value !== '' ? parseFloat(active.value) : null
+                restore = { cls: '.bor-price', idx }
+            }
+        }
         _renderBorrador({ ...sol, proposal_draft: draft }, container)
+        if (restore) {
+            const el = container.querySelector(`${restore.cls}[data-idx="${restore.idx}"]`)
+            if (el) { el.focus(); const l = el.value.length; el.setSelectionRange(l, l) }
+        }
     }
 
     // Fila nueva — al seleccionar servicio

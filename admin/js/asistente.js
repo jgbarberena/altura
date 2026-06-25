@@ -1,6 +1,6 @@
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
-import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador } from './utils.js'
+import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador, anioTemporada } from './utils.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
@@ -322,7 +322,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                 mostrarOpcionesEnvio({
                     email:     solicitud.client_email,
                     telefono:  solicitud.client_phone,
-                    asunto:    'San Fermín 2026 · tu reserva',
+                    asunto:    `San Fermín ${anioTemporada()} · tu reserva`,
                     getTexto:  () => elMsgFinal.value,
                     container: panel.querySelector('#asistente-botones'),
                     onUsado:   _alUsarBoton
@@ -503,7 +503,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
                     mostrarOpcionesEnvio({
                         email:     solicitud.client_email,
                         telefono:  solicitud.client_phone,
-                        asunto:    'San Fermín 2026 · tu reserva',
+                        asunto:    `San Fermín ${anioTemporada()} · tu reserva`,
                         getTexto:  () => elMsgFinal.value,
                         container: panel.querySelector('#asistente-botones'),
                         onUsado:   _alUsarBoton
