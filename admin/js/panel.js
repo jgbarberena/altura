@@ -95,9 +95,9 @@ function calcularAlertas() {
     // Separar solicitudes sfcom (source tipo WEBxxx_nnnn) de solicitudes web; excluir cerradas
     const solicitudesActivas        = solicitudesNuevas ?? []
     const solicitudesSfcom          = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source) && s.status === 'nueva')
-    const solicitudesWebNuevas      = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'nueva')
-    const solicitudesWebSeguimiento = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && s.status === 'seguimiento_pendiente')
-    const leadsCancelados           = solicitudesActivas.filter(s => s.source?.startsWith('sfcom_c:'))
+    const solicitudesWebNuevas      = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && !s.source?.startsWith('sfcom_c:') && s.status === 'nueva')
+    const solicitudesWebSeguimiento = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && !s.source?.startsWith('sfcom_c:') && s.status === 'seguimiento_pendiente')
+    const leadsCancelados           = solicitudesActivas.filter(s => s.source?.startsWith('sfcom_c:') && s.status === 'nueva')
 
     const alertaSfcom = document.getElementById('alerta-sfcom')
     if (solicitudesSfcom.length > 0) {
@@ -127,7 +127,7 @@ function calcularAlertas() {
 
     bloqueAlertas.style.display =
         (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
-        || solicitudesSfcom.length > 0 || hayWeb) ? 'block' : 'none'
+        || solicitudesSfcom.length > 0 || hayWeb || leadsCancelados.length > 0) ? 'block' : 'none'
 }
 
 // ===== BLOQUE 1: CALENDARIO =====
