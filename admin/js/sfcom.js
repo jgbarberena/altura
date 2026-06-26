@@ -563,7 +563,7 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
     for (const avail of (availability ?? [])) {
         if (avail.sfcom_status === 'confirmed' && !avail.sfcom_product_id) {
             resultado.avisos.push(
-                `${avail.venue_id} / ${avail.service_id}: marcado como "confirmed" en sfcom ` +
+                `${avail.venue_id} / ${avail.service_code ?? avail.service_id}: marcado como "confirmed" en sfcom ` +
                 `pero sin ID de producto — "${avail.sfcom_service_name ?? '—'}" puede no existir aún en sfcom`
             )
         }
@@ -589,7 +589,7 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
     } catch (e) {
         for (const avail of mappedAvails) {
             resultado.fallos.push({
-                servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
+                servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_code ?? avail.service_id}`,
                 venueId:   avail.venue_id,
                 serviceId: avail.service_id,
                 error:     e.message
@@ -630,7 +630,7 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
                 )
             } else {
                 resultado.fallos.push({
-                    servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_id}`,
+                    servicio:  avail.sfcom_service_name ?? `${avail.venue_id}/${avail.service_code ?? avail.service_id}`,
                     venueId:   avail.venue_id,
                     serviceId: avail.service_id,
                     error:     'ID no encontrado en stock-all'
@@ -643,7 +643,7 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
 
         // idsMismatch: solo si varNombreMap tiene datos (API no lo soporta actualmente)
         if (avail.sfcom_variation_id && varNombreMap.size > 0) {
-            const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
+            const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_code ?? '')
             const serviceDay      = serviceDayMatch ? parseInt(serviceDayMatch[1]) : null
             const varDay          = variacionNombre ? extraerDia(variacionNombre) : null
             if (serviceDay !== null && varDay !== null && serviceDay !== varDay) {
@@ -686,7 +686,7 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
                               d0.service_name.startsWith(avail.sfcom_service_name + ' ')
                           if (levelMatch) {
                               const solDay = typeof d0.day === 'number' ? d0.day : null
-                              const m      = /^ENCIERRO_(\d+)$/.exec(avail.service_id)
+                              const m      = /^ENCIERRO_(\d+)$/.exec(avail.service_code ?? '')
                               const svcDay = m ? parseInt(m[1]) : null
                               if (svcDay === null) return true
                               if (solDay !== null) return solDay === svcDay
@@ -741,7 +741,7 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
 async function getSfcomProducts() {
     const { data, error } = await supabase
         .from('sfcom_listings')
-        .select('sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(service_id)')
+        .select('sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(services!inner(service_code))')
         .not('sfcom_product_id', 'is', null)
 
     if (error) throw new Error(error.message)
@@ -756,9 +756,9 @@ async function getSfcomProducts() {
         if (seen.has(key)) continue
         seen.add(key)
 
-        const serviceId = row.availability?.service_id ?? ''
-        const m         = /^ENCIERRO_(\d+)$/.exec(serviceId)
-        const dayNum    = m ? parseInt(m[1]) : null
+        const serviceCode = row.availability?.services?.service_code ?? ''
+        const m           = /^ENCIERRO_(\d+)$/.exec(serviceCode)
+        const dayNum      = m ? parseInt(m[1]) : null
 
         resultado.push({
             name:         dayNum ? `${row.sfcom_service_name} — día ${dayNum} julio` : row.sfcom_service_name,
@@ -1211,14 +1211,15 @@ export function mostrarModalCorreoHilario(nombreProducto, variaciones, proveedor
 
 export async function loadSfcomListings(supabase) {
     const { data } = await supabase.from('sfcom_listings')
-        .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id)')
+        .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id, services!inner(service_code))')
     return (data ?? []).map(r => ({
         id:                 r.availability_id,
         sfcom_service_name: r.sfcom_service_name,
         sfcom_product_id:   r.sfcom_product_id,
         sfcom_variation_id: r.sfcom_variation_id,
         venue_id:           r.availability?.venue_id,
-        service_id:         r.availability?.service_id
+        service_id:         r.availability?.service_id,
+        service_code:       r.availability?.services?.service_code ?? null
     })).filter(r => r.venue_id)
 }
 
@@ -1236,7 +1237,7 @@ export function resolverProductoSfcom(li, sfcomListings) {
         } else if (candidatos.length > 1) {
             const diaExtraid = extraerDia(li.nombre)
             filaByName = diaExtraid !== null
-                ? (candidatos.find(c => { const m = /^ENCIERRO_(\d+)$/.exec(c.service_id); return m ? parseInt(m[1]) === diaExtraid : false }) ?? candidatos[0])
+                ? (candidatos.find(c => { const m = /^ENCIERRO_(\d+)$/.exec(c.service_code ?? ''); return m ? parseInt(m[1]) === diaExtraid : false }) ?? candidatos[0])
                 : candidatos[0]
         }
     }
@@ -1268,6 +1269,7 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
         const li = pedido.productos?.[0]
 
         let serviceId   = null
+        let serviceCode = null
         let venueId     = null
         let levelToSave = li?.nombre ?? null
 
@@ -1275,8 +1277,9 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
             const { filaByName, filaById, levelToSave: lvl } = resolverProductoSfcom(li, sfcomListings)
             const filaResolved = filaByName ?? filaById ?? null
             if (filaResolved) {
-                serviceId = filaResolved.service_id
-                venueId   = filaResolved.venue_id ?? null
+                serviceId   = filaResolved.service_id
+                serviceCode = filaResolved.service_code ?? null
+                venueId     = filaResolved.venue_id ?? null
             }
             levelToSave = lvl
         }
@@ -1287,8 +1290,8 @@ export async function importarCanceladosSfcom(supabase, sfcomListings, cancelado
         const dia             = (() => {
             const diaFromNombre = li ? extraerDia(li.nombre) : null
             if (diaFromNombre !== null) return diaFromNombre
-            if (serviceId) {
-                const m = /_(\d+)$/.exec(serviceId)
+            if (serviceCode) {
+                const m = /_(\d+)$/.exec(serviceCode)
                 if (m) { const n = parseInt(m[1]); if (n >= 6 && n <= 14) return n }
             }
             return null

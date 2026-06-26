@@ -133,7 +133,8 @@ const TABLAS = {
         titulo: 'Servicios',
         query:  () => supabase.from('services').select('*').order('day'),
         cols: [
-            { label: 'ID',          campo: 'id', renameable: true },
+            { label: 'ID',          campo: 'id' },
+            { label: 'Código',      campo: 'service_code' },
             { label: 'Día',         campo: 'day' },
             { label: 'Nombre',      campo: 'name' },
             { label: 'Descripción', campo: 'description' },

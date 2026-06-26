@@ -530,12 +530,23 @@ export function mostrarOpcionesEnvio({ tipo = 'texto', email, telefono, asunto, 
 
 // ===== INFERENCIA DE TIPO DE SERVICIO =====
 
-// Mapeo fijo tipo → service_id (encierro no está: depende del día)
+// Mapeo fijo tipo → service_code (texto). Encierro no está: depende del día.
+// Para obtener el integer id usa serviceCodesToIds([TIPO_SERVICIO_ID[tipo]], disponibilidad).
 export const TIPO_SERVICIO_ID = {
     chupinazo:   'CHUPINAZO_6',
     procesion:   'PROCESION_7',
     gigantes:    'DESPEDIDA_GIGANTES_14',
     pobre_de_mi: 'POBRE_DE_MI'
+}
+
+// Convierte un array de service_codes (ej. ['ENCIERRO_7', 'CHUPINAZO_6']) al array
+// de integer ids correspondiente, usando los campos service_code/service_id del array
+// de rows de availability_panel (o cualquier array con esos dos campos).
+// Elimina duplicados y nulls.
+export function serviceCodesToIds(codes, disponibilidad) {
+    if (!codes?.length || !disponibilidad?.length) return []
+    const codeToId = new Map(disponibilidad.map(d => [d.service_code, d.service_id]))
+    return [...new Set(codes.map(c => codeToId.get(c)).filter(id => id != null))]
 }
 
 // Normaliza un slug/level/sfcom_service_name a { tipo, day } o null.

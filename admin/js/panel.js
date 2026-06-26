@@ -68,7 +68,8 @@ function calcularAlertas() {
         if (totalReservado > d.total_slots) {
             haySobrereserva = true
             const li = document.createElement('li')
-            li.textContent = `${d.venue_id} / ${d.service_id}: ${totalReservado} reservadas, ${d.total_slots} disponibles`
+            const _svcCode = (servicios ?? []).find(s => s.id === d.service_id)?.service_code ?? '—'
+            li.textContent = `${d.venue_id} / ${_svcCode}: ${totalReservado} reservadas, ${d.total_slots} disponibles`
             listaSobre.appendChild(li)
         }
     })
@@ -527,7 +528,7 @@ function calcularEventos() {
         const ingresoEvento      = detalleProveedores.reduce((s, d) => s + d.ingreso, 0)
         const costeEvento        = detalleProveedores.reduce((s, d) => s + d.coste, 0)
         const dotEvento          = _margenIndicador(ingresoEvento, costeEvento)
-        return { id: s.id, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento, clientesHTML: clientesEventoHTML, dot: dotEvento }
+        return { id: s.service_code, dia: s.day, totalPlazas, confirmadas, pendientes, libres, pct, colorFill, detalleProveedores, clientes: clientesEvento, clientesHTML: clientesEventoHTML, dot: dotEvento }
     }).filter(Boolean)
 
     const inputEvento = document.getElementById('selector-evento')
@@ -644,6 +645,7 @@ function renderProveedores(filtro) {
 }
 
 function calcularProveedores() {
+    const svcMap = new Map(servicios.map(s => [s.id, s]))
 
     const venueIds = [...new Set(disponibilidad.map(d => d.venue_id))].sort()
     provFilas = venueIds.map(venueId => {
@@ -654,7 +656,7 @@ function calcularProveedores() {
         const reservasP = reservas.filter(r => r.venue_id === venueId && r.status !== 'Cancelada')
 
         // Venues de tipos no-balcón solo aparecen si tienen reservas activas o billing capacity
-        const esBalcon = dispP.some(d => TIPOS_BALCON.includes(servicios.find(s => s.id === d.service_id)?.event_type))
+        const esBalcon = dispP.some(d => TIPOS_BALCON.includes(svcMap.get(d.service_id)?.event_type))
         if (!esBalcon && !reservasP.length && !dispP.some(d => d.billing_model === 'capacity')) return null
 
         const confirmadas = reservasP.filter(r => r.status === 'Confirmada').reduce((sum, r) => sum + r.slots, 0)
@@ -681,7 +683,7 @@ function calcularProveedores() {
                     ? (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
                     : (confS + pendS) * parseFloat(d.price_per_slot ?? 0)
             const dotS = _margenIndicador(ingresoS, costeS)
-            return { id: d.service_id, total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS, clientesHTML: clientesHTMLS, ingreso: ingresoS, coste: costeS, dot: dotS }
+            return { id: svcMap.get(d.service_id)?.service_code ?? '—', total: d.total_slots, confirmadas: confS, pendientes: pendS, libres: libS, pct: pctS, colorFill: colS, esConsumption, esFixed, clientes: clientesS, clientesHTML: clientesHTMLS, ingreso: ingresoS, coste: costeS, dot: dotS }
         })
 
         const clientesProv     = [...new Set(reservasP.map(r => r.client_id))].join(', ')
@@ -820,7 +822,7 @@ function calcularPorVender() {
 
         const svc          = svcMap.get(d.service_id)
         const nombreVenue  = d.venue_id
-        const nombreEvento = svc ? (svc.name ?? svc.event_type) : d.service_id
+        const nombreEvento = svc ? (svc.name ?? svc.service_code) : '—'
         const precioProv   = parseFloat(d.price_per_slot ?? 0)
         const precioRef    = _precioRef(d.venue_id, d.service_id, precioProv)
 

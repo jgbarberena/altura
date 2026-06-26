@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
@@ -13,7 +13,7 @@ initSidebar()
 
 // ===== DATOS GLOBALES =====
 const { data: disponibilidad } = await supabase.from('availability_panel')
-    .select('venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type')
+    .select('venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type, day')
 let todasReservas  = (await supabase.from('reservations').select('*')).data
 let todosClientes  = (await supabase.from('clients').select('id,name,email,phone')).data ?? []
 
@@ -382,12 +382,15 @@ async function _procesarWebFormsSinProcesar() {
         const { slug, day, slots } = rawData
 
         // Inferir service_id desde el slug
-        const parsed    = parsearNivel(slug)
-        let serviceId   = null
+        const parsed      = parsearNivel(slug)
+        let serviceCode   = null
         if (parsed) {
-            if (parsed.tipo === 'encierro') serviceId = day ? `ENCIERRO_${day}` : null
-            else serviceId = TIPO_SERVICIO_ID[parsed.tipo] ?? null
+            if (parsed.tipo === 'encierro') serviceCode = day ? `ENCIERRO_${day}` : null
+            else serviceCode = TIPO_SERVICIO_ID[parsed.tipo] ?? null
         }
+        const serviceId = serviceCode
+            ? (disponibilidad?.find(d => d.service_code === serviceCode)?.service_id ?? null)
+            : null
 
         const draft = [construirItemBorrador({
             service_name: slug      || null,
@@ -452,7 +455,7 @@ function _renderItem(s, apagada = false) {
         : esCancelada ? `<span class="sol-badge sol-badge--sfcom-c">sfcom_c</span>`
         : esEmail ? `<span class="sol-badge sol-badge--email">email</span>`
         : `<span class="sol-badge sol-badge--web">web</span>`
-    const experiencia    = _esc(s.proposal_draft?.[0]?.service_name || s.proposal_draft?.[0]?.service_id || '—')
+    const experiencia    = _esc(s.proposal_draft?.[0]?.service_name || '—')
     const notasPreview   = (() => {
         if (!s.conversation_notes) return ''
         const msgs   = _parsearLog(s.conversation_notes).filter(i => i.type === 'message')
@@ -546,8 +549,7 @@ function _serviciosUnicos() {
     for (const d of (disponibilidad || [])) {
         if (!d.service_id || vistos.has(d.service_id)) continue
         vistos.add(d.service_id)
-        const RE_DIA = /_(\d+)$/
-        const diaNum = parseInt(d.service_id.match(RE_DIA)?.[1]) || null
+        const diaNum = d.day || null
         // DEUDA TÉCNICA (2026): este diccionario es redundante ahora que services.name es
         // consistente. Se podría sustituir por uso directo de services.name, manteniendo
         // event_type solo para el array `order` de clasificación. No se cambia ahora porque
@@ -555,7 +557,7 @@ function _serviciosUnicos() {
         const etLabel = {
             encierro: 'Encierro', chupinazo: 'Chupinazo', procesion: 'Procesión',
             gigantes: 'Gigantes', pobre_de_mi: 'Pobre de Mí'
-        }[d.event_type] || d.event_type || d.service_id
+        }[d.event_type] || d.event_type || d.service_code
         const label = diaNum ? `${etLabel} - día ${diaNum}` : etLabel
         lista.push({ service_id: d.service_id, label, event_type: d.event_type, day: diaNum })
     }
@@ -755,7 +757,7 @@ function _renderBorrador(sol, container) {
 
     // Fila nueva — al seleccionar servicio
     container.querySelector('.bor-svc-new')?.addEventListener('change', e => {
-        const svcId = e.target.value
+        const svcId = parseInt(e.target.value) || null
         if (!svcId) return
         const svc     = servicios.find(s => s.service_id === svcId)
         const venues  = _venuesPorServicio(svcId)
@@ -778,7 +780,7 @@ function _renderBorrador(sol, container) {
     tbody.querySelectorAll('.bor-svc').forEach(sel => {
         sel.addEventListener('change', e => {
             const idx   = parseInt(e.target.dataset.idx)
-            const svcId = e.target.value
+            const svcId = parseInt(e.target.value) || null
             const svc   = servicios.find(s => s.service_id === svcId)
             const venues = _venuesPorServicio(svcId)
             draft[idx] = {
@@ -1100,7 +1102,7 @@ function mostrarDetalle(sol) {
 
             ${esCondensada && (esSfcomConf || esSfcomLead) ? `
             <div class="sol-detalle-datos">
-                <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${_esc(sol.proposal_draft?.[0]?.service_name || sol.proposal_draft?.[0]?.service_id || '—')}</span></div>
+                <div class="sol-dato"><span class="sol-dato-label">Experiencia</span><span class="sol-dato-valor">${_esc(sol.proposal_draft?.[0]?.service_name || '—')}</span></div>
                 <div class="sol-dato"><span class="sol-dato-label">Día</span><span class="sol-dato-valor">${sol.proposal_draft?.[0]?.day ? sol.proposal_draft[0].day + ' julio' : '—'}</span></div>
                 <div class="sol-dato"><span class="sol-dato-label">Personas</span><span class="sol-dato-valor">${sol.proposal_draft?.[0]?.slots || '—'}</span></div>
                 ${sol.comments ? `<div class="sol-dato sol-dato--full"><span class="sol-dato-label">Consulta</span><span class="sol-dato-valor">${_esc(sol.comments)}</span></div>` : ''}
@@ -1244,9 +1246,9 @@ function _inferirServiceIds(level) {
 
 function _calcularPrecioRef(sol) {
     const d0         = sol.proposal_draft?.[0] ?? null
-    const serviceIds = d0?.service_id
+    const serviceIds = d0?.service_id != null
         ? [d0.service_id]
-        : _inferirServiceIds(d0?.service_name || null)
+        : serviceCodesToIds(_inferirServiceIds(d0?.service_name || null), disponibilidad ?? [])
     if (!serviceIds.length) return null
 
     const precios = (todasReservas || [])

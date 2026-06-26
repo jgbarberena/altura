@@ -70,10 +70,11 @@ Las Edge Functions corren en el runtime de Deno de Supabase. **No se despliegan 
 
 Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el panel se crea automáticamente un venue con el mismo ID. En el 95% de casos venue.id === provider.id. Casos con múltiples venues: AMAYA_SABATE (con AMAYA_SABATE_BALCON y AMAYA_SABATE_BARRERA) y PATRICIA.
 
-**`services`** — Tipo de evento
+**`services`** — Tipo de evento (Fase 1 jun 2026: PK migrada de text a integer)
 | Campo | Notas |
 |---|---|
-| id | text PK, mayúsculas (ej: `ENCIERRO_7`, `CHUPINAZO_6`) |
+| id | **integer PK autoincremental** (antes era el texto ENCIERRO_7 etc.; desde Fase 1 es un surrogado entero) |
+| service_code | **text UNIQUE NOT NULL** — el identificador legible antes almacenado en `id` (ej: `ENCIERRO_7`, `CHUPINAZO_6`). Regla de uso: `service_code` para display en UI, lógica de negocio y patrones regex; `id` solo para FK en BD. |
 | day | integer — día de julio |
 | event_type | text — categoría del evento: `encierro`, `chupinazo`, `procesion`, `despedida_gigantes`, `pobre_de_mi`, `visita_guiada`, `otro`. Columna directa en la tabla (no derivada). Fuente de verdad para el trigger de sincronización y para las vistas. |
 | name | text — nombre comercial corto (ej: `"Balcón encierro"`). Se usa en propuestas como etiqueta principal. |
@@ -87,7 +88,7 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 |---|---|
 | id | integer PK |
 | venue_id | FK→venues NOT NULL (añadido jun 2026) |
-| service_id | FK→services NOT NULL |
+| service_id | **integer** FK→services.id NOT NULL (Fase 1: antes era text FK) |
 | total_slots | integer NOT NULL |
 | price_per_slot | decimal — coste que se paga al proveedor por plaza (o importe fijo total si billing_model='fixed'); default 0 |
 | billing_model | `'capacity'`, `'consumption'` o `'fixed'`; default `'capacity'` |
@@ -117,7 +118,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 |---|---|
 | id | text PK, formato `R0001` |
 | client_id | FK→clients |
-| service_id | FK→services |
+| service_id | **integer** FK→services.id (Fase 1: antes era text FK) |
 | venue_id | FK→venues |
 | slots | integer NOT NULL |
 | price_per_slot | decimal NOT NULL — precio de venta al cliente |
@@ -205,7 +206,7 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 ### Triggers activos
 
-**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en `availability`, `charges`, `clients`, `payments`, `providers`, `reservations`, `services`. Todos usan la función compartida `uppercase_ids()`, que aplica `UPPER()` sobre los IDs de texto relevantes de cada tabla según `TG_TABLE_NAME`.
+**`trg_uppercase_*`** — BEFORE INSERT OR UPDATE en `availability`, `charges`, `clients`, `payments`, `providers`, `reservations`, `services`. Todos usan la función compartida `uppercase_ids()`, que aplica `UPPER()` sobre los IDs de texto relevantes según `TG_TABLE_NAME`. **Caso `services` (Fase 1):** aplica `UPPER()` sobre `NEW.service_code` (ya NO sobre `NEW.id`, que ahora es integer).
 
 **`trg_uppercase_venues`** — BEFORE INSERT OR UPDATE en `venues`. Usa su propia función `trg_uppercase_venues_fn()`, separada de `uppercase_ids`. Además de `UPPER()`, normaliza espacios a guiones bajos en `id` y `provider_id` (`REPLACE(NEW.id, ' ', '_')`).
 
@@ -217,13 +218,15 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 ### Vistas
 
-**`service_availability`** — Plazas libres por servicio (solo lectura, acceso anon). Campos: `service_id`, `free_slots`. Calculada como `SUM(total_slots) - SUM(slots reservados Confirmados+Pendientes)`, agrupada por `service_id`. Usada por `disponibilidad.js` en el frontend público para los badges de disponibilidad.
+Definiciones SQL exactas en `supabase/sql/views_pre_migration.sql` (estado pre-Fase1) y en el archivo de migración `supabase/sql/migration_fase1_services_pk.sql` (estado post-Fase1).
 
-**`availability_panel`** — Solo authenticated. Campos: `id, venue_id, service_id, total_slots, price_per_slot, billing_model, description, access_instructions, photos, venue_display_name, venue_address, venue_slug, event_type, day, start_time`. Usada por `formulario.js`, `solicitudes.js`, `asistente.js` y `proveedores.js`. No incluye campos sfcom.
+**`service_availability`** — Plazas libres por servicio (solo lectura, acceso anon, `security_invoker=false`). Campos: `service_id` (text = **service_code**, no el integer PK), `free_slots`. **IMPORTANTE:** expone `service_code` aliasado como `service_id` (texto tipo `ENCIERRO_7`) para que `disponibilidad.js` del frontend público siga funcionando sin cambios. Agrupada por `services.id + service_code`.
 
-**`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id`. Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js` y `sfcom-panel.js`. No usar para operaciones que no necesiten campos sfcom.
+**`availability_panel`** — Solo authenticated. Campos: `id, venue_id, service_id` (integer FK), `total_slots, price_per_slot, billing_model, description, access_instructions, photos, venue_display_name, venue_address, venue_slug, event_type, day, start_time, service_code` (text, añadido en Fase 1). Usada por `formulario.js`, `solicitudes.js`, `asistente.js` y `proveedores.js`. No incluye campos sfcom. El código admin usa `service_id` para FK y `service_code` para display y patrones regex.
 
-**`catalogo_publico`** — Acceso anon. Campos: `slug, display_name, address, venue_type, service_id, description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`. Usada por `catalogo/catalogo.js`.
+**`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id` (integer FK), `total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id, service_code` (text, añadido en Fase 1). Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js` y `sfcom-panel.js`.
+
+**`catalogo_publico`** — Acceso anon, `security_invoker=false`. Campos: `slug, display_name, address, venue_type, service_id` (text = **service_code**, alias), `description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`. Usada por `catalogo/catalogo.js`.
 
 ### Seguridad (RLS)
 
@@ -262,7 +265,7 @@ Ninguno tiene `file_size_limit` ni `allowed_mime_types` configurados. El acceso 
 
 ## 3. Arquitectura de nombres e identificadores
 
-Cinco tipos distintos que conviene no confundir:
+Seis tipos distintos que conviene no confundir:
 
 | Identificador | Dónde | Propósito |
 |---|---|---|
@@ -270,16 +273,21 @@ Cinco tipos distintos que conviene no confundir:
 | `venues.id` | Interno | Qué lugar físico. Mismo formato. En 95% de casos igual que provider.id. |
 | `venues.display_name` | Público | Nombre del balcón que ve el cliente. |
 | `venues.slug` | Público estable | Para URLs del catálogo. Nunca cambia. |
-| `services.id` | Interno | Qué evento. Formato TIPO_DIA. |
-| `services.name` | Público | Nombre del tipo de experiencia sin día (ej: "Balcón encierro"). |
+| `services.id` | Interno (BD) | **Integer autoincremental** (surrogado). Solo para FK en BD (`availability.service_id`, `reservations.service_id`). Nunca mostrar en UI. |
+| `services.service_code` | Interno (código) | Texto legible tipo `ENCIERRO_7`. Para display en UI del panel, lógica de negocio, patrones regex y `TIPO_SERVICIO_ID`. Único y estable. |
+| `services.name` | Público | Nombre del tipo de experiencia sin día (ej: "Balcón encierro"). En propuestas y mensajes al cliente. |
 | `sfcom_listings.sfcom_service_name` | Externo | Nombre del producto en tienda.sanfermin.com. Solo para sincronización con sfcom. |
 
-**Regla de uso por contexto:**
-- `venues.id` / `providers.id` / `services.id` — solo en BD y código. Nunca visible en documentos ni en UI de cara al cliente.
+**Regla de uso por contexto (Fase 1):**
+- `services.id` (integer) — solo en queries a Supabase como FK. Nunca visible en documentos ni UI.
+- `services.service_code` (texto) — en toda UI del panel donde antes aparecía `services.id`. En `TIPO_SERVICIO_ID`, `_inferirServiceId`, regex `/^ENCIERRO_(\d+)$/`.
+- `venues.id` / `providers.id` — sin cambio, siguen siendo texto.
 - `venues.display_name` — en toda UI interna del panel. Si es null, se usa `venues.id` como fallback.
 - `services.name` — en documentos al cliente: propuestas, confirmaciones, mensajes de bienvenida.
 - `venues.slug` — solo en URLs del catálogo público. Nunca cambia una vez asignado.
-- `sfcom_listings.sfcom_service_name` — solo para identificar productos en la tienda sfcom (contrato de búsqueda en `registrarPedidosSfcom`). No usar fuera de ese contexto.
+- `sfcom_listings.sfcom_service_name` — solo para identificar productos en la tienda sfcom. No usar fuera de ese contexto.
+
+**`proposal_draft[].service_id`** — tras Fase 1 es integer (mismo que `services.id`). Migrado por SQL. El campo `service_name` del borrador sigue siendo texto libre (slug web, nombre sfcom, etc.).
 
 **Display en el panel:** `formatVenueLabel(venueId, venueProviderId)` en `utils.js` devuelve `"PROV_ID — VENUE_ID"` solo si son distintos (caso multi-venue), o solo `venueId` en el caso normal.
 
@@ -2273,6 +2281,33 @@ Las fechas "6–14 de julio" se dejan hardcodeadas — son las fechas de San Fer
 **4. `assistant_logs` sin RLS — ✅ RESUELTO (jun 2026)**
 
 RLS habilitado en Supabase Dashboard.
+
+---
+
+### Fase 9c — ✅ Migración services.id: text PK → integer + service_code (jun 2026)
+
+**SQL:** `supabase/sql/migration_fase1_services_pk.sql` (ejecutar en Supabase SQL Editor antes de activar los JS).
+**Referencia pre-migración:** `supabase/sql/views_pre_migration.sql`.
+
+**Archivos JS modificados:** `utils.js`, `formulario.js`, `proveedores.js`, `solicitudes.js`, `asistente.js`, `sfcom.js`, `sfcom-panel.js`, `verificacion.js`, `panel.js`, `tablas.js`, `propuesta.js`.
+
+**Cambios arquitecturales:**
+- `services.id` pasa de text (`ENCIERRO_7`) a integer autoincremental.
+- `services.service_code` (text UNIQUE NOT NULL) almacena los códigos que antes eran el PK.
+- `availability.service_id` y `reservations.service_id`: FK integer en lugar de text.
+- `reservation_requests.service_id` y `proposal_draft[].service_id`: integer en lugar de text (migrado por SQL JSONB UPDATE en Paso 13).
+- Las 4 vistas reconstruidas. `service_availability` expone `service_code AS service_id` (text) para el frontend público — cero cambios en el front.
+- `availability_panel` añade la columna `service_code` para que el panel admin acceda al código sin JOIN adicional.
+
+**Reglas de uso JS:**
+- `service_id` (integer) solo para queries Supabase (`.eq`, `.filter`, comparaciones con `r.service_id`).
+- `service_code` (text) para todo lo visible en UI, patrones regex, `TIPO_SERVICIO_ID`, `_inferirServiceId`.
+- DOM selects: `opt.value = s.id` (integer → string en HTML); siempre `parseInt(select.value)` antes de comparar.
+- Nuevo helper `serviceCodesToIds(codes, disponibilidad)` en `utils.js` para convertir array de códigos text a integers cuando se necesita cruzar con FK.
+
+**Trigger `uppercase_ids`:** actualizar en Supabase Dashboard → Functions: cambiar `WHEN 'services' THEN NEW.id := UPPER(NEW.id)` por `WHEN 'services' THEN NEW.service_code := UPPER(NEW.service_code)` (ver Paso 14 del SQL).
+
+**`tablas.js`:** columna `id` de la tabla `services` ya no tiene `renameable: true` (el PK integer es inmutable). Nueva columna `Código` expone `service_code`.
 
 ---
 

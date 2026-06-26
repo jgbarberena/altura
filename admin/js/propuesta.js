@@ -369,7 +369,7 @@ function _leerEditables() {
     const svcFallback = r => {
         const svc   = _servicios.find(s => s.id === r.service_id) ?? {}
         const venue = _venues.find(v => v.id === r.venue_id) ?? {}
-        return valorO(venue.display_name, svc.name ?? r.service_id)
+        return valorO(venue.display_name, svc.name ?? svc.service_code ?? r.service_id)
     }
 
     return {
@@ -726,7 +726,8 @@ async function _generarPDF() {
             doc.setFontSize(7.5); doc.setFont('helvetica', 'bold')
             const tipoLines   = fila.tipo   ? doc.splitTextToSize(fila.tipo.toUpperCase(), COL_DESC - 4) : []
             doc.setFontSize(9); doc.setFont('helvetica', 'bold')
-            const nombreLines = doc.splitTextToSize(fila.nombre ?? r.service_id, COL_DESC - 4)
+            const _svc = _servicios.find(s => s.id === r.service_id)
+            const nombreLines = doc.splitTextToSize(fila.nombre ?? _svc?.name ?? _svc?.service_code ?? '—', COL_DESC - 4)
             doc.setFontSize(7.5); doc.setFont('helvetica', 'normal')
             const metaLines   = doc.splitTextToSize(fila.meta   ?? '', COL_DESC - 4)
             doc.setFontSize(7); doc.setFont('helvetica', 'italic')

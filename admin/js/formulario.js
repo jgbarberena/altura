@@ -18,17 +18,18 @@ initSidebar()
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
 const { data: servicios }      = await supabase.from('services').select('*').order('day')
 const { data: disponibilidad } = await supabase.from('availability_panel')
-    .select('venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, photos, venue_slug, event_type')
+    .select('venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, photos, venue_slug, event_type')
 const { data: venues }         = await supabase.from('venues').select('*').order('id')
 const { data: _sfcomRaw }      = await supabase.from('sfcom_listings')
-    .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id)')
+    .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id, services(service_code))')
 const sfcomListings = (_sfcomRaw ?? []).map(r => ({
     id:                 r.availability_id,
     sfcom_service_name: r.sfcom_service_name,
     sfcom_product_id:   r.sfcom_product_id,
     sfcom_variation_id: r.sfcom_variation_id,
     venue_id:           r.availability?.venue_id,
-    service_id:         r.availability?.service_id
+    service_id:         r.availability?.service_id,
+    service_code:       r.availability?.services?.service_code
 })).filter(r => r.venue_id)
 let todasReservas              = (await supabase.from('reservations').select('*')).data
 
@@ -84,7 +85,7 @@ const btnAnadir       = document.getElementById('btnAnadirReserva')
 servicios.forEach(s => {
     const opt = document.createElement('option')
     opt.value = s.id
-    opt.textContent = s.id
+    opt.textContent = s.service_code
     selectServicio.appendChild(opt)
 })
 
@@ -264,6 +265,11 @@ window.guardarClienteNuevo = async function(e) {
 
 // ===== BLOQUE 2: RESERVA =====
 
+function _svcCode(id) {
+    const intId = typeof id === 'string' ? parseInt(id) : id
+    return servicios.find(s => s.id === intId)?.service_code ?? id
+}
+
 function _preguntarCambioServicio(reservaId, servicioNuevo, servicioActual) {
     return new Promise(resolve => {
         const { overlay, panel } = crearModal('modal-cambio-servicio', { narrow: true })
@@ -287,9 +293,9 @@ function _preguntarCambioServicio(reservaId, servicioNuevo, servicioActual) {
 selectServicio.addEventListener('change', async () => {
     if (reservaEditandoId) {
         const reservaActual = todasReservas.find(r => r.id === reservaEditandoId)
-        if (reservaActual && selectServicio.value !== reservaActual.service_id) {
+        if (reservaActual && parseInt(selectServicio.value) !== reservaActual.service_id) {
             const servicioNuevo = selectServicio.value
-            const decision      = await _preguntarCambioServicio(reservaEditandoId, servicioNuevo, reservaActual.service_id)
+            const decision      = await _preguntarCambioServicio(reservaEditandoId, _svcCode(servicioNuevo), _svcCode(reservaActual.service_id))
             if (decision === null) { selectServicio.value = reservaActual.service_id; return }
             if (decision === 'nueva') { limpiarFormularioReserva(); selectServicio.value = servicioNuevo }
         }
@@ -320,7 +326,7 @@ selectProveedor.addEventListener('change', () => {
     // Si el proveedor seleccionado no tiene plazas suficientes, lanzar el dialog
     // de reorganización igual que si se hubiera pulsado en la cajita del panel
     const proveedorId = selectProveedor.value
-    const servicioId  = selectServicio.value
+    const servicioId  = parseInt(selectServicio.value) || null
     const plazas      = parseInt(inputPlazas.value) || 0
     if (proveedorId && servicioId && plazas > 0) {
         const { libres } = getPlazasInfo(proveedorId, servicioId, reservaEditandoId)
@@ -352,7 +358,7 @@ function getPlazasInfo(venueId, servicioId, excluirId = null) {
 }
 
 function actualizarProveedores() {
-    const servicioId      = selectServicio.value
+    const servicioId      = parseInt(selectServicio.value) || null
     const plazas          = parseInt(inputPlazas.value) || 0
     const proveedorActual = selectProveedor.value
 
@@ -411,7 +417,7 @@ function actualizarProveedores() {
 }
 
 function validarPrecio() {
-    const servicioId  = selectServicio.value
+    const servicioId  = parseInt(selectServicio.value) || null
     const proveedorId = selectProveedor.value
     const precio      = parseFloat(inputPrecio.value)
 
@@ -600,7 +606,7 @@ function renderTablaReservas() {
         <tr data-id="${r.id}" style="cursor:pointer">
             <td><input type="checkbox" class="chk-reserva"></td>
             <td>${r.id}</td>
-            <td>${r.service_id}</td>
+            <td>${servicios.find(s => s.id === r.service_id)?.service_code ?? '—'}</td>
             <td>${r.venue_id}</td>
             <td>${r.slots}</td>
             <td>${r.price_per_slot != null ? r.price_per_slot + '€' : '—'}</td>
@@ -960,7 +966,7 @@ function componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarca
     const bloques = reservasIncluidas.map(r => {
         const srv  = servicios.find(s => s.id === r.service_id)
         const disp = disponibilidad.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
-        const nombreEvento = srv?.name  ?? r.service_id
+        const nombreEvento = srv?.name ?? srv?.service_code ?? '—'
         const dia          = srv?.day   ?? '?'
         const hora         = srv?.start_time ?? '?'
         const venue        = disp?.venue_display_name ?? r.venue_id
@@ -979,13 +985,13 @@ function componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarca
         if (pendientesNoMarcadas.length === 1) {
             const r            = pendientesNoMarcadas[0]
             const srv          = servicios.find(s => s.id === r.service_id)
-            const nombreEvento = srv?.name ?? r.service_id
+            const nombreEvento = srv?.name ?? srv?.service_code ?? '—'
             const dia          = srv?.day  ?? '?'
             texto += `\n\n—\nPor cierto, sigue pendiente de confirmar tu reserva de ${nombreEvento} (${dia} de julio). Si sigues interesado/a, escríbenos y te la confirmamos.`
         } else {
             const lista = pendientesNoMarcadas.map(r => {
                 const srv = servicios.find(s => s.id === r.service_id)
-                return `- ${srv?.name ?? r.service_id} (${srv?.day ?? '?'} de julio)`
+                return `- ${srv?.name ?? srv?.service_code ?? '—'} (${srv?.day ?? '?'} de julio)`
             }).join('\n')
             texto += `\n\n—\nPor cierto, tienes estas reservas pendientes de confirmar:\n${lista}\nSi sigues interesado/a, escríbenos y te las confirmamos.`
         }
@@ -1027,7 +1033,7 @@ function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
             <ul style="margin:6px 0 8px 18px">
                 ${pendientesNoMarcadas.map(r => {
                     const srv = servicios.find(s => s.id === r.service_id)
-                    return `<li>${srv?.name ?? r.service_id} (${srv?.day ?? '?'} de julio)</li>`
+                    return `<li>${srv?.name ?? srv?.service_code ?? '—'} (${srv?.day ?? '?'} de julio)</li>`
                 }).join('')}
             </ul>
             <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
@@ -1119,7 +1125,7 @@ function setGuardando(on) {
 
 btnAnadir.addEventListener('click', async () => {
     const clienteId  = inputId.value.trim().toUpperCase()
-    const servicioId = selectServicio.value
+    const servicioId = parseInt(selectServicio.value) || null
     const venueId    = selectProveedor.value
     const plazas     = parseInt(inputPlazas.value)
     const precio     = parseFloat(inputPrecio.value)
@@ -1144,7 +1150,7 @@ btnAnadir.addEventListener('click', async () => {
         if (reservaOriginal?.status === 'Cancelada' && estado !== 'Cancelada') {
             const { libres } = getPlazasInfo(venueId, servicioId)
             if (libres < plazas) {
-                alert(`No hay plazas disponibles en ${venueId} para ${servicioId}.\nDisponibles: ${libres}, necesarias: ${plazas}.`)
+                alert(`No hay plazas disponibles en ${venueId} para ${_svcCode(servicioId)}.\nDisponibles: ${libres}, necesarias: ${plazas}.`)
                 return
             }
         }
@@ -1306,7 +1312,7 @@ btnAnadir.addEventListener('click', async () => {
 // ===== BLOQUE 3: DISPONIBILIDAD =====
 
 function actualizarBloque3() {
-    const servicioId  = selectServicio.value
+    const servicioId  = parseInt(selectServicio.value) || null
     const plazas      = parseInt(inputPlazas.value) || 0
     const proveedorId = selectProveedor.value
     const bloque      = document.getElementById('bloque-disponibilidad')
@@ -1376,7 +1382,7 @@ function actualizarMapaProveedores(servicioId, plazas, proveedorSeleccionado) {
 }
 
 window.seleccionarProveedorDesdeCajita = function(proveedorId) {
-    const servicioId = selectServicio.value
+    const servicioId = parseInt(selectServicio.value) || null
     const plazas     = parseInt(inputPlazas.value) || 0
 
     if (plazas > 0) {
@@ -1853,7 +1859,7 @@ function renderPanelReorganizar() {
         const tieneCambio = !!reorgCambios[r.id]
 
         const optsServicio = servicios.map(s =>
-            `<option value="${s.id}" ${r.service_id === s.id ? 'selected' : ''}>${s.id}</option>`
+            `<option value="${s.id}" ${r.service_id === s.id ? 'selected' : ''}>${s.service_code}</option>`
         ).join('')
 
         const dispDeServicio = disponibilidad.filter(d => d.service_id === r.service_id)
@@ -1904,12 +1910,13 @@ function renderPanelReorganizar() {
 }
 
 window.reorgCambiarServicio = function(idx, nuevoServicio) {
-    const r        = reorgFilas[idx]
-    const original = todasReservas.find(res => res.id === r.id)
+    const r              = reorgFilas[idx]
+    const original       = todasReservas.find(res => res.id === r.id)
+    const nuevoServicioId = parseInt(nuevoServicio, 10)
 
-    reorgFilas[idx].service_id = nuevoServicio
+    reorgFilas[idx].service_id = nuevoServicioId
 
-    const dispNuevoServicio      = disponibilidad.filter(d => d.service_id === nuevoServicio)
+    const dispNuevoServicio      = disponibilidad.filter(d => d.service_id === nuevoServicioId)
     const venueSigueDisponible   = dispNuevoServicio.some(d => d.venue_id === r.venue_id)
     if (!venueSigueDisponible && dispNuevoServicio.length > 0) {
         reorgFilas[idx].venue_id = dispNuevoServicio[0].venue_id
@@ -2005,11 +2012,12 @@ window.reorgCambiarPrecio = function(idx, nuevoPrecio) {
 window.confirmarReorganizacion = async function() {
     if (Object.keys(reorgCambios).length === 0) return
 
+    const _svcCode = id => servicios.find(s => s.id === id)?.service_code ?? String(id)
     const lineas = Object.entries(reorgCambios).map(([id, cambio]) => {
         const original = todasReservas.find(r => r.id === id)
         const partes   = []
         if (cambio.service_id !== undefined && cambio.service_id !== original.service_id)
-            partes.push(`${original.service_id} → ${cambio.service_id}`)
+            partes.push(`${_svcCode(original.service_id)} → ${_svcCode(cambio.service_id)}`)
         if (cambio.venue_id !== undefined && cambio.venue_id !== original.venue_id)
             partes.push(`${original.venue_id} → ${cambio.venue_id}`)
         if (cambio.price_per_slot !== undefined)
@@ -2164,7 +2172,7 @@ function _inferirDesdeSfcom(level, day) {
     // Varias filas con el mismo nombre (e.g. "Balcón Estafeta" con varios días):
     // intentar filtrar por día
     if (filas.length > 1 && day) {
-        const filaDia = filas.find(d => d.service_id === 'ENCIERRO_' + day)
+        const filaDia = filas.find(d => d.service_code === 'ENCIERRO_' + day)
         if (filaDia) return { serviceId: filaDia.service_id, venueId: filaDia.venue_id }
     }
 
@@ -2358,10 +2366,10 @@ async function cargarDesdeSolicitud(data) {
         const { serviceId, venueId: venueInferido } = _inferirDesdeSfcom(data.level, data.day)
 
         // Cross-check: si hay service_id guardado y no coincide con el inferido por nombre → modal de aviso
-        if (serviceId && data.serviceId && serviceId !== data.serviceId) {
+        if (serviceId && data.serviceId && serviceId !== parseInt(data.serviceId)) {
             _mostrarModalAvisoSolicitud(
-                `Inconsistencia detectada en esta solicitud: el servicio inferido por el nombre del producto (${serviceId}) ` +
-                `no coincide con el que estaba guardado (${data.serviceId}). ` +
+                `Inconsistencia detectada en esta solicitud: el servicio inferido por el nombre del producto (${_svcCode(serviceId)}) ` +
+                `no coincide con el que estaba guardado (${_svcCode(data.serviceId)}). ` +
                 `Se usará el inferido por nombre — verifica manualmente.`
             )
         }
@@ -2395,18 +2403,21 @@ async function cargarDesdeSolicitud(data) {
         // Si el borrador llega vacío pero hay datos para inferir, construir la línea aquí
         // y persistirla — el borrador es la fuente de verdad única para solicitudes no-sfcom
         if (draft.length === 0) {
-            const serviceIdInferido = _inferirServiceId(data.level, data.day) || data.serviceId || null
-            if (serviceIdInferido && servicios.find(s => s.id === serviceIdInferido)) {
-                const svc          = servicios.find(s => s.id === serviceIdInferido)
-                const dispServicio = disponibilidad.filter(d => d.service_id === serviceIdInferido)
+            // _inferirServiceId returns text service_code; data.serviceId is integer string after migración
+            const serviceCode = _inferirServiceId(data.level, data.day) || null
+            const svc = serviceCode
+                ? servicios.find(s => s.service_code === serviceCode)
+                : (data.serviceId ? servicios.find(s => s.id === parseInt(data.serviceId)) : null)
+            if (svc) {
+                const dispServicio = disponibilidad.filter(d => d.service_id === svc.id)
                 const venueDisp    = dispServicio.find(d => d.venue_id === data.venueId)
                 const catUrl       = dispServicio[0]?.venue_slug && dispServicio[0]?.event_type
                     ? `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${dispServicio[0].venue_slug}&et=${dispServicio[0].event_type}`
                     : null
                 draft = [{
-                    service_id:         serviceIdInferido,
-                    service_name:       svc?.name || serviceIdInferido,
-                    day:                svc?.day || parseInt(data.day) || null,
+                    service_id:         svc.id,
+                    service_name:       svc.name || svc.service_code,
+                    day:                svc.day || parseInt(data.day) || null,
                     venue_id:           data.venueId || null,
                     venue_display_name: venueDisp?.venue_display_name || null,
                     slots:              parseInt(data.slots) || null,
@@ -3163,7 +3174,7 @@ if (!_clienteParam && (_solName || _solServiceId)) {
     }
     if (_solServiceId) {
         const svcUpper = _solServiceId.toUpperCase()
-        const existe   = servicios.find(s => s.id === svcUpper)
+        const existe   = servicios.find(s => s.service_code === svcUpper)
         if (existe) {
             selectServicio.value = existe.id
             selectServicio.dispatchEvent(new Event('change'))
@@ -3176,7 +3187,7 @@ if (!_clienteParam && (_solName || _solServiceId)) {
                 }, 100)
             } else {
                 // Auto-seleccionar si solo hay un venue para este servicio
-                const venuesServicio = disponibilidad.filter(d => d.service_id === svcUpper)
+                const venuesServicio = disponibilidad.filter(d => d.service_id === existe.id)
                 if (venuesServicio.length === 1) {
                     setTimeout(() => {
                         selectProveedor.value = venuesServicio[0].venue_id

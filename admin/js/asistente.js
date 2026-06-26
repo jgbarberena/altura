@@ -1,6 +1,6 @@
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
-import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador, anioTemporada } from './utils.js'
+import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador, anioTemporada, serviceCodesToIds } from './utils.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
@@ -80,12 +80,12 @@ function disponibilidadParaAsistente(serviceIds, primaryDay, personas) {
     const groups  = {}
 
     for (const sid of serviceIds) {
-        const rows   = disponibilidad.filter(d => d.service_id === sid)
+        const rows   = disponibilidad.filter(d => d.service_code === sid)
         const diaNum = parseInt(sid.match(RE_DIA)?.[1]) || null
 
         for (const row of rows) {
             const activas   = (todasReservas || []).filter(r =>
-                r.venue_id === row.venue_id && r.service_id === sid && r.status !== 'Cancelada'
+                r.venue_id === row.venue_id && r.service_id === row.service_id && r.status !== 'Cancelada'
             )
             const confirmed = activas.filter(r => r.status === 'Confirmada').reduce((s, r) => s + (r.slots || 0), 0)
             const pending   = activas.filter(r => r.status === 'Pendiente').reduce((s, r) => s + (r.slots || 0), 0)
@@ -189,7 +189,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         <div style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:12px;color:#444;display:grid;grid-template-columns:1fr 1fr;gap:5px 16px">
             <div><strong>Cliente:</strong> ${solicitud.client_name || '—'}</div>
             <div><strong>Contacto:</strong> ${contacto}</div>
-            <div><strong>Evento:</strong> ${solicitud.proposal_draft?.[0]?.service_name || solicitud.proposal_draft?.[0]?.service_id || 'No especificado'}</div>
+            <div><strong>Evento:</strong> ${solicitud.proposal_draft?.[0]?.service_name || 'No especificado'}</div>
             <div><strong>Día:</strong> ${solicitud.proposal_draft?.[0]?.day ? solicitud.proposal_draft[0].day + ' julio' : 'No especificado'}</div>
             <div><strong>Personas:</strong> ${solicitud.proposal_draft?.[0]?.slots || 'No especificado'}</div>
             <div><strong>Idioma:</strong> ${solicitud.language || 'desconocido'}</div>
@@ -388,7 +388,9 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
     const meta       = parsearMetaComments(solicitud.comments)
     const svcPrinc   = expandirServiceIds(draft0?.service_name || null, draft0?.day || null, meta)
     const svcExtra   = meta.extra.flatMap(h => expandirServiceIds(h, null, { dias: null, flexible: true, extra: [] }))
-    const svcFromId  = (!svcPrinc.length && !svcExtra.length && draft0?.service_id) ? [draft0.service_id] : []
+    const svcFromId  = (!svcPrinc.length && !svcExtra.length && draft0?.service_id != null)
+        ? [_getDisponibilidad()?.find(d => d.service_id === draft0.service_id)?.service_code].filter(Boolean)
+        : []
     const serviceIds = [...new Set([...svcPrinc, ...svcExtra, ...svcFromId])]
 
     const comentarioLimpio = (solicitud.comments || '')
@@ -406,7 +408,7 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
         solicitud: {
             tipo:                tipoSolicitud,
             nombre:              solicitud.client_name  || null,
-            evento:              draft0?.service_name || draft0?.service_id || null,
+            evento:              draft0?.service_name || null,
             dia:                 draft0?.day   || null,
             personas:            draft0?.slots || null,
             idioma:              solicitud.language || 'desconocido',
@@ -534,13 +536,13 @@ export async function abrirProcesarEmail() {
     let servicios = []
     const { data: dispData } = await _supabase
         .from('availability_panel')
-        .select('service_id, event_type')
-        .order('service_id')
+        .select('service_id, service_code, event_type, day')
+        .order('service_code')
     const svcMap = new Map()
     for (const d of (dispData || [])) {
         if (svcMap.has(d.service_id)) continue
-        const diaNum = parseInt(d.service_id.match(/_(\d+)$/)?.[1]) || null
-        const etLabel = {encierro:'Encierro',chupinazo:'Chupinazo',procesion:'Procesión',gigantes:'Gigantes',pobre_de_mi:'Pobre de Mí'}[d.event_type] || d.event_type || d.service_id
+        const diaNum = d.day || null
+        const etLabel = {encierro:'Encierro',chupinazo:'Chupinazo',procesion:'Procesión',gigantes:'Gigantes',pobre_de_mi:'Pobre de Mí'}[d.event_type] || d.event_type || d.service_code
         svcMap.set(d.service_id, { service_id: d.service_id, label: diaNum ? `${etLabel} - día ${diaNum}` : etLabel, event_type: d.event_type, day: diaNum })
     }
     servicios = [...svcMap.values()].sort((a, b) => {
@@ -610,8 +612,8 @@ export async function abrirProcesarEmail() {
         wrap.querySelectorAll('.mn-svc').forEach(sel => {
             sel.addEventListener('change', e => {
                 const idx = parseInt(e.target.dataset.idx)
-                const svc = servicios.find(s => s.service_id === e.target.value)
-                modalDraft[idx].service_id   = e.target.value || null
+                const svc = servicios.find(s => s.service_id === parseInt(e.target.value))
+                modalDraft[idx].service_id   = parseInt(e.target.value) || null
                 modalDraft[idx].service_name = svc?.label || null
                 modalDraft[idx].day          = svc?.day || modalDraft[idx].day
                 _rebind()
@@ -654,7 +656,7 @@ export async function abrirProcesarEmail() {
             const sl    = row.querySelector('.mn-slots')
             const venue = row.querySelector('.mn-venue')
             const price = row.querySelector('.mn-price')
-            if (sel)   { const svc = servicios.find(s => s.service_id === sel.value); modalDraft[idx].service_id = sel.value||null; modalDraft[idx].service_name = svc?.label||null }
+            if (sel)   { const svc = servicios.find(s => s.service_id === parseInt(sel.value)); modalDraft[idx].service_id = parseInt(sel.value)||null; modalDraft[idx].service_name = svc?.label||null }
             if (dia && !dia.readOnly) modalDraft[idx].day               = parseInt(dia.value)     || null
             if (sl)                   modalDraft[idx].slots             = parseInt(sl.value)      || null
             if (venue)                modalDraft[idx].venue_display_name = venue.value.trim()     || null

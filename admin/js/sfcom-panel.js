@@ -33,9 +33,9 @@ async function cargarDatos() {
         { data: clientes,       error: errC }
     ] = await Promise.all([
         supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,origin_ref').order('id', { ascending: false }),
-        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status'),
+        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status'),
         supabase.from('reservation_requests').select('id,client_name,client_email,source,proposal_draft,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
-        supabase.from('services').select('id,event_type,day,description'),
+        supabase.from('services').select('id,service_code,event_type,day,description'),
         supabase.from('venues').select('id,display_name,provider_id'),
         supabase.from('clients').select('id,name')
     ])
@@ -110,7 +110,7 @@ function renderSolicitudes() {
         const d0         = s.proposal_draft?.[0] ?? null
         const fecha      = s.created_at ? new Date(s.created_at).toLocaleDateString('es-ES') : '—'
         const svcLabel   = d0?.service_id && servicios[d0.service_id]
-            ? (servicios[d0.service_id].description || d0.service_id)
+            ? (servicios[d0.service_id].description || servicios[d0.service_id].service_code || d0.service_name || '—')
             : (d0?.service_name ? `${d0.service_name}${d0.day ? ' día ' + d0.day : ''}` : '—')
         const precioUnit = d0?.price ? fmt(parseFloat(d0.price)) : '—'
         const total      = (d0?.price && d0?.slots) ? fmt(parseFloat(d0.price) * d0.slots) : '—'
@@ -147,7 +147,7 @@ function renderReservas() {
         const estadoClass = r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'
         const eventoLabel = svc?.event_type
             ? svc.event_type.charAt(0).toUpperCase() + svc.event_type.slice(1).replace(/_/g, ' ')
-            : (r.service_id ?? '—')
+            : svc?.service_code ?? '—'
         const diaLabel = svc?.day ?? '—'
         const sfcomNombre = avail?.sfcom_service_name || '—'
 
@@ -208,8 +208,8 @@ function renderListings() {
         const stockRealTxt = stockSfcom.has(sfKey) ? stockSfcom.get(sfKey) : (d.sfcom_status === 'confirmed' ? '…' : '—')
         const eventoLabel = svc?.event_type
             ? svc.event_type.charAt(0).toUpperCase() + svc.event_type.slice(1).replace(/_/g, ' ')
-            : (d.service_id ?? '—')
-        const svcLabel = svc ? `${eventoLabel} ${svc.day ?? ''}`.trim() : (d.service_id ?? '—')
+            : d.service_code ?? '—'
+        const svcLabel = svc ? `${eventoLabel} ${svc.day ?? ''}`.trim() : (d.service_code ?? '—')
 
         return `<tr>
             <td>${d.sfcom_service_name || '—'}</td>
@@ -306,7 +306,7 @@ document.getElementById('btnExportListings')?.addEventListener('click', () => {
     })
     exportTable(rows, [
         { key: 'sfcom_service_name', label: 'Producto sfcom' },
-        { key: 'service_id',         label: 'Servicio' },
+        { key: 'service_code',        label: 'Servicio' },
         { key: 'venue_id',           label: 'Venue' },
         { key: 'sfcom_status',       label: 'Estado',
           fmt: v => v === 'confirmed' ? 'Activo' : v === 'pending' ? 'Pendiente alta' : v === 'deactivation_pending' ? 'Pendiente baja' : v ?? '—' },
@@ -323,7 +323,7 @@ document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () 
         { key: 'origin_ref', label: 'Referencia sfcom' },
         { key: 'id',              label: 'ID reserva' },
         { key: 'client_id',       label: 'Cliente' },
-        { key: 'service_id',      label: 'Servicio' },
+        { key: 'service_id', label: 'Servicio', fmt: v => todosLosDatos.servicios[v]?.service_code ?? String(v) },
         { key: 'venue_id',        label: 'Venue' },
         { key: 'slots',           label: 'Plazas' },
         { key: 'price_per_slot',  label: 'Precio neto/plaza', fmt: v => fmt(v) },

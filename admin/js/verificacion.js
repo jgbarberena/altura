@@ -46,7 +46,7 @@ async function _cargarDatos(supabase) {
         { data: payments,     error: ePayments }
     ] = await Promise.all([
         supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, origin_ref, total_amount'),
-        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, total_slots, billing_model, price_per_slot, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name'),
+        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, service_code, total_slots, billing_model, price_per_slot, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name'),
         supabase.from('clients').select('id, name'),
         supabase.from('venues').select('id, provider_id'),
         supabase.from('services').select('id'),
@@ -117,7 +117,7 @@ function _verificarBD(dados) {
             .filter(r => r.venue_id === avail.venue_id && r.service_id === avail.service_id && r.status !== 'Cancelada')
             .reduce((s, r) => s + (r.slots ?? 0), 0)
         if (plazas > avail.total_slots)
-            errores.push(`Sobrereserva: ${avail.venue_id} / ${avail.service_id} — ${plazas} plazas sobre ${avail.total_slots} contratadas`)
+            errores.push(`Sobrereserva: ${avail.venue_id} / ${avail.service_code ?? avail.service_id} — ${plazas} plazas sobre ${avail.total_slots} contratadas`)
     }
 
     // Variation_id duplicado en sfcom (dos pares con el mismo producto+variación)
