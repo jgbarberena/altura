@@ -48,6 +48,7 @@ let _cargandoSolicitud = false
 // ===== ESTADO DEL BLOQUE DE CONVERSIÓN DE PROPUESTA =====
 let _modoConversionActivo  = false
 let _solicitudConversionId = null   // UUID de la solicitud en conversión
+let _solicitudWEBRef       = null   // source WEB de la solicitud sfcom ('WEBxxx_yyy') — para charges y origin_ref
 let _draftConversion       = []     // líneas con campo estado ('pendiente'|'hecha'|'descartada')
 let _lineaActualIndex      = null   // índice de la línea cargada en bloque 2
 
@@ -658,6 +659,12 @@ function cargarReservaEnFormulario(reserva) {
     document.getElementById('bloque-reserva').scrollIntoView({ behavior: 'smooth' })
 }
 
+async function _syncAndWarn(venueId, servicioId) {
+    const sr = await syncStockToSfcom(supabase, venueId, servicioId)
+    if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+    if (sr && !sr.ok) mostrarToast(`⚠️ Error al sincronizar stock sfcom (${venueId}/${servicioId}): ${sr.error ?? 'error desconocido'}`)
+}
+
 async function cambiarEstadoSeleccionadas(nuevoEstado) {
     const ids = [...document.querySelectorAll('.chk-reserva:checked')]
         .map(chk => chk.closest('tr').dataset.id)
@@ -754,9 +761,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             for (const r of sfcomCanceladas) {
                 await supabase.from('charges').delete()
                     .eq('client_id', r.client_id)
-                    .eq('comments', 'Cobrado vía sfcom')
-                    .gte('amount', parseFloat(r.total_amount) - 0.005)
-                    .lte('amount', parseFloat(r.total_amount) + 0.005)
+                    .eq('comments', `${r.origin_ref} Cobrado vía sfcom`)
             }
         }
         todasReservas = todasReservas.map(r =>
@@ -768,8 +773,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             const provId = _getProviderIdFromVenue(venueId)
             if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
             if (pairsConCambioSet.has(`${venueId}|${servicioId}`) && sfcomResultEstado === 'sync') {
-                const sr = await syncStockToSfcom(supabase, venueId, servicioId)
-                if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+                await _syncAndWarn(venueId, servicioId)
             }
         }
         cargarReservasCliente(clienteActual.id)
@@ -889,8 +893,7 @@ async function eliminarSeleccionadas() {
         const provId = _getProviderIdFromVenue(venueId)
         if (provId) await persistirPagosProveedor(supabase, provId, todasReservas, disponibilidad)
         if (!cancelada && sfcomResultElim === 'sync') {
-            const sr = await syncStockToSfcom(supabase, venueId, servicioId)
-            if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+            await _syncAndWarn(venueId, servicioId)
         }
     }
 
@@ -1197,8 +1200,7 @@ btnAnadir.addEventListener('click', async () => {
         }
         for (const p of pairsParaModal) {
             if (sfcomResultEdit === 'sync') {
-                const sr = await syncStockToSfcom(supabase, p.venueId, p.serviceId)
-                if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? p.venueId}: más reservas que plazas disponibles`)
+                await _syncAndWarn(p.venueId, p.serviceId)
             }
         }
         await cargarReservasCliente(clienteActual.id)
@@ -1274,7 +1276,7 @@ btnAnadir.addEventListener('click', async () => {
                 due_date:       hoy,
                 collected:      true,
                 collected_date: hoy,
-                comments:       'Cobrado vía sfcom',
+                comments:       `${solicitudOriginRef} Cobrado vía sfcom`,
                 is_final:       false
             })
             if (errChargeSfcom) console.error('Error al crear cargo sfcom:', errChargeSfcom.message)
@@ -1284,8 +1286,7 @@ btnAnadir.addEventListener('click', async () => {
         const provIdNuevo = _getProviderIdFromVenue(venueId)
         if (provIdNuevo) await persistirPagosProveedor(supabase, provIdNuevo, todasReservas, disponibilidad)
         if (sfcomResultNuevo === 'sync') {
-            const sr = await syncStockToSfcom(supabase, venueId, servicioId)
-            if (sr?.sobrereserva) mostrarToast(`⚠️ Sobrereserva en ${sr.serviceName ?? venueId}: más reservas que plazas disponibles`)
+            await _syncAndWarn(venueId, servicioId)
         }
         await cargarReservasCliente(clienteActual.id)
         actualizarProveedores()
@@ -2124,7 +2125,7 @@ window.confirmarReorganizacion = async function() {
     })
     for (const par of sfcomPares) {
         const [venId, svcId] = par.split('|')
-        if (sfcomResultReorg === 'sync') await syncStockToSfcom(supabase, venId, svcId)
+        if (sfcomResultReorg === 'sync') await _syncAndWarn(venId, svcId)
     }
 
     cerrarPanelReorganizar()
@@ -2419,7 +2420,7 @@ async function cargarDesdeSolicitud(data) {
         if (draft.length >= 2) {
             // CASO B: bloque de conversión — no se rellena el bloque 2 ahora
             const nombreMostrar = clienteResuelto?.name || clienteResuelto?.id || data.nombre || 'cliente'
-            _initBloqueConversion(data.id, draft, nombreMostrar)
+            _initBloqueConversion(data.id, data.source || null, draft, nombreMostrar)
             // Si todas las líneas ya estaban resueltas (entrada desde sesión anterior), finalizar directamente
             if (draft.every(l => l.estado === 'hecha' || l.estado === 'descartada')) {
                 await _finalizarConversion()
@@ -2715,9 +2716,10 @@ function _resumeLinea(l) {
     return partes.join(' · ') || '—'
 }
 
-function _initBloqueConversion(solicitudId, draft, nombreCliente) {
+function _initBloqueConversion(solicitudId, webRef, draft, nombreCliente) {
     _modoConversionActivo  = true
     _solicitudConversionId = solicitudId
+    _solicitudWEBRef       = webRef || null
     _draftConversion       = draft.map(l => ({ ...l, estado: l.estado || 'pendiente' }))
     _lineaActualIndex      = null
 
@@ -2807,7 +2809,7 @@ function _renderTablaConversion() {
             if (_lineaActualIndex === idx) {
                 _lineaActualIndex = null
                 limpiarFormularioReserva()
-                solicitudOriginRef = _solicitudConversionId
+                solicitudOriginRef = _solicitudWEBRef
             }
             await _persistirEstadoLineas()
             const todasResueltas = _draftConversion.every(l => l.estado === 'hecha' || l.estado === 'descartada')
@@ -2822,7 +2824,7 @@ function _renderTablaConversion() {
 
 function _cargarLineaEnBloque2(linea) {
     limpiarFormularioReserva()
-    solicitudOriginRef = _solicitudConversionId  // restaurar tras limpiar
+    solicitudOriginRef = _solicitudWEBRef  // restaurar tras limpiar
 
     if (linea.service_id) {
         selectServicio.value = linea.service_id
@@ -2862,7 +2864,7 @@ async function _onLineaGuardada() {
         solicitudOriginRef = null
         await _finalizarConversion()
     } else {
-        solicitudOriginRef = _solicitudConversionId  // mantener para próximas líneas
+        solicitudOriginRef = _solicitudWEBRef  // mantener para próximas líneas
         _renderTablaConversion()
     }
 }
@@ -2894,6 +2896,7 @@ async function _finalizarConversion() {
 
     _modoConversionActivo  = false
     _solicitudConversionId = null
+    _solicitudWEBRef       = null
 }
 
 // ===== ASISTENTE DE BIENVENIDAS =====
@@ -3041,9 +3044,11 @@ function _onBienvenidaEnviada() {
         comments:       sol.comments || '',
         proposal_draft: sol.proposal_draft || []
     })
-    // En modo conversión el UUID ya queda en solicitudOriginRef vía _initBloqueConversion.
-    // Para caso A (0-1 líneas) cargarDesdeSolicitud no lo establece, así que lo forzamos aquí.
-    if (!_modoConversionActivo) solicitudOriginRef = sol.id
+    // Para web/email (no sfcom): cargarDesdeSolicitud deja solicitudOriginRef = null,
+    // así que guardamos el UUID de la solicitud como referencia.
+    // Para sfcom: cargarDesdeSolicitud ya puso el WEB ref — no sobreescribir.
+    // Para multi-línea: _modoConversionActivo = true — no aplica.
+    if (!_modoConversionActivo && !solicitudOriginRef) solicitudOriginRef = sol.id
 })()
 
 // Cola de bienvenidas enviada desde el panel de control

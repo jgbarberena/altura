@@ -227,11 +227,11 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 ### Seguridad (RLS)
 
-Todas las tablas tienen RLS habilitado excepto `assistant_logs` (desactivado, ver deuda 7.1).
+Todas las tablas tienen RLS habilitado.
 
 | Tabla | anon | authenticated | Notas |
 |---|---|---|---|
-| `assistant_logs` | sin RLS | sin RLS | RLS desactivado |
+| `assistant_logs` | ALL bloqueado | ALL permitido | RLS habilitado jun 2026 |
 | `availability` | SELECT bloqueado | ALL permitido | Las vistas `service_availability` y `catalogo_publico` usan `security_invoker=false` para poder ser leídas por anon sin exponer la tabla directamente |
 | `charges` | ALL bloqueado | ALL permitido | |
 | `clients` | SELECT bloqueado | ALL permitido | |
@@ -370,7 +370,9 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 **Persistencia entre sesiones:** si Paula sale antes de terminar, el estado (`hecha`/`descartada`) de cada línea queda guardado en `proposal_draft`. Al volver a entrar con el mismo `solicitud_id`, el bloque se reconstruye con los estados guardados.
 
-**Estado del módulo:** 4 variables de módulo: `_modoConversionActivo`, `_solicitudConversionId`, `_draftConversion[]`, `_lineaActualIndex`.
+**Estado del módulo:** 5 variables de módulo: `_modoConversionActivo`, `_solicitudConversionId`, `_solicitudWEBRef`, `_draftConversion[]`, `_lineaActualIndex`.
+
+`_solicitudWEBRef` preserva el campo `source` de la solicitud sfcom (`'WEBxxx_yyy'`) durante todo el flujo de conversión multi-línea. `limpiarFormularioReserva()` resetea `solicitudOriginRef = null` al cargar cada línea nueva; sin esta variable, las reservas a partir de la segunda perdían el WEB ref y se guardaban con `origin_ref = null` en lugar del ref correcto. Se restaura en `_cargarLineaEnBloque2`, en el handler de "Descartar" y en `_onLineaGuardada`. `_initBloqueConversion` lo recibe como segundo parámetro (`webRef`) desde el call site que pasa `data.source || null`.
 
 **También acepta `?solicitud_id=uuid`** para casos A (0 o 1 línea en el borrador). Si el borrador llega vacío pero la solicitud tiene `level`/`day`/`service_id`, `cargarDesdeSolicitud` construye la línea de borrador en el momento y la persiste en Supabase antes de proceder como Caso A. El borrador es la fuente de verdad única para todo flujo no-sfcom: `_inferirServiceId` solo se usa para construir esa línea cuando falta, nunca para rellenar directamente el bloque 2.
 
@@ -844,16 +846,9 @@ Auditado jun 2026: tras el INSERT de un cobro nuevo, `formulario.js` llama a `re
 
 ---
 
-**PDFs en Supabase Storage quedan huérfanos al borrar reservas o charges — diferido a Fase 9.**
+**PDFs en Supabase Storage quedan huérfanos al borrar reservas o charges — diferido a Fase 10.**
 
-Verificado jun 2026. No hay ningún `storage.from(...).remove(...)` en ningún flujo de eliminación del panel. Lo que queda huérfano:
-
-- `proposal_path` en reservas borradas: en cualquier eliminación (`eliminarSeleccionadas`), las reservas se borran pero sus PDFs de propuesta en el bucket `proposals` no. Los paths se pierden con la fila.
-- `invoice_path` en charges borrados: solo en el flujo `isLastReservation`, donde se eliminan todos los `charges` del cliente (línea 860 de `formulario.js`). Los PDFs de facturas en el bucket `invoices` quedan inaccesibles.
-
-Impacto: muy bajo. PDFs de ~100KB cada uno; con el volumen del proyecto no van a afectar al límite de Storage de Supabase. Los archivos son inaccesibles pero no causan ningún problema funcional para Paula.
-
-Fix (diferido a Fase 9): en `eliminarSeleccionadas` de `formulario.js`, antes de los DELETEs: (1) recoger `proposal_path` de `todasReservas.filter(r => ids.includes(r.id))`, llamar a `storage.from('proposals').remove([...paths])`; (2) en el caso `isLastReservation`, ampliar el SELECT de charges (línea 816) para incluir `invoice_path`, recoger los no nulos y llamar a `storage.from('invoices').remove([...paths])`. Unas 15 líneas en total. Se abordará junto con la gestión de Storage en Fase 9.
+Verificado jun 2026. No hay ningún `storage.from(...).remove(...)` en ningún flujo de eliminación. `proposal_path` de reservas borradas y `invoice_path` de charges borrados quedan inaccesibles en los buckets `proposals` e `invoices`. Impacto muy bajo (volumen pequeño). El fix (unas 15 líneas en `formulario.js`) y la gestión de Storage desde el panel se abordarán juntos en Fase 10. Ver §9 Fase 10 para el diseño detallado.
 
 ---
 
@@ -923,11 +918,11 @@ Edge case menor aceptado: si un venue quedó sin availability en una sesión ant
 
 ---
 
-**En móvil, el botón ✕ para cerrar el detalle de una solicitud desaparece al hacer scroll.**
+**Mejora general CSS mobile para `solicitudes.html`.**
 
-El panel de detalle es un bottom sheet (`position: fixed; max-height: 85vh; overflow-y: auto`). El botón ✕ (`#btnCerrarDetalle`, en `solicitudes.js:1091`) está dentro del header de `.sol-detalle-inner`, que forma parte del área scrollable. Cuando el contenido es largo y Paula hace scroll hacia abajo, el header (y con él el ✕) desaparece fuera de la ventana. La única salida conocida es recargar la página, que devuelve a la vista de listado.
+El CSS actual de `solicitudes.html` en móvil necesita revisión. Aunque el header tiene `position: sticky` aplicado (no desaparece al hacer scroll), el layout en general tiene problemas: el selector de estado pasa a segunda o tercera fila y queda visualmente mal colocado junto a otros controles. No se ha auditado de forma exhaustiva — puede haber más zonas afectadas. Prioridad media: Paula lo usa desde el móvil con frecuencia.
 
-Fix: extraer el ✕ del flujo scrollable. Opciones: (a) `position: sticky; top: 0` en `.sol-detalle-header` dentro del contexto del bottom sheet — requiere `background` opaco para no transparentar el contenido que pasa por detrás; o (b) mover el ✕ a un overlay `position: absolute` dentro del contenedor fijo, fuera de `.sol-detalle-inner`. La opción (a) es más sencilla.
+Acción antes de intervenir: revisar en incógnito/caché limpia qué partes del layout están rotas, documentar capturas de pantalla de los casos concretos y abordar el CSS como una sesión dedicada. Incluye también revisar el CSS mobile del resto del panel (§7.2 deuda general de CSS mobile).
 
 ---
 
@@ -1017,27 +1012,11 @@ Implementado como paso 0 de Fase 2. La función soporta dos modos (`tipo: 'texto
 
 ---
 
-**Pestañas "Detalles del servicio" vs "Detalles del par" en el formulario de disponibilidad (`proveedores.js`).**
-
-Actualmente el formulario de un par venue+servicio muestra siempre en paralelo (a) la información general del servicio (`services.description`, `services.image_url`) y (b) la información específica del par (`availability.description`, `availability.access_instructions`, `availability.photos`). Para servicios de balcón, la zona de par es la que importa; para servicios "extra" (visitas guiadas, charlas, apartado, corralillos, etc.), lo relevante es la zona de servicio, y tener la zona de par visible por defecto solo confunde.
-
-**Diseño acordado:**
-- Dos pestañas tipo `.venue-tab` (reutilizar el patrón ya existente en `proveedores.js` para alternar entre venues) bajo el encabezado "Detalles de {SERVICE_ID} para {VENUE_ID}": "Detalles del servicio" | "Detalles del par".
-- La pestaña activa por defecto depende del tipo de servicio: balcón → "par"; extra → "servicio".
-- Al cambiar a la pestaña no activa por defecto: mostrar un aviso breve e informativo (un solo clic para descartar, no bloqueante). Si es balcón: "Editar aquí afecta a TODOS los proveedores y días de este servicio, no solo a este balcón." Si es extra: "Si hay contenido aquí, anula la información general del servicio para este caso concreto."
-- Indicador visual (punto/badge) en cada pestaña si esa zona ya tiene contenido (`services.description`/`image_url` para "servicio"; `availability.description`/`access_instructions`/`photos` para "par"), para que no pase desapercibido un override silencioso.
-
-**Restricciones:** solo visibilidad/UX; el comportamiento de guardado no cambia. Paula puede editar cualquiera de las dos zonas siempre. La pestaña de servicio edita `services` (afecta a todos los pares de ese service_id) — verificar que el guardado ya apunta a la tabla correcta.
-
-**Criterio de "balcón" — ✅ Decidido:** usar `venueActual.venue_type === 'balcon'`. Ya disponible en `proveedores.js` sin constante adicional. La alternativa `TIPOS_BALCON.includes(event_type)` es semánticamente más precisa pero requiere extraer o duplicar la constante de `panel.js:288`; diferido a Fase 9 si hay refactor de `utils.js`. Para el propósito del tab por defecto (UX), el tipo de venue es suficiente.
+**✅ RESUELTO — Pestañas "Detalles del servicio" vs "Detalles del par" en `proveedores.js` (jun 2026).** El formulario de disponibilidad tiene las pestañas implementadas: `avail-panel-par` y `avail-panel-servicio` con función `_selectAvailTab(tabName)`. La pestaña activa por defecto depende de `venueActual.venue_type === 'balcon'`. Al cambiar a la pestaña no predeterminada aparece un aviso explicativo. Cada pestaña tiene un badge indicador de contenido (`badge-tab-par`, `badge-tab-servicio`). El guardado ya apuntaba a las tablas correctas en ambos casos.
 
 ---
 
-**Carousel de fotos: imágenes no uniformes rompen el layout.**
-
-Las fotos subidas desde iPhone pueden ser landscape 4:3, portrait 9:16 u otros ratios. El carousel actual no tiene contenedor de tamaño fijo, por lo que la interfaz "salta" al navegar entre fotos de distintos ratios.
-
-Fix: envolver la imagen en un contenedor `aspect-ratio: 16/9; overflow: auto`. La imagen con `width: 100%; height: auto; display: block` encaja perfectamente en 16:9, sobresale por abajo en imágenes más altas (scroll vertical) y por la derecha en imágenes más anchas que 16:9 (caso raro; scroll horizontal). CSS-only, sin JS. Aplicar también al carousel del catálogo público cuando se toque ese código.
+**✅ RESUELTO — Carousel de fotos: `aspect-ratio: 16/9` aplicado (jun 2026).** `.photo-carousel-img-wrap` tiene `aspect-ratio: 16/9` en `admin.css`. El catálogo público pendiente de revisión cuando se toque ese código.
 
 ---
 
@@ -1049,11 +1028,11 @@ Fix: añadir un botón "⬆ Subir" en el footer del carousel junto a `🗑`. Al 
 
 ---
 
-**CSS del panel en móvil — tarjetas de datos económicos y otras secciones con layout incorrecto.**
+**CSS del panel en móvil — deuda de revisión general.**
 
-En dispositivos móviles varias partes del panel de administración no se ven correctamente. Confirmado (aunque puede haber factor de caché): las tarjetas de KPIs económicos del panel principal y posiblemente otras secciones. No se ha realizado una auditoría completa del CSS móvil — puede haber más zonas afectadas. Prioridad media: el panel es de uso principalmente en desktop, pero Paula lo usa desde el móvil.
+El CSS del panel no está auditado en móvil. Zonas con problemas conocidos o sospechados: tarjetas de KPIs económicos de `panel.html`, layout de `solicitudes.html` en general (ver §7.2 nota anterior sobre solicitudes.html). No se ha hecho una revisión exhaustiva. Prioridad media: Paula usa el panel desde el móvil con frecuencia.
 
-Acción antes de intervenir: reproducir con caché limpia (Ctrl+Shift+R o modo incógnito) para confirmar qué es real y qué es caché. Documentar pantallas específicas afectadas. No abordar sin ese diagnóstico previo.
+Acción antes de intervenir: recorrer las páginas principales en incógnito (caché limpia) en móvil, documentar capturas de pantalla de los casos concretos y abordar el CSS como una sesión dedicada.
 
 ---
 
@@ -1238,10 +1217,6 @@ Resuelto al implementar los modales de mensaje directo (jun 2026). El modal de r
 
 ---
 
-**`service_name` en el borrador — parcialmente verificado.**
-
-En `solicitudes.js` y `asistente.js` confirmado consistente (siempre nombre legible del evento, ej: "Encierro - día 8"). En `formulario.js` no auditado explícitamente — puede que `svc.name` sin el día siga siendo el formato. Pendiente verificar si el bloque de pre-fill de borrador en `formulario.js` genera `service_name` en el mismo formato.
-
 ---
 
 **`formulario.js` demasiado grande (~2600 líneas).**
@@ -1328,8 +1303,7 @@ Auditoría exhaustiva línea a línea del panel completo realizada en jun 2026. 
 
 #### Crítico — pueden corromper datos o bloquear completamente
 
-**`verificarConsistenciaFinanciera` puede borrar cobros con historial contable sin doble confirmación (`panel.js`).**
-El botón "Corregir automáticamente" ejecuta `DELETE FROM charges WHERE client_id = X` para todos los clientes detectados como huérfanos. Si un cliente canceló reservas pero ya había pagado un adelanto (cobro con `collected=true` o `invoice_number`), ese cobro se borra. El modal muestra el aviso `tieneHistorial`, pero no excluye a esos clientes del corrector — solo advierte antes de ejecutar. Fix: excluir del corrector automático a cualquier huérfano con `tieneHistorial=true` y requerir acción manual.
+**✅ RESUELTO — `verificarConsistenciaFinanciera` excluye clientes con historial contable (jun 2026).** `verificacion.js` acumula los huérfanos con `tieneHistorial=true` en un array `manuales` con `continue` antes de ejecutar cualquier DELETE. Solo se borran automáticamente los que no tienen historial. Los clientes con historial aparecen en el modal con instrucción de acción manual.
 
 **✅ RESUELTO — Race condition en numeración de facturas (`factura.js:96-112`, `propuesta.js:81-97`).**
 `calcularSiguienteNumero` lee `MAX(invoice_number)` y devuelve `+1`. Aplicado en jun 2026: `ALTER TABLE charges ADD CONSTRAINT uq_charges_invoice_number UNIQUE (invoice_number)`. En PostgreSQL, NULLs no colisionan con el constraint. Si dos sesiones intentan emitir la misma factura simultáneamente, el segundo UPDATE falla con error visible para Paula. `reservations.proposal_number` no admite UNIQUE (varias reservas comparten el mismo número de propuesta). Adicionalmente, `propuesta.js` cambiado de `console.error` a `alert` para que el error sea visible.
@@ -1340,11 +1314,13 @@ El fix estaba aplicado: `solicitudOriginRef = null` en línea 193. El comentario
 **✅ RESUELTO — `sfcom-panel.js` usaba `d.stockReal` pero el objeto de discrepancia tiene `d.stockSfcom` (`sfcom-panel.js:282`).**
 La columna "Stock real" en la tabla de discrepancias del panel sfcom siempre mostraba `undefined`. Corregido en jun 2026: `d.stockReal` → `d.stockSfcom`.
 
-**`_insertarMensaje` no protege contra escrituras concurrentes al log de conversación (`solicitudes.js:132-151`).**
-Lee `conversation_notes`, parsea, añade mensaje, persiste. Si dos eventos se disparan casi simultáneamente (asistente cierra modal mientras Paula guarda una edición), el segundo UPDATE sobreescribe el primero sin control de versión. Fix: usar optimistic locking o encolar los writes.
+**ACEPTADO — `_insertarMensaje` sin protección concurrente (`solicitudes.js:132-151`).** En teoría puede haber race condition si dos writes llegan simultáneamente. En práctica es imposible: el asistente es un modal que bloquea la UI, y la edición de mensajes del log también bloquea su área. No hay dos rutas que puedan dispararse a la vez en una UI single-user con modales. No vale la pena añadir complejidad.
 
-**`cambiarEstadoSeleccionadas`: elimina todos los charges sfcom con el mismo importe del cliente al cancelar una reserva sfcom (`formulario.js:~753`).**
-El `DELETE` en `charges` usa `comments = 'Cobrado vía sfcom'` más filtro de importe `gte(amount − 0.005)` / `lte(amount + 0.005)`. Si el mismo cliente tiene varias reservas sfcom al mismo precio (frecuente en grupos que compran el mismo tipo de balcón), se eliminan todos los charges que caen en ese rango, no solo el de la reserva cancelada. Impacto: cancelar una reserva de un grupo de 4 personas con el mismo balcón y precio borra los 4 cargos sfcom del cliente. Fix: vincular el `origin_ref` de la reserva al charge en el momento de su creación (por ejemplo incluyéndolo en `comments` o en un campo dedicado) para poder identificarlo de forma inequívoca al cancelar.
+**✅ RESUELTO — `cambiarEstadoSeleccionadas`: DELETE de cargo sfcom usa referencia exacta (jun 2026).**
+
+Antes el DELETE usaba `comments = 'Cobrado vía sfcom'` más filtro de importe ±0.005€. Si el mismo cliente tenía varias reservas sfcom con importe similar, podría borrar el cargo equivocado.
+
+Solución: el comentario del cargo ahora incluye el WEB ref: `'WEB038_1102 Cobrado vía sfcom'`. El DELETE filtra por `comments = \`${r.origin_ref} Cobrado vía sfcom\`` (match exacto, sin filtro de importe). Cada cargo queda unívocamente vinculado a su pedido sfcom sin necesidad de añadir `reservation_id` a `charges`.
 
 ---
 
@@ -1352,14 +1328,18 @@ El `DELETE` en `charges` usa `comments = 'Cobrado vía sfcom'` más filtro de im
 
 **✅ RESUELTO — `actualizarProveedores`: venue desaparece silenciosamente (jun 2026).** Añadido `else if (plazas > 0)` cuando `!opcionExiste`: muestra un `mostrarToast` informando que el venue seleccionado no tiene capacidad para las plazas indicadas. El sistema ya protege contra guardar sin venue seleccionado.
 
-**`_inferirDesdeSfcom`: matching por día no funciona para servicios no-ENCIERRO con múltiples filas (`formulario.js:1834-1838`).**
-Si hay varios candidatos con el mismo `sfcom_service_name` que no son ENCIERRO (ej. dos configuraciones de CHUPINAZO), busca `'ENCIERRO_' + day` → no encuentra nada → devuelve `filas[0]` arbitrariamente. Impacto: asignación de servicio incorrecta en solicitudes sfcom.
+**Sistema de inferencia sfcom — robusto en práctica, mejorable en teoría.**
+
+Hay dos funciones de inferencia complementarias: `_inferirDesdeSfcom(level, day)` en `formulario.js` (carga de solicitudes ya guardadas en BD) y `resolverProductoSfcom(li, sfcomListings)` en `sfcom.js` (matching de pedidos crudos de la API). Ambas usan `extraerNombreProducto` y `extraerDia` de `sfcom.js` como utilidades compartidas — el código no está duplicado, está bien separado.
+
+El punto débil documentado (matching por día solo funciona para ENCIERRO cuando hay múltiples filas con el mismo `sfcom_service_name`) no afecta en práctica: `CHUPINAZO_6`, `PROCESION_7`, `DESPEDIDA_GIGANTES_14` y `POBRE_DE_MI` tienen un único venue activo, por lo que la ambigüedad multi-fila solo aparece para ENCIERRO, que sí tiene la lógica correcta. El fallo real aparecería si dos venues vendieran el mismo servicio no-ENCIERRO, lo cual requeriría intervención de Hilario de todas formas.
+
+Pendiente (no urgente): si en el futuro hay dos venues para un mismo servicio no-ENCIERRO, generalizar la desambiguación en `_inferirDesdeSfcom` y `resolverProductoSfcom` para que use `<TIPO>_<day>` en lugar de hardcodear `ENCIERRO_`.
 
 **`confirmarReorganizacion`: la reversión puede fallar silenciosamente y Paula recibe un mensaje falso (`formulario.js:1740-1758`).**
 Si un UPDATE falla a media operación, intenta revertir con `Promise.allSettled`. Si alguna reversión también falla, solo queda un `console.log` interno. Paula recibe "Los cambios anteriores han sido revertidos" sin que sea cierto. Fix: si la reversión falla, mostrar modal de error grave con los cambios concretos para corrección manual.
 
-**`cambiarEstadoSeleccionadas`: reactivar una reserva cancelada no verifica capacidad propia (`formulario.js:651-672`).**
-Al reactivar Cancelada → Confirmada/Pendiente, solo se verifica sfcom, no si el hueco que había al cancelar sigue libre. Entre la cancelación y la reactivación pueden haberse creado otras reservas que ocupen ese espacio. Impacto: sobrereserva posible.
+**✅ RESUELTO — `cambiarEstadoSeleccionadas`: reactivar cancelada verifica capacidad propia (jun 2026).** Antes del UPDATE llama a `getPlazasInfo` por par venue+servicio; si no hay plazas libres, muestra modal "Sin plazas disponibles" y carga la reserva en el formulario para que Paula elija otro proveedor o cancele.
 
 **✅ RESUELTO — `cargarReservasCliente` sincroniza `todasReservas` (jun 2026).** Tras cargar las reservas del cliente, `todasReservas` se actualiza filtrando los datos del cliente cargado y reemplazándolos con los frescos de Supabase. Cubre también el caso de 0 reservas (limpia las entradas del cliente del global).
 
@@ -1368,22 +1348,18 @@ Al reactivar Cancelada → Confirmada/Pendiente, solo se verifica sfcom, no si e
 **`reorgCambiarServicio`: cambia el venue silenciosamente al primero disponible si el actual no ofrece el nuevo servicio (`formulario.js:1530-1554`).**
 En el panel de reorganización, al cambiar el servicio de una reserva, si el venue actual no ofrece ese servicio, la reserva se mueve al primer venue disponible del nuevo servicio sin pedir confirmación. Paula puede no darse cuenta.
 
-**`marcarAtendida` marca la solicitud como `convertida` sin verificar que se haya creado una reserva real (`formulario.js:2324-2332`).**
-El botón "✅ Procesado" en la tabla sfcom del bloque 0 actúa directamente. Si Paula lo pulsa por error, la solicitud desaparece de todas las listas activas. No hay modal de confirmación.
-
-**`_alUsarBoton` en el asistente marca el mensaje como enviado aunque Paula cierre el correo sin enviar (`asistente.js:346-354`).**
-Al pulsar "Enviar por correo", se abre `mailto:` y simultáneamente se registra en el log como `<Paula>` y la solicitud pasa a `respuesta_enviada`. Si Paula cierra Outlook sin enviar, el log queda con un mensaje "enviado" que el cliente nunca recibió. No hay forma de revertirlo sin editar el log manualmente.
+**✅ RESUELTO — `marcarAtendida` tiene modal de confirmación (jun 2026).** `formulario.js` muestra un modal con botones "Cancelar" / "Sí, marcar como procesada" antes de actualizar el status a `convertida`.
 
 **✅ RESUELTO — `asunto` añadido al `mailto:` del asistente (jun 2026).** Las dos llamadas a `mostrarOpcionesEnvio` en `asistente.js` pasan ahora `asunto: 'San Fermín 2026 · tu reserva'`.
 
-**`btnEliminarServicio`: DELETE de proveedor sin manejar error de FK (`proveedores.js:1545-1623`).**
-Al eliminar todos los servicios de un proveedor, aparece `confirm("¿Eliminar también el proveedor?")` que ejecuta DELETE en `providers`. Si el proveedor tiene otros venues con reservas activas, el DELETE fallará por FK, pero el código no maneja explícitamente ese error. La UI queda en estado inconsistente.
+**ACEPTADO — El asistente marca el mensaje como enviado al pulsar el botón de correo.** El registro en log y el cambio de status a `respuesta_enviada` ocurren al pulsar el botón, sin esperar confirmación real del envío por la API de correo. Es una limitación técnica de `mailto:` (no hay callback). Paula puede editar el log si lo envió por otro canal o no lo envió. Sin solución técnica posible con el stack actual; se documenta como comportamiento conocido.
+
+**✅ RESUELTO — `btnEliminarServicio`: error de FK al borrar proveedor ya muestra toast (jun 2026).** El DELETE a `providers` captura el error y llama a `mostrarToast('⚠️ No se pudo eliminar el proveedor: ...')` antes de retornar. La protección previa (bloqueo si tiene sfcom_status activo o reservas activas) sigue en pie como primera línea de defensa.
 
 **`cargarServiciosProveedor`: muestra todos los venues del proveedor mezclados, no solo el tab activo (`proveedores.js:1341`).**
 Cuando un proveedor tiene varios venues (AMAYA_SABATE, PATRICIA), la tabla de servicios filtra por `provider_id` y muestra todos los venues juntos, confundiendo la jerarquía proveedor → venue → servicio.
 
-**`btnConfirmarSfcom` con resultado `'save'` deja sfcom con stock incorrecto sin recordatorio (`proveedores.js:234-265`).**
-La opción "Solo guardar" confirma el `sfcom_status` en BD pero no sincroniza el stock a WooCommerce. No hay indicador posterior de que sfcom está desincronizado ni recordatorio de que hay que sincronizar.
+**ACEPTADO — `btnConfirmarSfcom` con "Solo guardar" no sincroniza sfcom.** Es el comportamiento esperado: Paula ha elegido explícitamente no sincronizar. Las discrepancias se detectan en la verificación automática al recargar cualquier panel, al intentar nuevas reservas, etc. La desincronización no puede pasar desapercibida en el uso normal.
 
 **`btnGuardarServicio` en modo edición múltiple ignora cambios en `services.name/description/comments` (`proveedores.js:1155-1192`).**
 En modo edición múltiple, solo actualiza campos de `availability`. Los inputs de nombre y descripción del servicio están visibles y editables pero sus cambios se descartan al guardar, sin aviso.
@@ -1391,7 +1367,7 @@ En modo edición múltiple, solo actualiza campos de `availability`. Los inputs 
 **Asistente múltiple no valida `service_id` duplicado entre filas antes de insertar (`proveedores.js:2216-2293`).**
 Si dos filas del bulk insert tienen el mismo `serviceId`, colisionan con UNIQUE(venue_id, service_id) en `availability`. El código muestra `alert` con el error de BD pero no previene la colisión.
 
-**✅ RESUELTO — `syncStockToSfcom` avisa de sobrereserva (jun 2026).** `syncStockToSfcom` calcula `stockBruto` antes del `Math.max(0,...)` y devuelve `sobrereserva: true` cuando es negativo. Los 4 call sites en `formulario.js` capturan el resultado y muestran un `mostrarToast` de advertencia identificando el servicio.
+**✅ RESUELTO — `syncStockToSfcom` avisa tanto de sobrereserva como de error de lectura (jun 2026).** Se añadió la función helper `_syncAndWarn(venueId, servicioId)` en `formulario.js` que sustituye a los 5 call sites directos. Muestra toast de sobrereserva si `sr.sobrereserva`, y toast de error si `sr.ok === false` (caso antes silencioso: SELECT de reservas fallido antes del PUT). El PUT fallido sigue mostrando su propio modal dentro de `syncStockToSfcom`.
 
 **`verificarBajaSfcom` confunde "stock 0 porque todo está vendido" con "Hilario retiró el producto" (`sfcom.js:1141-1152`).**
 `gone = stock === 0 || stock === null`. Un producto vendido al 100% tiene stock 0 sin que Hilario lo haya retirado. Esto puede mostrar el botón "Confirmar baja" para un producto activo en sfcom.
@@ -1412,8 +1388,7 @@ Eliminado el query per-iteration; ahora es O(1) contra array en memoria.
 
 **✅ RESUELTO — `---BORRADOR---` JSON inválido muestra toast (jun 2026).** El `catch` en `asistente.js` llama a `mostrarToast` avisando que el borrador no se actualizó pero el texto del mensaje sí es correcto. El `console.warn` se mantiene para diagnóstico.
 
-**Tres paneles distintos enriquecen `availability_panel` con datos sfcom de formas diferentes (`proveedores.js:16-33`, `formulario.js:20-32`, `sfcom-panel.js:37`).**
-`proveedores.js` y `formulario.js` hacen dos queries separadas y mezclan sfcom en memoria manualmente. `sfcom-panel.js` usa la vista `availability_with_sfcom` directamente. Un cambio de esquema rompe los dos primeros sin afectar al tercero. Fix: usar `availability_with_sfcom` consistentemente en todos los paneles que necesiten campos sfcom.
+**ACEPTADO — Tres paneles cargan datos sfcom de formas distintas.** `formulario.js` hace una query directa a `sfcom_listings` (solo 4 campos para matching). `proveedores.js` hace dos queries y las mezcla en memoria (necesita también `sfcom_slots_listed`, `sfcom_status`, `sfcom_public_price`). `sfcom-panel.js` usa la vista `availability_with_sfcom`. No hay inconsistencias visibles para Paula: cada panel carga lo que necesita y los datos son los mismos en todas las rutas. Riesgo: si se añade una columna a `sfcom_listings`, hay que editarlo en tres sitios. Se consolidará si/cuando se refactorice la carga de datos sfcom.
 
 **`idsMismatch` en verificarSfcom es código muerto en la práctica.** `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone un endpoint de nombres de variaciones. Se mantiene la estructura por si Hilario añade ese endpoint en el futuro, pero `idsMismatch[]` nunca se rellena. Documentado explícitamente en el código.
 
@@ -1426,8 +1401,7 @@ Cuando el hito final ya está facturado y hay un cambio, dispara `alert()` bloqu
 **`sfcomDelta` incorrecto en el modal pre-save para solicitudes no-sfcom (`formulario.js:~1227`).**
 `sfcomDelta: solicitudOriginRef ? plazas : 0` debería ser `solicitudOriginRef?.startsWith('WEB') ? plazas : 0`. Para solicitudes web o email cuyo `origin_ref` es un UUID (no empieza por `WEB`), `sfcomDelta` toma el valor de las plazas en lugar de 0. El modal `confirmarStockSfcom` muestra un stock esperado incorrecto, como si la reserva fuera a descontar stock de sfcom cuando no lo hará. La sincronización real (`syncStockToSfcom`) es correcta porque lee de BD con `origin_ref LIKE 'WEB%'`, pero Paula ve un dato engañoso antes de confirmar.
 
-**`syncStockToSfcom` falla silenciosamente si la consulta de reservas en Supabase falla antes del PUT (`sfcom.js:~133`).**
-Si el SELECT de reservas activas devuelve error, la función registra el fallo en consola y retorna `{ ok: false }` sin notificar a Paula. El stock en sfcom queda desactualizado sin ningún aviso visible. Los callers en `formulario.js` solo muestran toast cuando falla el PUT a sfcom, no cuando falla esta lectura previa. Un error de red o una sesión expirada a mitad de la operación deja sfcom con datos obsoletos sin que Paula lo sepa.
+**✅ RESUELTO — Ver nota en `syncStockToSfcom` avisa tanto de sobrereserva como de error de lectura (jun 2026), arriba.**
 
 ---
 
@@ -1456,8 +1430,14 @@ Reemplazado `prompt()` por `_pedirFechaPago()`: modal `crearModal` con input de 
 **`_savePhotos` sobreescribe el array entero — race condition si dos tabs editan (`proveedores.js:144-156`).**
 Add/remove de foto siempre escribe el array completo en BD. Si Paula tiene el panel en dos tabs y ambas editan fotos del mismo servicio, gana el último en guardar.
 
-**El input de ID en el asistente múltiple no preserva la posición del cursor al normalizar (`proveedores.js:2170-2188`).**
-`input.value = normalizarId(input.value)` en el evento `input` reemplaza el valor completo y salta el cursor al final. Typing extraño si Paula escribe en el medio del texto.
+**Pérdida de foco y scroll en el panel — patrón general.**
+
+Hay varios sitios donde la UI pierde el foco visual o la posición de scroll tras una acción:
+
+- **Input de ID en asistente múltiple** (`proveedores.js`): `input.value = normalizarId(input.value)` en el evento `input` reemplaza el valor completo → cursor salta al final al escribir en el medio. Fix: guardar `selectionStart` antes y restaurar con `setSelectionRange` después (el mismo patrón ya aplicado en los inputs de ID de proveedor/venue/servicio en las líneas ~528 y ~919).
+- **Tablas del panel de control** (`panel.js`): al hacer clic en una fila (seleccionar un proveedor o evento), la tabla se filtra y se acorta. El foco de la página queda en la posición original (parte baja de la tabla completa), no en la tabla filtrada resultante. Paula necesita hacer scroll manualmente para ver el resultado. Fix: `element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })` tras el re-render.
+
+Ambos son de impacto medio/bajo. Abordar juntos cuando se toque cada archivo.
 
 **`multipleRows[i]._db_*` no se resetean tras guardar, marcando filas como `modified` siempre (`proveedores.js:2142-2156`).**
 Los valores de referencia `_db_slots`, `_db_precio`, `_db_modelo` no se actualizan tras guardar. Si Paula reabre el dialog sin recargar, todos los rows aparecen como modificados aunque no hayan cambiado.
@@ -1598,6 +1578,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 6d | ✅ Completa | Bugs §7.9 (segunda tanda): venue toast ✅ · sync todasReservas ✅ · cobro negativo modal ✅ · borrador JSON toast ✅ · sobrereserva toast ✅ · matching sfcom consolidado (resolverProductoSfcom) ✅ |
 | 7 | ✅ Completa | Mejoras de propuestas: display_name ✅ · fallback descripción ✅ · fotos 16:9 ✅ · modos Compacto/Completo ✅ |
 | 8 | ✅ Completa | Facturación canal sfcom |
+| 8b | ✅ Completa | Fix sfcom: WEB ref en charges + corrección datos R0103/R0104 |
 | 9 | ✅ Completa | Refactors y cierre (inferencia level→service_id ✅ · reglas nombres ✅ · caché sfcom aceptada ✅) |
 | 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
 | 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos |
@@ -1633,7 +1614,7 @@ Las fases 1b y 2 son independientes de todo lo demás y pueden hacerse en cualqu
 | 6 | 6 reservas activas con total_amount = 0 | Investigar | ✅ Investigado: son invitaciones/0€ intencionados |
 | 7 | Email duplicado (giovanni.soliman@gmail.com) | Fusionar o eliminar | ✅ Eliminado (no tenía reservas) |
 | 8 | MARTIKO y NACHO_GALLARDO: cobros sin reservas activas | Investigar | ✅ Investigado: cobros a 0€ intencionados |
-| 9 | `assistant_logs` sin RLS | Habilitar RLS en Supabase Dashboard | 🔲 Pendiente acción en Dashboard |
+| 9 | `assistant_logs` sin RLS | Habilitar RLS en Supabase Dashboard | ✅ Aplicado jun 2026 |
 | 10 | 55 servicios en `services` | ✅ No es deuda — todos los servicios son voluntarios o necesarios |
 
 **`event_type` confirmado:** es columna directa en `services` (posición 3). Las vistas simplemente la leen desde ahí. Cierra la deuda 7.6 que lo describía como pendiente de verificar.
@@ -1735,7 +1716,7 @@ Migración ejecutada en Supabase SQL Editor en una transacción. 10 FKs redefini
 4. ✅ **Auto-transición al enviar** — cubierto por `_onRespuestaUsadaEnLog` (transiciona a `respuesta_enviada` independientemente del estado previo, actualiza badge/select/botón recordatorio).
 5. ✅ **`venue_display_name` en asistente** — ya estaba en el system prompt.
 6. ✅ **`estado` en borrador explicado al asistente** — sección BORRADOR DE PROPUESTA de `SYSTEM_PROMPT_ASISTENTE` ampliada con el significado de `'pendiente'`/`'hecha'`/`'descartada'` e instrucción de que Claude no genera ese campo.
-7. 🔲 **Formato de `service_name` en borrador** — diferencia entre `solicitudes.js` ("Encierro - día 7") y `formulario.js` (`svc.name`). Impacto mínimo (campo descriptivo, no clave). Diferido a Fase 9 junto con las reglas de nombres de venue/evento.
+7. ✅ **Formato de `service_name` en borrador** — el campo es descriptivo, no clave. Las diferencias de formato entre módulos son intencionales. Sin deuda pendiente.
 8. ✅ **Tabla `session_context` en Supabase** — creada con `id`, `texto`, `created_at`. RLS habilitado, políticas equivalentes al resto de tablas del panel. Verificada INSERT+SELECT desde sesión autenticada.
 9. ✅ **Notas de sesión UI** — campo de una línea en `solicitudes.html` (encima del listado, `.notas-sesion`). Click expande inline (`.notas-sesion-preview` / `.notas-sesion-edit`). Blur con cambio → INSERT silencioso en `session_context`. Variable `_notasSesion` en módulo; callback `getNotasSesion: () => _notasSesion` pasado a `initAsistente`.
 10. ✅ **Edge Function `claude-proxy` actualizada** — acepta `system` como `string | array`. `Array.isArray(system)` distingue los dos casos. Header `anthropic-beta: prompt-caching-2024-07-31` activo.
@@ -1833,10 +1814,26 @@ client_id   = el cliente real (GARCIA_PEDRO, EMPRESA_X, etc.)
 amount      = reserva.total_amount (importe neto de esa reserva)
 collected   = true
 collected_date = fecha de inserción (día en que se procesó el pedido sfcom)
-comments    = 'Cobrado vía sfcom'
+comments    = '${origin_ref} Cobrado vía sfcom'  (ej: 'WEB038_1102 Cobrado vía sfcom')
 is_final    = false
 ```
-Identificador: `comments = 'Cobrado vía sfcom'`. No hay FK directa a `reservations` (la tabla `charges` no tiene `reservation_id`). El vínculo se establece por `client_id + amount + collected_date` y, si se necesita auditar, por JOIN con `reservations WHERE origin_ref LIKE 'WEB%' AND client_id = charges.client_id`.
+Identificador: `comments` incluye el WEB ref de la reserva (`'WEB038_1102 Cobrado vía sfcom'`). El vínculo entre cargo y reserva es exacto: el DELETE de cancelación filtra por `comments = '${r.origin_ref} Cobrado vía sfcom'` sin necesidad de comparar importes. No hay FK directa a `reservations` (la tabla `charges` no tiene `reservation_id`).
+
+**Migración de datos (jun 2026):** los 24 cargos existentes con `comments = 'Cobrado vía sfcom'` (creados antes de este cambio) fueron actualizados al nuevo formato mediante SQL:
+```sql
+UPDATE charges c
+SET comments = (
+    SELECT r.origin_ref || ' Cobrado vía sfcom'
+    FROM reservations r
+    WHERE r.client_id = c.client_id
+      AND r.total_amount = c.amount
+      AND r.origin_ref LIKE 'WEB%'
+    ORDER BY r.id DESC
+    LIMIT 1
+)
+WHERE c.comments = 'Cobrado vía sfcom';
+```
+Todos los matches fueron únicos (sin ambigüedad). Se verificó que los 24 registros quedaron con el formato correcto.
 
 Capa B — cobro final en cliente SFCOM:
 ```
@@ -1990,7 +1987,7 @@ if (solicitudOriginRef?.startsWith('WEB')) {
         due_date:       hoy,
         collected:      true,
         collected_date: hoy,
-        comments:       'Cobrado vía sfcom',
+        comments:       `${solicitudOriginRef} Cobrado vía sfcom`,
         is_final:       false
     })
 }
@@ -2010,9 +2007,7 @@ if (nuevoEstado === 'Cancelada') {
     for (const r of sfcomCanceladas) {
         await supabase.from('charges').delete()
             .eq('client_id', r.client_id)
-            .eq('comments', 'Cobrado vía sfcom')
-            .gte('amount', parseFloat(r.total_amount) - 0.005)
-            .lte('amount', parseFloat(r.total_amount) + 0.005)
+            .eq('comments', `${r.origin_ref} Cobrado vía sfcom`)
     }
 }
 ```
@@ -2091,7 +2086,7 @@ for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()]))
 **Cancelación de una reserva sfcom:**
 1. Paula selecciona la reserva en bloque 4 → "Cancelar".
 2. `cambiarEstadoSeleccionadas` detecta `origin_ref LIKE 'WEB%'`.
-3. DELETE del `charges` con `comments='Cobrado vía sfcom'` y `amount ≈ total_amount` del cliente real.
+3. DELETE del `charges` con `comments = '${r.origin_ref} Cobrado vía sfcom'` (match exacto por WEB ref).
 4. UPDATE de `reservations.status = 'Cancelada'`.
 5. `persistirCobrosCliente` recalcula el cobro final del cliente real correctamente (ya sin el prepago sfcom).
 
@@ -2113,7 +2108,7 @@ Sin cambios en el flujo normal. `solicitudOriginRef` es null → no se crea carg
 
 **1. El cargo sfcom no tiene FK a la reserva.** `charges` no tiene campo `reservation_id`. El vínculo entre un cargo `'Cobrado vía sfcom'` y la reserva que lo origina es implícito: mismo `client_id`, mismo `amount`, misma `collected_date`. Si un cliente tiene dos reservas sfcom con el mismo importe exacto procesadas el mismo día, la UNIQUE constraint `(client_id, amount, due_date)` bloquearía la segunda inserción (ON CONFLICT DO NOTHING). En la práctica es improbable pero no imposible. Solución si ocurre: ajustar manualmente en Supabase.
 
-**2. La cancelación podría borrar el cargo equivocado.** Si el cliente tiene dos reservas sfcom con importe casi idéntico (diferencia < 0.005€), el DELETE por `amount ≈ total_amount` podría afectar a la reserva incorrecta. Mitigado porque en la práctica las reservas sfcom de un mismo cliente tienen precios distintos. Solución si ocurre: ajuste manual en Supabase.
+**2. ✅ RESUELTO — La cancelación usa referencia exacta (jun 2026).** El comentario del cargo incluye el WEB ref: `'WEB038_1102 Cobrado vía sfcom'`. El DELETE filtra por `comments = \`${r.origin_ref} Cobrado vía sfcom\`` sin filtro de importe. Cada cancelación borra exactamente el cargo del pedido cancelado, aunque el cliente tenga otras reservas sfcom al mismo precio.
 
 **3. El cobro final de SFCOM se queda obsoleto entre visitas.** Si entran nuevas reservas sfcom y Paula no abre el cliente SFCOM, el `charges` de `client_id='SFCOM'` con `is_final=true` refleja el total anterior. Se auto-corrige en la próxima apertura. No hay un mecanismo de actualización automática en background. Consecuencia: el importe mostrado en Supabase Dashboard puede ser incorrecto, pero el importe que ve Paula en el panel siempre es correcto (se recalcula al cargar).
 
@@ -2129,6 +2124,35 @@ Sin cambios en el flujo normal. `solicitudOriginRef` es null → no se crea carg
 2. El bloque 5 muestra el cobro final automático (= total de todas las ventas WEB% activas) y cualquier hito parcial que Paula haya añadido manualmente.
 3. Para facturar: pulsar "Facturar" en el hito deseado → se genera factura PDF en serie VSF como con cualquier otro cliente.
 4. Marcar como cobrado cuando Hilario transfiera el importe.
+
+---
+
+---
+
+### Fase 8b — ✅ Fix sfcom: WEB ref en charges + corrección datos R0103/R0104 (jun 2026)
+
+**Archivos modificados:** `admin/js/formulario.js`.
+
+**Problema 1 — Conversión multi-línea perdía `origin_ref` a partir de la segunda reserva.**
+
+`limpiarFormularioReserva()` resetea `solicitudOriginRef = null`. Al cargar la segunda línea de un borrador sfcom multi-línea, `_cargarLineaEnBloque2` llamaba `limpiarFormularioReserva()` sin restaurar el ref, y en `_onLineaGuardada` se asignaba `solicitudOriginRef = _solicitudConversionId` (el UUID de la solicitud) en lugar del WEB ref.
+
+Fix: nueva variable de módulo `_solicitudWEBRef` inicializada en `_initBloqueConversion(solicitudId, webRef, draft, nombreCliente)` con el `data.source` de la solicitud. Se restaura en `_cargarLineaEnBloque2`, en el handler de "Descartar" y en `_onLineaGuardada`. Ver detalle en §4 bloque de conversión.
+
+**Problema 2 — Single-line desde URL sobreescribía el WEB ref con UUID.**
+
+`cargarDesdeSolicitud` ya dejaba `solicitudOriginRef` con el WEB ref correcto para solicitudes sfcom. Pero el call site posterior hacía `if (!_modoConversionActivo) solicitudOriginRef = sol.id`, sobreescribiéndolo con el UUID de la solicitud. Fix: condición añadida: `if (!_modoConversionActivo && !solicitudOriginRef) solicitudOriginRef = sol.id`.
+
+**Cambio de formato en `charges.comments` (relacionado):**
+
+El comentario del cargo sfcom ahora incluye el WEB ref: `'WEB038_1102 Cobrado vía sfcom'` en lugar de `'Cobrado vía sfcom'`. Esto permite el DELETE de cancelación por `comments` exacto sin comparar importes. Ver detalle completo en §8 Fase 8 "Capa A" y "Limitación 2".
+
+**Corrección de datos en BD (ejecutada manualmente, no repetir):**
+
+- `UPDATE reservations SET origin_ref = 'WEB038_1102' WHERE id = 'R0104'` — R0104 tenía `origin_ref = null` porque fue creada antes de que existiera el flujo de `origin_ref`.
+- INSERT manual del cargo sfcom de R0104 (JORDI_RUTLLAN, 217.40€, ya cobrado).
+- DELETE del cobro final incorrecto de JORDI_RUTLLAN (id=231, 217.40€ calculado antes de insertar el cargo retroactivo).
+- Migración de los 24 charges existentes al nuevo formato `'WEBxxx_yyy Cobrado vía sfcom'` (SQL documentado en "Capa A" de Fase 8).
 
 ---
 
@@ -2246,9 +2270,9 @@ Las fechas "6–14 de julio" se dejan hardcodeadas — son las fechas de San Fer
 - `persistirCobrosCliente` — modal de aviso cuando `cobroFinal` resulta negativo.
 - `asistente.js` — toast cuando el JSON de `---BORRADOR---` no es válido.
 
-**4. `assistant_logs` sin RLS — pendiente acción en Dashboard**
+**4. `assistant_logs` sin RLS — ✅ RESUELTO (jun 2026)**
 
-Toda la lógica de RLS para `assistant_logs` requiere acción manual en Supabase (ver instrucciones en §7.2 auditoría, fila 9). No modificable desde código.
+RLS habilitado en Supabase Dashboard.
 
 ---
 

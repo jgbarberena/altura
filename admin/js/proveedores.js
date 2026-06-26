@@ -1934,7 +1934,11 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
                 )
                 if (venuesDelProveedor.length === 0) {
                     await supabase.from('payments').delete().eq('provider_id', proveedorActual.id)
-                    await supabase.from('providers').delete().eq('id', proveedorActual.id)
+                    const { error: errDelProv } = await supabase.from('providers').delete().eq('id', proveedorActual.id)
+                    if (errDelProv) {
+                        mostrarToast(`⚠️ No se pudo eliminar el proveedor: ${errDelProv.message}`)
+                        return
+                    }
                     todosProveedores = todosProveedores.filter(p => p.id !== proveedorActual.id)
                     limpiarProveedor()
                     inputProveedorId.value = ''
