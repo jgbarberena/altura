@@ -319,6 +319,7 @@ async function _cargarCerradas() {
         .select('*')
         .in('status', ['convertida', 'descartada'])
         .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .range(_cerradasOffset, _cerradasOffset + BATCH_CERRADAS)
 
     const lote = data ?? []
