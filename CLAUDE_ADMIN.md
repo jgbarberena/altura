@@ -435,7 +435,7 @@ Auto-transición: `'respuesta_enviada'` → `'seguimiento_pendiente'` si `update
 Cada item: nombre, fecha, badge de origen (sfcom/sfcom_c/email/web), badge de status, experiencia, preview del último mensaje del log (64 chars, HTML escapado).
 
 **Vista condensada vs. completa (jun 2026):** controlada por el flag `esCondensada = esSfcomConf || esCancelada`:
-- **Condensada** (sfcom confirmado + sfcom cancelado): muestra datos resumidos (experiencia, día, personas, consulta), botón "💬 Historial y gestión" que despliega borrador + log + selector de estado (disabled si sfcom confirmado) + asistente. CTA inferior: "→ Crear reserva" (sfcom conf) o "🔄 Intentar recuperar" (sfcom canc).
+- **Condensada** (sfcom confirmado + sfcom cancelado): muestra datos resumidos (experiencia, día, personas, consulta), botón "💬 Historial y gestión" que despliega borrador + log + asistente. CTA inferior: "→ Crear reserva" (sfcom conf) o "🔄 Intentar recuperar" (sfcom canc). El selector de estado aparece siempre en el header (igual que en vista extendida), no dentro del toggle.
 - **Completa** (web/email/manual): selector de status, borrador, log, asistente, "📋 Convertir en reservas". Botón "📩 Enviar recordatorio" prominent solo cuando `status === 'seguimiento_pendiente'`.
 
 **Detección de modo en asistente:** al abrir sin modo explícito, se auto-detecta: si `conversation_notes` contiene `\n<Paula>\n` → modo `'seguimiento'`; si no → modo `'nueva'`.

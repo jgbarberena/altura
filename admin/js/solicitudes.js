@@ -1090,7 +1090,7 @@ function mostrarDetalle(sol) {
                     </div>
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:8px;flex-shrink:0">
-                    ${!esCondensada ? `<select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>` : ''}
+                    <select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>
                     <button class="btn-cerrar-detalle" id="btnCerrarDetalle" title="Cerrar">✕</button>
                 </div>
             </div>
@@ -1115,9 +1115,6 @@ function mostrarDetalle(sol) {
                 <button class="btn btn-secondary" id="btnGestion" style="width:100%;min-height:40px;font-size:13px">💬 Historial y gestión</button>
             </div>
             <div id="sol-extra" style="display:none;margin-top:4px">
-                <div style="margin-bottom:12px">
-                    <select id="sol-select-estado" class="sol-estado-select">${estadoOptions}</select>
-                </div>
                 <div id="sol-borrador-container"></div>
                 ${_logSection(logItems)}
                 ${accionesToggleHTML}
@@ -1174,13 +1171,6 @@ function mostrarDetalle(sol) {
                     }
                 })
                 _initLogListeners(sol)
-                document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
-                    const nuevoEstado = e.target.value
-                    const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
-                    if (error) { console.error('Error actualizando estado:', error); return }
-                    sol.status = nuevoEstado
-                    _actualizarBadgeEstado(sol.id, nuevoEstado)
-                })
                 document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => abrirAsistenteRespuesta(sol))
             }
         })
@@ -1193,16 +1183,14 @@ function mostrarDetalle(sol) {
         })
     }
 
-    // ── Estado: vistas extendidas ─────────────────────────────────────────────
-    if (!esCondensada) {
-        document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
-            const nuevoEstado = e.target.value
-            const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
-            if (error) { console.error('Error actualizando estado:', error); return }
-            sol.status = nuevoEstado
-            _actualizarBadgeEstado(sol.id, nuevoEstado)
-        })
-    }
+    // ── Estado: siempre visible en el header ─────────────────────────────────
+    document.getElementById('sol-select-estado')?.addEventListener('change', async e => {
+        const nuevoEstado = e.target.value
+        const { error } = await supabase.from('reservation_requests').update({ status: nuevoEstado }).eq('id', sol.id)
+        if (error) { console.error('Error actualizando estado:', error); return }
+        sol.status = nuevoEstado
+        _actualizarBadgeEstado(sol.id, nuevoEstado)
+    })
 
     // ── Recordatorio ─────────────────────────────────────────────────────────
     document.getElementById('btnEnviarRecordatorio')?.addEventListener('click', () => {
