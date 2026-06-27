@@ -1589,6 +1589,7 @@ Acordado en jun 2026. El criterio de agrupación: mismo área de código, misma 
 | 8b | ✅ Completa | Fix sfcom: WEB ref en charges + corrección datos R0103/R0104 |
 | 9 | ✅ Completa | Refactors y cierre (inferencia level→service_id ✅ · reglas nombres ✅ · caché sfcom aceptada ✅) |
 | 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
+| 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
 | 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos |
 
 ### Dependencias duras entre fases
