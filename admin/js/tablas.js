@@ -357,5 +357,5 @@ window._renombrarDesdeTabla = async (tabla, idActual) => {
 document.getElementById('btnExportTabla')?.addEventListener('click', () => {
     const def  = TABLAS[tablaActual]
     const cols = def.cols.map(c => ({ key: c.campo, label: c.label, fmt: c.fmt }))
-    exportTable(datosFiltrados, cols, `${tablaActual}.csv`)
+    exportTable(datosFiltrados, cols, `${tablaActual}.xlsx`)
 })

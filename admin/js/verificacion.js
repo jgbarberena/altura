@@ -186,8 +186,14 @@ function _computarFinanciero(dados) {
     const advertencias = []
 
     for (const c of charges) {
-        if (Math.abs(parseFloat(c.amount || 0)) < 0.01)
-            advertencias.push(`Cobro a cero: cliente "${c.client_id}" — importe ${_fmt(c.amount)}`)
+        if (Math.abs(parseFloat(c.amount || 0)) < 0.01) {
+            // El cobro final a cero es el flujo normal para clientes que solo tienen reservas sfcom:
+            // persistirCobrosCliente crea un is_final=0 porque el balance ya está cubierto por
+            // los cargos "Cobrado vía sfcom". No avisar en ese caso.
+            const esSfcomNormal = c.is_final && charges.some(x => x.client_id === c.client_id && x.comments?.includes('Cobrado vía sfcom'))
+            if (!esSfcomNormal)
+                advertencias.push(`Cobro a cero: cliente "${c.client_id}" — importe ${_fmt(c.amount)}`)
+        }
     }
     for (const p of payments) {
         if (Math.abs(parseFloat(p.amount || 0)) < 0.01)

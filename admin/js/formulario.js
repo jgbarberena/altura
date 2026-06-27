@@ -127,6 +127,7 @@ function mostrarSugerenciasCliente(val) {
         if (clienteActual) {
             inputName.value = inputCompany.value = inputPhone.value =
             inputEmail.value = inputComments.value = ''
+            inputAddress.value = inputNif.value = ''
             document.getElementById('bloque-reservas-cliente').style.display = 'none'
             document.getElementById('bloque-cobros-cliente').style.display   = 'none'
             limpiarFormularioReserva()
@@ -1233,7 +1234,7 @@ btnAnadir.addEventListener('click', async () => {
 
         const sfcomResultNuevo = await confirmarStockSfcom(supabase, [{
             venueId, serviceId: servicioId,
-            sfcomDelta: solicitudOriginRef ? plazas : 0,
+            sfcomDelta: solicitudOriginRef?.startsWith('WEB') ? plazas : 0,
             allDelta:   plazas
         }])
         if (sfcomResultNuevo === 'cancel') return
@@ -1591,6 +1592,34 @@ window.cambiarFechaCobroFinal = async function(idx, valor) {
     }
 }
 
+function _pedirFechaCobro() {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-fecha-cobro-cliente', { narrow: true })
+        panel.innerHTML = `
+            <div>
+                <div class="modal-header-title">Fecha de cobro</div>
+                <div class="modal-header-desc">Dejar vacío para registrar hoy (${hoy}).</div>
+            </div>
+            <div style="padding:8px 0">
+                <input id="modal-fecha-cobro-input" type="date" value="${hoy}"
+                    style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;font-size:14px">
+            </div>
+            <div class="modal-actions">
+                <button id="modal-fecha-cobro-cancel" class="btn btn-secondary">Cancelar</button>
+                <button id="modal-fecha-cobro-ok" class="btn btn-primary" autofocus>Confirmar</button>
+            </div>`
+        const input = panel.querySelector('#modal-fecha-cobro-input')
+        panel.querySelector('#modal-fecha-cobro-cancel').onclick = () => { overlay.close(); resolve(null) }
+        panel.querySelector('#modal-fecha-cobro-ok').onclick = () => {
+            overlay.close(); resolve(input.value || hoy)
+        }
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { overlay.close(); resolve(input.value || hoy) }
+        })
+        setTimeout(() => input.focus(), 50)
+    })
+}
+
 window.toggleCobroCliente = async function(idx) {
     const h = hitosClienteTemp[idx]
 
@@ -1602,10 +1631,10 @@ window.toggleCobroCliente = async function(idx) {
             const confirmar = confirm(`Este hito no ha sido facturado todavía.\n¿Desea marcarlo como cobrado de todas formas?`)
             if (!confirmar) return
         }
-        const fecha = prompt('Fecha de cobro (dejar vacío para hoy):', hoy)
+        const fecha = await _pedirFechaCobro()
         if (fecha === null) return
         h.collected      = true
-        h.collected_date = fecha.trim() || hoy
+        h.collected_date = fecha
     } else {
         h.collected      = false
         h.collected_date = null

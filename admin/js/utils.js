@@ -167,7 +167,7 @@ export function renderClientChips(reservas) {
     return [...map.entries()]
         .map(([id, { slots, status }]) => {
             const color = status === 'Confirmada' ? 'var(--accent-ok)' : 'var(--accent-warn)'
-            return `<span style="color:${color};white-space:nowrap">${id}(${slots})</span>`
+            return `<span style="color:${color};white-space:nowrap;cursor:pointer" onclick="event.stopPropagation();location.href='formulario.html?cliente=${id}'">${id}(${slots})</span>`
         }).join(' ')
 }
 
@@ -286,10 +286,43 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
         if (error) { console.error('persistirPagosProveedor: error creando pago final:', error); return }
         console.log(`💸 Pago final creado para ${proveedorId}: ${pagoFinal}€`)
     } else if (Math.abs(parseFloat(hitoFinal.amount) - pagoFinal) >= 0.01) {
-        const { error } = await supabase.from('payments')
-            .update({ amount: pagoFinal }).eq('id', hitoFinal.id)
-        if (error) { console.error('persistirPagosProveedor: error actualizando pago final:', error); return }
-        console.log(`💸 Pago final actualizado para ${proveedorId}: ${hitoFinal.amount}€ → ${pagoFinal}€`)
+        if (hitoFinal.paid) {
+            // El hito ya fue pagado — no se puede editar su importe sin perder el historial.
+            // Se degrada a prepago histórico y se crea un nuevo hito con el saldo pendiente.
+            const nuevoSaldo = pagoFinal - parseFloat(hitoFinal.amount)
+            if (nuevoSaldo < -0.01) {
+                const { overlay, panel } = crearModal('aviso-pago-negativo')
+                panel.innerHTML = `
+                    <div>
+                        <div class="modal-header-title">⚠️ Pago final negativo</div>
+                        <div class="modal-header-desc">El saldo pendiente con <strong>${proveedorId}</strong> ha resultado <strong>${fmt(nuevoSaldo)}</strong>.<br><br>
+                        El proveedor ya recibió más de lo que le corresponde. Revisa los pagos o reclama el exceso.</div>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="btn-pago-neg-ok" class="btn btn-primary" autofocus>Entendido</button>
+                    </div>`
+                panel.querySelector('#btn-pago-neg-ok').onclick = () => overlay.close()
+            }
+            const { error: e1 } = await supabase.from('payments')
+                .update({ is_final: false }).eq('id', hitoFinal.id)
+            if (e1) { console.error('persistirPagosProveedor: error degradando hito pagado:', e1); return }
+            if (Math.abs(nuevoSaldo) >= 0.01) {
+                const { error: e2 } = await supabase.from('payments').insert({
+                    provider_id: proveedorId, amount: nuevoSaldo,
+                    due_date: fechaPagoDefault(), paid: false, paid_date: null,
+                    comments: 'Pago final', is_final: true
+                })
+                if (e2) { console.error('persistirPagosProveedor: error creando nuevo pago final:', e2); return }
+                console.log(`💸 Pago final recalculado para ${proveedorId}: ${fmt(hitoFinal.amount)} (pagado) → saldo pendiente ${fmt(nuevoSaldo)}`)
+            } else {
+                console.log(`💸 Pago final para ${proveedorId} saldado exactamente (${fmt(hitoFinal.amount)} pagado)`)
+            }
+        } else {
+            const { error } = await supabase.from('payments')
+                .update({ amount: pagoFinal }).eq('id', hitoFinal.id)
+            if (error) { console.error('persistirPagosProveedor: error actualizando pago final:', error); return }
+            console.log(`💸 Pago final actualizado para ${proveedorId}: ${fmt(hitoFinal.amount)} → ${fmt(pagoFinal)}`)
+        }
     }
 }
 

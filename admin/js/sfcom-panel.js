@@ -2,10 +2,19 @@ import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, exportTable, valorO } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
+import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
+
+{
+    const _sfcomResult = await checkSfcomOrders(supabase).catch(() => ({ ok: false }))
+    if (_sfcomResult.ok && _sfcomResult.cancelados?.length) {
+        const _sfcomListings = await loadSfcomListings(supabase)
+        await importarCanceladosSfcom(supabase, _sfcomListings, _sfcomResult.cancelados)
+    }
+}
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 
