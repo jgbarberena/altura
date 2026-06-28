@@ -61,6 +61,40 @@ const _cacheGet    = (productId, variationId) => {
     return _stockCache.has(key) ? _stockCache.get(key) : undefined  // undefined = no cacheado; null = cacheado como null
 }
 
+// ─── Registro de sincronizaciones recientes ────────────────────────────────────
+// Persiste en sessionStorage para sobrevivir navegaciones entre paneles.
+// Clave: "sfcom-sync:venueId|serviceId". Valor JSON: { stock, ts }.
+// Propósito: evitar falsos positivos en verificarSfcom cuando el endpoint stock-all
+// de sfcom aún devuelve el valor anterior por su TTL de caché (~5 min), a pesar de
+// que nuestro PUT ya actualizó la base de datos de WooCommerce correctamente.
+// El bypass solo se activa cuando el stock guardado aquí coincide exactamente con el
+// stockEsperado calculado en el momento de verificar, y nunca cuando pendingExplains
+// es true (pedido sfcom pendiente de incorporar — caso semánticamente distinto).
+
+const _SYNC_TTL_MS = 6 * 60 * 1000  // 6 min: TTL sfcom (~5 min) + 1 min de margen
+
+function _markRecentlySync(venueId, serviceId, nuevoStock) {
+    try {
+        sessionStorage.setItem(
+            `sfcom-sync:${venueId}|${serviceId}`,
+            JSON.stringify({ stock: nuevoStock, ts: Date.now() })
+        )
+    } catch { /* sessionStorage no disponible — sin bypass, sin error */ }
+}
+
+function _getRecentSync(venueId, serviceId) {
+    try {
+        const raw = sessionStorage.getItem(`sfcom-sync:${venueId}|${serviceId}`)
+        if (!raw) return null
+        const { stock, ts } = JSON.parse(raw)
+        if (Date.now() - ts > _SYNC_TTL_MS) {
+            sessionStorage.removeItem(`sfcom-sync:${venueId}|${serviceId}`)
+            return null
+        }
+        return stock
+    } catch { return null }
+}
+
 // ─── Utilidad interna: llamada a la API ──────────────────────────────────────
 // Proxy transparente vía Supabase Edge Function (sfcom-bridge) para evitar CORS.
 // La Edge Function reenvía el endpoint, método y payload a sf-api-paula.php
@@ -157,6 +191,7 @@ export async function syncStockToSfcom(supabase, venueId, serviceId) {
         await apiFetch(endpoint, 'PUT', { stock_quantity: nuevoStock })
 
         _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, nuevoStock)
+        _markRecentlySync(venueId, serviceId, nuevoStock)
         return { ok: true, nuevoStock, sfcomVendidas, todasOcupadas, sobrereserva, serviceName: avail.sfcom_service_name }
     } catch (e) {
         console.error(`[sfcom] PUT fallido para ${avail.sfcom_service_name}: ${e.message}`)
@@ -697,6 +732,20 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
                 : []
             const pendingSlots    = sfcomPendPar.reduce((sum, s) => sum + (s.proposal_draft?.[0]?.slots ?? 0), 0)
             const pendingExplains = diferencia < 0 && gap > 0 && pendingSlots >= gap
+
+            // Bypass TTL: si acabamos de hacer un PUT (≤6 min) y el stock que pusimos
+            // coincide exactamente con el stockEsperado actual, la discrepancia es solo
+            // el caché GET de sfcom que aún no ha refrescado — no es una discrepancia real.
+            // Condición de guarda obligatoria: pendingExplains debe ser false.
+            // Si es true, significa que sfcom vendió algo (diferencia < 0, case semántico
+            // distinto) y ese caso nunca debe suprimirse independientemente del TTL.
+            if (!pendingExplains) {
+                const syncStock = _getRecentSync(avail.venue_id, avail.service_id)
+                if (syncStock !== null && syncStock === stockEsperado) {
+                    _cacheSet(avail.sfcom_product_id, avail.sfcom_variation_id, stockEsperado)
+                    continue
+                }
+            }
 
             resultado.discrepancias.push({
                 servicio:           avail.sfcom_service_name,

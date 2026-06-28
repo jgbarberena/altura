@@ -543,7 +543,7 @@ nuevoStock = Math.max(0, Math.min(
 **Riesgo de atomicidad (deuda técnica conocida):** la secuencia guardar-en-Supabase → PUT-a-sfcom no es atómica. Si el INSERT/UPDATE en Supabase tiene éxito pero el PUT a sfcom falla, la reserva queda registrada en BD pero sfcom no actualiza su stock. El modal de error de PUT incluye un correo preformateado para Hilario. La verificación manual con "Verificar datos" detecta la discrepancia y permite sincronizar. No hay rollback automático.
 
 **Exports principales:**
-- `syncStockToSfcom(supabase, venueId, serviceId)` — hace PUT si `sfcom_status === 'confirmed'`. Silencioso en éxito, modal de error en fallo. Llamar siempre después de cualquier operación que cambie reservas activas.
+- `syncStockToSfcom(supabase, venueId, serviceId)` — hace PUT si `sfcom_status === 'confirmed'`. Silencioso en éxito, modal de error en fallo. Tras un PUT exitoso escribe en `sessionStorage` la clave `sfcom-sync:venueId|serviceId` con el stock puesto y el timestamp (TTL 6 min), para que `verificarSfcom` pueda distinguir discrepancias reales de artefactos del caché GET de sfcom. Llamar siempre después de cualquier operación que cambie reservas activas.
 - `checkAvailabilityBeforeSave(supabase, venueId, serviceId, plazas)` — verifica antes de guardar reserva nueva. No bloquea si el GET de sfcom falla.
 - `checkSfcomOrders(supabase)` — detecta pedidos nuevos y cancelados en sfcom, inserta en reservation_requests.
 - `importarCanceladosSfcom(supabase, sfcomListings, cancelados)` — importa pedidos cancelados como leads con `source: 'sfcom_c:<origin_ref>'`, `status: 'nueva'`. Dedup por cliente+servicio sin condición de status.
@@ -576,7 +576,9 @@ Busca el nombre propuesto en la lista de productos conocidos y confirma la entra
 
 Flujo interno: `getSfcomProducts()` (Supabase) → `_inferirProductoEnSfcom()` (auto-match por nombre y día) → si no hay match, picker modal → upsert en `sfcom_listings` con product_id, variation_id y `sfcom_status: 'confirmed'`.
 
-**Discrepancias `pendingExplains`:** cuando sfcom muestra más stock del esperado y el gap está cubierto íntegramente por solicitudes sfcom pendientes de procesar, la discrepancia no es un error. No aparece con botón de sincronización; el "Sincronizar todos" las ignora.
+**Discrepancias `pendingExplains`:** cuando sfcom muestra menos stock del esperado y el gap está cubierto íntegramente por solicitudes sfcom pendientes de procesar, la discrepancia no es un error. Aparece en la sección "ℹ️ Pedidos sfcom pendientes de incorporar" del modal, no en "⚠️ Discrepancias de stock". No tiene botón de sincronización; el "Sincronizar todos" las ignora.
+
+**TTL del caché GET de sfcom:** el endpoint `GET stock-all` tiene un caché de ~5 minutos en el lado del servidor sfcom. Los PUTs actualizan la base de datos de WooCommerce de inmediato, pero los GETs siguen devolviendo el valor anterior durante hasta 5 minutos. Para evitar falsos positivos, `verificarSfcom` consulta el `sessionStorage` antes de reportar cada discrepancia: si `syncStockToSfcom` registró un PUT para ese par hace menos de 6 minutos y el stock puesto coincide exactamente con el `stockEsperado` calculado ahora, la discrepancia se omite (se considera artefacto del TTL, no una desincronización real) y `_stockCache` se actualiza con el valor correcto. Esta lógica vive en `_getRecentSync` / `_markRecentlySync`. La guarda `!pendingExplains` es obligatoria: cuando sfcom ha vendido algo propio (`pendingExplains = true`), el caso semántico es distinto y nunca debe suprimirse.
 
 ### sfcom-panel.js
 Módulo ES6. Panel de gestión sfcom con KPIs, solicitudes pendientes, reservas con sfcom_order_ref, y listings activos con stock. Lee `availability_with_sfcom`. No escribe en BD. Usa `ejecutarVerificacion` y `mostrarToast` de `verificacion.js`. La función local `_ejecutarVerificacionPanel(modoManual)` llama a `ejecutarVerificacion` y después actualiza la columna de stock real de la tabla de listings vía `actualizarStockDesdeVerificacion`.
@@ -823,6 +825,16 @@ Fix (jun 2026): añadido paso de normalización `split('-')` al inicio de `expan
 Varios cambios aplicados (jun 2026):
 - `panel.js` `calcularAlertas()`: `solicitudesSfcom` filtra `status === 'nueva'`; las web se dividen en `solicitudesWebNuevas` (`status === 'nueva'`) y `solicitudesWebSeguimiento` (`status === 'seguimiento_pendiente'`), mostradas en la misma alerta con etiquetas separadas ("X nuevas sin atender, Y en seguimiento pendiente"). `leadsCancelados` filtra además `status === 'nueva'` para no alertar de leads ya en `respuesta_enviada` u otro estado atendido. Adicionalmente, `solicitudesWebNuevas` y `solicitudesWebSeguimiento` excluyen registros con `source.startsWith('sfcom_c:')` (que deben aparecer solo como `leadsCancelados`, no como solicitudes web).
 - `formulario.js` `cargarSolicitudes()`: `otrasActivas` usa `status === 'nueva'` (antes `status !== 'respuesta_enviada'`).
+
+---
+
+**✅ RESUELTO (pendiente verificación en producción — jun 2026) — Discrepancia de stock sfcom reaparecía inmediatamente después de sincronizar.**
+
+Síntoma: tras pulsar "Sincronizar" o "Sincronizar todos" en el modal de verificación, la discrepancia reaparecía al instante y se repetía en cada navegación entre paneles durante ~5 minutos.
+
+Causa raíz: el endpoint `GET stock-all` de sf-api-paula.php cachea las respuestas durante ~5 minutos en el servidor de sfcom. Los PUTs actualizaban WooCommerce correctamente, pero el GET inmediato posterior devolvía el valor anterior. `verificarSfcom` comparaba ese valor stale con el `stockEsperado` y detectaba discrepancia. Al navegar entre paneles, cada recarga destruye el módulo JS (y con él `_stockCache`), por lo que el GET volvía a devolver el valor antiguo en cada página.
+
+Fix: `syncStockToSfcom` registra en `sessionStorage` el stock puesto y el timestamp tras cada PUT exitoso. `verificarSfcom` comprueba esa entrada antes de reportar la discrepancia: si el stock registrado coincide con `stockEsperado` y el PUT tiene menos de 6 minutos, la descarta como artefacto del TTL (y actualiza `_stockCache` con el valor correcto). `sessionStorage` persiste entre navegaciones dentro de la misma sesión del navegador. La guarda `!pendingExplains` garantiza que los pedidos sfcom pendientes de incorporar (caso semánticamente distinto: sfcom vendió y bajó su stock, `diferencia < 0`) nunca quedan suprimidos.
 
 ---
 
