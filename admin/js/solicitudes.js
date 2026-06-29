@@ -288,7 +288,7 @@ function _actualizarPreviewLista(sol) {
     }
 }
 
-async function _guardarBorrador(sol, texto) {
+async function _guardarMensajeBorrador(sol, texto) {
     const fecha = _fechaLog()
     const items = _parsearLog(sol.conversation_notes)
     const borradorIdx = items.findIndex(i => i.type === 'message' && i.author === 'Paula' && i.isDraft)
@@ -1062,7 +1062,7 @@ function _initLogListeners(sol) {
             if (!texto || ta.disabled) return
             ta.disabled = true
             const ok = author === 'Paula'
-                ? await _guardarBorrador(sol, texto)
+                ? await _guardarMensajeBorrador(sol, texto)
                 : await _insertarMensaje(sol, 'Cliente', texto)
             ta.disabled = false
             if (ok) {
