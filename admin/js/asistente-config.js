@@ -109,6 +109,8 @@ conversation_status: estado actual de la solicitud ('nueva', 'en_conversacion', 
 
 modo: indica el tipo de interacción. Valores posibles: 'nueva', 'seguimiento', 'recordatorio', 'recuperar_lead'.
 
+borrador_respuesta (opcional): Paula ya empezó a escribir una respuesta y ha abierto el asistente para que la mejores, completes o traduzcas. Si este campo está presente, úsalo como punto de partida — no generes una respuesta desde cero. Puedes corregirla, ampliarla, mejorar el tono o traducirla según corresponda. Preséntala directamente como texto listo para enviar, con los ajustes que hayas hecho.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MODO DE CONVERSACIÓN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

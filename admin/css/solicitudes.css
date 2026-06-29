@@ -438,8 +438,131 @@
 
 .sol-log-edit:hover { opacity: 1; }
 
+/* =========================
+   MENSAJES BORRADOR (pendiente de envío)
+========================= */
+.sol-log-msg--borrador .sol-log-bubble-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    max-width: 80%;
+}
+
+.sol-log-msg--borrador .sol-log-bubble {
+    background: #fffbeb;
+    border: 1.5px dashed #f59e0b;
+    color: var(--color-heading);
+    border-radius: 12px 12px 2px 12px;
+    max-width: 100%;
+}
+
+.sol-draft-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 5px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sol-draft-label {
+    font-size: 10px;
+    color: #b45309;
+    font-weight: 500;
+    margin-right: 2px;
+}
+
+.sol-draft-act {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.sol-draft-act:hover { background: var(--bg); }
+
+.sol-draft-act--ya {
+    color: #15803d;
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+.sol-draft-act--ya:hover { background: #dcfce7; }
+
+/* =========================
+   ÁREA DE COMPOSICIÓN
+========================= */
+.sol-compose-area {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.sol-compose-box {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.sol-compose-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--subtle);
+}
+
+.sol-compose-box--paula .sol-compose-label { color: #b91c1c; }
+
+.sol-compose-tx {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 13px;
+    font-family: inherit;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    resize: vertical;
+    color: var(--text);
+    background: var(--white);
+    line-height: 1.5;
+    transition: border-color 0.15s;
+    outline: none;
+    min-height: 54px;
+}
+
+.sol-compose-tx:focus { border-color: #aaa; }
+
+.sol-compose-box--paula .sol-compose-tx:focus { border-color: var(--accent); }
+
+.sol-compose-save {
+    align-self: flex-end;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.sol-compose-save:hover { background: var(--bg); }
+
+.sol-compose-box--paula .sol-compose-save {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.sol-compose-box--paula .sol-compose-save:hover { background: #fff5f5; }
+
 @media (max-width: 768px) {
     .sol-log-area { min-height: 160px; }
+    .sol-compose-area { flex-direction: column; gap: 12px; }
 }
 
 /* =========================

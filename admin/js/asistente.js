@@ -161,7 +161,7 @@ function disponibilidadParaAsistente(serviceIds, primaryDay, personas) {
 
 // ===== ASISTENTE DE RESPUESTAS =====
 
-export async function abrirAsistenteRespuesta(solicitud, modo = null) {
+export async function abrirAsistenteRespuesta(solicitud, modo = null, borrador = null) {
     let mensajes = []
     let enviando   = false
 
@@ -416,7 +416,8 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null) {
             conversation_log:    conversationLog,
             conversation_status: solicitud.status || 'nueva',
             modo:                modoEfectivo,
-            proposal_draft:      solicitud.proposal_draft || []
+            proposal_draft:      solicitud.proposal_draft || [],
+            ...(borrador ? { borrador_respuesta: borrador } : {})
         },
         disponibilidad: disponibilidadParaAsistente(serviceIds, draft0?.day || null, draft0?.slots || null)
     }

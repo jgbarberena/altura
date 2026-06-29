@@ -849,9 +849,19 @@ El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tar
 
 ### 7.3 Funcionalidades pendientes
 
-**Respuesta manual a solicitudes — Paula debe poder contestar sin usar el asistente.**
+**✅ RESUELTO — Rediseño del log de conversación y respuesta manual sin asistente (jun 2026).**
 
-Diseño propuesto: añadir en el detalle de solicitud un bloque de respuesta manual con `<textarea>` + botón "Enviar respuesta". Al confirmar: (1) guarda en `conversation_log` con `role: 'assistant'`, (2) llama a `_actualizarEstadoSolicitud('respuesta_enviada')`, (3) llama a `mostrarOpcionesEnvio` con `tipo: 'texto'`. Reutilizar `_onRespuestaUsadaEnLog` y `mostrarOpcionesEnvio` directamente — ya hacen exactamente eso.
+Cambios en `solicitudes.js`, `solicitudes.css`, `asistente.js` y `asistente-config.js`.
+
+**Compose area (dos cuadritos siempre visibles):** reemplaza los botones "＋ Mi mensaje" / "＋ Mensaje del cliente". Dos `<textarea>` side by side: izquierda para Cliente, derecha para Paula. Al hacer clic / pegar / escribir se activan. Ctrl+Enter o botón "Guardar" para confirmar. El de Paula guarda como borrador (no cambia el estado todavía); el de Cliente guarda como mensaje sin más.
+
+**Estado borrador:** los mensajes de Paula guardados sin enviar se almacenan en `conversation_notes` con prefijo `[BORRADOR]\n`. `_parsearLog` detecta el prefijo → `isDraft: true`. `_renderizarLog` los pinta con borde ámbar punteado ("⏳ pendiente de envío") y muestra cuatro acciones inline: 📋 Copiar · 💬 WhatsApp · 📧 Email · ✓ Ya lo envié. El estado `respuesta_enviada` solo se persiste al hacer clic en una de esas acciones (`_promoverBorrador`). Los botones de WhatsApp/Email se ocultan si no hay contacto.
+
+**Edición de mensajes:** ✏️ disponible ahora en mensajes de ambos autores (antes solo Paula). El texto editable del borrador se muestra sin el prefijo `[BORRADOR]`; al guardar se preserva el marcador.
+
+**Asistente con borrador en curso:** cuando Paula tiene un borrador en el log y pulsa "Abrir asistente", el texto del borrador se pasa en `contextoObj.solicitud.borrador_respuesta`. El system prompt instruye a Claude a usarlo como punto de partida en lugar de generar respuesta desde cero.
+
+**Sin cambios de esquema:** el prefijo `[BORRADOR]\n` vive en el campo `conversation_notes` existente (text). No hay columnas nuevas.
 
 ---
 

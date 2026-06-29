@@ -71,8 +71,12 @@ function _parsearLog(texto) {
 
     const flushMsg = () => {
         if (currentAuthor === null) return
-        const text = currentLines.join('\n').trim()
-        if (text) items.push({ type: 'message', author: currentAuthor, text, date: currentDate, index: msgIndex++ })
+        const rawText = currentLines.join('\n').trim()
+        if (rawText) {
+            const isDraft = currentAuthor === 'Paula' && rawText.startsWith('[BORRADOR]\n')
+            const text    = isDraft ? rawText.slice('[BORRADOR]\n'.length) : rawText
+            items.push({ type: 'message', author: currentAuthor, text, isDraft: isDraft || false, date: currentDate, index: msgIndex++ })
+        }
         currentAuthor = null
         currentLines  = []
     }
@@ -102,7 +106,7 @@ function _reconstruirLog(items) {
             parts.push(`---${item.label}---`)
         } else {
             parts.push(`<${item.author}>`)
-            parts.push(item.text)
+            parts.push(item.isDraft ? '[BORRADOR]\n' + item.text : item.text)
             parts.push('')
         }
     }
@@ -111,7 +115,6 @@ function _reconstruirLog(items) {
 }
 
 function _renderizarLog(items) {
-    const hoy = _fechaLog()
     if (!items.length) return '<div class="sol-log-empty">Sin mensajes aún.</div>'
     return items.map(item => {
         if (item.type === 'date') {
@@ -119,9 +122,24 @@ function _renderizarLog(items) {
         }
         const isPaula = item.author === 'Paula'
         const esc     = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        const editBtn = isPaula
-            ? `<button class="sol-log-edit" data-index="${item.index}" title="Editar">✏️</button>`
-            : ''
+        const editBtn = `<button class="sol-log-edit" data-index="${item.index}" title="Editar">✏️</button>`
+
+        if (item.isDraft) {
+            return `<div class="sol-log-msg sol-log-msg--paula sol-log-msg--borrador">
+                <div class="sol-log-bubble-wrap">
+                    <div class="sol-log-bubble">${esc(item.text).replace(/\n/g, '<br>')}</div>
+                    <div class="sol-draft-actions">
+                        <span class="sol-draft-label">⏳ pendiente de envío</span>
+                        <button class="sol-draft-act" data-action="copy" data-index="${item.index}">📋 Copiar</button>
+                        <button class="sol-draft-act sol-draft-act--wa" data-action="wa" data-index="${item.index}">💬</button>
+                        <button class="sol-draft-act sol-draft-act--email" data-action="email" data-index="${item.index}">📧</button>
+                        <button class="sol-draft-act sol-draft-act--ya" data-action="ya" data-index="${item.index}">✓ Ya lo envié</button>
+                    </div>
+                </div>
+                ${editBtn}
+            </div>`
+        }
+
         return `<div class="sol-log-msg${isPaula ? ' sol-log-msg--paula' : ' sol-log-msg--cliente'}">
             <div class="sol-log-bubble">${esc(item.text).replace(/\n/g, '<br>')}</div>
             ${editBtn}
@@ -151,14 +169,17 @@ async function _insertarMensaje(sol, autor, texto) {
 }
 
 function _initEditListeners(sol, container) {
+    // ── Botones de edición (✏️) — ambos autores ──────────────────────────────
     container.querySelectorAll('.sol-log-edit').forEach(btn => {
         btn.addEventListener('click', () => {
-            const msgIdx = parseInt(btn.dataset.index)
-            const msgEl  = btn.closest('.sol-log-msg')
+            const msgIdx  = parseInt(btn.dataset.index)
+            const msgEl   = btn.closest('.sol-log-msg')
+            const isDraft = msgEl.classList.contains('sol-log-msg--borrador')
 
             const ta = document.createElement('textarea')
             ta.style.cssText = 'width:100%;box-sizing:border-box;font-size:13px;padding:6px;border:1px solid var(--border);border-radius:4px;resize:vertical'
-            ta.rows  = 3
+            ta.rows  = 4
+            // For draft messages, the bubble is inside .sol-log-bubble-wrap
             ta.value = msgEl.querySelector('.sol-log-bubble').innerText
 
             const saveBtn   = document.createElement('button')
@@ -189,6 +210,7 @@ function _initEditListeners(sol, container) {
                 const msgItem = items.filter(i => i.type === 'message')[msgIdx]
                 if (!msgItem) return
                 msgItem.text = nuevoTexto
+                // isDraft flag preserved by _reconstruirLog
                 const nuevoLog = _reconstruirLog(items)
                 const { error } = await supabase
                     .from('reservation_requests')
@@ -202,6 +224,44 @@ function _initEditListeners(sol, container) {
                 _initEditListeners(sol, container)
                 _actualizarPreviewLista(sol)
             })
+        })
+    })
+
+    // ── Botones de acción del borrador ────────────────────────────────────────
+    // Ocultar wa/email si no hay contacto
+    if (!sol.client_phone) container.querySelectorAll('.sol-draft-act--wa').forEach(b => { b.style.display = 'none' })
+    if (!sol.client_email) container.querySelectorAll('.sol-draft-act--email').forEach(b => { b.style.display = 'none' })
+
+    container.querySelectorAll('.sol-draft-act').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const msgIdx = parseInt(btn.dataset.index)
+            const action = btn.dataset.action
+            const items  = _parsearLog(sol.conversation_notes)
+            const msgs   = items.filter(i => i.type === 'message')
+            const draft  = msgs[msgIdx]
+            if (!draft?.isDraft) return
+
+            const texto = draft.text
+            const ok    = await _promoverBorrador(sol, msgIdx)
+            if (!ok) return
+
+            const logArea = document.getElementById('sol-log-area')
+            if (logArea) {
+                logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
+                _initEditListeners(sol, logArea)
+                setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
+            }
+            _actualizarPreviewLista(sol)
+
+            if (action === 'copy') {
+                await navigator.clipboard.writeText(texto).catch(() => {})
+                mostrarToast('📋 Copiado')
+            } else if (action === 'wa' && sol.client_phone) {
+                window.open(`https://wa.me/${sol.client_phone.replace(/\D/g, '')}?text=${encodeURIComponent(texto)}`, '_blank')
+            } else if (action === 'email' && sol.client_email) {
+                window.location.href = `mailto:${sol.client_email}?body=${encodeURIComponent(texto)}`
+            }
+            // 'ya': solo promueve, ya hecho arriba
         })
     })
 }
@@ -226,6 +286,55 @@ function _actualizarPreviewLista(sol) {
     } else if (previewEl) {
         previewEl.remove()
     }
+}
+
+async function _insertarBorrador(sol, texto) {
+    const fecha = _fechaLog()
+    const items = _parsearLog(sol.conversation_notes)
+    const tieneFechaHoy = items.some(i => i.type === 'date' && i.label === fecha)
+    if (!tieneFechaHoy) items.push({ type: 'date', label: fecha })
+    items.push({ type: 'message', author: 'Paula', text: texto, isDraft: true, date: fecha, index: -1 })
+    const nuevoLog = _reconstruirLog(items)
+    const { error } = await supabase
+        .from('reservation_requests')
+        .update({ conversation_notes: nuevoLog })
+        .eq('id', sol.id)
+    if (error) { console.error(error); return false }
+    sol.conversation_notes = nuevoLog
+    const idx = _solicitudesActuales.findIndex(s => s.id === sol.id)
+    if (idx !== -1) _solicitudesActuales[idx].conversation_notes = nuevoLog
+    return true
+}
+
+async function _promoverBorrador(sol, msgIdx) {
+    const items = _parsearLog(sol.conversation_notes)
+    const msgs  = items.filter(i => i.type === 'message')
+    const msg   = msgs[msgIdx]
+    if (!msg?.isDraft) return false
+    msg.isDraft = false
+    const nuevoLog = _reconstruirLog(items)
+    const { error: errLog } = await supabase
+        .from('reservation_requests')
+        .update({ conversation_notes: nuevoLog })
+        .eq('id', sol.id)
+    if (errLog) { console.error(errLog); return false }
+    sol.conversation_notes = nuevoLog
+    const sIdx = _solicitudesActuales.findIndex(s => s.id === sol.id)
+    if (sIdx !== -1) _solicitudesActuales[sIdx].conversation_notes = nuevoLog
+
+    const { error: errStatus } = await supabase
+        .from('reservation_requests')
+        .update({ status: 'respuesta_enviada' })
+        .eq('id', sol.id)
+    if (!errStatus) {
+        sol.status = 'respuesta_enviada'
+        if (sIdx !== -1) _solicitudesActuales[sIdx].status = 'respuesta_enviada'
+        _actualizarBadgeEstado(sol.id, 'respuesta_enviada')
+        const sel = document.getElementById('sol-select-estado')
+        if (sel) sel.value = 'respuesta_enviada'
+        document.getElementById('btnEnviarRecordatorio')?.remove()
+    }
+    return true
 }
 
 async function _onRespuestaUsadaEnLog(texto, solicitud) {
@@ -906,60 +1015,70 @@ function _actualizarUrlCatalogo(venueId, serviceId) {
 function _logSection(logItems) {
     return `<div class="sol-log-section">
         <span class="sol-log-label">
-            Log de conversación
+            Conversación
             <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#999"> — solo lo ve el equipo</span>
         </span>
         <div id="sol-log-area" class="sol-log-area">
             ${_renderizarLog(logItems)}
         </div>
-        <div id="sol-log-input" style="display:none;margin-top:8px">
-            <textarea id="sol-log-texto" rows="3"
-                style="width:100%;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid var(--border);border-radius:6px;resize:vertical"
-                placeholder="Escribe el mensaje…"></textarea>
-            <div style="display:flex;gap:8px;margin-top:6px">
-                <button class="btn btn-primary" id="sol-log-guardar" style="font-size:12px;padding:6px 12px">Guardar</button>
-                <button class="btn btn-secondary" id="sol-log-cancelar" style="font-size:12px;padding:6px 12px">Cancelar</button>
+        <div class="sol-compose-area">
+            <div class="sol-compose-box sol-compose-box--cliente">
+                <div class="sol-compose-label">👤 Cliente</div>
+                <textarea class="sol-compose-tx" data-author="Cliente"
+                    placeholder="Pega aquí el mensaje del cliente…" rows="2"></textarea>
+                <button class="sol-compose-save" style="display:none">Guardar</button>
             </div>
-        </div>
-        <div id="sol-log-status" style="font-size:11px;color:var(--subtle);min-height:14px;margin-top:4px"></div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-secondary" id="sol-log-btn-paula" style="font-size:12px;min-height:36px">＋ Mi mensaje</button>
-            <button class="btn btn-secondary" id="sol-log-btn-cliente" style="font-size:12px;min-height:36px">＋ Mensaje del cliente</button>
+            <div class="sol-compose-box sol-compose-box--paula">
+                <div class="sol-compose-label">✉️ Mi respuesta</div>
+                <textarea class="sol-compose-tx" data-author="Paula"
+                    placeholder="Escribe o pega tu respuesta…" rows="2"></textarea>
+                <button class="sol-compose-save" style="display:none">Guardar</button>
+            </div>
         </div>
     </div>`
 }
 
 function _initLogListeners(sol) {
-    const logInput  = document.getElementById('sol-log-input')
-    const logTexto  = document.getElementById('sol-log-texto')
-    const logStatus = document.getElementById('sol-log-status')
-    if (!logInput) return
-    let _logAutor = null
+    const logArea = document.getElementById('sol-log-area')
+    if (!logArea) return
 
-    document.getElementById('sol-log-btn-paula').addEventListener('click', () => {
-        _logAutor = 'Paula'; logTexto.value = ''; logInput.style.display = 'block'; logTexto.focus()
-    })
-    document.getElementById('sol-log-btn-cliente').addEventListener('click', () => {
-        _logAutor = 'Cliente'; logTexto.value = ''; logInput.style.display = 'block'; logTexto.focus()
-    })
-    document.getElementById('sol-log-cancelar').addEventListener('click', () => {
-        logInput.style.display = 'none'; _logAutor = null
-    })
-    document.getElementById('sol-log-guardar').addEventListener('click', async () => {
-        const texto = logTexto.value.trim()
-        if (!texto || !_logAutor) return
-        logStatus.textContent = 'Guardando…'
-        const logArea = document.getElementById('sol-log-area')
-        const ok = await _insertarMensaje(sol, _logAutor, texto)
-        if (ok) {
-            logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
-            _initEditListeners(sol, logArea)
-            setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
-            _actualizarPreviewLista(sol)
-            logInput.style.display = 'none'; _logAutor = null; logStatus.textContent = ''
-        } else {
-            logStatus.textContent = '❌ Error al guardar'
-        }
+    document.querySelectorAll('.sol-compose-tx').forEach(ta => {
+        const author  = ta.dataset.author
+        const box     = ta.closest('.sol-compose-box')
+        const saveBtn = box.querySelector('.sol-compose-save')
+
+        const updateBtn = () => { saveBtn.style.display = ta.value.trim() ? '' : 'none' }
+        ta.addEventListener('input', updateBtn)
+        ta.addEventListener('paste', () => setTimeout(updateBtn, 0))
+
+        ta.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click() }
+        })
+
+        saveBtn.addEventListener('click', async () => {
+            const texto = ta.value.trim()
+            if (!texto) return
+            ta.disabled = true
+            saveBtn.disabled = true
+            saveBtn.textContent = '…'
+
+            const ok = author === 'Paula'
+                ? await _insertarBorrador(sol, texto)
+                : await _insertarMensaje(sol, 'Cliente', texto)
+
+            ta.disabled = false
+            saveBtn.disabled = false
+            saveBtn.textContent = 'Guardar'
+
+            if (ok) {
+                ta.value = ''
+                saveBtn.style.display = 'none'
+                logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
+                _initEditListeners(sol, logArea)
+                setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
+                _actualizarPreviewLista(sol)
+            }
+        })
     })
 }
 
@@ -1171,7 +1290,10 @@ function mostrarDetalle(sol) {
                     }
                 })
                 _initLogListeners(sol)
-                document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => abrirAsistenteRespuesta(sol))
+                document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => {
+                    const borrador = _parsearLog(sol.conversation_notes).filter(i => i.type === 'message').find(i => i.isDraft)
+                    abrirAsistenteRespuesta(sol, null, borrador?.text ?? null)
+                })
             }
         })
     }
@@ -1200,7 +1322,8 @@ function mostrarDetalle(sol) {
     // ── Asistente: vistas extendidas ──────────────────────────────────────────
     if (!esCondensada) {
         document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => {
-            abrirAsistenteRespuesta(sol)
+            const borrador = _parsearLog(sol.conversation_notes).filter(i => i.type === 'message').find(i => i.isDraft)
+            abrirAsistenteRespuesta(sol, null, borrador?.text ?? null)
         })
     }
 

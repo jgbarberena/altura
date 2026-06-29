@@ -734,3 +734,9 @@ Completado en Fase 7: `venues.display_name` usado con fallback al id del venue; 
 **`tipoFactura` calcula `'unico'` incorrectamente (`factura.js:39-46`):** revisado jun 2026; la lógica actual es correcta.
 
 **`parseInt(value) || null` convierte 0 en null (`solicitudes.js`):** el patrón ya no existe en el código. Resuelto en refactoring anterior.
+
+---
+
+### Rediseño log conversación + respuesta manual — ✅ RESUELTO (jun 2026)
+
+Dos cuadritos de composición siempre visibles (Cliente | Paula). Borrador de Paula con prefijo [BORRADOR]\n en conversation_notes, visualizado con borde ámbar y acciones inline. Estado respuesta_enviada solo al confirmar envío. Edición habilitada en mensajes de ambos autores. Asistente recibe borrador_respuesta si hay uno pendiente.
