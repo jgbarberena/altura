@@ -2,6 +2,8 @@
 
 > Contexto transversal del proyecto. Para trabajo en el panel de administración lee también `CLAUDE_ADMIN.md`. Para trabajo en el frontend público, `CLAUDE_WEB.md`.
 
+> **Historial de deudas cerradas:** `CLAUDE_ADMIN_BACKLOG.md`. Ese archivo NO se carga en sesiones normales. Para añadir una deuda resuelta al backlog sin cargarlo: `Add-Content -Path 'CLAUDE_ADMIN_BACKLOG.md' -Value '...' -Encoding UTF8`.
+
 ---
 
 ## 1. Personas
