@@ -1579,7 +1579,27 @@ btnGuardarServicio.addEventListener('click', async () => {
             }
             await supabase.from('sfcom_listings').insert({ availability_id: nuevaDisp.id, ...sfcomInsert })
         }
-        todaDisponibilidad.push({ ...nuevaDisp, venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null, ...sfcomInsert })
+        const _svcCached   = todosServicios.find(s => s.id === svcIntId)
+        const _venueCached = todosVenues.find(v => v.id === _targetVenueId)
+        todaDisponibilidad.push({
+            ...nuevaDisp,
+            service_code:       servicioId,
+            event_type:         _svcCached?.event_type      ?? null,
+            day:                _svcCached?.day              ?? null,
+            start_time:         _svcCached?.start_time       ?? null,
+            venue_display_name: _venueCached?.display_name   ?? null,
+            venue_address:      _venueCached?.address        ?? null,
+            venue_slug:         _venueCached?.slug            ?? null,
+            venue_provider_id:  proveedorActual?.id           ?? null,
+            photos:             null,
+            access_instructions: null,
+            description:        null,
+            sfcom_product_id:   null,
+            sfcom_variation_id: null,
+            sfcom_public_price: null,
+            sfcom_listing_id:   null,
+            ...sfcomInsert
+        })
     }
 
     await persistirPagosProveedor(supabase, proveedorActual.id, todasReservas, todaDisponibilidad)
@@ -2685,7 +2705,27 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
                 }
                 await supabase.from('sfcom_listings').insert({ availability_id: data[0].id, ...sfcomInsertMulti })
             }
-            todaDisponibilidad.push({ ...data[0], venue_provider_id: proveedorActual?.id ?? null, photos: null, access_instructions: null, description: null, sfcom_product_id: null, sfcom_variation_id: null, sfcom_public_price: null, sfcom_listing_id: null, ...sfcomInsertMulti })
+            const _svcCachedMulti   = todosServicios.find(s => s.id === svcIntId)
+            const _venueCachedMulti = todosVenues.find(v => v.id === _newVenueId)
+            todaDisponibilidad.push({
+                ...data[0],
+                service_code:       row.serviceId,
+                event_type:         _svcCachedMulti?.event_type      ?? null,
+                day:                _svcCachedMulti?.day              ?? null,
+                start_time:         _svcCachedMulti?.start_time       ?? null,
+                venue_display_name: _venueCachedMulti?.display_name   ?? null,
+                venue_address:      _venueCachedMulti?.address        ?? null,
+                venue_slug:         _venueCachedMulti?.slug            ?? null,
+                venue_provider_id:  proveedorActual?.id                ?? null,
+                photos:             null,
+                access_instructions: null,
+                description:        null,
+                sfcom_product_id:   null,
+                sfcom_variation_id: null,
+                sfcom_public_price: null,
+                sfcom_listing_id:   null,
+                ...sfcomInsertMulti
+            })
             pairsSync.push({ venueId: _newVenueId, serviceId: svcIntId })
         }
     }
