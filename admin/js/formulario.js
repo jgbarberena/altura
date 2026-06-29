@@ -45,6 +45,7 @@ let reservaEditandoId  = null
 let solicitudOriginRef = null   // origin_ref de la solicitud activa: WEB-ref para sfcom, UUID para web/email
 let hitosClienteTemp   = []
 let _cargandoSolicitud = false
+let _limpiandoWebWeb   = false
 
 // ===== ESTADO DEL BLOQUE DE CONVERSIÓN DE PROPUESTA =====
 let _modoConversionActivo  = false
@@ -2229,6 +2230,11 @@ function _esSfcom(source) {
 // Las web se muestran en naranja con botón Descartar.
 
 async function cargarSolicitudes() {
+    if (!_limpiandoWebWeb) {
+        _limpiandoWebWeb = true
+        await supabase.from('reservation_requests').delete().like('source', 'WEBWEB%')
+    }
+
     const { data: solicitudes, error } = await supabase
         .from('reservation_requests')
         .select('*')
@@ -2243,7 +2249,7 @@ async function cargarSolicitudes() {
     const avisoEl   = document.getElementById('bloque-solicitudes-empty')
 
     const sfcomPendientes = (solicitudes ?? []).filter(s => _esSfcom(s.source) && s.status === 'nueva')
-    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source) && s.status === 'nueva')
+    const otrasActivas    = (solicitudes ?? []).filter(s => !_esSfcom(s.source) && !s.source?.startsWith('sfcom_c:') && s.status === 'nueva')
 
     if (sfcomPendientes.length === 0 && otrasActivas.length === 0) {
         if (bloque) bloque.style.display = 'none'
@@ -2289,7 +2295,7 @@ async function cargarSolicitudes() {
             data-telefono="${(s.client_phone || '').replace(/"/g, '&quot;')}"
             data-address="${(s.client_address || '').replace(/"/g, '&quot;')}"
             data-level="${(d0?.service_name || '').replace(/"/g, '&quot;')}"
-            data-service-id="${(d0?.service_id || '').replace(/"/g, '&quot;')}"
+            data-service-id="${d0?.service_id ?? ''}"
             data-day="${d0?.day || ''}"
             data-slots="${d0?.slots || ''}"
             data-price-per-slot="${d0?.price || ''}"
