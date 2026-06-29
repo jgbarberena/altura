@@ -571,33 +571,6 @@
 .sol-compose-tx:focus { border-color: #bbb; }
 .sol-compose-row--paula .sol-compose-tx:focus { border-color: var(--accent); }
 
-.sol-compose-save {
-    font-size: 11px;
-    padding: 2px 10px;
-    border-radius: var(--radius);
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--subtle);
-    cursor: default;
-    align-self: flex-start;
-}
-
-.sol-compose-save:not(:disabled) {
-    border-color: var(--border);
-    background: var(--white);
-    color: var(--text);
-    cursor: pointer;
-}
-.sol-compose-save:not(:disabled):hover { background: var(--bg); }
-
-.sol-compose-row--paula .sol-compose-save {
-    align-self: flex-end;
-}
-.sol-compose-row--paula .sol-compose-save:not(:disabled) {
-    border-color: var(--accent);
-    color: var(--accent);
-}
-.sol-compose-row--paula .sol-compose-save:not(:disabled):hover { background: #fff5f5; }
 
 @media (max-width: 768px) {
     .sol-log-box .sol-log-area { max-height: 200px; }

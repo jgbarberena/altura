@@ -288,12 +288,17 @@ function _actualizarPreviewLista(sol) {
     }
 }
 
-async function _insertarBorrador(sol, texto) {
+async function _guardarBorrador(sol, texto) {
     const fecha = _fechaLog()
     const items = _parsearLog(sol.conversation_notes)
-    const tieneFechaHoy = items.some(i => i.type === 'date' && i.label === fecha)
-    if (!tieneFechaHoy) items.push({ type: 'date', label: fecha })
-    items.push({ type: 'message', author: 'Paula', text: texto, isDraft: true, date: fecha, index: -1 })
+    const borradorIdx = items.findIndex(i => i.type === 'message' && i.author === 'Paula' && i.isDraft)
+    if (borradorIdx !== -1) {
+        items[borradorIdx].text = texto
+    } else {
+        const tieneFechaHoy = items.some(i => i.type === 'date' && i.label === fecha)
+        if (!tieneFechaHoy) items.push({ type: 'date', label: fecha })
+        items.push({ type: 'message', author: 'Paula', text: texto, isDraft: true, date: fecha, index: -1 })
+    }
     const nuevoLog = _reconstruirLog(items)
     const { error } = await supabase
         .from('reservation_requests')
@@ -1028,14 +1033,12 @@ function _logSection(logItems) {
                     <div class="sol-compose-field">
                         <textarea class="sol-compose-tx" data-author="Cliente"
                             placeholder="Pega el mensaje del cliente…" rows="2"></textarea>
-                        <button class="sol-compose-save" disabled>Guardar</button>
                     </div>
                 </div>
                 <div class="sol-compose-row sol-compose-row--paula">
                     <div class="sol-compose-field">
                         <textarea class="sol-compose-tx" data-author="Paula"
-                            placeholder="Escribe tu respuesta…" rows="2"></textarea>
-                        <button class="sol-compose-save" disabled>Guardar</button>
+                            placeholder="Escribe tu respuesta… (Ctrl+↵ guarda ya)" rows="2"></textarea>
                     </div>
                     <span class="sol-compose-icon">✉️</span>
                 </div>
@@ -1049,41 +1052,37 @@ function _initLogListeners(sol) {
     if (!logArea) return
 
     document.querySelectorAll('.sol-compose-tx').forEach(ta => {
-        const author  = ta.dataset.author
-        const field   = ta.closest('.sol-compose-field')
-        const saveBtn = field.querySelector('.sol-compose-save')
+        const author = ta.dataset.author
+        let timer = null
 
-        const updateBtn = () => { saveBtn.disabled = esVacio(ta.value) }
-        ta.addEventListener('input', updateBtn)
-        ta.addEventListener('paste', () => setTimeout(updateBtn, 0))
-
-        ta.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click() }
-        })
-
-        saveBtn.addEventListener('click', async () => {
+        const doSave = async () => {
+            clearTimeout(timer)
+            timer = null
             const texto = ta.value.trim()
-            if (!texto) return
+            if (!texto || ta.disabled) return
             ta.disabled = true
-            saveBtn.disabled = true
-            saveBtn.textContent = '…'
-
             const ok = author === 'Paula'
-                ? await _insertarBorrador(sol, texto)
+                ? await _guardarBorrador(sol, texto)
                 : await _insertarMensaje(sol, 'Cliente', texto)
-
             ta.disabled = false
-            saveBtn.textContent = 'Guardar'
-            saveBtn.disabled = esVacio(ta.value)
-
             if (ok) {
                 ta.value = ''
-                saveBtn.disabled = true
                 logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
                 _initEditListeners(sol, logArea)
                 setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
                 _actualizarPreviewLista(sol)
             }
+        }
+
+        ta.addEventListener('input', () => {
+            clearTimeout(timer)
+            if (!esVacio(ta.value)) timer = setTimeout(doSave, 700)
+        })
+
+        ta.addEventListener('change', doSave)
+
+        ta.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave() }
         })
     })
 }
