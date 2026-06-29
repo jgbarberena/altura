@@ -762,6 +762,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
         }
     }
 
+    const haySfcomEstado = todasReservas.some(r => ids.includes(r.id) && r.origin_ref?.startsWith('WEB'))
     const { error } = await supabase.from('reservations').update({ status: nuevoEstado }).in('id', ids)
     if (!error && clienteActual) {
         if (nuevoEstado === 'Cancelada') {
@@ -776,6 +777,7 @@ async function cambiarEstadoSeleccionadas(nuevoEstado) {
             ids.includes(r.id) ? { ...r, status: nuevoEstado } : r
         )
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
+        if (haySfcomEstado) await persistirCobrosCliente(supabase, 'SFCOM', todasReservas)
         const pairsConCambioSet = new Set(pairsConCambio.map(p => `${p.venueId}|${p.serviceId}`))
         for (const { venueId, servicioId } of afectadas) {
             const provId = _getProviderIdFromVenue(venueId)
@@ -877,6 +879,7 @@ async function eliminarSeleccionadas() {
             return map
         }, new Map()).values()]
 
+    const haySfcomEliminado = todasReservas.some(r => ids.includes(r.id) && r.origin_ref?.startsWith('WEB'))
     const { error: errReservas } = await supabase.from('reservations').delete().in('id', ids)
     if (errReservas) { alert('Error al borrar reservas: ' + errReservas.message); return }
 
@@ -890,11 +893,13 @@ async function eliminarSeleccionadas() {
                 todosClientes.splice(todosClientes.findIndex(c => c.id === clienteActual.id), 1)
                 limpiarCamposCliente()
                 inputId.value = ''
+                if (haySfcomEliminado) await persistirCobrosCliente(supabase, 'SFCOM', todasReservas)
                 return
             }
         } else {
             await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         }
+        if (haySfcomEliminado) await persistirCobrosCliente(supabase, 'SFCOM', todasReservas)
     }
 
     for (const { venueId, servicioId, cancelada } of afectadas) {
@@ -1291,6 +1296,7 @@ btnAnadir.addEventListener('click', async () => {
         }
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
+        if (solicitudOriginRef?.startsWith('WEB')) await persistirCobrosCliente(supabase, 'SFCOM', todasReservas)
         const provIdNuevo = _getProviderIdFromVenue(venueId)
         if (provIdNuevo) await persistirPagosProveedor(supabase, provIdNuevo, todasReservas, disponibilidad)
         if (sfcomResultNuevo === 'sync') {
