@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds, esVacio } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
@@ -1018,21 +1018,27 @@ function _logSection(logItems) {
             Conversación
             <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#999"> — solo lo ve el equipo</span>
         </span>
-        <div id="sol-log-area" class="sol-log-area">
-            ${_renderizarLog(logItems)}
-        </div>
-        <div class="sol-compose-area">
-            <div class="sol-compose-box sol-compose-box--cliente">
-                <div class="sol-compose-label">👤 Cliente</div>
-                <textarea class="sol-compose-tx" data-author="Cliente"
-                    placeholder="Pega aquí el mensaje del cliente…" rows="2"></textarea>
-                <button class="sol-compose-save" style="display:none">Guardar</button>
+        <div class="sol-log-box">
+            <div id="sol-log-area" class="sol-log-area">
+                ${_renderizarLog(logItems)}
             </div>
-            <div class="sol-compose-box sol-compose-box--paula">
-                <div class="sol-compose-label">✉️ Mi respuesta</div>
-                <textarea class="sol-compose-tx" data-author="Paula"
-                    placeholder="Escribe o pega tu respuesta…" rows="2"></textarea>
-                <button class="sol-compose-save" style="display:none">Guardar</button>
+            <div class="sol-compose-inner">
+                <div class="sol-compose-row sol-compose-row--cliente">
+                    <span class="sol-compose-icon">👤</span>
+                    <div class="sol-compose-field">
+                        <textarea class="sol-compose-tx" data-author="Cliente"
+                            placeholder="Pega el mensaje del cliente…" rows="2"></textarea>
+                        <button class="sol-compose-save" disabled>Guardar</button>
+                    </div>
+                </div>
+                <div class="sol-compose-row sol-compose-row--paula">
+                    <div class="sol-compose-field">
+                        <textarea class="sol-compose-tx" data-author="Paula"
+                            placeholder="Escribe tu respuesta…" rows="2"></textarea>
+                        <button class="sol-compose-save" disabled>Guardar</button>
+                    </div>
+                    <span class="sol-compose-icon">✉️</span>
+                </div>
             </div>
         </div>
     </div>`
@@ -1044,10 +1050,10 @@ function _initLogListeners(sol) {
 
     document.querySelectorAll('.sol-compose-tx').forEach(ta => {
         const author  = ta.dataset.author
-        const box     = ta.closest('.sol-compose-box')
-        const saveBtn = box.querySelector('.sol-compose-save')
+        const field   = ta.closest('.sol-compose-field')
+        const saveBtn = field.querySelector('.sol-compose-save')
 
-        const updateBtn = () => { saveBtn.style.display = ta.value.trim() ? '' : 'none' }
+        const updateBtn = () => { saveBtn.disabled = esVacio(ta.value) }
         ta.addEventListener('input', updateBtn)
         ta.addEventListener('paste', () => setTimeout(updateBtn, 0))
 
@@ -1067,12 +1073,12 @@ function _initLogListeners(sol) {
                 : await _insertarMensaje(sol, 'Cliente', texto)
 
             ta.disabled = false
-            saveBtn.disabled = false
             saveBtn.textContent = 'Guardar'
+            saveBtn.disabled = esVacio(ta.value)
 
             if (ok) {
                 ta.value = ''
-                saveBtn.style.display = 'none'
+                saveBtn.disabled = true
                 logArea.innerHTML = _renderizarLog(_parsearLog(sol.conversation_notes))
                 _initEditListeners(sol, logArea)
                 setTimeout(() => { logArea.scrollTop = logArea.scrollHeight }, 50)
