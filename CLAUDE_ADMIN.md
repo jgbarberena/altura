@@ -819,12 +819,6 @@ La comparación usa `.includes()` en ambas direcciones. Fix parcial aplicado (ju
 
 ---
 
-**PDFs en Supabase Storage quedan huérfanos al borrar reservas o charges — diferido a Fase 10.**
-
-No hay ningún `storage.from(...).remove(...)` en ningún flujo de eliminación. `proposal_path` de reservas borradas y `invoice_path` de charges borrados quedan inaccesibles en los buckets `proposals` e `invoices`. Ver §9 Fase 10 para el diseño detallado.
-
----
-
 ### 7.2 UX — puntos de fricción en el uso diario
 
 **UI no refleja datos derivados ni efectos secundarios hasta recargar la página.**
@@ -855,21 +849,6 @@ El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tar
 
 ### 7.3 Funcionalidades pendientes
 
-**Comunicaciones semi-automáticas (más allá de bienvenida).**
-
-El asistente ya puede redactar confirmaciones y recordatorios. Falta el flujo de envío: un botón en la ficha de reserva que abra el asistente en modo `'confirmacion'` o `'recordatorio'`, genere el mensaje y lo envíe vía WhatsApp o email. Pendiente de diseñar: qué canal usar, si se necesita nuevo `modo` en `abrirAsistenteRespuesta`, y si el envío es manual (copy-paste) o automático (Resend API).
-
----
-
-**Mejoras en la calidad de las propuestas.**
-
-Items pendientes:
-- Usar `venues.display_name` como nombre del venue en lugar del id.
-- Mostrar `availability.access_instructions` si está relleno.
-- Mejorar el contexto que recibe Claude para el borrador (más datos de disponibilidad).
-
----
-
 **Respuesta manual a solicitudes — Paula debe poder contestar sin usar el asistente.**
 
 Diseño propuesto: añadir en el detalle de solicitud un bloque de respuesta manual con `<textarea>` + botón "Enviar respuesta". Al confirmar: (1) guarda en `conversation_log` con `role: 'assistant'`, (2) llama a `_actualizarEstadoSolicitud('respuesta_enviada')`, (3) llama a `mostrarOpcionesEnvio` con `tipo: 'texto'`. Reutilizar `_onRespuestaUsadaEnLog` y `mostrarOpcionesEnvio` directamente — ya hacen exactamente eso.
@@ -883,14 +862,6 @@ Diseño propuesto: añadir en el detalle de solicitud un bloque de respuesta man
 ---
 
 ### 7.4 Auditorías pendientes
-
-**⚠️ URGENTE — Caché de sfcom produce avisos de inconsistencia repetidos.**
-
-`_stockCache` en `sfcom.js` puede quedar desfasado (TTL del servidor sfcom, otra pestaña abierta, o sfcom actualizó stock externamente) y el aviso de inconsistencia reaparece. La verificación manual con "Verificar datos" debería hacer un GET fresco ignorando la caché.
-
-Fix pendiente: forzar un GET real cuando se llama a `ejecutarVerificacion(modoManual=true)`. Alternativa: añadir un botón "Forzar GET" en el modal de discrepancias.
-
----
 
 **Auditoría de sistemas de inferencia.**
 
@@ -946,17 +917,19 @@ Productos con configuración incompleta o pendiente de aclarar con Hilario:
 
 **`persistirPagosProveedor` crea un hito a 0 € para proveedores sin reservas.** Si un proveedor tiene `total_slots = 0` o sin reservas activas, `persistirPagosProveedor` inserta un pago de 0 € con `is_final: true`. No es incorrecto, pero poluciona `payments` con filas vacías. Revisable si se quiere filtrar el INSERT cuando `amount = 0` y no hay reservas previas.
 
+**`_insertarMensaje` sin protección concurrente (`solicitudes.js`).** En práctica es imposible: el asistente es un modal que bloquea la UI, y la edición de mensajes del log también bloquea su área. No vale la pena añadir complejidad.
+
+**`btnConfirmarSfcom` con "Solo guardar" no sincroniza sfcom.** Es el comportamiento esperado: Paula ha elegido explícitamente no sincronizar. Las discrepancias se detectan en la verificación automática.
+
+**Tres paneles cargan datos sfcom de formas distintas.** `formulario.js` hace query directa a `sfcom_listings`. `proveedores.js` hace dos queries y las mezcla en memoria. `sfcom-panel.js` usa la vista `availability_with_sfcom`. No hay inconsistencias visibles. Riesgo: si se añade una columna hay que editarlo en tres sitios. Se consolidará si/cuando se refactorice la carga de datos sfcom.
+
+**El asistente marca el mensaje como enviado al pulsar el botón de correo.** El registro en log ocurre al pulsar el botón, sin esperar confirmación real del envío por mailto (sin callback). Paula puede editar el log si lo envió por otro canal. Sin solución técnica posible con el stack actual.
+
 ---
 
 ### 7.9 Auditoría de código — jun 2026 (ítems activos)
 
 Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resueltos están en `CLAUDE_ADMIN_BACKLOG.md §7.9`.
-
----
-
-#### Crítico
-
-**ACEPTADO — `_insertarMensaje` sin protección concurrente (`solicitudes.js:132-151`).** En práctica es imposible: el asistente es un modal que bloquea la UI, y la edición de mensajes del log también bloquea su área. No vale la pena añadir complejidad.
 
 ---
 
@@ -970,25 +943,15 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **Asistente múltiple no valida `service_id` duplicado entre filas antes de insertar (`proveedores.js:2216-2293`).** Colisión con UNIQUE(venue_id, service_id) en `availability`. El código muestra `alert` con el error de BD pero no previene la colisión.
 
-**ACEPTADO — `btnConfirmarSfcom` con "Solo guardar" no sincroniza sfcom.** Es el comportamiento esperado: Paula ha elegido explícitamente no sincronizar. Las discrepancias se detectan en la verificación automática.
-
 **`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada (`sfcom.js:92-95`).** El consumidor ve todos los availability como `fallos` pero el error real no se muestra.
 
 **`idsMismatch` en verificarSfcom es código muerto en la práctica.** `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone endpoint de nombres de variaciones. Documentado en el código.
 
 **El sort de "Cobrado/Pagado" en `tablas.js` ordena por emoji — resultado confuso (`tablas.js:253-256`).** Fix: usar el raw value booleano para el sort y formatear solo en display.
 
-**`persistirCobrosCliente` lanza `alert()` síncrono bloqueante en flujo destructivo (`utils.js:188`).** Cuando el hito final ya está facturado y hay un cambio, dispara `alert()` bloqueante. Fix: sustituir por modal informativo.
-
-**ACEPTADO — Tres paneles cargan datos sfcom de formas distintas.** `formulario.js` hace query directa a `sfcom_listings`. `proveedores.js` hace dos queries y las mezcla en memoria. `sfcom-panel.js` usa la vista `availability_with_sfcom`. No hay inconsistencias visibles. Riesgo: si se añade una columna, hay que editarlo en tres sitios. Se consolidará si/cuando se refactorice la carga de datos sfcom.
-
-**ACEPTADO — El asistente marca el mensaje como enviado al pulsar el botón de correo.** El registro en log ocurre al pulsar el botón, sin esperar confirmación real del envío por mailto (sin callback). Paula puede editar el log si lo envió por otro canal. Sin solución técnica posible con el stack actual.
-
 ---
 
 #### Medio — edge cases que ocurrirán con el tiempo
-
-**Race condition por `setTimeout(50ms/100ms/150ms)` para sincronizar selects (`formulario.js:601-606`, `2044-2059`).** En dispositivos lentos, el timeout puede agotarse antes de que el listener async haya corrido. Fix: hacer `actualizarProveedores` retornar una Promise y encadenar con `await`.
 
 **`_savePhotos` sobreescribe el array entero — race condition si dos tabs editan (`proveedores.js:144-156`).** Si Paula tiene el panel en dos tabs y ambas editan fotos del mismo servicio, gana el último en guardar.
 
@@ -1012,13 +975,9 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **`_emitir` (factura) actualiza `clients` en memoria antes de confirmar que el UPDATE a Supabase fue exitoso (`factura.js:341-354`).** `Object.assign(_cliente, updates)` ocurre antes del error check.
 
-**`tipoFactura` puede calcular `'unico'` incorrectamente cuando hay hitos de ajuste (`factura.js:39-46`).** Si todos los adelantos fueron eliminados sin haberlos facturado, el PDF sale sin sección de liquidación aunque el importe real no cuadre.
-
 **El logo de propuesta puede no estar cargado al generar el PDF (`propuesta.js:616-634`).** Si Paula pulsa el botón inmediatamente al abrir el panel, `_logoBlackBase64` puede no haber cargado. El PDF se genera sin logo (try/catch silencioso).
 
 **`Math.abs(parseFloat(amount) - cobroFinal) >= 0.01` puede dar falso positivo por precisión float (`utils.js:176`).** Fix: redondear a 2 decimales antes de comparar.
-
-**`parseInt(value) || null` convierte `0` en `null` en varios sitios (`solicitudes.js:622-630`).** `parseInt(0) = 0` es falsy → se guarda `null`.
 
 **`_computarFinanciero` muestra `"SFCOM"` como ID de cliente en el modal de inconsistencias financieras sin explicación (`verificacion.js`).** Fix: cambiar el texto a `"Canal sfcom (WooCommerce)"` y añadir nota explicativa.
 
@@ -1027,10 +986,6 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 ---
 
 #### Bajo — pulido y consistencia
-
-**HTML de `_renderItem` no escapa `client_name`, `level`, `service_id` (`solicitudes.js:349-383`).** Son campos de entrada externa (formulario web, sfcom). Posible XSS potencial.
-
-**`aplicarFiltro` en `tablas.js` inyecta el nombre de columna sin escape en `onclick=` inline (`tablas.js:298`).** Los nombres de columna actuales son seguros.
 
 **El logo de propuesta y las imágenes de vista previa se re-fetchean en cada apertura del panel, sin caché (`propuesta.js:230-241`).** Para propuestas con 5+ servicios con imagen, hay 5+ fetches en paralelo en cada apertura.
 

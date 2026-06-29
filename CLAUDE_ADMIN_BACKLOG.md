@@ -698,3 +698,39 @@ ON CONFLICT (client_id, amount, due_date) DO NOTHING;
 - `asistente.js`: toast cuando el JSON de `---BORRADOR---` no es válido.
 
 **`assistant_logs` sin RLS — ✅ RESUELTO.** RLS habilitado en Supabase Dashboard.
+
+---
+
+### §7.4 Caché de sfcom en verificación — ✅ RESUELTO (jun 2026)
+
+`verificarSfcom` en `sfcom.js` llama siempre a `apiFetchStockAll()` (GET real a la API sfcom) al principio de cada verificación, y puebla `_stockCache` con ese resultado fresco. No lee la caché antes de hacer el GET. La deuda pedía un parámetro `forceRefresh` en `ejecutarVerificacion(modoManual=true)` — innecesario: el comportamiento ya era el correcto por diseño. Verificado jun 2026.
+
+---
+
+### §7.3 Comunicaciones semi-automáticas — ✅ CERRADO (jun 2026)
+
+**Decisión: lo que hay es suficiente.** Las confirmaciones de reserva se gestionan desde el panel de control y `formulario.html` (sistema de bienvenida, Fase 2). El asistente de respuestas en `solicitudes.html` cubre el seguimiento y recuperación de leads sfcom con modales de texto prefilled + `mostrarOpcionesEnvio` (copiar, WhatsApp, email) + botón "Mejorar con el asistente". Modos activos: `'nueva'`, `'seguimiento'`, `'recuperar_lead'`.
+
+**Sobre automatización real del envío:** descartado conscientemente. Sin la API de WhatsApp de pago (WhatsApp Business API), el envío solo puede ser manual asistido (enlace wa.me). Con Resend en tier gratuito, el envío automático de email es técnicamente posible, pero mantener el control sobre qué se envía y cuándo es preferible con el volumen actual. El riesgo de mensajes no deseados o duplicados supera el beneficio de la automatización.
+
+---
+
+### §7.3 Mejoras en la calidad de las propuestas — ✅ RESUELTO (Fase 7, jun 2026)
+
+Completado en Fase 7: `venues.display_name` usado con fallback al id del venue; fotos del balcón incluidas en modo Completo; modos Compacto/Completo implementados; contexto de disponibilidad mejorado en el asistente (`disponibilidadParaAsistente`). El campo `availability.access_instructions` no se incluye en la propuesta (no era crítico). Si se quiere en el futuro, es una línea en el template. El resto son mejoras de datos en el sistema, no deuda técnica de programación.
+
+---
+
+### §7.9 Bugs resueltos — revisión jun 2026
+
+**`persistirCobrosCliente` usaba `alert()` bloqueante (`utils.js`):** ya usa `crearModal` para mostrar avisos sin bloquear el hilo.
+
+**Race condition por `setTimeout(50ms/100ms/150ms)` en selects (`formulario.js`):** los delays escalonados ya no existen. Solo queda un único `setTimeout(50ms)` para asignación de valor post-render.
+
+**XSS en `_renderItem` (`solicitudes.js`):** función `_esc()` añadida y aplicada a `client_name`, `level`, `service_id` y otros campos de entrada externa.
+
+**Inyección de nombre de columna en `onclick=` inline (`tablas.js`):** el campo se pasa como variable segura, no interpolado en el atributo.
+
+**`tipoFactura` calcula `'unico'` incorrectamente (`factura.js:39-46`):** revisado jun 2026; la lógica actual es correcta.
+
+**`parseInt(value) || null` convierte 0 en null (`solicitudes.js`):** el patrón ya no existe en el código. Resuelto en refactoring anterior.
