@@ -159,95 +159,167 @@ function _abrirModalSeleccionBienvenidas(idsPendientes) {
     const conSfcom = new Set(
         reservas.filter(r => r.origin_ref?.startsWith('WEB')).map(r => r.client_id)
     )
-    // sfcom primero, luego alfabético
-    const ordenados = [...idsPendientes].sort((a, b) => {
-        const diff = (conSfcom.has(a) ? 0 : 1) - (conSfcom.has(b) ? 0 : 1)
-        return diff !== 0 ? diff : a.localeCompare(b)
-    })
 
-    const seleccionados = new Set(ordenados)
+    // Pre-compute row data once
+    const datos = [...idsPendientes].map(id => ({
+        id,
+        esSfcom: conSfcom.has(id),
+        nRes: reservas.filter(r => r.client_id === id && r.status === 'Confirmada' && !r.welcome_sent_at).length
+    }))
+
+    const seleccionados = new Set(datos.map(d => d.id))
+
+    let sortCol = null   // null | 'cliente' | 'canal' | 'reservas'
+    let sortDir = 'asc'
+
+    function getOrdenados() {
+        const arr = [...datos]
+        if (sortCol === 'cliente') {
+            arr.sort((a, b) => sortDir === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id))
+        } else if (sortCol === 'canal') {
+            arr.sort((a, b) => {
+                const d = (a.esSfcom ? 0 : 1) - (b.esSfcom ? 0 : 1)
+                return d !== 0 ? (sortDir === 'asc' ? d : -d) : a.id.localeCompare(b.id)
+            })
+        } else if (sortCol === 'reservas') {
+            arr.sort((a, b) => {
+                const d = a.nRes - b.nRes
+                return d !== 0 ? (sortDir === 'asc' ? d : -d) : a.id.localeCompare(b.id)
+            })
+        } else {
+            // Default: sfcom first, then alphabetical
+            arr.sort((a, b) => {
+                const d = (a.esSfcom ? 0 : 1) - (b.esSfcom ? 0 : 1)
+                return d !== 0 ? d : a.id.localeCompare(b.id)
+            })
+        }
+        return arr
+    }
 
     const { overlay, panel } = crearModal('modal-seleccion-bienvenidas', { wide: true, scroll: true })
 
-    function renderModal() {
-        const n = seleccionados.size
+    function _arrow(col) {
+        if (sortCol !== col) return '<span style="color:#ccc;font-size:10px"> ⇅</span>'
+        return `<span style="font-size:10px"> ${sortDir === 'asc' ? '↑' : '↓'}</span>`
+    }
+
+    function renderShell() {
         panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div class="modal-header-title">📩 Seleccionar clientes para bienvenida</div>
                 <button id="mb-cerrar" class="btn btn-secondary" style="padding:4px 10px">✕</button>
             </div>
-            <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;font-size:13px">
-                <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-                    <input type="checkbox" id="mb-chk-todos" ${n === ordenados.length ? 'checked' : n === 0 ? '' : 'indeterminate'}> Todos
-                </label>
-                <a id="mb-solo-sfcom" href="#" style="color:var(--accent);text-decoration:underline">Solo sfcom</a>
-                <span style="margin-left:auto;color:var(--subtle)">${n} seleccionado${n !== 1 ? 's' : ''}</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+                <button id="mb-todos"       class="btn btn-secondary" style="font-size:12px;padding:3px 10px">Todos</button>
+                <button id="mb-ninguno"     class="btn btn-secondary" style="font-size:12px;padding:3px 10px">Ninguno</button>
+                <button id="mb-solo-sfcom"  class="btn btn-secondary" style="font-size:12px;padding:3px 10px">Solo sfcom</button>
+                <button id="mb-solo-propio" class="btn btn-secondary" style="font-size:12px;padding:3px 10px">Solo propio</button>
+                <span id="mb-contador" style="margin-left:auto;color:var(--subtle);font-size:13px"></span>
             </div>
-            <div class="table-wrapper" style="max-height:380px;overflow-y:auto">
+            <div class="table-wrapper" id="mb-tabla-wrap" style="max-height:380px;overflow-y:auto">
                 <table>
                     <thead><tr>
                         <th style="width:32px"></th>
-                        <th>Cliente</th>
-                        <th>Canal</th>
-                        <th>Res. confirmadas pendientes</th>
+                        <th id="mb-th-cliente"   style="cursor:pointer;user-select:none">Cliente</th>
+                        <th id="mb-th-canal"     style="cursor:pointer;user-select:none">Canal</th>
+                        <th id="mb-th-reservas"  style="cursor:pointer;user-select:none">Res. confirmadas</th>
                     </tr></thead>
-                    <tbody>
-                        ${ordenados.map(id => {
-                            const nRes = reservas.filter(r => r.client_id === id && r.status === 'Confirmada' && !r.welcome_sent_at).length
-                            const esSfcom = conSfcom.has(id)
-                            return `<tr>
-                                <td><input type="checkbox" class="mb-chk-cliente" data-id="${id}" ${seleccionados.has(id) ? 'checked' : ''}></td>
-                                <td><code>${id}</code></td>
-                                <td>${esSfcom ? '<span style="color:#dc2626;font-size:11px;font-weight:600">sfcom</span>' : 'propio'}</td>
-                                <td style="text-align:center">${nRes}</td>
-                            </tr>`
-                        }).join('')}
-                    </tbody>
+                    <tbody id="mb-tbody"></tbody>
                 </table>
             </div>
             <div class="modal-actions" style="margin-top:14px">
                 <button id="mb-cancelar" class="btn btn-secondary">Cancelar</button>
-                <button id="mb-iniciar" class="btn btn-primary" ${n === 0 ? 'disabled' : ''}>
-                    Iniciar asistente (${n})
-                </button>
+                <button id="mb-iniciar"  class="btn btn-primary">Iniciar asistente (0)</button>
             </div>`
 
-        const chkTodos = panel.querySelector('#mb-chk-todos')
-        if (n > 0 && n < ordenados.length) chkTodos.indeterminate = true
-
-        panel.querySelector('#mb-cerrar').addEventListener('click', () => overlay.close())
+        panel.querySelector('#mb-cerrar').addEventListener('click',   () => overlay.close())
         panel.querySelector('#mb-cancelar').addEventListener('click', () => overlay.close())
 
-        panel.querySelector('#mb-chk-todos').addEventListener('change', e => {
-            if (e.target.checked) ordenados.forEach(id => seleccionados.add(id))
-            else seleccionados.clear()
-            renderModal()
+        panel.querySelector('#mb-todos').addEventListener('click', () => {
+            datos.forEach(d => seleccionados.add(d.id))
+            actualizarFilas()
         })
-
-        panel.querySelector('#mb-solo-sfcom').addEventListener('click', e => {
-            e.preventDefault()
+        panel.querySelector('#mb-ninguno').addEventListener('click', () => {
             seleccionados.clear()
-            ordenados.filter(id => conSfcom.has(id)).forEach(id => seleccionados.add(id))
-            renderModal()
+            actualizarFilas()
+        })
+        panel.querySelector('#mb-solo-sfcom').addEventListener('click', () => {
+            seleccionados.clear()
+            datos.filter(d => d.esSfcom).forEach(d => seleccionados.add(d.id))
+            actualizarFilas()
+        })
+        panel.querySelector('#mb-solo-propio').addEventListener('click', () => {
+            seleccionados.clear()
+            datos.filter(d => !d.esSfcom).forEach(d => seleccionados.add(d.id))
+            actualizarFilas()
         })
 
-        panel.querySelectorAll('.mb-chk-cliente').forEach(chk => {
-            chk.addEventListener('change', () => {
-                if (chk.checked) seleccionados.add(chk.dataset.id)
-                else seleccionados.delete(chk.dataset.id)
-                renderModal()
-            })
+        const thClick = col => () => {
+            sortDir = sortCol === col && sortDir === 'asc' ? 'desc' : 'asc'
+            sortCol = col
+            actualizarFilas(true)
+        }
+        panel.querySelector('#mb-th-cliente').addEventListener('click',  thClick('cliente'))
+        panel.querySelector('#mb-th-canal').addEventListener('click',    thClick('canal'))
+        panel.querySelector('#mb-th-reservas').addEventListener('click', thClick('reservas'))
+
+        // Event delegation: row click toggles selection without re-rendering the table
+        panel.querySelector('#mb-tbody').addEventListener('click', e => {
+            const tr = e.target.closest('tr[data-id]')
+            if (!tr) return
+            const id  = tr.dataset.id
+            const chk = tr.querySelector('.mb-chk-cliente')
+            if (e.target !== chk) chk.checked = !chk.checked
+            if (chk.checked) seleccionados.add(id)
+            else seleccionados.delete(id)
+            actualizarContador()
         })
 
         panel.querySelector('#mb-iniciar').addEventListener('click', () => {
-            const ids = ordenados.filter(id => seleccionados.has(id))
+            const ids = getOrdenados().filter(d => seleccionados.has(d.id)).map(d => d.id)
             if (!ids.length) return
             sessionStorage.setItem('colaBienvenidas', JSON.stringify(ids))
             window.location.href = 'formulario.html'
         })
     }
 
-    renderModal()
+    function actualizarContador() {
+        const n = seleccionados.size
+        panel.querySelector('#mb-contador').textContent = `${n} seleccionado${n !== 1 ? 's' : ''}`
+        const btn = panel.querySelector('#mb-iniciar')
+        btn.textContent = `Iniciar asistente (${n})`
+        btn.disabled = n === 0
+    }
+
+    // Rebuilds only tbody + headers + counter. preserveScroll=false on sort (table reorders).
+    function actualizarFilas(resetScroll = false) {
+        const wrap = panel.querySelector('#mb-tabla-wrap')
+        const scrollY = resetScroll ? 0 : wrap.scrollTop
+
+        // Update sort arrows in headers
+        ;['cliente', 'canal', 'reservas'].forEach(col => {
+            const th = panel.querySelector(`#mb-th-${col}`)
+            const label = col === 'cliente' ? 'Cliente' : col === 'canal' ? 'Canal' : 'Res. confirmadas'
+            th.innerHTML = `${label}${_arrow(col)}`
+            th.style.color = sortCol === col ? 'var(--accent)' : ''
+        })
+
+        panel.querySelector('#mb-tbody').innerHTML = getOrdenados().map(d => `
+            <tr data-id="${d.id}" style="cursor:pointer">
+                <td><input type="checkbox" class="mb-chk-cliente" data-id="${d.id}" ${seleccionados.has(d.id) ? 'checked' : ''}></td>
+                <td><code>${d.id}</code></td>
+                <td>${d.esSfcom
+                    ? '<span style="color:#dc2626;font-size:11px;font-weight:600">sfcom</span>'
+                    : '<span style="color:var(--subtle);font-size:11px">propio</span>'}</td>
+                <td style="text-align:center">${d.nRes}</td>
+            </tr>`).join('')
+
+        actualizarContador()
+        wrap.scrollTop = scrollY
+    }
+
+    renderShell()
+    actualizarFilas()
 }
 
 // ===== BLOQUE 1: CALENDARIO =====
