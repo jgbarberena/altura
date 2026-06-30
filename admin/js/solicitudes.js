@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds, esVacio } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds, esVacio, initTemporada, getTemporadaActiva, temporadaDeFecha } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
@@ -8,13 +8,22 @@ import { crearModal } from './modal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor }))
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor, season: getTemporadaActiva() }))
 initSidebar()
 
 // ===== DATOS GLOBALES =====
+const { data: _tmpSeason } = await supabase.from('services').select('season').order('season', { ascending: false })
+const _todasTemporadas = [...new Set((_tmpSeason ?? []).map(r => r.season))]
+await initTemporada(_todasTemporadas)
+const _temporada = getTemporadaActiva()
+
 const { data: disponibilidad } = await supabase.from('availability_panel')
     .select('venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type, day')
-let todasReservas  = (await supabase.from('reservations').select('*')).data
+    .eq('season', _temporada)
+const _servicioIds = (disponibilidad ?? []).map(d => d.service_id)
+let todasReservas  = _servicioIds.length > 0
+    ? (await supabase.from('reservations').select('*').in('service_id', _servicioIds)).data ?? []
+    : []
 let todosClientes  = (await supabase.from('clients').select('id,name,email,phone')).data ?? []
 
 function _esSfcom(source) {
@@ -46,9 +55,10 @@ const STATUS_LABELS = {
 const STATUS_ACTIVOS = ['nueva', 'en_conversacion', 'respuesta_enviada', 'seguimiento_pendiente']
 
 const BATCH_CERRADAS = 15
-let _solicitudesCerradas = []
-let _cerradasOffset      = 0
-let _hayMasCerradas      = false
+let _solicitudesCerradas    = []
+let _todasCerradasSeason    = []
+let _cerradasOffset         = 0
+let _hayMasCerradas         = false
 
 // ===== LOG DE CONVERSACIÓN — HELPERS =====
 
@@ -410,7 +420,9 @@ async function cargarSolicitudes() {
 
     if (error) { console.error('Error cargando solicitudes:', error); return }
 
-    _solicitudesActuales = data ?? []
+    _solicitudesActuales = (data ?? []).filter(s =>
+        s.status === 'nueva' || temporadaDeFecha(s.created_at) === _temporada
+    )
     await _verificarTransicionesAutomaticas()
     await _procesarWebFormsSinProcesar()
 
@@ -428,19 +440,19 @@ async function cargarSolicitudes() {
 }
 
 async function _cargarCerradas() {
-    const { data } = await supabase
-        .from('reservation_requests')
-        .select('*')
-        .in('status', ['convertida', 'descartada'])
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false })
-        .range(_cerradasOffset, _cerradasOffset + BATCH_CERRADAS)
-
-    const lote = data ?? []
-    _hayMasCerradas = lote.length > BATCH_CERRADAS
-    const paraAgregar = _hayMasCerradas ? lote.slice(0, BATCH_CERRADAS) : lote
-    _solicitudesCerradas.push(...paraAgregar)
-    _cerradasOffset += paraAgregar.length
+    if (_cerradasOffset === 0) {
+        const { data } = await supabase
+            .from('reservation_requests')
+            .select('*')
+            .in('status', ['convertida', 'descartada'])
+            .order('updated_at', { ascending: false, nullsFirst: false })
+            .order('id', { ascending: false })
+        _todasCerradasSeason = (data ?? []).filter(s => temporadaDeFecha(s.created_at) === _temporada)
+    }
+    const ventana = _todasCerradasSeason.slice(_cerradasOffset, _cerradasOffset + BATCH_CERRADAS)
+    _solicitudesCerradas.push(...ventana)
+    _cerradasOffset += ventana.length
+    _hayMasCerradas = _cerradasOffset < _todasCerradasSeason.length
 }
 
 let _solicitudesActuales = []

@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, exportTable, valorO } from './utils.js'
+import { initSidebar, fmt, exportTable, valorO, getTemporadaActiva, initTemporada, calcularTemporadaDefault } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 
@@ -13,6 +13,21 @@ initSidebar()
     if (_sfcomResult.ok && _sfcomResult.cancelados?.length) {
         const _sfcomListings = await loadSfcomListings(supabase)
         await importarCanceladosSfcom(supabase, _sfcomListings, _sfcomResult.cancelados)
+    }
+}
+
+// ─── Temporada ───────────────────────────────────────────────────────────────
+
+const { data: _tmpSeason } = await supabase.from('services').select('season').order('season', { ascending: false })
+const _todasTemporadas = [...new Set((_tmpSeason ?? []).map(r => r.season))]
+await initTemporada(_todasTemporadas)
+const _temporada = getTemporadaActiva()
+
+{
+    const btnActualizar = document.getElementById('btnActualizarSfcom')
+    if (btnActualizar && _temporada !== calcularTemporadaDefault(_todasTemporadas)) {
+        btnActualizar.disabled = true
+        btnActualizar.title = 'Solo disponible en la temporada actual'
     }
 }
 
@@ -33,24 +48,32 @@ const stockSfcom = new Map()
 // ─── Carga inicial ───────────────────────────────────────────────────────────
 
 async function cargarDatos() {
+    // availability primero: necesitamos _servicioIds para filtrar reservations
+    const { data: disponibilidad, error: errD } = await supabase
+        .from('availability_with_sfcom')
+        .select('id, venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status')
+        .eq('season', _temporada)
+    if (errD) console.error('[sfcom-panel] availability_with_sfcom:', errD)
+
+    const _servicioIds = (disponibilidad ?? []).map(d => d.service_id)
+
     const [
-        { data: reservas,       error: errR },
-        { data: disponibilidad, error: errD },
-        { data: solicitudes,    error: errS },
-        { data: servicios,      error: errSvc },
-        { data: proveedores,    error: errP },
-        { data: clientes,       error: errC }
+        { data: reservas,    error: errR   },
+        { data: solicitudes, error: errS   },
+        { data: servicios,   error: errSvc },
+        { data: proveedores, error: errP   },
+        { data: clientes,    error: errC   }
     ] = await Promise.all([
-        supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,origin_ref').order('id', { ascending: false }),
-        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status'),
+        _servicioIds.length > 0
+            ? supabase.from('reservations').select('id,client_id,service_id,venue_id,slots,price_per_slot,total_amount,status,origin_ref').in('service_id', _servicioIds).order('id', { ascending: false })
+            : Promise.resolve({ data: [], error: null }),
         supabase.from('reservation_requests').select('id,client_name,client_email,source,proposal_draft,created_at').like('source', 'WEB%').eq('status', 'nueva').order('created_at', { ascending: false }),
-        supabase.from('services').select('id,service_code,event_type,day,description'),
+        supabase.from('services').select('id,service_code,event_type,day,description').eq('season', _temporada),
         supabase.from('venues').select('id,display_name,provider_id'),
         supabase.from('clients').select('id,name')
     ])
 
     if (errR)   console.error('[sfcom-panel] reservations:', errR)
-    if (errD)   console.error('[sfcom-panel] availability_with_sfcom:', errD)
     if (errSvc) console.error('[sfcom-panel] services:', errSvc)
     if (errP)   console.error('[sfcom-panel] venues:', errP)
     if (errC)   console.error('[sfcom-panel] clients:', errC)
@@ -252,7 +275,8 @@ async function _ejecutarVerificacionPanel(modoManual) {
     const resultado = await ejecutarVerificacion(supabase, {
         modoManual,
         incluirSfcom:      true,
-        incluirFinanciero: modoManual
+        incluirFinanciero: modoManual,
+        season:            getTemporadaActiva()
     })
     if (resultado?.sfcom) {
         actualizarStockDesdeVerificacion(resultado)

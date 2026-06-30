@@ -6,30 +6,138 @@ import { mostrarToast } from './verificacion.js'
 // Formatea un número como moneda EUR
 export const fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
-// Año de la temporada activa: el año en curso si estamos antes del 1 de agosto,
-// el siguiente si no (a partir de agosto la temporada vigente es la del año siguiente).
+// ===== SISTEMA DE TEMPORADAS =====
+
+let _todasTemporadas = []
+
+// Traduce una fecha al año de temporada: julio 15+ o agosto+ → año siguiente.
+export function temporadaDeFecha(fecha) {
+    const d = new Date(fecha)
+    const m = d.getMonth()
+    return (m > 6 || (m === 6 && d.getDate() >= 15)) ? d.getFullYear() + 1 : d.getFullYear()
+}
+
+// Calcula la temporada por defecto según la fecha y las temporadas disponibles.
+// Puro cálculo, no lee localStorage.
+export function calcularTemporadaDefault(todasTemporadas) {
+    const hoy          = new Date()
+    const anioHoy      = hoy.getFullYear()
+    const esPostAgosto = hoy.getMonth() >= 7
+    const anioSig      = anioHoy + 1
+
+    if (todasTemporadas.length === 0) return anioHoy
+
+    const maxT = Math.max(...todasTemporadas)
+    if (esPostAgosto && todasTemporadas.includes(anioSig)) return anioSig
+    return maxT
+}
+
+// Devuelve la temporada activa (integer). Lee localStorage; si no hay nada, usa calcularTemporadaDefault.
+export function getTemporadaActiva() {
+    const guardada = localStorage.getItem('vsf_temporada_activa')
+    if (guardada) return parseInt(guardada)
+    return calcularTemporadaDefault(_todasTemporadas)
+}
+
+// Guarda la temporada activa en localStorage y recarga la página.
+export function setTemporadaActiva(season) {
+    localStorage.setItem('vsf_temporada_activa', season)
+    window.location.reload()
+}
+
+// Inicializa el sistema de temporadas: renderiza el selector en el sidebar y muestra el toast.
+// todasTemporadas: array de integers con las temporadas que tienen datos (más reciente primero).
+export async function initTemporada(todasTemporadas, onReady) {
+    _todasTemporadas = todasTemporadas
+
+    const temporadaDefault = calcularTemporadaDefault(todasTemporadas)
+    if (!localStorage.getItem('vsf_temporada_activa')) {
+        localStorage.setItem('vsf_temporada_activa', temporadaDefault)
+    }
+    const temporadaActiva = getTemporadaActiva()
+
+    // Opciones del selector: próxima temporada vacía (max+1) + todas con datos
+    const maxConDatos     = todasTemporadas.length > 0 ? Math.max(...todasTemporadas) : new Date().getFullYear()
+    const proximaTemp     = maxConDatos + 1
+    const opciones        = todasTemporadas.includes(proximaTemp)
+        ? [...todasTemporadas]
+        : [proximaTemp, ...todasTemporadas]
+
+    // Selector en el sidebar
+    const pHeader = document.querySelector('.sidebar-header p')
+    if (pHeader) {
+        pHeader.className = 'sidebar-temporada'
+        if (temporadaActiva !== temporadaDefault) pHeader.classList.add('temporada-no-activa')
+        pHeader.innerHTML = `Gestión · <select id="selectTemporada" class="sidebar-season-select"></select>`
+        const select = pHeader.querySelector('#selectTemporada')
+        opciones.forEach(t => {
+            const opt = document.createElement('option')
+            opt.value       = t
+            opt.textContent = todasTemporadas.includes(t) ? String(t) : `${t} →`
+            if (!todasTemporadas.includes(t)) opt.className = 'season-next'
+            if (t === temporadaActiva) opt.selected = true
+            select.appendChild(opt)
+        })
+        select.addEventListener('change', () => setTemporadaActiva(parseInt(select.value)))
+    }
+
+    // Toast si la temporada activa no es la por defecto
+    if (temporadaActiva !== temporadaDefault) {
+        const content = document.querySelector('.content')
+        if (content) {
+            const toast       = document.createElement('div')
+            toast.className   = 'toast-temporada'
+            toast.id          = 'toastTemporada'
+            const sinDatos    = !todasTemporadas.includes(temporadaActiva)
+            toast.textContent = sinDatos
+                ? `Temporada ${temporadaActiva} — Próxima temporada (sin datos aún)`
+                : `Temporada ${temporadaActiva} — Estás viendo datos de una temporada anterior`
+            content.insertBefore(toast, content.firstChild)
+        }
+    }
+
+    onReady?.()
+}
+
+// Muestra un modal de confirmación antes de ejecutar onConfirmar si la temporada activa no es la default.
+// tipoCosa: texto descriptivo que aparece en el modal ("la reserva", "el cobro", etc.).
+export async function confirmarSiTemporadaNoActiva(tipoCosa, onConfirmar) {
+    const temporadaActiva  = getTemporadaActiva()
+    const temporadaDefault = calcularTemporadaDefault(_todasTemporadas)
+    if (temporadaActiva === temporadaDefault) { await onConfirmar(); return }
+
+    const { overlay, panel } = crearModal('modal-confirm-temporada', { narrow: true })
+    panel.innerHTML = `
+        <h2 style="margin-bottom:12px">Temporada no activa</h2>
+        <p style="font-size:13px;color:var(--subtle);margin-bottom:20px">
+            Estás modificando ${tipoCosa} en la temporada <strong>${temporadaActiva}</strong>,
+            que no es la temporada actual. ¿Confirmar?
+        </p>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-secondary" id="btnCancelConfirmTemp">Cancelar</button>
+            <button class="btn btn-primary"   id="btnOkConfirmTemp">Confirmar</button>
+        </div>`
+    overlay.showModal()
+    panel.querySelector('#btnCancelConfirmTemp').addEventListener('click', () => overlay.close())
+    panel.querySelector('#btnOkConfirmTemp').addEventListener('click', async () => {
+        overlay.close()
+        await onConfirmar()
+    })
+}
+
+// Año de la temporada activa (alias de getTemporadaActiva para compatibilidad con propuesta/factura/asistente).
 export function anioTemporada() {
-    const hoy = new Date()
-    return hoy.getMonth() < 7 ? hoy.getFullYear() : hoy.getFullYear() + 1
+    return getTemporadaActiva()
 }
 
-// Fecha por defecto para cobros al cliente: 6 de julio
-// del anio en curso si estamos antes del 15 de julio, del siguiente si no
+// Fecha por defecto para cobros al cliente: 6 de julio de la temporada activa.
 export function fechaCobroDefault() {
-    const hoy  = new Date()
-    const anio = hoy.getMonth() < 6 || (hoy.getMonth() === 6 && hoy.getDate() < 15)
-        ? hoy.getFullYear()
-        : hoy.getFullYear() + 1
-    return `${anio}-07-06`
+    return `${getTemporadaActiva()}-07-06`
 }
 
-// Fecha por defecto para pagos al proveedor: 15 de julio (misma logica)
+// Fecha por defecto para pagos al proveedor: 15 de julio de la temporada activa.
 export function fechaPagoDefault() {
-    const hoy  = new Date()
-    const anio = hoy.getMonth() < 6 || (hoy.getMonth() === 6 && hoy.getDate() < 15)
-        ? hoy.getFullYear()
-        : hoy.getFullYear() + 1
-    return `${anio}-07-15`
+    return `${getTemporadaActiva()}-07-15`
 }
 
 // Inicializa hamburger y overlay del sidebar
@@ -181,7 +289,7 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
                        .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
 
     const { data: charges, error: errSelect } = await supabase
-        .from('charges').select('*').eq('client_id', clienteId)
+        .from('charges').select('*').eq('client_id', clienteId).eq('season', getTemporadaActiva())
     if (errSelect) { console.error('persistirCobrosCliente: error leyendo charges:', errSelect); return }
 
     const hitoFinal  = (charges ?? []).find(c => c.is_final)
@@ -207,7 +315,8 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
     if (!hitoFinal) {
         const { error } = await supabase.from('charges').insert({
             client_id: clienteId, amount: cobroFinal, due_date: fechaCobroDefault(),
-            collected: false, collected_date: null, comments: 'Cobro final', is_final: true
+            collected: false, collected_date: null, comments: 'Cobro final', is_final: true,
+            season: getTemporadaActiva()
         })
         if (error) { console.error('persistirCobrosCliente: error creando cobro final:', error); return }
         console.log(`💰 Cobro final creado para ${clienteId}: ${cobroFinal}€`)
@@ -220,7 +329,8 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
             const { error: e2 } = await supabase.from('charges').insert({
                 client_id: clienteId, amount: diferencia, due_date: fechaCobroDefault(),
                 collected: false, collected_date: null,
-                comments: 'Ajuste s/ factura ' + hitoFinal.invoice_number, is_final: true
+                comments: 'Ajuste s/ factura ' + hitoFinal.invoice_number, is_final: true,
+                season: getTemporadaActiva()
             })
             if (e2) { console.error('persistirCobrosCliente: error creando ajuste:', e2); return }
             alert(`⚠️ El cobro final de ${clienteId} ya estaba facturado (${hitoFinal.invoice_number}).\n\nSe ha creado un hito de ajuste por ${diferencia > 0 ? '+' : ''}${diferencia}€ que queda pendiente de cobro.`)
@@ -270,7 +380,7 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
     }, 0)
 
     const { data: payments, error: errSelect } = await supabase
-        .from('payments').select('*').eq('provider_id', proveedorId)
+        .from('payments').select('*').eq('provider_id', proveedorId).eq('season', getTemporadaActiva())
     if (errSelect) { console.error('persistirPagosProveedor: error leyendo payments:', errSelect); return }
 
     const prepagos  = (payments ?? []).filter(p => !p.is_final)
@@ -281,7 +391,8 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
     if (!hitoFinal) {
         const { error } = await supabase.from('payments').insert({
             provider_id: proveedorId, amount: pagoFinal,
-            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final', is_final: true
+            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final', is_final: true,
+            season: getTemporadaActiva()
         })
         if (error) { console.error('persistirPagosProveedor: error creando pago final:', error); return }
         console.log(`💸 Pago final creado para ${proveedorId}: ${pagoFinal}€`)
@@ -310,7 +421,8 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
                 const { error: e2 } = await supabase.from('payments').insert({
                     provider_id: proveedorId, amount: nuevoSaldo,
                     due_date: fechaPagoDefault(), paid: false, paid_date: null,
-                    comments: 'Pago final', is_final: true
+                    comments: 'Pago final', is_final: true,
+                    season: getTemporadaActiva()
                 })
                 if (e2) { console.error('persistirPagosProveedor: error creando nuevo pago final:', e2); return }
                 console.log(`💸 Pago final recalculado para ${proveedorId}: ${fmt(hitoFinal.amount)} (pagado) → saldo pendiente ${fmt(nuevoSaldo)}`)

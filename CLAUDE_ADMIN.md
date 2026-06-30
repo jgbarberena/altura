@@ -72,11 +72,12 @@ Las Edge Functions corren en el runtime de Deno de Supabase. **No se despliegan 
 
 Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el panel se crea automáticamente un venue con el mismo ID. En el 95% de casos venue.id === provider.id. Casos con múltiples venues: AMAYA_SABATE (con AMAYA_SABATE_BALCON y AMAYA_SABATE_BARRERA) y PATRICIA.
 
-**`services`** — Tipo de evento (Fase 1 jun 2026: PK migrada de text a integer)
+**`services`** — Tipo de evento (Fase 1 jun 2026: PK migrada de text a integer; Fase 9d jun 2026: añadida columna `season`)
 | Campo | Notas |
 |---|---|
 | id | **integer PK autoincremental** (antes era el texto ENCIERRO_7 etc.; desde Fase 1 es un surrogado entero) |
-| service_code | **text UNIQUE NOT NULL** — el identificador legible antes almacenado en `id` (ej: `ENCIERRO_7`, `CHUPINAZO_6`). Regla de uso: `service_code` para display en UI, lógica de negocio y patrones regex; `id` solo para FK en BD. |
+| service_code | text NOT NULL — el identificador legible antes almacenado en `id` (ej: `ENCIERRO_7`, `CHUPINAZO_6`). Regla de uso: `service_code` para display en UI, lógica de negocio y patrones regex; `id` solo para FK en BD. |
+| season | **integer NOT NULL** — año de la temporada (ej: 2026, 2027). Cada temporada tiene su propio juego de servicios. UNIQUE con `service_code`. |
 | day | integer — día de julio |
 | event_type | text — categoría del evento: `encierro`, `chupinazo`, `procesion`, `despedida_gigantes`, `pobre_de_mi`, `visita_guiada`, `otro`. Columna directa en la tabla (no derivada). Fuente de verdad para el trigger de sincronización y para las vistas. |
 | name | text — nombre comercial corto (ej: `"Balcón encierro"`). Se usa en propuestas como etiqueta principal. |
@@ -84,6 +85,8 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 | start_time | text — hora de inicio (ej: `'08:00'`) |
 | image_url | URL absoluta de imagen representativa. Fallback en propuestas cuando availability.photos está vacío. |
 | comments | text |
+
+UNIQUE `uq_services_code_season` en `(service_code, season)`: el mismo code puede existir en distintas temporadas.
 
 **`availability`** — Par venue+servicio con capacidad y precio
 | Campo | Notas |
@@ -137,6 +140,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 |---|---|
 | id | integer PK |
 | client_id | FK→clients |
+| season | **integer NOT NULL** — temporada a la que pertenece el cobro. Añadido en Fase 9d. |
 | amount | decimal NOT NULL |
 | due_date | date |
 | collected | boolean, default false |
@@ -148,13 +152,14 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | invoice_number | text — serie `VSF-NN/AAAA`; una vez asignado no se sobreescribe |
 | invoice_path | Ruta al PDF en Supabase Storage (bucket `invoices`) |
 
-UNIQUE (client_id, amount, due_date).
+UNIQUE `(client_id, amount, due_date, season)`.
 
 **`payments`** — Hitos de pago a proveedores (por proveedor, no por servicio)
 | Campo | Notas |
 |---|---|
 | id | integer PK |
 | provider_id | FK→providers |
+| season | **integer NOT NULL** — temporada a la que pertenece el pago. Añadido en Fase 9d. |
 | amount | decimal NOT NULL |
 | due_date | date |
 | paid | boolean, default false |
@@ -162,7 +167,7 @@ UNIQUE (client_id, amount, due_date).
 | is_final | boolean — hito final del pago a proveedor |
 | comments | text — nota opcional sobre el hito |
 
-UNIQUE (provider_id, amount, due_date).
+UNIQUE `(provider_id, amount, due_date, season)`.
 
 **`reservation_requests`** — Solicitudes recibidas
 | Campo | Notas |
@@ -218,17 +223,19 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 **`trg_sync_availability_event_type`** — AFTER UPDATE en `availability`. Función `sync_availability_by_event_type()`. Cuando se editan `photos`, `description` o `access_instructions` en una fila, sincroniza los tres campos a todas las filas con el mismo `venue_id` y `event_type` (el `event_type` se obtiene de la tabla `services`). Transparente para el JS: editar una fila sincroniza todas las del mismo venue+event_type.
 
-### Vistas
+### Vistas y funciones SQL
 
 Definiciones SQL exactas en `supabase/sql/views_pre_migration.sql` (estado pre-Fase1) y en el archivo de migración `supabase/sql/migration_fase1_services_pk.sql` (estado post-Fase1).
 
-**`service_availability`** — Plazas libres por servicio (solo lectura, acceso anon, `security_invoker=false`). Campos: `service_id` (text = **service_code**, no el integer PK), `free_slots`. **IMPORTANTE:** expone `service_code` aliasado como `service_id` (texto tipo `ENCIERRO_7`) para que `disponibilidad.js` del frontend público siga funcionando sin cambios. Agrupada por `services.id + service_code`.
+**Función `public.public_season()`** — STABLE function. Devuelve el año de la temporada vigente para las vistas públicas: si `EXTRACT(MONTH FROM NOW()) >= 8` → `año_actual + 1`, si no → `año_actual`. Definida en Fase 9d. Usada por `service_availability` y `catalogo_publico` para filtrar por temporada sin hardcodear años. No requiere mantenimiento anual.
 
-**`availability_panel`** — Solo authenticated. Campos: `id, venue_id, service_id` (integer FK), `total_slots, price_per_slot, billing_model, description, access_instructions, photos, venue_display_name, venue_address, venue_slug, event_type, day, start_time, service_code` (text, añadido en Fase 1). Usada por `formulario.js`, `solicitudes.js`, `asistente.js` y `proveedores.js`. No incluye campos sfcom. El código admin usa `service_id` para FK y `service_code` para display y patrones regex.
+**`service_availability`** — Plazas libres por servicio (solo lectura, acceso anon, `security_invoker=false`). Campos: `service_id` (text = **service_code**, no el integer PK), `free_slots`. **IMPORTANTE:** expone `service_code` aliasado como `service_id` (texto tipo `ENCIERRO_7`) para que `disponibilidad.js` del frontend público siga funcionando sin cambios. Filtrada por `s.season = public_season()` (Fase 9d). Agrupada por `services.id + service_code`.
 
-**`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id` (integer FK), `total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id, service_code` (text, añadido en Fase 1). Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js` y `sfcom-panel.js`.
+**`availability_panel`** — Solo authenticated. Campos: `id, venue_id, service_id` (integer FK), `total_slots, price_per_slot, billing_model, description, access_instructions, photos, venue_display_name, venue_address, venue_slug, event_type, day, start_time, service_code` (text), **`season`** (integer, añadido en Fase 9d). Usada por `formulario.js`, `solicitudes.js`, `asistente.js` y `proveedores.js`. No incluye campos sfcom. El código admin usa `service_id` para FK y `service_code` para display y patrones regex. **Sin filtro de temporada en la vista** — el JS filtra con `.eq('season', getTemporadaActiva())`.
 
-**`catalogo_publico`** — Acceso anon, `security_invoker=false`. Campos: `slug, display_name, address, venue_type, service_id` (text = **service_code**, alias), `description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`. Usada por `catalogo/catalogo.js`.
+**`availability_with_sfcom`** — Solo authenticated. JOIN de `availability` + `sfcom_listings`. Campos: `id, venue_id, service_id` (integer FK), `total_slots, price_per_slot, billing_model, venue_display_name, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price, sfcom_listing_id, service_code` (text), **`season`** (integer, añadido en Fase 9d). Filas sin entrada en `sfcom_listings` tienen campos sfcom a null. Usada exclusivamente por `sfcom.js` y `sfcom-panel.js`. Sin filtro de temporada en la vista.
+
+**`catalogo_publico`** — Acceso anon, `security_invoker=false`. Campos: `slug, display_name, address, venue_type, service_id` (text = **service_code**, alias), `description, access_instructions, photos, service_name, event_type, day, start_time, service_image_fallback`. Filtrada por `s.season = public_season()` (Fase 9d). Usada por `catalogo/catalogo.js`.
 
 ### Seguridad (RLS)
 
@@ -318,6 +325,12 @@ Utilidades compartidas. Exports:
 | `buscarConPrioridad(lista, texto, campos)` | Búsqueda con 4 prioridades: empieza por id > campo2 > campo3 > contiene |
 | `sortArr(arr, col, dir, getKey)` | Ordena array con comparación locale 'es' y soporte numérico. Devuelve copia nueva. |
 | `renderThead(thead, columnas, sortCol, sortDir, onClick)` | Reconstruye `<thead>` con flechas de orden activo |
+| `calcularTemporadaDefault(todasTemporadas)` | Calcula la temporada por defecto desde un array de años presentes en BD. Antes de agosto → temporada más reciente con datos. Desde agosto, si ya existe el año siguiente → año siguiente. |
+| `getTemporadaActiva()` | Devuelve la temporada activa (integer) desde `localStorage('vsf_temporada_activa')`; si no hay valor guardado usa `calcularTemporadaDefault(_todasTemporadas)`. |
+| `setTemporadaActiva(season)` | Persiste la temporada elegida en `localStorage` y recarga la página. |
+| `initTemporada(todasTemporadas, onReady?)` | Async. Renderiza el selector de temporada en `.sidebar-header p` y muestra el toast de advertencia si la temporada activa ≠ la por defecto. Debe llamarse antes de cualquier query filtrada. Almacena `todasTemporadas` en variable de módulo para que `confirmarSiTemporadaNoActiva` y `getTemporadaActiva` funcionen sin parámetros. |
+| `confirmarSiTemporadaNoActiva(tipoCosa, onConfirmar)` | Si la temporada activa es la por defecto, llama a `onConfirmar()` directamente. Si no, muestra un modal de confirmación con la temporada activa antes de proceder. Usar para cualquier write en tablas sensibles a temporada (`availability`, `services`, `reservations`, `charges`, `payments`) cuando el usuario opera en una temporada no estándar. **No usar** para writes en `providers`, `clients`, `venues`. |
+| `anioTemporada()` | Alias de `getTemporadaActiva()`. Mantiene compatibilidad con código anterior (`propuesta.js`, `factura.js`, `asistente.js`). |
 | `initAutoSave(supabase, campos, camposDB, tabla, getEntity, { onSaved, onError })` | Registra `change` en inputs para autosave en Supabase. Solo actúa si `getEntity()` devuelve truthy. |
 | `exportTable(rows, columns, filename)` | Genera .xlsx con SheetJS (carga dinámica). `columns: [{ key, label, fmt? }]` |
 | `renderClientChips(reservas)` | Devuelve spans `ID(slots)` coloreados (verde=Confirmada, naranja=Pendiente). Agrupa por client_id sumando slots. |
@@ -418,9 +431,9 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 - **`_onBienvenidaEnviada()`** — llamada desde el `onUsado` de `abrirModalBienvenida`. Solo re-renderiza la cola; el estado ya está actualizado en `todasReservas`.
 
 ### solicitudes.js
-Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js` (`initSidebar`, `buildCatalogUrl`, `resolverCliente`), `mostrarToast` de `verificacion.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
+Módulo ES6. Importa `supabase.js`, `auth.js`, `utils.js` (`initSidebar`, `buildCatalogUrl`, `resolverCliente`, `initTemporada`, `getTemporadaActiva`), `mostrarToast` de `verificacion.js`, `initAsistente`, `abrirAsistenteRespuesta`, `abrirProcesarEmail` de `asistente.js`.
 
-Lee al cargar: `availability_panel` (para calcular disponibilidad en el borrador), `reservations` (para calcular plazas libres) y `clients` (para `resolverCliente` en `mostrarDetalle`).
+Lee al cargar: `availability_panel` filtrada por `season` (Fase 9d), `reservations` (sin filtro de temporada — las solicitudes (`reservation_requests`) no tienen concepto de temporada) y `clients` (para `resolverCliente` en `mostrarDetalle`).
 
 **Layout:** dos columnas en desktop (lista 320px izquierda, detalle derecha). En mobile: bottom sheet (`position:fixed; bottom:0; transform:translateY(100%)` + clase `.visible`).
 
@@ -1063,6 +1076,7 @@ Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAU
 | 9 | ✅ Completa | Refactors y cierre (inferencia level→service_id · reglas nombres · caché sfcom) |
 | 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
 | 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
+| 9d | 🔄 En progreso | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
 | 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos |
 
 ### Dependencias duras entre fases
@@ -1075,6 +1089,25 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 ```
 
 ---
+
+### Fase 9d — 🔄 Sistema de temporadas
+
+**Objetivo:** gestionar múltiples años (temporadas) de forma independiente en el panel. Paula puede trabajar simultáneamente con la temporada 2026 y preparar la 2027.
+
+**BD — columnas `season`:** añadidas en `services`, `payments`, `charges`. `reservations` y `availability` NO tienen columna `season`; se filtran indirectamente a través de sus FK a `services`.
+
+**Estrategia de filtrado:**
+- Vistas públicas (`service_availability`, `catalogo_publico`): filtran con `WHERE s.season = public_season()`. La función `public_season()` calcula el año automáticamente (antes de agosto → año actual; desde agosto → año siguiente si ya existe). Sin cambios anuales necesarios.
+- Panel de admin (`availability_panel`, `availability_with_sfcom`): exponen columna `season` pero sin filtro. El JS aplica `.eq('season', getTemporadaActiva())`.
+- `reservations`: no tienen `season` directamente. Se cargan con `.in('service_id', _servicioIds)` donde `_servicioIds` son los IDs de la temporada activa.
+
+**Selector de temporada:** `initTemporada(todasTemporadas)` en `utils.js`. Modifica el DOM del sidebar (`.sidebar-header p`) para insertar el `<select>`. Muestra toast de advertencia en `.content` cuando la temporada activa ≠ la por defecto.
+
+**Confirmación de escritura:** `confirmarSiTemporadaNoActiva(tipoCosa, onConfirmar)` en `utils.js`. Protege writes en tablas sensibles a temporada cuando se opera fuera de la temporada por defecto. No aplica a `providers`, `clients`, `venues` (entidades permanentes).
+
+**Archivos modificados:** `utils.js`, `admin.css`, `formulario.js`, `panel.js`, `proveedores.js`, `solicitudes.js`.
+
+**Pendiente:** wizard de importación de availability desde temporada anterior en `proveedores.js` (botón aparece cuando el proveedor no tiene availability para la temporada activa). Botón "Copiar servicios desde temporada anterior" en `tablas.html/tablas.js`.
 
 ### Fase 10 — 🔲 Sesión de tablas: edición directa + Storage + cliente + PDFs
 

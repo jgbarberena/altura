@@ -136,6 +136,22 @@ body.login-page {
 }
 .sidebar-header p { font-size: 11px; color: var(--subtle); margin-top: 2px; }
 
+.sidebar-temporada { font-size: 11px; color: var(--subtle); margin-top: 2px; white-space: nowrap; }
+.sidebar-season-select {
+    background: none; border: none; border-bottom: 1px solid currentColor;
+    color: var(--accent); font-size: 11px; font-family: inherit;
+    cursor: pointer; padding: 0 2px; appearance: none; -webkit-appearance: none;
+    width: 3.2em;
+}
+.sidebar-season-select:focus { outline: none; }
+.sidebar-temporada.temporada-no-activa .sidebar-season-select { color: var(--accent-warn); }
+
+.toast-temporada {
+    background: var(--accent-warn); color: white; font-size: 12px; font-weight: 500;
+    padding: 8px 20px; text-align: center;
+    position: sticky; top: 0; z-index: 30;
+}
+
 nav { flex: 1; padding: 12px 0; }
 nav a {
     display: block; padding: 10px 16px;

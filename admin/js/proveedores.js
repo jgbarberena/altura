@@ -1,22 +1,32 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, fechaPagoDefault } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor }))
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor, season: getTemporadaActiva() }))
 initSidebar()
 
 // ===== DATOS GLOBALES =====
+
+// Inicializar sistema de temporadas
+const { data: _tmpSeason }  = await supabase.from('services').select('season').order('season', { ascending: false })
+const _todasTemporadas      = [...new Set((_tmpSeason ?? []).map(r => r.season))]
+await initTemporada(_todasTemporadas)
+const _temporada            = getTemporadaActiva()
+
 let todosProveedores   = (await supabase.from('providers').select('*').order('id')).data
 let todosVenues        = (await supabase.from('venues').select('*').order('id')).data
-let todosServicios     = (await supabase.from('services').select('*').order('service_code')).data
-let todaDisponibilidad = (await supabase.from('availability_panel').select('*')).data
-let todosPayments      = (await supabase.from('payments').select('*')).data
-let todasReservas      = (await supabase.from('reservations').select('*')).data
+let todosServicios     = (await supabase.from('services').select('*').eq('season', _temporada).order('service_code')).data
+let todaDisponibilidad = (await supabase.from('availability_panel').select('*').eq('season', _temporada)).data
+let todosPayments      = (await supabase.from('payments').select('*').eq('season', _temporada)).data
+const _servicioIds     = (todosServicios ?? []).map(s => s.id)
+let todasReservas      = _servicioIds.length > 0
+    ? (await supabase.from('reservations').select('*').in('service_id', _servicioIds)).data ?? []
+    : []
 
 // Enriquecer con datos sfcom desde sfcom_listings (availability_panel no los incluye)
 const { data: _sfcomRaw } = await supabase.from('sfcom_listings')
@@ -1374,7 +1384,7 @@ function limpiarFormularioServicio() {
 }
 
 // ===== GUARDAR SERVICIO(S) =====
-btnGuardarServicio.addEventListener('click', async () => {
+btnGuardarServicio.addEventListener('click', () => confirmarSiTemporadaNoActiva('la disponibilidad del proveedor', async () => {
     const proveedorId = inputProveedorId.value.trim().toUpperCase()
     const plazas      = parseInt(inputPlazas.value)
     const modelo      = selectModelo.value
@@ -1614,7 +1624,7 @@ btnGuardarServicio.addEventListener('click', async () => {
         servicioStatus.style.color = 'var(--subtle)'
         setTimeout(() => { servicioStatus.textContent = '' }, 5000)
     }
-})
+}))
 
 btnCancelarServicio.addEventListener('click', limpiarFormularioServicio)
 
@@ -1883,7 +1893,7 @@ function _modalOpcionesEliminar(venueId, venueType, proveedorId, puedeElimVenue,
     })
 }
 
-document.getElementById('btnEliminarServicio').addEventListener('click', async () => {
+document.getElementById('btnEliminarServicio').addEventListener('click', () => confirmarSiTemporadaNoActiva('la eliminación de servicios', async () => {
     const checks = [...document.querySelectorAll('.chk-servicio:checked')]
     if (checks.length === 0) return
     if (!confirm(`¿Eliminar ${checks.length} servicio(s) seleccionado(s)?`)) return
@@ -2009,7 +2019,7 @@ document.getElementById('btnEliminarServicio').addEventListener('click', async (
         alert('No se pudieron eliminar los siguientes servicios (tienen reservas activas):\n\n' +
               noEliminados.join('\n'))
     }
-})
+}))
 
 // ===== BLOQUE 4: PAGOS AL PROVEEDOR =====
 
@@ -2045,7 +2055,7 @@ async function recalcularPagoFinalProveedor(proveedorId) {
     if (idxFinal >= 0) {
         hitosProvTemp[idxFinal].amount = pagoFinal
     } else {
-        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-15', paid: false })
+        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: fechaPagoDefault(), paid: false })
     }
     renderHitosProveedor()
     actualizarResumenCoste(proveedorId, costTotal, prepagos, pagoFinal)
@@ -2076,7 +2086,8 @@ async function persistirHitosProveedor(proveedorId) {
             paid:        h.paid ?? false,
             paid_date:   h.paid_date ?? null,
             comments:    h.comments ?? null,
-            is_final:    h.esFinal ?? false
+            is_final:    h.esFinal ?? false,
+            season:      getTemporadaActiva()
         }
         if (h.id) {
             const { error } = await supabase.from('payments').update(payload).eq('id', h.id)
@@ -2088,12 +2099,12 @@ async function persistirHitosProveedor(proveedorId) {
         }
     }
 
-    todosPayments = (await supabase.from('payments').select('*')).data
+    todosPayments = (await supabase.from('payments').select('*').eq('season', getTemporadaActiva())).data
 }
 
 async function cargarPagosProveedor(proveedorId) {
     const { data } = await supabase
-        .from('payments').select('*').eq('provider_id', proveedorId).order('due_date')
+        .from('payments').select('*').eq('provider_id', proveedorId).eq('season', getTemporadaActiva()).order('due_date')
 
     hitosProvTemp = (data ?? []).map(h => ({ ...h, esFinal: h.is_final ?? false }))
 
@@ -2102,7 +2113,7 @@ async function cargarPagosProveedor(proveedorId) {
     const pagoFinal = costTotal - prepagos
 
     if (!hitosProvTemp.find(h => h.esFinal)) {
-        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: '2026-07-15', paid: false })
+        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: fechaPagoDefault(), paid: false })
     } else {
         const idx = hitosProvTemp.findIndex(h => h.esFinal)
         hitosProvTemp[idx].amount = pagoFinal
@@ -2216,7 +2227,7 @@ document.getElementById('btnCancelarPagoProveedor').addEventListener('click', ()
     document.getElementById('btnNuevoPagoProveedor').style.display     = 'inline-block'
 })
 
-document.getElementById('btnGuardarPagoProveedor').addEventListener('click', async () => {
+document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () => confirmarSiTemporadaNoActiva('el pago al proveedor', async () => {
     const concepto = document.getElementById('pagoProvConcepto').value.trim() || 'Prepago'
     const importe  = parseFloat(document.getElementById('pagoProvImporte').value)
     const fecha    = document.getElementById('pagoProvFecha').value || null
@@ -2242,9 +2253,9 @@ document.getElementById('btnGuardarPagoProveedor').addEventListener('click', asy
             console.error('Error al guardar nuevo pago:', err.message)
         }
     }
-})
+}))
 
-document.getElementById('btnGuardarPagos').addEventListener('click', async () => {
+document.getElementById('btnGuardarPagos').addEventListener('click', () => confirmarSiTemporadaNoActiva('los pagos al proveedor', async () => {
     if (!proveedorActual) return
     try {
         await persistirHitosProveedor(proveedorActual.id)
@@ -2252,7 +2263,7 @@ document.getElementById('btnGuardarPagos').addEventListener('click', async () =>
     } catch (err) {
         alert('Error al guardar pagos: ' + err.message)
     }
-})
+}))
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ASISTENTE MÚLTIPLE

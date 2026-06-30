@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente, persistirPagosProveedor } from './utils.js'
+import { initSidebar, fmt, sortArr, renderThead, renderClientChips, exportTable, persistirCobrosCliente, persistirPagosProveedor, initTemporada, getTemporadaActiva, temporadaDeFecha } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
 import { crearModal } from './modal.js'
@@ -22,31 +22,41 @@ initSidebar()
 
 const hoy = new Date().toISOString().split('T')[0]
 
-// Temporada = el año de julio al que pertenece esta campaña.
-// Antes del 15 de agosto → temporada del año en curso. Después → ya empieza la siguiente.
-const _anioHoy       = parseInt(hoy.substring(0, 4))
-const _anioTemporada = hoy >= `${_anioHoy}-08-15` ? _anioHoy + 1 : _anioHoy
-const _seasonStart   = `${_anioTemporada - 1}-08-15`
-const _seasonEnd     = `${_anioTemporada}-08-15`
+// Inicializar sistema de temporadas
+const { data: _tmpSeason }  = await supabase.from('services').select('season').order('season', { ascending: false })
+const _todasTemporadas      = [...new Set((_tmpSeason ?? []).map(r => r.season))]
+await initTemporada(_todasTemporadas)
+const _temporada            = getTemporadaActiva()
+const _seasonStart          = `${_temporada - 1}-08-15`
+const _seasonEnd            = `${_temporada}-08-15`
+
+const { data: servicios }   = await supabase.from('services').select('*').eq('season', _temporada).order('day')
+const _servicioIds          = (servicios ?? []).map(s => s.id)
 
 const [
     { data: reservas },
     { data: disponibilidad },
-    { data: servicios },
     { data: payments },
     { data: charges },
     { data: solicitudesNuevas },
     { data: venues },
-    { data: clientes }
+    { data: clientes },
+    { data: pagosVencidosTodos },
+    { data: cobrosVencidosTodos }
 ] = await Promise.all([
-    supabase.from('reservations').select('*'),
-    supabase.from('availability').select('*'),
-    supabase.from('services').select('*').order('day'),
-    supabase.from('payments').select('*').order('due_date'),
-    supabase.from('charges').select('*').order('due_date'),
-    supabase.from('reservation_requests').select('id, source, status').not('status', 'in', '("convertida","descartada")'),
+    _servicioIds.length > 0
+        ? supabase.from('reservations').select('*').in('service_id', _servicioIds)
+        : Promise.resolve({ data: [] }),
+    _servicioIds.length > 0
+        ? supabase.from('availability').select('*').in('service_id', _servicioIds)
+        : Promise.resolve({ data: [] }),
+    supabase.from('payments').select('*').eq('season', _temporada).order('due_date'),
+    supabase.from('charges').select('*').eq('season', _temporada).order('due_date'),
+    supabase.from('reservation_requests').select('id, source, status, created_at').not('status', 'in', '("convertida","descartada")'),
     supabase.from('venues').select('id, provider_id'),
-    supabase.from('clients').select('id, name')
+    supabase.from('clients').select('id, name'),
+    supabase.from('payments').select('id, amount').eq('paid', false).lt('due_date', hoy).gt('amount', 0.01),
+    supabase.from('charges').select('id, amount').eq('collected', false).lt('due_date', hoy).gt('amount', 0.01)
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -76,28 +86,28 @@ function calcularAlertas() {
 
     document.getElementById('alerta-sobrereserva').style.display = haySobrereserva ? 'flex' : 'none'
 
-    const pagosVencidos      = payments.filter(p => !p.paid && p.due_date && p.due_date < hoy)
-    const totalPagosVencidos = pagosVencidos.reduce((s, p) => s + parseFloat(p.amount), 0)
-    const alertaPagos        = document.getElementById('alerta-pagos-vencidos')
-    if (pagosVencidos.length > 0) {
+    // Pagos/cobros vencidos: todas las temporadas, importe > 0.01
+    const _pagosV     = (pagosVencidosTodos ?? []).filter(p => parseFloat(p.amount) > 0.01)
+    const alertaPagos = document.getElementById('alerta-pagos-vencidos')
+    if (_pagosV.length > 0) {
         alertaPagos.style.display = 'flex'
         document.getElementById('txt-pagos-vencidos').textContent =
-            `${pagosVencidos.length} pago(s) a proveedores vencido(s) sin pagar — ${fmt(totalPagosVencidos)}`
+            `${_pagosV.length} pago(s) a proveedores vencido(s) sin pagar — ${fmt(_pagosV.reduce((s, p) => s + parseFloat(p.amount), 0))}`
     }
 
-    // Cobros vencidos — ya no filtramos por estado de reserva, charges es por cliente directamente
-    const cobrosVencidos      = charges.filter(c => !c.collected && c.due_date && c.due_date < hoy)
-    const totalCobrosVencidos = cobrosVencidos.reduce((s, c) => s + parseFloat(c.amount), 0)
-    const alertaCobros        = document.getElementById('alerta-cobros-vencidos')
-    if (cobrosVencidos.length > 0) {
+    const _cobrosV     = (cobrosVencidosTodos ?? []).filter(c => parseFloat(c.amount) > 0.01)
+    const alertaCobros = document.getElementById('alerta-cobros-vencidos')
+    if (_cobrosV.length > 0) {
         alertaCobros.style.display = 'flex'
         document.getElementById('txt-cobros-vencidos').textContent =
-            `${cobrosVencidos.length} cobro(s) a clientes vencido(s) sin cobrar — ${fmt(totalCobrosVencidos)}`
+            `${_cobrosV.length} cobro(s) a clientes vencido(s) sin cobrar — ${fmt(_cobrosV.reduce((s, c) => s + parseFloat(c.amount), 0))}`
     }
 
     // Solicitudes pendientes desde la web
     // Separar solicitudes sfcom (source tipo WEBxxx_nnnn) de solicitudes web; excluir cerradas
-    const solicitudesActivas        = solicitudesNuevas ?? []
+    const solicitudesActivas        = (solicitudesNuevas ?? []).filter(s =>
+        s.status === 'nueva' || temporadaDeFecha(s.created_at) === _temporada
+    )
     const solicitudesSfcom          = solicitudesActivas.filter(s => s.source && /^WEB\d+_\d+$/.test(s.source) && s.status === 'nueva')
     const solicitudesWebNuevas      = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && !s.source?.startsWith('sfcom_c:') && s.status === 'nueva')
     const solicitudesWebSeguimiento = solicitudesActivas.filter(s => (!s.source || !/^WEB\d+_\d+$/.test(s.source)) && !s.source?.startsWith('sfcom_c:') && s.status === 'seguimiento_pendiente')
@@ -148,7 +158,7 @@ function calcularAlertas() {
     }
 
     bloqueAlertas.style.display =
-        (haySobrereserva || pagosVencidos.length > 0 || cobrosVencidos.length > 0
+        (haySobrereserva || _pagosV.length > 0 || _cobrosV.length > 0
         || solicitudesSfcom.length > 0 || hayWeb || leadsCancelados.length > 0
         || clientesBienvenidaPendiente.length > 0) ? 'block' : 'none'
 }
@@ -402,13 +412,13 @@ function calcularCalendario() {
     const diasFiltro = tabActiva === '7' ? 7 : tabActiva === '30' ? 30 : 99999
 
     pagosFiltradosCache = payments.filter(p => {
-        if (p.paid) return false
+        if (p.paid || parseFloat(p.amount) <= 0.01) return false
         const dias = diasDesdeHoy(p.due_date)
         return dias <= diasFiltro
     }).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
 
     cobrosFiltradosCache = charges.filter(c => {
-        if (c.collected) return false
+        if (c.collected || parseFloat(c.amount) <= 0.01) return false
         const dias = diasDesdeHoy(c.due_date)
         return dias <= diasFiltro
     }).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
@@ -1071,8 +1081,8 @@ function calcularCashflow() {
                 x: {
                     type: 'time',
                     time: { unit: 'week', displayFormats: { week: 'dd MMM' } },
-                    min: new Date(`${_anioTemporada}-03-01T12:00:00`),
-                    max: new Date(`${_anioTemporada}-08-15T12:00:00`),
+                    min: new Date(`${_temporada}-03-01T12:00:00`),
+                    max: new Date(`${_temporada}-08-15T12:00:00`),
                     grid: { display: false }
                 },
                 y: {
@@ -1109,8 +1119,8 @@ document.addEventListener('click', e => {
 calcularResumen()
 calcularPorVender()
 calcularCashflow()
-ejecutarVerificacion(supabase, { modoManual: false, incluirSfcom: false, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor })
-document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor }))
+ejecutarVerificacion(supabase, { modoManual: false, incluirSfcom: false, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor, season: getTemporadaActiva() })
+document.getElementById('btnVerificarDatos')?.addEventListener('click', () => ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor, season: getTemporadaActiva() }))
 
 // ===== EXPORT CSV =====
 document.getElementById('btnExportPagos')?.addEventListener('click', () => {

@@ -33,9 +33,9 @@ export function mostrarToast(mensaje, color = '#166534') {
 
 // ─── Carga de datos ───────────────────────────────────────────────────────────
 
-async function _cargarDatos(supabase) {
+async function _cargarDatos(supabase, season) {
     const [
-        { data: reservas,     error: eRes },
+        { data: allReservas,  error: eRes },
         { data: availability, error: eAvail },
         { data: clients,      error: eClients },
         { data: venues,       error: eVenues },
@@ -46,17 +46,20 @@ async function _cargarDatos(supabase) {
         { data: payments,     error: ePayments }
     ] = await Promise.all([
         supabase.from('reservations').select('id, client_id, venue_id, service_id, status, slots, origin_ref, total_amount'),
-        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, service_code, total_slots, billing_model, price_per_slot, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name'),
+        supabase.from('availability_with_sfcom').select('id, venue_id, service_id, service_code, total_slots, billing_model, price_per_slot, sfcom_status, sfcom_product_id, sfcom_variation_id, sfcom_slots_listed, sfcom_service_name').eq('season', season),
         supabase.from('clients').select('id, name'),
         supabase.from('venues').select('id, provider_id'),
         supabase.from('services').select('id'),
         supabase.from('providers').select('id'),
         supabase.from('reservation_requests').select('id, source, client_name, proposal_draft').eq('status', 'nueva'),
-        supabase.from('charges').select('*'),
-        supabase.from('payments').select('*')
+        supabase.from('charges').select('*').eq('season', season),
+        supabase.from('payments').select('*').eq('season', season)
     ])
+    // Reservas de la temporada activa (inferidas por service_id, que ya están filtrados por availability)
+    const _svcIds = new Set((availability ?? []).map(a => a.service_id))
+    const reservas = (allReservas ?? []).filter(r => _svcIds.has(r.service_id))
     return {
-        reservas:     reservas     ?? [],
+        reservas,
         availability: availability ?? [],
         clients:      clients      ?? [],
         venues:       venues       ?? [],
@@ -785,13 +788,14 @@ export async function ejecutarVerificacion(supabase, {
     incluirSfcom      = true,
     incluirFinanciero = true,
     persistirCobros   = null,
-    persistirPagos    = null
+    persistirPagos    = null,
+    season            = new Date().getFullYear()
 } = {}) {
     const toastEl = mostrarToast('🔍 Verificando…', '#374151')
 
     let resultado
     try {
-        const dados = await _cargarDatos(supabase)
+        const dados = await _cargarDatos(supabase, season)
 
         if (dados.error) {
             toastEl?.remove()
@@ -827,7 +831,7 @@ export async function ejecutarVerificacion(supabase, {
     }
 
     const onReverify = () => ejecutarVerificacion(supabase, {
-        modoManual: true, incluirSfcom, incluirFinanciero, persistirCobros, persistirPagos
+        modoManual: true, incluirSfcom, incluirFinanciero, persistirCobros, persistirPagos, season
     })
 
     await _mostrarResultado(resultado, supabase, onReverify, {

@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva } from './utils.js'
 import { initFacturacion, abrirPanelFactura } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom, resolverProductoSfcom } from './sfcom.js'
@@ -15,10 +15,18 @@ initSidebar()
 
 
 // ===== DATOS GLOBALES =====
+
+// Inicializar sistema de temporadas antes de cargar datos
+const { data: _tmpSeason }    = await supabase.from('services').select('season').order('season', { ascending: false })
+const _todasTemporadas        = [...new Set((_tmpSeason ?? []).map(r => r.season))]
+await initTemporada(_todasTemporadas)
+const _temporada              = getTemporadaActiva()
+
 const { data: todosClientes }  = await supabase.from('clients').select('*').order('id')
-const { data: servicios }      = await supabase.from('services').select('*').order('day')
+const { data: servicios }      = await supabase.from('services').select('*').eq('season', _temporada).order('day')
 const { data: disponibilidad } = await supabase.from('availability_panel')
     .select('venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, photos, venue_slug, event_type')
+    .eq('season', _temporada)
 const { data: venues }         = await supabase.from('venues').select('*').order('id')
 const { data: _sfcomRaw }      = await supabase.from('sfcom_listings')
     .select('availability_id, sfcom_service_name, sfcom_product_id, sfcom_variation_id, availability!inner(venue_id, service_id, services(service_code))')
@@ -31,7 +39,10 @@ const sfcomListings = (_sfcomRaw ?? []).map(r => ({
     service_id:         r.availability?.service_id,
     service_code:       r.availability?.services?.service_code
 })).filter(r => r.venue_id)
-let todasReservas              = (await supabase.from('reservations').select('*')).data
+const _servicioIds            = (servicios ?? []).map(s => s.id)
+let todasReservas             = _servicioIds.length > 0
+    ? (await supabase.from('reservations').select('*').in('service_id', _servicioIds)).data ?? []
+    : []
 
 initPropuesta(supabase, servicios, venues, () => disponibilidad)
 initAsistente(supabase, { getDisponibilidad: () => disponibilidad, getTodasReservas: () => todasReservas, onEmailSaved: cargarSolicitudes, esSfcom: _esSfcom })
@@ -508,10 +519,12 @@ let reservasCliente = []
 
 
 async function cargarReservasCliente(clienteId) {
+    if (_servicioIds.length === 0) return
     const { data: reservasRaw } = await supabase
         .from('reservations')
         .select('*, services(description)')
         .eq('client_id', clienteId)
+        .in('service_id', _servicioIds)
         .order('id')
     // Aplanar el objeto anidado services.description a service_description
     const reservas = (reservasRaw ?? []).map(r => ({
@@ -842,7 +855,7 @@ async function eliminarSeleccionadas() {
 
     let decisionElim = null
     if (isLastReservation) {
-        const { data: cargos } = await supabase.from('charges').select('id, collected, invoice_number').eq('client_id', clienteActual.id)
+        const { data: cargos } = await supabase.from('charges').select('id, collected, invoice_number').eq('client_id', clienteActual.id).eq('season', getTemporadaActiva())
         const conHistorial = (cargos ?? []).filter(c => c.collected || c.invoice_number)
         decisionElim = await _modalEliminacionUltimaReserva(clienteActual.id, conHistorial)
         if (decisionElim === 'cancelar') return
@@ -915,8 +928,8 @@ async function eliminarSeleccionadas() {
     actualizarProveedores()
 }
 
-document.getElementById('btnCancelar').addEventListener('click', () => cambiarEstadoSeleccionadas('Cancelada'))
-document.getElementById('btnEliminar').addEventListener('click', eliminarSeleccionadas)
+document.getElementById('btnCancelar').addEventListener('click', () => confirmarSiTemporadaNoActiva('el cambio de estado de la reserva', () => cambiarEstadoSeleccionadas('Cancelada')))
+document.getElementById('btnEliminar').addEventListener('click', () => confirmarSiTemporadaNoActiva('la eliminación de la reserva', eliminarSeleccionadas))
 document.getElementById('btnCancelarEdicion').addEventListener('click', limpiarFormularioReserva)
 
 document.getElementById('btnGenerarPropuesta').addEventListener('click', () => {
@@ -1130,7 +1143,7 @@ function setGuardando(on) {
     }
 }
 
-btnAnadir.addEventListener('click', async () => {
+btnAnadir.addEventListener('click', () => confirmarSiTemporadaNoActiva('la reserva', async () => {
     const clienteId  = inputId.value.trim().toUpperCase()
     const servicioId = parseInt(selectServicio.value) || null
     const venueId    = selectProveedor.value
@@ -1201,8 +1214,8 @@ btnAnadir.addEventListener('click', async () => {
         }).eq('id', reservaEditandoId)
         if (error) { alert('Error al guardar: ' + error.message); return }
 
-        const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
-        todasReservas = reservasActualizadas
+        const { data: reservasActualizadas } = await supabase.from('reservations').select('*').in('service_id', _servicioIds)
+        todasReservas = reservasActualizadas ?? []
 
         await persistirCobrosCliente(supabase, clienteActual.id, todasReservas)
         const provId = _getProviderIdFromVenue(venueId)
@@ -1279,8 +1292,8 @@ btnAnadir.addEventListener('click', async () => {
         })
         if (errReserva) { alert('Error al crear reserva: ' + errReserva.message); return }
 
-        const { data: reservasActualizadas } = await supabase.from('reservations').select('*')
-        todasReservas = reservasActualizadas
+        const { data: reservasActualizadas } = await supabase.from('reservations').select('*').in('service_id', _servicioIds)
+        todasReservas = reservasActualizadas ?? []
 
         if (solicitudOriginRef?.startsWith('WEB')) {
             const { error: errChargeSfcom } = await supabase.from('charges').insert({
@@ -1290,7 +1303,8 @@ btnAnadir.addEventListener('click', async () => {
                 collected:      true,
                 collected_date: hoy,
                 comments:       `${solicitudOriginRef} Cobrado vía sfcom`,
-                is_final:       false
+                is_final:       false,
+                season:         _temporada
             })
             if (errChargeSfcom) console.error('Error al crear cargo sfcom:', errChargeSfcom.message)
         }
@@ -1315,7 +1329,7 @@ btnAnadir.addEventListener('click', async () => {
     } finally {
         setGuardando(false)
     }
-})
+}))
 
 // ===== BLOQUE 3: DISPONIBILIDAD =====
 
@@ -1441,6 +1455,7 @@ async function persistirHitosCliente(clienteId) {
         .from('charges')
         .select('id')
         .eq('client_id', clienteId)
+        .eq('season', getTemporadaActiva())
         .is('invoice_number', null)
     if (errLeer) throw new Error('Error al leer cobros existentes: ' + errLeer.message)
 
@@ -1467,7 +1482,8 @@ async function persistirHitosCliente(clienteId) {
             collected:      h.collected ?? false,
             collected_date: h.collected_date ?? null,
             comments:       h.comments ?? null,
-            is_final:       h.is_final ?? false
+            is_final:       h.is_final ?? false,
+            season:         getTemporadaActiva()
         }
 
         if (h.id) {
@@ -1506,7 +1522,7 @@ async function cargarCobrosCliente(clienteId, reservas) {
     }
 
     const { data: charges } = await supabase
-        .from('charges').select('*').eq('client_id', clienteId).order('due_date')
+        .from('charges').select('*').eq('client_id', clienteId).eq('season', getTemporadaActiva()).order('due_date')
 
     // esFinal viene de is_final en la BBDD (fuente de verdad)
     hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.is_final ?? false }))
@@ -1703,7 +1719,7 @@ document.getElementById('btnCancelarNuevoCobro').addEventListener('click', () =>
     document.getElementById('btnNuevoCobroCliente').style.display     = 'inline-block'
 })
 
-document.getElementById('btnGuardarNuevoCobro').addEventListener('click', async () => {
+document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => confirmarSiTemporadaNoActiva('el cobro', async () => {
     const concepto = document.getElementById('cobroConcepto').value.trim() || 'Prepago'
     const importe  = parseFloat(document.getElementById('cobroImporte').value)
     const fecha    = document.getElementById('cobroFecha').value || null
@@ -1750,7 +1766,7 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', async 
         renderCobrosCliente()
         alert('Error al guardar el cobro: ' + err.message)
     }
-})
+}))
 
 
 // Descarga una factura ya emitida desde Supabase Storage
@@ -3136,12 +3152,12 @@ checkSfcomOrders(supabase)
         cargarSolicitudes()
     })
     .finally(() => {
-        ejecutarVerificacion(supabase, { modoManual: false, incluirSfcom: true, incluirFinanciero: false })
+        ejecutarVerificacion(supabase, { modoManual: false, incluirSfcom: true, incluirFinanciero: false, season: getTemporadaActiva() })
             .catch(e => console.error('[verificacion] Error al inicio:', e.message))
     })
 
 document.getElementById('btnVerificarDatos').addEventListener('click', () => {
-    ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor })
+    ejecutarVerificacion(supabase, { modoManual: true, incluirSfcom: true, incluirFinanciero: true, persistirCobros: persistirCobrosCliente, persistirPagos: persistirPagosProveedor, season: getTemporadaActiva() })
         .catch(e => console.error('[verificacion] Error:', e.message))
 })
 
