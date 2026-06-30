@@ -282,6 +282,8 @@ input.ok    { border-color: var(--accent-ok); }
    TABLAS
 ========================= */
 .table-wrapper { overflow-x: auto; }
+.table-wrapper--limited { max-height: 280px; overflow-y: auto; }
+.table-wrapper--limited thead th { position: sticky; top: 0; z-index: 1; }
 table { width: 100%; border-collapse: collapse; }
 th {
     background: #222; color: white;

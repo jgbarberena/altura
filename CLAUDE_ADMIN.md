@@ -1077,7 +1077,7 @@ Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAU
 | 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
 | 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
 | 9d | ✅ Completa | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
-| 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos |
+| 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos + mostrar columna temporada |
 
 ### Dependencias duras entre fases
 
@@ -1107,7 +1107,7 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 
 **Archivos modificados:** `utils.js`, `admin.css`, `formulario.js`, `panel.js`, `proveedores.js`, `solicitudes.js`.
 
-**Pendiente:** wizard de importación de availability desde temporada anterior en `proveedores.js` (botón aparece cuando el proveedor no tiene availability para la temporada activa). Botón "Copiar servicios desde temporada anterior" en `tablas.html/tablas.js`.
+**Pendiente:** wizard de importación de availability desde temporada anterior en `proveedores.js` (botón aparece cuando el proveedor no tiene availability para la temporada activa).
 
 ### Fase 10 — 🔲 Sesión de tablas: edición directa + Storage + cliente + PDFs
 
@@ -1144,7 +1144,11 @@ Diseño:
 - Botón "Eliminar huérfanos" con confirmación; botón de descarga por archivo individual.
 - Lectura vía `supabase.storage.from('proposals').list()` / `.from('invoices').list()`.
 
-**4. Limpieza de PDFs al eliminar reservas/charges**
+**4. Mostrar columna temporada en tablas**
+
+Las tablas `reservations`, `charges` y `payments` tienen `season` implícita (via FK a services o columna directa en charges/payments). En `tablas.js`, cuando se muestra una de estas tablas, añadir columna "Temp." que muestre el valor de `season` para facilitar la lectura. Requiere un JOIN o lookup según la tabla (reservations → service_id → season; charges/payments → ya tienen `season` directa).
+
+**5. Limpieza de PDFs al eliminar reservas/charges**
 
 Actualmente `eliminarSeleccionadas` en `formulario.js` borra reservas y cobros sin limpiar los PDFs en Storage.
 
