@@ -1076,7 +1076,7 @@ Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAU
 | 9 | ✅ Completa | Refactors y cierre (inferencia level→service_id · reglas nombres · caché sfcom) |
 | 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
 | 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
-| 9d | 🔄 En progreso | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
+| 9d | ✅ Completa | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
 | 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos |
 
 ### Dependencias duras entre fases
@@ -1090,7 +1090,7 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 
 ---
 
-### Fase 9d — 🔄 Sistema de temporadas
+### Fase 9d — ✅ Sistema de temporadas
 
 **Objetivo:** gestionar múltiples años (temporadas) de forma independiente en el panel. Paula puede trabajar simultáneamente con la temporada 2026 y preparar la 2027.
 
