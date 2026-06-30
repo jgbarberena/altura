@@ -54,6 +54,11 @@ let hitosProvTemp        = []
 let ultimoCampoActivo    = 'precio'
 let venuesDelProveedor   = []
 let venueActual          = null
+let _wizardFilas         = []
+let _wizardVenueActivo   = null
+let _wizardVenueGroups   = {}
+let _wizardSortCol       = 'day'
+let _wizardSortDir       = 'asc'
 
 const hoy = new Date().toISOString().split('T')[0]
 
@@ -645,6 +650,14 @@ function cargarProveedor(p) {
     document.getElementById('btnAbrirMultiple').style.display = 'inline-block'
     cargarServiciosProveedor(p.id)
     cargarPagosProveedor(p.id)
+    const _dispTotales = todaDisponibilidad.filter(d => venuesDelProveedor.some(v => v.id === d.venue_id))
+    const _wizDiv = document.getElementById('bloque-wizard')
+    if (_dispTotales.length === 0) {
+        document.getElementById('wizard-temporada-txt').textContent = _temporada
+        _wizDiv.style.display = 'block'
+    } else {
+        _wizDiv.style.display = 'none'
+    }
 }
 
 function limpiarProveedor() {
@@ -655,6 +668,7 @@ function limpiarProveedor() {
     document.getElementById('bloque-servicio').style.display            = 'none'
     document.getElementById('bloque-servicios-proveedor').style.display = 'none'
     document.getElementById('bloque-pagos-proveedor').style.display     = 'none'
+    document.getElementById('bloque-wizard').style.display              = 'none'
     limpiarFormularioServicio()
 }
 
@@ -3199,3 +3213,259 @@ if (_proveedorParam) {
     const _proveedorPreload = todosProveedores.find(p => p.id === _proveedorParam.toUpperCase())
     if (_proveedorPreload) { inputProveedorId.value = _proveedorPreload.id; cargarProveedor(_proveedorPreload) }
 }
+
+// ===== WIZARD: IMPORTAR DISPONIBILIDAD DESDE TEMPORADA ANTERIOR =====
+
+document.getElementById('btnAbrirWizard').addEventListener('click', _abrirWizardDisponibilidad)
+document.getElementById('dlgWizardCerrar').addEventListener('click', () => document.getElementById('dlgWizard').close())
+document.getElementById('dlgWizardCancelar').addEventListener('click', () => document.getElementById('dlgWizard').close())
+
+window._wizardActivarVenue = function(venueId) {
+    _wizardVenueActivo = venueId
+    _renderWizardTabs()
+    _renderWizardTabla()
+}
+
+window._wizardToggleAll = function(venue, checked) {
+    ;(_wizardVenueGroups[venue] ?? []).forEach(f => f.checked = checked)
+    _renderWizardTabla()
+    _actualizarBtnWizard()
+}
+
+window._wizardToggle = function(venue, code, checked) {
+    const fila = _wizardFilas.find(f => f.venueId === venue && f.serviceCode === code)
+    if (fila) fila.checked = checked
+    const rows = _wizardVenueGroups[venue] ?? []
+    const allChk = document.getElementById('wizardChkAll')
+    if (allChk) allChk.checked = rows.every(r => r.checked)
+    _actualizarBtnWizard()
+}
+
+window._wizardSort = function(col) {
+    if (_wizardSortCol === col) {
+        _wizardSortDir = _wizardSortDir === 'asc' ? 'desc' : 'asc'
+    } else {
+        _wizardSortCol = col
+        _wizardSortDir = 'asc'
+    }
+    _renderWizardTabla()
+}
+
+function _renderWizardTabs() {
+    const tabsEl = document.getElementById('wizardVenueTabs')
+    const venueIds = Object.keys(_wizardVenueGroups)
+    if (venueIds.length <= 1) { tabsEl.style.display = 'none'; return }
+    tabsEl.style.display = 'flex'
+    tabsEl.innerHTML = venueIds.map(vid =>
+        `<button class="venue-tab${vid === _wizardVenueActivo ? ' active' : ''}" onclick="window._wizardActivarVenue('${vid}')">${vid}</button>`
+    ).join('')
+}
+
+function _renderWizardTabla() {
+    const tablaEl = document.getElementById('wizardTabla')
+    const allRows = _wizardVenueGroups[_wizardVenueActivo] ?? []
+    if (allRows.length === 0) {
+        tablaEl.innerHTML = '<p style="color:var(--subtle);text-align:center;padding:20px 0">Sin historial para este venue.</p>'
+        return
+    }
+
+    const cols = [
+        { key: 'serviceCode',   label: 'Servicio'     },
+        { key: 'day',           label: 'Día'          },
+        { key: 'billing_model', label: 'Modelo'       },
+        { key: 'total_slots',   label: 'Plazas'       },
+        { key: 'price_per_slot',label: 'Precio/plaza' },
+        { key: 'sourceSeason',  label: 'Temp. origen' },
+    ]
+
+    const rows = [...allRows].sort((a, b) => {
+        const av = a[_wizardSortCol] ?? ''
+        const bv = b[_wizardSortCol] ?? ''
+        const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv))
+        return _wizardSortDir === 'asc' ? cmp : -cmp
+    })
+
+    const arrow = col => col === _wizardSortCol ? (_wizardSortDir === 'asc' ? ' ↑' : ' ↓') : ''
+    const allChecked = allRows.every(r => r.checked)
+    const v = _wizardVenueActivo
+
+    tablaEl.innerHTML = `
+        <table class="admin-table" style="width:100%">
+            <thead><tr>
+                <th style="width:28px"><input type="checkbox" id="wizardChkAll" ${allChecked ? 'checked' : ''}
+                    onchange="window._wizardToggleAll('${v}', this.checked)"></th>
+                ${cols.map(c => `<th style="cursor:pointer;user-select:none" onclick="window._wizardSort('${c.key}')">${c.label}${arrow(c.key)}</th>`).join('')}
+            </tr></thead>
+            <tbody>${rows.map(r => `
+                <tr>
+                    <td><input type="checkbox" ${r.checked ? 'checked' : ''}
+                        onchange="window._wizardToggle('${r.venueId}', '${r.serviceCode}', this.checked)"></td>
+                    <td>
+                        <span style="font-family:monospace;font-size:12px">${r.serviceCode}</span>
+                        ${!r.hasService ? `<span style="font-size:11px;color:var(--subtle);margin-left:6px">(Servicio nuevo en ${_temporada})</span>` : ''}
+                    </td>
+                    <td>${r.day ?? '—'}</td>
+                    <td style="font-size:11px;color:var(--subtle)">${r.billing_model ?? '—'}</td>
+                    <td>${r.total_slots ?? '—'}</td>
+                    <td>${r.price_per_slot != null ? fmt(r.price_per_slot) : '—'}</td>
+                    <td style="font-size:11px;color:var(--subtle)">${r.sourceSeason}</td>
+                </tr>
+            `).join('')}</tbody>
+        </table>
+    `
+}
+
+function _actualizarBtnWizard() {
+    const n = _wizardFilas.filter(f => f.checked).length
+    const btn = document.getElementById('btnWizardConfirmar')
+    btn.textContent = `📥 Importar ${n} servicios`
+    btn.disabled    = n === 0
+}
+
+async function _abrirWizardDisponibilidad() {
+    const dlg = document.getElementById('dlgWizard')
+    document.getElementById('dlgWizardTemporada').textContent = _temporada
+    document.getElementById('wizardTabla').innerHTML = '<p style="color:var(--subtle);padding:20px 0">Cargando…</p>'
+    document.getElementById('btnWizardConfirmar').disabled = true
+    dlg.showModal()
+
+    const venueIds = venuesDelProveedor.map(v => v.id)
+    const { data: historial, error: errHist } = await supabase
+        .from('availability_panel')
+        .select('venue_id, service_id, service_code, season, total_slots, price_per_slot, billing_model, description, access_instructions, photos, event_type, day, start_time')
+        .in('venue_id', venueIds)
+        .neq('season', _temporada)
+        .order('season', { ascending: false })
+
+    if (errHist || !historial?.length) {
+        document.getElementById('wizardTabla').innerHTML =
+            '<p style="color:var(--subtle);text-align:center;padding:20px 0">No hay historial de disponibilidad para importar.</p>'
+        return
+    }
+
+    const historicalSeasons = [...new Set(historial.map(r => r.season))]
+    const { data: serviciosHistoricos } = await supabase
+        .from('services')
+        .select('id, service_code, season, name, description, image_url, event_type, day, start_time')
+        .in('season', historicalSeasons)
+
+    // Deduplicar por (venue_id, service_code): historial ya viene ordenado desc por season
+    const seen = new Set()
+    _wizardFilas = []
+    for (const row of historial) {
+        const key = `${row.venue_id}|${row.service_code}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const svcMeta   = (serviciosHistoricos ?? []).find(s => s.service_code === row.service_code && s.season === row.season)
+        const svcActivo = (todosServicios ?? []).find(s => s.service_code === row.service_code)
+        _wizardFilas.push({
+            venueId:             row.venue_id,
+            serviceCode:         row.service_code,
+            sourceSeason:        row.season,
+            total_slots:         row.total_slots,
+            price_per_slot:      row.price_per_slot,
+            billing_model:       row.billing_model,
+            availDesc:           row.description,
+            access_instructions: row.access_instructions,
+            photos:              row.photos,
+            event_type:          row.event_type,
+            day:                 row.day,
+            start_time:          row.start_time,
+            name:                svcMeta?.name        ?? null,
+            image_url:           svcMeta?.image_url   ?? null,
+            serviceDesc:         svcMeta?.description ?? null,
+            hasService:          !!svcActivo,
+            serviceId:           svcActivo?.id ?? null,
+            checked:             true
+        })
+    }
+
+    _wizardVenueGroups = {}
+    for (const f of _wizardFilas) {
+        if (!_wizardVenueGroups[f.venueId]) _wizardVenueGroups[f.venueId] = []
+        _wizardVenueGroups[f.venueId].push(f)
+    }
+    _wizardVenueActivo = Object.keys(_wizardVenueGroups)[0]
+
+    _renderWizardTabs()
+    _renderWizardTabla()
+    _actualizarBtnWizard()
+}
+
+document.getElementById('btnWizardConfirmar').addEventListener('click', async () => {
+    const seleccionados = _wizardFilas.filter(f => f.checked)
+    if (seleccionados.length === 0) return
+
+    const btn = document.getElementById('btnWizardConfirmar')
+    btn.disabled    = true
+    btn.textContent = 'Importando…'
+
+    // Paso 1: crear services que no existen en _temporada
+    const errores = []
+    for (const fila of seleccionados.filter(f => !f.hasService)) {
+        const { data: newSvc, error } = await supabase.from('services').insert({
+            service_code: fila.serviceCode,
+            season:       _temporada,
+            day:          fila.day,
+            start_time:   fila.start_time,
+            event_type:   fila.event_type,
+            name:         fila.name,
+            description:  fila.serviceDesc,
+            image_url:    fila.image_url,
+            comments:     null
+        }).select().single()
+        if (error) {
+            errores.push(`${fila.serviceCode}: ${error.message}`)
+        } else {
+            fila.serviceId  = newSvc.id
+            fila.hasService = true
+        }
+    }
+    if (errores.length) {
+        alert('Errores al crear servicios:\n' + errores.join('\n'))
+        btn.disabled = false
+        _actualizarBtnWizard()
+        return
+    }
+
+    // Paso 2: crear filas de availability
+    const erroresAvail = []
+    for (const fila of seleccionados) {
+        if (!fila.serviceId) { erroresAvail.push(`${fila.serviceCode}: sin service_id`); continue }
+        const { error } = await supabase.from('availability').insert({
+            venue_id:            fila.venueId,
+            service_id:          fila.serviceId,
+            total_slots:         fila.total_slots,
+            price_per_slot:      fila.price_per_slot,
+            billing_model:       fila.billing_model,
+            description:         fila.availDesc,
+            access_instructions: fila.access_instructions,
+            photos:              fila.photos
+        })
+        if (error) erroresAvail.push(`${fila.serviceCode} @ ${fila.venueId}: ${error.message}`)
+    }
+    if (erroresAvail.length) alert('Errores al crear disponibilidad:\n' + erroresAvail.join('\n'))
+
+    // Refrescar estado global
+    todosServicios     = (await supabase.from('services').select('*').eq('season', _temporada).order('service_code')).data ?? []
+    todaDisponibilidad = (await supabase.from('availability_panel').select('*').eq('season', _temporada)).data ?? []
+    const { data: _sfcomFresh } = await supabase.from('sfcom_listings')
+        .select('id, availability_id, sfcom_service_name, sfcom_slots_listed, sfcom_product_id, sfcom_variation_id, sfcom_status, sfcom_public_price')
+    const _sfcomFreshMap = new Map((_sfcomFresh ?? []).map(r => [r.availability_id, r]))
+    for (const d of todaDisponibilidad) {
+        const sl = _sfcomFreshMap.get(d.id)
+        d.sfcom_service_name  = sl?.sfcom_service_name  ?? null
+        d.sfcom_slots_listed  = sl?.sfcom_slots_listed  ?? null
+        d.sfcom_product_id    = sl?.sfcom_product_id    ?? null
+        d.sfcom_variation_id  = sl?.sfcom_variation_id  ?? null
+        d.sfcom_status        = sl?.sfcom_status        ?? null
+        d.sfcom_public_price  = sl?.sfcom_public_price  ?? null
+        d.sfcom_listing_id    = sl?.id                  ?? null
+        d.venue_provider_id   = _venueProv.get(d.venue_id) ?? null
+    }
+
+    document.getElementById('dlgWizard').close()
+    document.getElementById('bloque-wizard').style.display = 'none'
+    cargarServiciosProveedor(proveedorActual.id)
+    mostrarToast(`✅ ${seleccionados.length - erroresAvail.length} servicios importados`)
+})

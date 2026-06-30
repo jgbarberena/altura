@@ -17,6 +17,17 @@ const _todasTemporadas = [...new Set((_tmpSeason ?? []).map(r => r.season))]
 await initTemporada(_todasTemporadas)
 const _temporada = getTemporadaActiva()
 
+// El sol-layout usa margin:-28px para cancelar el padding de .content.
+// Si el toast de temporada está presente, ese margen hace que el layout se solape con el toast.
+const _toastEl = document.getElementById('toastTemporada')
+if (_toastEl) {
+    const solLayout = document.querySelector('.sol-layout')
+    if (solLayout) {
+        solLayout.style.marginTop = '0'
+        solLayout.style.height    = `calc(100vh - 28px - ${_toastEl.offsetHeight}px)`
+    }
+}
+
 const { data: disponibilidad } = await supabase.from('availability_panel')
     .select('venue_id, service_id, service_code, total_slots, price_per_slot, billing_model, venue_display_name, venue_address, description, access_instructions, venue_slug, event_type, day')
     .eq('season', _temporada)

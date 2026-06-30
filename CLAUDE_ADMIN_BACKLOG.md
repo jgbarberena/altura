@@ -740,3 +740,28 @@ Completado en Fase 7: `venues.display_name` usado con fallback al id del venue; 
 ### Rediseño log conversación + respuesta manual — ✅ RESUELTO (jun 2026)
 
 Dos cuadritos de composición siempre visibles (Cliente | Paula). Borrador de Paula con prefijo [BORRADOR]\n en conversation_notes, visualizado con borde ámbar y acciones inline. Estado respuesta_enviada solo al confirmar envío. Edición habilitada en mensajes de ambos autores. Asistente recibe borrador_respuesta si hay uno pendiente.
+
+---
+
+### Fase 9d — Sistema de temporadas — ✅ RESUELTO (jun 2026)
+
+**Objetivo:** gestionar múltiples años (temporadas) de forma independiente en el panel. Paula puede trabajar simultáneamente con la temporada 2026 y preparar la 2027.
+
+**BD — columnas `season`:** añadidas en `services`, `payments`, `charges`. `reservations` y `availability` NO tienen columna `season`; se filtran indirectamente a través de sus FK a `services`.
+
+**Estrategia de filtrado:**
+- Vistas públicas (`service_availability`, `catalogo_publico`): filtran con `WHERE s.season = public_season()`. La función `public_season()` calcula el año automáticamente (antes de agosto → año actual; desde agosto → año siguiente si ya existe). Sin cambios anuales necesarios.
+- Panel de admin (`availability_panel`, `availability_with_sfcom`): exponen columna `season` pero sin filtro. El JS aplica `.eq('season', getTemporadaActiva())`.
+- `reservations`: no tienen `season` directamente. Se cargan con `.in('service_id', _servicioIds)` donde `_servicioIds` son los IDs de la temporada activa.
+
+**Selector de temporada:** `initTemporada(todasTemporadas)` en `utils.js`. Modifica el DOM del sidebar (`.sidebar-header p`) para insertar el `<select>`. Muestra toast de advertencia en `.content` cuando la temporada activa != la por defecto. En `solicitudes.js`, si el toast está presente se ajusta el margen y la altura de `.sol-layout` para evitar solapamiento.
+
+**Confirmacion de escritura:** `confirmarSiTemporadaNoActiva(tipoCosa, onConfirmar)` en `utils.js`. Protege writes en tablas sensibles a temporada cuando se opera fuera de la temporada por defecto. No aplica a `providers`, `clients`, `venues` (entidades permanentes).
+
+**Solicitudes - filtro por temporada:** `status === 'nueva'` siempre visible independientemente de la temporada (fuerza atencion de Paula). El resto de estados activos filtran por `temporadaDeFecha(created_at) === _temporada` (umbral: 15 de julio). Cerradas con paginacion en cliente (`_todasCerradasSeason` cache, `BATCH_CERRADAS = 15`).
+
+**Panel.js - alertas y calendario:** vencidos (pagos y cobros) no filtran por temporada (cross-season, cualquier deuda aparece). El calendario de proximos pagos/cobros filtra `amount > 0.01` para excluir lineas con importe cero.
+
+**Archivos modificados:** `utils.js`, `admin.css`, `formulario.js`, `panel.js`, `proveedores.js`, `solicitudes.js`, `sfcom-panel.js`.
+
+**Wizard de importacion de availability:** boton "Importar desde temporada anterior" en `#bloque-wizard` (antes del bloque Andir/Editar servicio). Aparece cuando el proveedor tiene cero filas de `availability` para la temporada activa. `#dlgWizard` muestra historial deduplicado por `(venue_id, service_code)`, columnas ordenables, texto gris `(Servicio nuevo en AAAA)` para service_codes inexistentes. Al confirmar: crea services faltantes en `_temporada`, luego crea filas de `availability` copiando campos operativos. sfcom empieza en null.

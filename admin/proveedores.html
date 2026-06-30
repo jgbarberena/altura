@@ -120,6 +120,12 @@
                 <div id="proveedor-status" style="margin-top:12px; font-size:12px; color:var(--subtle)"></div>
             </div>
 
+            <!-- BLOQUE WIZARD: Sin disponibilidad en temporada activa -->
+            <div id="bloque-wizard" class="bloque" style="display:none;text-align:center;padding:28px 20px">
+                <p style="color:var(--subtle);margin:0 0 14px">Este proveedor no tiene servicios asignados para la temporada <strong id="wizard-temporada-txt"></strong>.</p>
+                <button class="btn btn-primary" id="btnAbrirWizard">📥 Importar desde temporada anterior</button>
+            </div>
+
             <!-- BLOQUE 2: AÑADIR/EDITAR SERVICIO -->
             <div class="bloque" id="bloque-servicio" style="display:none">
                 <h2 id="titulo-bloque-servicio">➕ Añadir / Editar servicio</h2>
@@ -554,6 +560,27 @@
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
                 <button class="btn btn-primary" id="dlgVenueCrear">Crear</button>
                 <button class="btn btn-secondary" id="dlgVenueCancelar">Cancelar</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- DIÁLOGO WIZARD: Importar disponibilidad desde temporada anterior -->
+    <dialog id="dlgWizard">
+        <div style="display:flex;flex-direction:column;height:100%;max-height:90vh;min-width:600px">
+            <div style="padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0">
+                <div>
+                    <h2 style="font-size:16px;margin:0">📥 Importar disponibilidad</h2>
+                    <p style="font-size:12px;color:var(--subtle);margin:4px 0 0">Temporada destino: <strong id="dlgWizardTemporada"></strong></p>
+                </div>
+                <button type="button" id="dlgWizardCerrar" class="btn btn-secondary" style="padding:4px 10px">✕</button>
+            </div>
+            <div id="wizardVenueTabs" style="display:none;gap:0;border-bottom:1px solid var(--border);padding:0 20px;flex-shrink:0;flex-wrap:wrap"></div>
+            <div style="flex:1;overflow:auto;padding:16px 24px">
+                <div id="wizardTabla"></div>
+            </div>
+            <div style="padding:12px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-shrink:0">
+                <button type="button" id="btnWizardConfirmar" class="btn btn-primary">📥 Importar 0 servicios</button>
+                <button type="button" id="dlgWizardCancelar" class="btn btn-secondary">Cancelar</button>
             </div>
         </div>
     </dialog>

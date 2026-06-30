@@ -494,6 +494,8 @@ Gestiona:
 
 **Tabla de servicios (`bloque-servicios-proveedor`):** `cargarServiciosProveedor(proveedorId, venueId)` filtra `todaDisponibilidad` por `d.venue_id === vid` (donde `vid = venueId ?? venueActual?.id`). Muestra solo los servicios del venue activo; nunca mezcla venues aunque el proveedor tenga varios. La tabla se refresca al cambiar de pestaña y tras cualquier operación de guardado o eliminación de servicios. El cálculo de pagos (`persistirPagosProveedor`) es distinto: agrega todos los venues del proveedor a propósito — eso es correcto y no debe verse afectado por el filtro de la tabla.
 
+**Wizard de importación de disponibilidad (`#bloque-wizard` / `#dlgWizard`):** aparece automáticamente cuando un proveedor tiene cero filas de `availability` para la temporada activa (ninguna venue tiene datos). Permite copiar la disponibilidad de temporadas anteriores: carga el historial de `availability_panel` para las venues del proveedor, deduplica por `(venue_id, service_code)` tomando siempre los datos de la temporada más reciente, y muestra las filas en una tabla con columnas ordenables. Los `service_code` que no existen aún en la temporada activa muestran `(Servicio nuevo en AAAA)` en gris — se crearán en `services` al confirmar. Al importar: INSERT en `services` para los que faltan (copiando `name`, `description`, `event_type`, `day`, `start_time`, `image_url` de la temporada origen), luego INSERT en `availability` (copiando `total_slots`, `price_per_slot`, `billing_model`, `description`, `access_instructions`, `photos`). Los datos sfcom empiezan en null — `sfcom_listings` es una tabla separada y el listado en sfcom se configura aparte por cada venue/servicio.
+
 ### panel.js
 Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `venues`, `payments`, `charges`, `reservation_requests`, `clients`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
 
@@ -1089,25 +1091,6 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 ```
 
 ---
-
-### Fase 9d — ✅ Sistema de temporadas
-
-**Objetivo:** gestionar múltiples años (temporadas) de forma independiente en el panel. Paula puede trabajar simultáneamente con la temporada 2026 y preparar la 2027.
-
-**BD — columnas `season`:** añadidas en `services`, `payments`, `charges`. `reservations` y `availability` NO tienen columna `season`; se filtran indirectamente a través de sus FK a `services`.
-
-**Estrategia de filtrado:**
-- Vistas públicas (`service_availability`, `catalogo_publico`): filtran con `WHERE s.season = public_season()`. La función `public_season()` calcula el año automáticamente (antes de agosto → año actual; desde agosto → año siguiente si ya existe). Sin cambios anuales necesarios.
-- Panel de admin (`availability_panel`, `availability_with_sfcom`): exponen columna `season` pero sin filtro. El JS aplica `.eq('season', getTemporadaActiva())`.
-- `reservations`: no tienen `season` directamente. Se cargan con `.in('service_id', _servicioIds)` donde `_servicioIds` son los IDs de la temporada activa.
-
-**Selector de temporada:** `initTemporada(todasTemporadas)` en `utils.js`. Modifica el DOM del sidebar (`.sidebar-header p`) para insertar el `<select>`. Muestra toast de advertencia en `.content` cuando la temporada activa ≠ la por defecto.
-
-**Confirmación de escritura:** `confirmarSiTemporadaNoActiva(tipoCosa, onConfirmar)` en `utils.js`. Protege writes en tablas sensibles a temporada cuando se opera fuera de la temporada por defecto. No aplica a `providers`, `clients`, `venues` (entidades permanentes).
-
-**Archivos modificados:** `utils.js`, `admin.css`, `formulario.js`, `panel.js`, `proveedores.js`, `solicitudes.js`.
-
-**Pendiente:** wizard de importación de availability desde temporada anterior en `proveedores.js` (botón aparece cuando el proveedor no tiene availability para la temporada activa).
 
 ### Fase 10 — 🔲 Sesión de tablas: edición directa + Storage + cliente + PDFs
 
