@@ -2161,10 +2161,9 @@ function _pedirFechaPago() {
         panel.innerHTML = `
             <div>
                 <div class="modal-header-title">Fecha de pago</div>
-                <div class="modal-header-desc">Dejar vacío para registrar hoy (${hoy}).</div>
             </div>
             <div style="padding:8px 0">
-                <input id="modal-fecha-pago-input" type="text" placeholder="${hoy}"
+                <input id="modal-fecha-pago-input" type="date" value="${hoy}"
                     style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;font-size:14px">
             </div>
             <div class="modal-actions">
@@ -2174,10 +2173,10 @@ function _pedirFechaPago() {
         const input = panel.querySelector('#modal-fecha-pago-input')
         panel.querySelector('#modal-fecha-pago-cancel').onclick = () => { overlay.close(); resolve(null) }
         panel.querySelector('#modal-fecha-pago-ok').onclick = () => {
-            overlay.close(); resolve(input.value.trim() || hoy)
+            overlay.close(); resolve(input.value || hoy)
         }
         input.addEventListener('keydown', e => {
-            if (e.key === 'Enter') { overlay.close(); resolve(input.value.trim() || hoy) }
+            if (e.key === 'Enter') { overlay.close(); resolve(input.value || hoy) }
         })
         setTimeout(() => input.focus(), 50)
     })
@@ -2206,13 +2205,15 @@ window.togglePagoProvCobrado = async function(idx) {
 }
 
 window.eliminarHitoProv = async function(idx) {
-    hitosProvTemp.splice(idx, 1)
+    const hitoEliminado = hitosProvTemp.splice(idx, 1)[0]
     if (proveedorActual) {
         await recalcularPagoFinalProveedor(proveedorActual.id)
         try {
             await persistirHitosProveedor(proveedorActual.id)
         } catch (err) {
-            console.error('Error al eliminar hito de pago:', err.message)
+            hitosProvTemp.splice(idx, 0, hitoEliminado)
+            await recalcularPagoFinalProveedor(proveedorActual.id)
+            alert('Error al eliminar el hito de pago: ' + err.message)
         }
     }
 }
@@ -2255,15 +2256,6 @@ document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () 
     }
 }))
 
-document.getElementById('btnGuardarPagos').addEventListener('click', () => confirmarSiTemporadaNoActiva('los pagos al proveedor', async () => {
-    if (!proveedorActual) return
-    try {
-        await persistirHitosProveedor(proveedorActual.id)
-        mostrarToast('✅ Pagos guardados')
-    } catch (err) {
-        alert('Error al guardar pagos: ' + err.message)
-    }
-}))
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ASISTENTE MÚLTIPLE
