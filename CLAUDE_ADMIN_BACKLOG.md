@@ -765,3 +765,82 @@ Dos cuadritos de composición siempre visibles (Cliente | Paula). Borrador de Pa
 **Archivos modificados:** `utils.js`, `admin.css`, `formulario.js`, `panel.js`, `proveedores.js`, `solicitudes.js`, `sfcom-panel.js`.
 
 **Wizard de importacion de availability:** boton "Importar desde temporada anterior" en `#bloque-wizard` (antes del bloque Andir/Editar servicio). Aparece cuando el proveedor tiene cero filas de `availability` para la temporada activa. `#dlgWizard` muestra historial deduplicado por `(venue_id, service_code)`, columnas ordenables, texto gris `(Servicio nuevo en AAAA)` para service_codes inexistentes. Al confirmar: crea services faltantes en `_temporada`, luego crea filas de `availability` copiando campos operativos. sfcom empieza en null.
+
+
+---
+
+### ✅ Rediseño del log de conversación y respuesta manual sin asistente (jun 2026)
+
+**Archivos:** `solicitudes.js`, `solicitudes.css`, `asistente.js`, `asistente-config.js`.
+
+**Compose area (dos cuadritos siempre visibles):** reemplaza los botones "＋ Mi mensaje" / "＋ Mensaje del cliente". Dos `<textarea>` side by side: izquierda para Cliente, derecha para Paula. Al hacer clic / pegar / escribir se activan. Ctrl+Enter o botón "Guardar" para confirmar. El de Paula guarda como borrador; el de Cliente guarda como mensaje sin más.
+
+**Estado borrador:** mensajes de Paula sin enviar en `conversation_notes` con prefijo `[BORRADOR]\n`. `_parsearLog` detecta el prefijo → `isDraft: true`. `_renderizarLog` los pinta con borde ámbar punteado ("⏳ pendiente de envío") y muestra cuatro acciones inline: 📋 Copiar · 💬 WhatsApp · 📧 Email · ✓ Ya lo envié. El estado `respuesta_enviada` se persiste al hacer clic en una de esas acciones (`_promoverBorrador`). Los botones de WhatsApp/Email se ocultan si no hay contacto.
+
+**Edición de mensajes:** ✏️ disponible en mensajes de ambos autores. El texto editable del borrador se muestra sin el prefijo `[BORRADOR]`; al guardar se preserva el marcador.
+
+**Asistente con borrador en curso:** cuando Paula tiene un borrador y pulsa "Abrir asistente", el texto se pasa en `contextoObj.solicitud.borrador_respuesta`. El system prompt instruye a Claude a usarlo como punto de partida.
+
+**Sin cambios de esquema:** el prefijo `[BORRADOR]\n` vive en `conversation_notes` (text). No hay columnas nuevas.
+
+---
+
+### ✅ Claridad de labels y textareas para Paula (jun 2026)
+
+**Archivos:** `proveedores.html`, `proveedores.js`, `formulario.html`.
+
+**Campos "Comentarios" → "Notas internas"** (label + placeholder "Solo uso interno") en todos los campos puramente internos: proveedor, venue/balcón, disponibilidad, cliente y reserva.
+
+**"Descripción del venue" → dinámica según tipo** (`labelAvailDesc` con `id`). Placeholder → "Va en propuestas, confirmaciones y catálogo web".
+
+**"venue" eliminado de toda la GUI de proveedores.** `_VENUE_LABELS` extendida con `desc`, `dlgTitulo`, `dlgId`, `dlgDir`, `toast` y `errorId` para los cuatro tipos (`balcon`, `barrera`, `guia`, `servicio_especial`). `_actualizarLabelsVenue` actualiza también `labelAvailDesc`. Nueva función `_actualizarLabelsDlgVenue` actualiza el diálogo de crear en tiempo real al cambiar el tipo. Toast de renombrar y mensaje de error de ID duplicado también usan el término correcto.
+
+**Placeholder de `inputServicioDescription`** → "Descripción general del servicio (igual para todos los proveedores)".
+
+**Nota:** campos `comments` de `panel.html`, `solicitudes.html` y `tablas.html` pendientes de revisión futura.
+
+---
+
+### §7.4 Auditoría de sistemas de inferencia — CERRADO (jun 2026)
+
+Auditoría realizada sobre todos los sistemas de inferencia del panel.
+
+- **`extraerDia` (sfcom.js):** correcto. Cubre "N de julio" y "julio N" con validación de rango 6-14.
+- **`parsearNivel` (utils.js):** correcto para su uso (slugs web tipo `vivir-encierro-8`). Nunca se llama con nombres sfcom raw.
+- **`resolverProductoSfcom` + TIPO_SERVICIO_ID:** sistema de 4 casos limpio. Caso 4 (producto desconocido) preserva el nombre raw.
+- **`_preFillBorradorSiVacio` (solicitudes.js):** correcto. El `if (!svcId) continue` es intencional — no se puede enriquecer lo que no se reconoce.
+- **Dedup `importarCanceladosSfcom`:** dos capas funcionando — (1) por `origin_ref` único, (2) por cliente+service_id con actualización de slots si el pedido nuevo es más reciente.
+- Edge case menor aceptado: con `serviceId = null`, la capa 2 de dedup agrupa todos los productos desconocidos del mismo cliente. Riesgo real prácticamente nulo dado el volumen.
+
+No hay bugs accionables. Los sistemas estaban bien cubiertos por fases anteriores.
+
+---
+
+### §7.7 Deudas operativas sfcom — ACEPTADO (jun 2026)
+
+Productos sfcom sin mapeo completo en `sfcom_listings` / `availability`:
+
+- **Pobre de Mí (prod 142):** mapeo no aclarado con Hilario.
+- **Barrera Encierro (prod 140, stock null):** modelo de stock sin aclarar.
+- **Visitas guiadas:** sin filas en `availability` ni mapeo en `sfcom_listings`.
+- **Despedida Gigantes (prod 147, agrupado):** usar productos hijo 215 (adulto) y 216 (niño) para PUTs. Nunca usar 147 directamente.
+
+**Decisión:** no se requiere acción técnica. Verificado que todos los pedidos sfcom (confirmados y cancelados), incluso de productos desconocidos, aterrizan en `reservation_requests` con el nombre raw del producto en `conversation_notes` y `proposal_draft.service_name`, más datos del cliente y referencia de pedido (`source`). La gestión de estos productos puede hacerse manualmente desde `solicitudes.html`.
+
+---
+
+### §7.9 (alto) — reorgCambiarServicio venue silencioso — RESUELTO (jun 2026)
+
+`reorgCambiarServicio` en `formulario.js` cambiaba el venue al primero disponible sin notificar a Paula cuando el venue actual no ofrecía el nuevo servicio. Fix: añadido `mostrarToast` tras el cambio automático para que Paula vea explícitamente qué venue se asignó.
+
+---
+
+### §7.9 (alto) — btnGuardarServicio múltiple descarta name/description — CERRADO sin cambio (jun 2026)
+
+El bug ya no existía. Los campos `inputServicioNombre` e `inputServicioDescription` están dentro de `#avail-section` en el HTML. En modo edición múltiple, `avail-section` se oculta (`display: none`), por lo que esos campos ni siquiera son visibles. No hubo cambio de código.
+
+---
+
+### §7.9 (alto) — Asistente múltiple skip silencioso de service_id duplicado — RESUELTO (jun 2026)
+
+En `proveedores.js`, cuando el asistente múltiple detectaba que un servicio ya existía para el venue (`yaExiste`), hacía `continue` sin aviso. Paula no recibía ninguna señal de que el servicio se había omitido. Fix: cambiado a `alert(...)` antes del `continue` para informar explícitamente del servicio omitido.

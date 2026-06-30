@@ -864,35 +864,9 @@ El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tar
 
 ### 7.3 Funcionalidades pendientes
 
-**✅ RESUELTO — Rediseño del log de conversación y respuesta manual sin asistente (jun 2026).**
-
-Cambios en `solicitudes.js`, `solicitudes.css`, `asistente.js` y `asistente-config.js`.
-
-**Compose area (dos cuadritos siempre visibles):** reemplaza los botones "＋ Mi mensaje" / "＋ Mensaje del cliente". Dos `<textarea>` side by side: izquierda para Cliente, derecha para Paula. Al hacer clic / pegar / escribir se activan. Ctrl+Enter o botón "Guardar" para confirmar. El de Paula guarda como borrador (no cambia el estado todavía); el de Cliente guarda como mensaje sin más.
-
-**Estado borrador:** los mensajes de Paula guardados sin enviar se almacenan en `conversation_notes` con prefijo `[BORRADOR]\n`. `_parsearLog` detecta el prefijo → `isDraft: true`. `_renderizarLog` los pinta con borde ámbar punteado ("⏳ pendiente de envío") y muestra cuatro acciones inline: 📋 Copiar · 💬 WhatsApp · 📧 Email · ✓ Ya lo envié. El estado `respuesta_enviada` solo se persiste al hacer clic en una de esas acciones (`_promoverBorrador`). Los botones de WhatsApp/Email se ocultan si no hay contacto.
-
-**Edición de mensajes:** ✏️ disponible ahora en mensajes de ambos autores (antes solo Paula). El texto editable del borrador se muestra sin el prefijo `[BORRADOR]`; al guardar se preserva el marcador.
-
-**Asistente con borrador en curso:** cuando Paula tiene un borrador en el log y pulsa "Abrir asistente", el texto del borrador se pasa en `contextoObj.solicitud.borrador_respuesta`. El system prompt instruye a Claude a usarlo como punto de partida en lugar de generar respuesta desde cero.
-
-**Sin cambios de esquema:** el prefijo `[BORRADOR]\n` vive en el campo `conversation_notes` existente (text). No hay columnas nuevas.
-
----
-
 **Edición directa en `tablas.js` con gestión de Supabase Storage.**
 
 `tablas.js` es solo lectura (salvo renombrar IDs). Objetivo: editar cualquier campo directamente desde la UI y gestionar los buckets de Storage desde el panel. Ver diseño detallado en §9 Fase 10.
-
----
-
-### 7.4 Auditorías pendientes
-
-**Auditoría de sistemas de inferencia.**
-
-Hay varios mecanismos que infieren datos (día, nivel, servicio, texto de borrador…) y se han detectado bugs por cobertura incompleta. Recorrido sistemático pendiente.
-
-Sistemas a auditar: `extraerDia` (sfcom.js), `parsearNivel` (sfcom.js), lógica `service_id`/`TIPO_SERVICIO_ID` en importación sfcom, `_preFillBorradorSiVacio` (solicitudes.js/asistente.js), dedup de `importarCanceladosSfcom` (sfcom.js).
 
 ---
 
@@ -915,20 +889,9 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ---
 
-### 7.7 Deudas operativas sfcom
-
-Productos con configuración incompleta o pendiente de aclarar con Hilario:
-
-- **Pobre de Mí (prod 142):** ownership/mapeo pendiente de aclarar.
-- **Barrera Encierro (prod 140, stock null):** no sincronizar hasta aclarar modelo de stock.
-- **Visitas guiadas:** sin filas en `availability` ni mapeo en `sfcom_listings`.
-- **Despedida Gigantes (prod 147, agrupado):** usar los productos hijo 215 (adulto) y 216 (niño) para PUTs de stock. Nunca usar 147 directamente.
-
----
-
 ### 7.8 Conocido y aceptado
 
-**Falsos positivos en verificación sfcom por TTL de caché del servidor.** `stock-all` en `sf-api-paula.php` trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola; no requiere acción. (Ver §7.4 para fix pendiente de "Forzar GET" en verificación manual.)
+**Falsos positivos en verificación sfcom por TTL de caché del servidor.** `stock-all` en `sf-api-paula.php` trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola; no requiere acción.
 
 **`persistirCobrosCliente` auto-crea un cobro "final" al guardar cualquier cobro del cliente.** Al añadir un hito de cobro manualmente en bloque 5, el JS llama también a `persistirCobrosCliente`, que calcula e inserta (o actualiza) el "cobro final". Resultado: al crear el primer cobro manual, aparecen dos filas en `charges`. No se duplica (el cálculo upserta la misma fila). Comportamiento esperado, no es un bug.
 
@@ -962,11 +925,6 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **Sistema de inferencia sfcom — robusto en práctica, mejorable en teoría.** El punto débil (matching por día solo funciona para ENCIERRO cuando hay múltiples filas con el mismo `sfcom_service_name`) no afecta en práctica: los otros servicios tienen un único venue activo. El fallo real aparecería si dos venues vendieran el mismo servicio no-ENCIERRO. Pendiente (no urgente): si ocurre, generalizar la desambiguación para usar `<TIPO>_<day>` en lugar de hardcodear `ENCIERRO_`.
 
-**`reorgCambiarServicio`: cambia el venue silenciosamente al primero disponible si el actual no ofrece el nuevo servicio (`formulario.js:1530-1554`).** Paula puede no darse cuenta.
-
-**`btnGuardarServicio` en modo edición múltiple ignora cambios en `services.name/description` (`proveedores.js:1155-1192`).** Los inputs están visibles y editables pero sus cambios se descartan al guardar, sin aviso.
-
-**Asistente múltiple no valida `service_id` duplicado entre filas antes de insertar (`proveedores.js:2216-2293`).** Colisión con UNIQUE(venue_id, service_id) en `availability`. El código muestra `alert` con el error de BD pero no previene la colisión.
 
 **`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada (`sfcom.js:92-95`).** El consumidor ve todos los availability como `fallos` pero el error real no se muestra.
 
@@ -1139,18 +1097,3 @@ Fix (unas 15 líneas en `formulario.js`):
 - Antes del DELETE de reservas: recoger `proposal_path` de las filas a eliminar → `supabase.storage.from('proposals').remove([...paths.filter(Boolean)])`.
 - En el caso `isLastReservation`: ampliar el SELECT de charges para incluir `invoice_path`; recoger los no nulos → `supabase.storage.from('invoices').remove([...paths])`.
 - Errores de Storage no son bloqueantes: si el remove falla, continuar con el DELETE igualmente (el archivo es recuperable manualmente desde el Dashboard de Supabase).
-
----
-## 10. Claridad de labels y textareas para Paula ✅ (jun 2026)
-
-**Aplicado en `proveedores.html`, `proveedores.js` y `formulario.html`.**
-
-**Campos "Comentarios" → "Notas internas"** (label + placeholder "Solo uso interno") en todos los campos puramente internos: proveedor, venue/balcón, disponibilidad, cliente y reserva. Deja claro que nunca llegan al cliente.
-
-**"Descripción del venue" → dinámica según tipo** (`labelAvailDesc` con `id`). Placeholder cambiado a "Va en propuestas, confirmaciones y catálogo web" para que quede claro que es texto de cara al cliente.
-
-**"venue" eliminado de toda la GUI de proveedores.** `_VENUE_LABELS` extendida con `desc`, `dlgTitulo`, `dlgId`, `dlgDir`, `toast` y `errorId` para los cuatro tipos (`balcon`, `barrera`, `guia`, `servicio_especial`). `_actualizarLabelsVenue` actualiza también `labelAvailDesc`. Nueva función `_actualizarLabelsDlgVenue` actualiza el diálogo de crear en tiempo real al cambiar el tipo. Toast de renombrar y mensaje de error de ID duplicado también usan el término correcto para cada tipo.
-
-**Placeholder de `inputServicioDescription`** → "Descripción general del servicio (igual para todos los proveedores)", diferenciando claramente del campo específico del balcón.
-
-**Pendiente de revisión futura:** campos `comments` de `panel.html`, `solicitudes.html` y `tablas.html` — aplica la misma lógica "Notas internas / Solo uso interno" cuando se trabaje en esos paneles.

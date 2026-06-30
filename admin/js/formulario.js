@@ -1972,6 +1972,7 @@ window.reorgCambiarServicio = function(idx, nuevoServicio) {
     const venueSigueDisponible   = dispNuevoServicio.some(d => d.venue_id === r.venue_id)
     if (!venueSigueDisponible && dispNuevoServicio.length > 0) {
         reorgFilas[idx].venue_id = dispNuevoServicio[0].venue_id
+        mostrarToast(`ℹ️ Venue cambiado a ${dispNuevoServicio[0].venue_id} (el anterior no ofrece este servicio)`)
     }
 
     registrarCambioReorg(idx, original)

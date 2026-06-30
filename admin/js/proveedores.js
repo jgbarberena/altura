@@ -2703,7 +2703,7 @@ document.getElementById('btnMultipleGuardar').addEventListener('click', async ()
             row._svcIntId  = svcIntId
             const _newVenueId = venueActual?.id ?? proveedorId
             const yaExiste = todaDisponibilidad.find(d => d.venue_id === _newVenueId && d.service_id === svcIntId)
-            if (yaExiste) continue
+            if (yaExiste) { alert(`El servicio ${row.serviceId} ya existe para este proveedor — se ha omitido.`); continue }
             const insertData = {
                 venue_id:       _newVenueId,
                 service_id:     svcIntId,
