@@ -844,29 +844,9 @@ Patrón de fix: tras cualquier save con efectos secundarios conocidos, re-leer d
 
 ---
 
-**No hay UI para eliminar un cliente directamente.**
-
-La única forma de borrar un cliente es eliminar su última reserva y confirmar el borrado encadenado. Si el cliente no tiene reservas activas, no hay flujo para borrarlo. Workaround: crear una reserva temporal de 1€ y luego eliminarla. SQL directo: `DELETE FROM clients WHERE id = '...'` (verificando antes que no quedan charges ni reservation_requests). Para Fase 10: añadir botón "Eliminar cliente" con confirmación si no tiene reservas activas.
-
----
-
-**Cambio de proveedor de una venue: no hay UI en admin.**
-
-Para reasignar una venue a un proveedor diferente, no existe campo editable. La FK `venues.provider_id` permite UPDATE sin restricciones. SQL directo: `UPDATE venues SET provider_id = 'NUEVO_PROVEEDOR' WHERE id = 'MI_VENUE'`. Los casos son rarísimos; basta con documentar ese SQL.
-
----
-
 **CSS del panel en móvil — deuda de revisión general.**
 
 El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tarjetas de KPIs económicos de `panel.html`, layout de `solicitudes.html`. Prioridad media. Acción antes de intervenir: recorrer las páginas principales en incógnito en móvil, documentar capturas y abordar en sesión dedicada.
-
----
-
-### 7.3 Funcionalidades pendientes
-
-**Edición directa en `tablas.js` con gestión de Supabase Storage.**
-
-`tablas.js` es solo lectura (salvo renombrar IDs). Objetivo: editar cualquier campo directamente desde la UI y gestionar los buckets de Storage desde el panel. Ver diseño detallado en §9 Fase 10.
 
 ---
 
@@ -930,8 +910,6 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **`idsMismatch` en verificarSfcom es código muerto en la práctica.** `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone endpoint de nombres de variaciones. Documentado en el código.
 
-**El sort de "Cobrado/Pagado" en `tablas.js` ordena por emoji — resultado confuso (`tablas.js:253-256`).** Fix: usar el raw value booleano para el sort y formatear solo en display.
-
 ---
 
 #### Medio — edge cases que ocurrirán con el tiempo
@@ -948,8 +926,6 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **`checkSfcomOrders` se llama sin caché al cargar `panel.js` Y `solicitudes.js`.** Cada navegación entre panel.html y solicitudes.html dispara un GET al endpoint externo sin caché ni throttle.
 
-**`abrirAsistenteRespuesta` no tiene timeout — el spinner puede quedar activo indefinidamente (`asistente.js:283-285`).** Si la Edge Function no responde, no hay `AbortController`.
-
 **`abrirProcesarEmail`: regex greedy para extraer JSON puede atrapar texto ajeno (`asistente.js:541-542`).** `rawText.match(/\{[\s\S]*\}/)` es greedy. Si Claude incluye un ejemplo de código con `{` antes del JSON real, el parse falla.
 
 **Signed URLs de Supabase Storage (TTL 60s) expiran si Paula tarda en clicar (`formulario.js:1391-1419`).** No hay refresh automático.
@@ -961,10 +937,6 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 **El logo de propuesta puede no estar cargado al generar el PDF (`propuesta.js:616-634`).** Si Paula pulsa el botón inmediatamente al abrir el panel, `_logoBlackBase64` puede no haber cargado. El PDF se genera sin logo (try/catch silencioso).
 
 **`Math.abs(parseFloat(amount) - cobroFinal) >= 0.01` puede dar falso positivo por precisión float (`utils.js:176`).** Fix: redondear a 2 decimales antes de comparar.
-
-**`_computarFinanciero` muestra `"SFCOM"` como ID de cliente en el modal de inconsistencias financieras sin explicación (`verificacion.js`).** Fix: cambiar el texto a `"Canal sfcom (WooCommerce)"` y añadir nota explicativa.
-
-**Sin detección de sesión expirada — los errores de autorización se presentan como errores de datos (`auth.js`).** Si la sesión expira, los errores 401 de Supabase se tratan igual que cualquier error inesperado. Fix: interceptar errores 401 en un wrapper centralizado y mostrar toast o modal claro.
 
 ---
 
@@ -1064,15 +1036,51 @@ Diseño:
 - Aviso cuando el cambio tiene impacto en cascada (ej. cambiar `billing_model` en un availability con reservas activas).
 - Columnas de solo lectura (campos calculados como `total_amount`, campos `id` ya cubiertos por el renombrador): mantenerlas no editables.
 
-**2. Eliminar cliente sin reservas**
+**2. Eliminaciones consistentes**
 
-No existe flujo de borrado directo de un cliente que ya no tiene reservas activas.
+Diseño unificado para eliminar cualquier fila de cualquier tabla sin dejar la BD en estado inconsistente. Aplica tanto a botones del panel como de referencia para manipulación directa en Supabase Dashboard.
 
-Diseño:
-- En `formulario.js` / `formulario.html`: botón "Eliminar cliente" visible solo cuando `reservasCliente.length === 0` y el cliente está cargado.
-- Modal de confirmación que liste también si el cliente tiene `charges` o `reservation_requests` activos antes de eliminar.
-- DELETE en cascada: primero `charges`, luego `reservation_requests` (donde `client_name` coincide, si aplica), luego `clients`.
-- También incluible en la vista de tablas.js (fila de Clientes sin reservas → botón borrar).
+Reglas generales:
+- Siempre mostrar modal de confirmación que liste las dependencias afectadas antes de ejecutar.
+- Las recalculaciones de cobros/pagos son obligatorias cuando la eliminación afecta a las fórmulas (`capacity`, `consumption`, `fixed`).
+- Los PDFs en Storage son secundarios: si el `remove` falla, continuar con el DELETE (recuperable manualmente desde Dashboard).
+
+**Reservas** — siempre eliminables (con confirmación).
+1. Recoger `proposal_path` → `storage.from('proposals').remove()` si existe.
+2. DELETE reservations.
+3. `persistirCobrosCliente` para el cliente afectado.
+4. Si `availability.billing_model ∈ {consumption, fixed}`: `persistirPagosProveedor` para el proveedor del venue.
+5. Si era la última reserva del cliente → ofrecer eliminar el cliente (flujo de Clientes a continuación).
+
+**Cobros (charges)** — eliminables directamente.
+1. Si `invoice_path` → `storage.from('invoices').remove()`.
+2. DELETE charges.
+
+**Pagos (payments)** — eliminables directamente. DELETE payments.
+
+**Clientes** — bloqueado si tiene reservas activas (mostrar lista; exigir resolverlas primero).
+1. Si tiene charges: listar y ofrecer eliminación en cascada.
+2. `reservation_requests` vinculan por `client_name` (text, sin FK) — advertir, no bloquean.
+3. Orden: DELETE charges WHERE client_id → DELETE clients.
+4. UI: botón "Eliminar cliente" en `formulario.js` visible solo cuando `reservasCliente.length === 0`; también fila con botón en `tablas.js`.
+
+**Venues** — bloqueada si tiene reservas activas referenciando ese `venue_id` (mostrar cuáles; exigir eliminarlas primero o confirmar cascada total).
+1. Si cascada: ejecutar flujo completo de eliminación de cada reserva (PDFs, cobros, pagos).
+2. Después: DELETE venues WHERE id → cascada automática: availability → sfcom_listings.
+3. `persistirPagosProveedor` para recalcular el hito del proveedor.
+
+**Proveedores** — bloqueado si alguna venue propia tiene reservas activas (mostrar cuáles).
+1. Si cascada: eliminar todas las reservas de todas las venues del proveedor (flujo completo por reserva: PDFs, cobros).
+2. Recalcular cobros de todos los clientes afectados.
+3. Orden: DELETE venues WHERE provider_id (cascada automática: availability → sfcom_listings) → DELETE providers (cascada automática: payments).
+
+**Filas de availability (par venue+servicio)** — bloqueada si tiene reservas activas.
+1. DELETE availability WHERE id → cascada: sfcom_listings.
+2. `persistirPagosProveedor` para recalcular el hito del proveedor.
+
+**Servicios** — bloqueado si alguna fila de availability del service_id tiene reservas activas.
+1. Si cascada: eliminar las reservas afectadas (flujo completo) y recalcular cobros de clientes afectados.
+2. Orden: DELETE availability WHERE service_id (cascada: sfcom_listings) → DELETE services.
 
 **3. Gestión de Supabase Storage desde el panel**
 

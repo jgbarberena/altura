@@ -205,8 +205,8 @@ function renderTabla() {
     // Aplicar sort
     if (sortCol !== null) {
         datosFiltrados.sort((a, b) => {
-            const va = valorCelda(a, cols[sortCol])
-            const vb = valorCelda(b, cols[sortCol])
+            const va = a[cols[sortCol].campo]
+            const vb = b[cols[sortCol].campo]
             if (va === null || va === undefined) return 1
             if (vb === null || vb === undefined) return -1
             const cmp = String(va).localeCompare(String(vb), 'es', { numeric: true })

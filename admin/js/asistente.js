@@ -272,12 +272,21 @@ export async function abrirAsistenteRespuesta(solicitud, modo = null, borrador =
                 mensajesParaEnviar[mensajesParaEnviar.length - 2] = { ...penultimo, content }
             }
 
-            const { data, error } = await _supabase.functions.invoke('claude-proxy', {
-                body: { messages: mensajesParaEnviar, system, max_tokens: 1000 }
-            })
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 30000)
+            let data, error
+            try {
+                ;({ data, error } = await _supabase.functions.invoke('claude-proxy', {
+                    body: { messages: mensajesParaEnviar, system, max_tokens: 1000 },
+                    signal: controller.signal
+                }))
+            } finally {
+                clearTimeout(timeoutId)
+            }
 
             spinner.remove()
 
+            if (controller.signal.aborted) throw new Error('Tiempo de espera agotado — vuelve a intentarlo')
             if (error) throw new Error(error.message || 'Error en claude-proxy')
 
             const respuesta = data?.content?.[0]?.text ?? ''

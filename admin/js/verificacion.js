@@ -609,7 +609,7 @@ function _mostrarModal(resultado, supabase, onReverify, { modoManual, persistirC
             const hayHistorialF = pcF.some(p => p.tieneHistorial)
             const filaF = ({ tipo, id, diff, tieneHistorial }) => `<tr>
                 <td style="font-size:12px">${tipo}</td>
-                <td style="font-size:12px">${id}${tieneHistorial ? ' ⚠️' : ''}</td>
+                <td style="font-size:12px">${id === 'SFCOM' ? 'Canal sfcom (WooCommerce)' : id}${tieneHistorial ? ' ⚠️' : ''}</td>
                 <td style="font-size:12px;color:${diff > 0 ? '#92400e' : '#991b1b'}">${diff > 0 ? '+' : ''}${_fmt(diff)}</td>
             </tr>`
             secciones += `
