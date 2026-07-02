@@ -89,6 +89,93 @@
 
 th { position: relative; }
 
+/* Edición inline */
+td.td-editable { cursor: pointer; }
+td.td-editable:hover { background: var(--bg) !important; }
+td.td-editing {
+    background: var(--bg) !important;
+    padding: 2px 4px !important;
+    white-space: nowrap;
+    position: relative;
+    z-index: 10;
+}
+/* Contenedor opaco que tapa las columnas adyacentes cuando desborda */
+.edit-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: white;
+    border: 1.5px solid var(--accent);
+    border-radius: 4px;
+    padding: 1px 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.edit-input {
+    font-family: inherit;
+    font-size: 12px;
+    border: none;
+    outline: none;
+    background: transparent;
+    padding: 1px 2px;
+    min-width: 60px;
+    max-width: 180px;
+}
+.btn-edit-ok, .btn-edit-cancel {
+    border: none;
+    border-radius: 3px;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.5;
+    font-family: inherit;
+    flex-shrink: 0;
+}
+.btn-edit-ok     { background: var(--accent-ok); color: white; }
+.btn-edit-cancel { background: #888;             color: white; }
+.edit-textarea {
+    width: 100%;
+    min-height: 120px;
+    font-family: monospace;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    resize: vertical;
+}
+
+/* Picker de propuestas */
+.pp-lista-scroll {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+.pp-fila {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.pp-fila:last-child { border-bottom: none; }
+.pp-fila:hover      { background: var(--bg); }
+.pp-fila--sel       { background: #f0f8f0; }
+.pp-nombre {
+    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pp-size {
+    color: var(--subtle);
+    white-space: nowrap;
+    font-size: 11px;
+    text-align: right;
+}
+
 .tabla-header {
     display: flex;
     justify-content: space-between;
