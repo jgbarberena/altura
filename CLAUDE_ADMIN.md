@@ -152,8 +152,6 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | invoice_number | text — serie `VSF-NN/AAAA`; una vez asignado no se sobreescribe |
 | invoice_path | Ruta al PDF en Supabase Storage (bucket `invoices`) |
 
-UNIQUE `(client_id, amount, due_date, season)`.
-
 **`payments`** — Hitos de pago a proveedores (por proveedor, no por servicio)
 | Campo | Notas |
 |---|---|
@@ -166,8 +164,6 @@ UNIQUE `(client_id, amount, due_date, season)`.
 | paid_date | date |
 | is_final | boolean — hito final del pago a proveedor |
 | comments | text — nota opcional sobre el hito |
-
-UNIQUE `(provider_id, amount, due_date, season)`.
 
 **`reservation_requests`** — Solicitudes recibidas
 | Campo | Notas |
@@ -621,7 +617,20 @@ Genera propuestas PDF para reservas seleccionadas. Serie PRP. Textos editables e
 **Flujo de envío:** al abrir el diálogo, `abrirPanelPropuesta` llama a `mostrarOpcionesEnvio` con `tipo='pdf'` y `onGenerar=_generarYSubir`. Los botones (Solo PDF / PDF+correo / PDF+WhatsApp, según contacto disponible) se renderizan en `#propuesta-botones-envio` dentro del footer del `<dialog id="dialogPropuesta">`. El botón con foco es WhatsApp si hay teléfono, Email si hay email, Solo PDF si no hay ninguno. Un clic genera el PDF, lo sube a Storage (bucket `proposals`), persiste `proposal_number` y `proposal_path` en todas las reservas de la propuesta, dispara `propuestaEmitida` y abre el canal elegido. La función se llama de nuevo cada vez que se abre el diálogo (por si el cliente cambia entre aperturas).
 
 ### tablas.js
-Módulo ES6. Vista de solo lectura de todas las tablas. Selector de tabla, búsqueda en tiempo real, sort por columna, botón "⬇ Excel" usando `exportTable`.
+Módulo ES6. Vista de todas las tablas con edición inline de campos específicos. Selector de tabla, búsqueda en tiempo real, sort por columna, botón "⬇ Excel" con SheetJS.
+
+Tabs disponibles: `reservations`, `charges`, `payments`, `reservation_requests`, `availability`, `venues`, `clients`, `providers`, `services`, `sfcom_listings`.
+
+**Edición inline:** los campos editables se definen en el mapa `EDITABLE` por tabla. Un clic en una celda editable abre un input inline con botón ✓/✗. Los campos con `cascade` disparan lógica adicional tras guardar:
+- `cascade: 'cobros'` → `persistirCobrosCliente` (charges.amount, reservations.price_per_slot)
+- `cascade: 'pagos'` → `persistirPagosProveedor` (payments.amount)
+- `cascade: 'cobros-final'` → modal con escenarios de cambio de is_final en charges
+- `cascade: 'pagos-final'` → modal con escenarios de cambio de is_final en payments
+- `cascade: 'sfcom-slots'` → verificación de plazas vendidas antes de actualizar sfcom_slots_listed
+
+**Edición de is_final (charges y payments):** cambiar is_final activa un modal con todos los escenarios posibles (sin cambio → no-op silencioso; true→false → "convertir en adelanto" con opción de recalcular; false→true → "convertir en final" con verificación de importe y recálculo). El recálculo llama a `persistirCobrosCliente` / `persistirPagosProveedor`.
+
+**Filosofía:** tablas.js es la herramienta de emergencia para corregir estados que no pueden arreglarse desde el panel normal. Se permite editar todo, pero nunca se deja la BD inconsistente sin que el usuario lo elija explícitamente. Toda inconsistencia elegida voluntariamente se autocorrige en el siguiente uso normal del panel (o la detecta la verificación financiera).
 
 ### asistente.js
 Módulo ES6. Módulo reutilizable. Importado por formulario.js y solicitudes.js.
@@ -965,7 +974,9 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **`invoiced` en charges es redundante** con `invoice_number IS NOT NULL`, pero se mantiene por conveniencia en filtros de consulta.
 
-**`payments`: el hito final se identifica por `comments === 'Pago final'`**, no por un campo `is_final` (que sí existe en charges). Esta inconsistencia es conocida.
+**`payments` tiene columna `is_final` simétrica a `charges`.** Partial unique index `payments_one_final_per_provider ON payments(provider_id, season) WHERE is_final = true`. La unicidad de is_final=true por cliente en charges se refuerza con `charges_one_final_per_client ON charges(client_id, season) WHERE is_final = true`. Los constraints `uq_payments` y `uq_charges` (que bloqueaban combinaciones de amount+due_date iguales para el mismo cliente/proveedor) fueron eliminados en jul 2026 por causar falsos positivos en operaciones normales.
+
+**`persistirCobrosCliente` no modifica hitos bloqueados.** Si el hito final tiene `invoice_number` (facturado) o `collected = true` (cobrado), en lugar de actualizar su importe lo degrada a `is_final=false` y crea un nuevo hito de ajuste con la diferencia. Esto garantiza trazabilidad: un cobro ya realizado nunca se sobreescribe silenciosamente.
 
 **`persistirPagosProveedor` se ejecuta al guardar availability en `proveedores.js`, no solo al procesar reservas.**
 

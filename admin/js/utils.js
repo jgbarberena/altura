@@ -279,22 +279,53 @@ export function renderClientChips(reservas) {
         }).join(' ')
 }
 
+// Calcula el saldo de cobros de un cliente: total reservas − prepagos. Función pura, sin queries.
+export function calcularSaldoCobro(clienteId, reservas, charges) {
+    const total = clienteId === 'SFCOM'
+        ? reservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
+                  .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+        : reservas.filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
+                  .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
+    const hitoFinal = charges.find(c => c.is_final) ?? null
+    const prepagos  = charges.filter(c => !c.is_final).reduce((s, c) => s + parseFloat(c.amount || 0), 0)
+    return { total, prepagos, cuantiaCorrecta: total - prepagos, hitoFinal }
+}
+
+// Calcula el coste total de un proveedor según billing_model. Función pura, sin queries.
+export function calcularCostoPago(venueIds, reservas, disponibilidad) {
+    const dispProv = disponibilidad.filter(d => venueIds.has(d.venue_id))
+    return dispProv.reduce((total, d) => {
+        if (d.billing_model === 'capacity') {
+            return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
+        } else if (d.billing_model === 'fixed') {
+            const tieneReserva = reservas.some(r =>
+                r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+            return total + (tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0)
+        } else {
+            const plazasRes = reservas
+                .filter(r => r.venue_id === d.venue_id && r.service_id === d.service_id && r.status !== 'Cancelada')
+                .reduce((s, r) => s + r.slots, 0)
+            return total + plazasRes * parseFloat(d.price_per_slot ?? 0)
+        }
+    }, 0)
+}
+
+// Calcula el saldo de pagos de un proveedor: coste total − prepagos. Función pura, sin queries.
+export function calcularSaldoPago(venueIds, reservas, disponibilidad, payments) {
+    const costTotal = calcularCostoPago(venueIds, reservas, disponibilidad)
+    const hitoFinal = payments.find(p => p.is_final) ?? null
+    const prepagos  = payments.filter(p => !p.is_final).reduce((s, p) => s + parseFloat(p.amount || 0), 0)
+    return { costTotal, prepagos, cuantiaCorrecta: costTotal - prepagos, hitoFinal }
+}
+
 // Recalcula y persiste en Supabase el cobro final de un cliente
 // Llama siempre que cambie cualquier reserva del cliente
 export async function persistirCobrosCliente(supabase, clienteId, todasReservas) {
-    const total = clienteId === 'SFCOM'
-        ? todasReservas.filter(r => r.origin_ref?.startsWith('WEB') && r.status !== 'Cancelada')
-                       .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-        : todasReservas.filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
-                       .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-
     const { data: charges, error: errSelect } = await supabase
         .from('charges').select('*').eq('client_id', clienteId).eq('season', getTemporadaActiva())
     if (errSelect) { console.error('persistirCobrosCliente: error leyendo charges:', errSelect); return }
 
-    const hitoFinal  = (charges ?? []).find(c => c.is_final)
-    const prepagos   = (charges ?? []).filter(c => !c.is_final).reduce((s, c) => s + parseFloat(c.amount), 0)
-    const cobroFinal = total - prepagos
+    const { cuantiaCorrecta: cobroFinal, hitoFinal } = calcularSaldoCobro(clienteId, todasReservas, charges ?? [])
 
     if (cobroFinal < -0.01) {
         const { overlay, panel } = crearModal('aviso-cobro-negativo')
@@ -321,19 +352,26 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
         if (error) { console.error('persistirCobrosCliente: error creando cobro final:', error); return }
         console.log(`💰 Cobro final creado para ${clienteId}: ${cobroFinal}€`)
     } else if (Math.abs(parseFloat(hitoFinal.amount) - cobroFinal) >= 0.01) {
-        if (hitoFinal.invoice_number) {
+        const bloqueado = !!(hitoFinal.invoice_number || hitoFinal.collected)
+        if (bloqueado) {
             const diferencia = cobroFinal - parseFloat(hitoFinal.amount)
             const { error: e1 } = await supabase.from('charges')
                 .update({ is_final: false }).eq('id', hitoFinal.id)
-            if (e1) { console.error('persistirCobrosCliente: error degradando hito facturado:', e1); return }
+            if (e1) { console.error('persistirCobrosCliente: error degradando hito bloqueado:', e1); return }
+            const comentario = hitoFinal.invoice_number
+                ? 'Ajuste s/ factura ' + hitoFinal.invoice_number
+                : 'Ajuste s/ cobro previo'
             const { error: e2 } = await supabase.from('charges').insert({
                 client_id: clienteId, amount: diferencia, due_date: fechaCobroDefault(),
                 collected: false, collected_date: null,
-                comments: 'Ajuste s/ factura ' + hitoFinal.invoice_number, is_final: true,
+                comments: comentario, is_final: true,
                 season: getTemporadaActiva()
             })
             if (e2) { console.error('persistirCobrosCliente: error creando ajuste:', e2); return }
-            alert(`⚠️ El cobro final de ${clienteId} ya estaba facturado (${hitoFinal.invoice_number}).\n\nSe ha creado un hito de ajuste por ${diferencia > 0 ? '+' : ''}${diferencia}€ que queda pendiente de cobro.`)
+            const motivo = hitoFinal.invoice_number
+                ? `ya estaba facturado (${hitoFinal.invoice_number})`
+                : 'ya estaba cobrado'
+            alert(`⚠️ El cobro final de ${clienteId} ${motivo}.\n\nSe ha creado un hito de ajuste por ${diferencia > 0 ? '+' : ''}${fmt(diferencia)} que queda pendiente de cobro.`)
         } else {
             const { error } = await supabase.from('charges')
                 .update({ amount: cobroFinal }).eq('id', hitoFinal.id)
@@ -358,35 +396,11 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
     const { data: venuesProv } = await supabase.from('venues').select('id').eq('provider_id', proveedorId)
     const venueIds = new Set((venuesProv ?? []).map(v => v.id))
 
-    const dispProv  = todaDisponibilidad.filter(d => venueIds.has(d.venue_id))
-    const costTotal = dispProv.reduce((total, d) => {
-        if (d.billing_model === 'capacity') {
-            return total + (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
-        } else if (d.billing_model === 'fixed') {
-            const tieneReserva = todasReservas.some(r =>
-                r.venue_id   === d.venue_id &&
-                r.service_id === d.service_id &&
-                r.status     !== 'Cancelada'
-            )
-            return total + (tieneReserva ? parseFloat(d.price_per_slot ?? 0) : 0)
-        } else {
-            const plazasRes = todasReservas
-                .filter(r => r.venue_id   === d.venue_id &&
-                             r.service_id === d.service_id &&
-                             r.status     !== 'Cancelada')
-                .reduce((s, r) => s + r.slots, 0)
-            return total + plazasRes * parseFloat(d.price_per_slot ?? 0)
-        }
-    }, 0)
-
     const { data: payments, error: errSelect } = await supabase
         .from('payments').select('*').eq('provider_id', proveedorId).eq('season', getTemporadaActiva())
     if (errSelect) { console.error('persistirPagosProveedor: error leyendo payments:', errSelect); return }
 
-    const prepagos  = (payments ?? []).filter(p => !p.is_final)
-        .reduce((s, p) => s + parseFloat(p.amount), 0)
-    const pagoFinal = costTotal - prepagos
-    const hitoFinal = (payments ?? []).find(p => p.is_final)
+    const { cuantiaCorrecta: pagoFinal, hitoFinal } = calcularSaldoPago(venueIds, todasReservas, todaDisponibilidad, payments ?? [])
 
     if (!hitoFinal) {
         const { error } = await supabase.from('payments').insert({

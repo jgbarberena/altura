@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva } from './utils.js'
+import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago } from './utils.js'
 import { ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 
@@ -72,6 +72,7 @@ const TABLAS = {
             { label: 'ID',          campo: 'id' },
             { label: 'Cliente',     campo: 'client_id' },
             { label: 'Importe',     campo: 'amount',          fmt: v => fmt(v) },
+            { label: 'Hito final',  campo: 'is_final',        fmt: v => v ? 'Sí' : 'No' },
             { label: 'Fecha prev.', campo: 'due_date' },
             { label: 'Cobrado',     campo: 'collected',
                 fmt: (v, row) => v ? `✅ ${row.collected_date ?? ''}` : (row.due_date && row.due_date < hoy ? '❌ Vencido' : '⏳ No'),
@@ -80,7 +81,6 @@ const TABLAS = {
             { label: 'Facturado',   campo: 'invoiced',        fmt: v => v ? 'Sí' : '—' },
             { label: 'Fecha fact.', campo: 'invoiced_at' },
             { label: 'Nº factura',  campo: 'invoice_number' },
-            { label: 'Hito final',  campo: 'is_final',        fmt: v => v ? 'Sí' : 'No' },
             { label: 'PDF',         campo: 'invoice_path',    fmt: v => v ? '📄' : '—' },
             { label: 'Temp.',       campo: 'season' },
             { label: 'Concepto',    campo: 'comments' },
@@ -93,12 +93,12 @@ const TABLAS = {
             { label: 'ID',          campo: 'id' },
             { label: 'Proveedor',   campo: 'provider_id' },
             { label: 'Importe',     campo: 'amount',     fmt: v => fmt(v) },
+            { label: 'Hito final',  campo: 'is_final',   fmt: v => v ? 'Sí' : 'No' },
             { label: 'Fecha prev.', campo: 'due_date' },
             { label: 'Pagado',      campo: 'paid',
                 fmt: (v, row) => v ? `✅ ${row.paid_date ?? ''}` : (row.due_date && row.due_date < hoy ? '❌ Vencido' : '⏳ No'),
                 clase: (v, row) => v ? 'cobrado-si' : (row.due_date && row.due_date < hoy ? 'cobrado-vencido' : 'cobrado-no') },
             { label: 'Fecha pago',  campo: 'paid_date' },
-            { label: 'Hito final',  campo: 'is_final',   fmt: v => v ? 'Sí' : 'No' },
             { label: 'Temp.',       campo: 'season' },
             { label: 'Concepto',    campo: 'comments' },
         ]
@@ -239,8 +239,7 @@ const EDITABLE = {
         comments:           { tipo: 'textarea' },
     },
     charges: {
-        amount:         { tipo: 'number', cascade: 'cobros',
-                          guard: row => row.is_final ? 'El cobro final se calcula automáticamente desde las reservas activas. Para cambiar su importe, modifica las reservas en el formulario.' : null },
+        amount:         { tipo: 'number', cascade: 'cobros' },
         due_date:       { tipo: 'date' },
         collected:      { tipo: 'boolean', pairedWith: 'collected_date', pairedLabel: 'cobrado' },
         collected_date: { tipo: 'date',    pairedWith: 'collected',      pairedLabel: 'cobrado' },
@@ -248,14 +247,15 @@ const EDITABLE = {
         invoiced_at:    { tipo: 'date' },
         invoice_number: { tipo: 'text' },
         invoice_path:   { tipo: 'text' },
+        is_final:       { tipo: 'boolean', cascade: 'cobros-final' },
         comments:       { tipo: 'textarea' },
     },
     payments: {
-        amount:    { tipo: 'number', cascade: 'pagos',
-                     guard: row => row.is_final ? 'El pago final se calcula automáticamente desde las reservas y la disponibilidad. Para cambiar su importe, modifica las reservas en el formulario.' : null },
+        amount:    { tipo: 'number', cascade: 'pagos' },
         due_date:  { tipo: 'date' },
         paid:      { tipo: 'boolean', pairedWith: 'paid_date', pairedLabel: 'pagado' },
         paid_date: { tipo: 'date',    pairedWith: 'paid',      pairedLabel: 'pagado' },
+        is_final:  { tipo: 'boolean', cascade: 'pagos-final' },
         comments:  { tipo: 'textarea' },
     },
     venues: {
@@ -610,6 +610,10 @@ function _activarEditorInline(td, rowId, campo, conf, row) {
             await _guardarAmountPago(rowId, nuevoValor, row)
         } else if (conf.cascade === 'sfcom-slots') {
             await _guardarSfcomSlots(rowId, nuevoValor, row)
+        } else if (conf.cascade === 'cobros-final') {
+            await _guardarIsFinalCobro(rowId, nuevoValor, row)
+        } else if (conf.cascade === 'pagos-final') {
+            await _guardarIsFinalPago(rowId, nuevoValor, row)
         } else if (conf.pairedWith && conf.tipo === 'boolean') {
             await _guardarBooleanConPar(rowId, campo, nuevoValor, conf, row)
         } else if (conf.pairedWith && conf.tipo === 'date') {
@@ -805,6 +809,27 @@ function _confirmarModal(mensaje) {
     })
 }
 
+// Modal con N opciones. opciones: [{ label, value, clase }]
+// Resuelve con el value elegido, o null si se cierra sin elegir.
+function _modalOpciones(titulo, descripcion, opciones) {
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-tablas-opc')
+        let resuelto = false
+        const resolver = v => { if (!resuelto) { resuelto = true; overlay.close(); resolve(v) } }
+        panel.innerHTML = `
+            <div class="modal-header-title">${titulo}</div>
+            ${descripcion ? `<div class="modal-header-desc" style="margin-top:8px;font-size:13px">${descripcion}</div>` : ''}
+            <div class="modal-actions" style="flex-direction:column;gap:6px;align-items:stretch;margin-top:16px">
+                ${opciones.map((o, i) => `<button class="btn ${o.clase ?? 'btn-secondary'}" style="text-align:left" data-idx="${i}">${o.label}</button>`).join('')}
+            </div>`
+        opciones.forEach((o, i) =>
+            panel.querySelector(`[data-idx="${i}"]`).addEventListener('click', () => resolver(o.value))
+        )
+        overlay.addEventListener('close', () => resolver(null), { once: true })
+        overlay.showModal()
+    })
+}
+
 async function _guardarEdicion(rowId, updates) {
     const tabla = tablaActual
     const { error } = await supabase.from(tabla).update(updates).eq('id', rowId)
@@ -829,24 +854,156 @@ async function _guardarEdicion(rowId, updates) {
     renderTabla()
 }
 
-// ===== C.2.A: EDICIÓN DE IMPORTES CON CASCADA =====
+// ===== HELPERS DE PRECÁLCULO (calcular → preguntar → ejecutar) =====
+
+async function _preCalcularCobros(clientId, season) {
+    const [{ data: reservas }, { data: charges }] = await Promise.all([
+        supabase.from('reservations').select('client_id, status, total_amount, origin_ref').eq('client_id', clientId),
+        supabase.from('charges').select('*').eq('client_id', clientId).eq('season', season)
+    ])
+    const { total: totalReservas, prepagos, cuantiaCorrecta, hitoFinal } =
+        calcularSaldoCobro(clientId, reservas ?? [], charges ?? [])
+    return { totalReservas, prepagos, cuantiaCorrecta, hitoFinal }
+}
+
+async function _preCalcularPagos(providerId, season) {
+    const { data: venuesProv } = await supabase.from('venues').select('id').eq('provider_id', providerId)
+    const venueIds = new Set((venuesProv ?? []).map(v => v.id))
+    const [{ data: reservas }, { data: disponibilidad }, { data: payments }] = await Promise.all([
+        supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+        supabase.from('availability').select('*'),
+        supabase.from('payments').select('*').eq('provider_id', providerId).eq('season', season)
+    ])
+    const { costTotal, prepagos, cuantiaCorrecta, hitoFinal } =
+        calcularSaldoPago(venueIds, reservas ?? [], disponibilidad ?? [], payments ?? [])
+    return { costTotal, prepagos, cuantiaCorrecta, hitoFinal }
+}
+
+// ===== C.2.A / C.2.B: EDICIÓN DE IMPORTES CON CASCADA =====
 
 async function _guardarAmountCobro(rowId, nuevoAmount, row) {
     if (nuevoAmount === null) { renderTabla(); return }
+    const season = row.season ?? getTemporadaActiva()
+    const pre    = await _preCalcularCobros(row.client_id, season)
+
+    // ── Editando el cobro is_final directamente ───────────────────────────
+    if (row.is_final) {
+        const bloqueado = !!(row.invoiced || row.collected)
+        const coincide  = Math.abs(nuevoAmount - pre.cuantiaCorrecta) < 0.01
+        if (bloqueado && !coincide) {
+            alert(`Este cobro ya está ${row.invoiced ? 'facturado' : 'cobrado'} y el importe introducido (${fmt(nuevoAmount)}) no coincide con el saldo correcto (${fmt(pre.cuantiaCorrecta)}). Para corregirlo, primero pásalo a is_final=false desde esta tabla.`)
+            renderTabla(); return
+        }
+        if (coincide) { await _guardarEdicion(rowId, { amount: nuevoAmount }); return }
+        // No bloqueado, importe incorrecto → 3 opciones
+        const opcion = await _modalOpciones(
+            'Cambio de importe — cobro final',
+            `El saldo correcto calculado es <strong>${fmt(pre.cuantiaCorrecta)}</strong>. El importe que introduces (<strong>${fmt(nuevoAmount)}</strong>) no coincide.`,
+            [
+                { label: `Guardar con el importe correcto: ${fmt(pre.cuantiaCorrecta)}`, value: 'correcto', clase: 'btn-primary' },
+                { label: 'Cancelar — no cambiar nada', value: 'cancelar', clase: 'btn-secondary' },
+                { label: `Guardar con ${fmt(nuevoAmount)} — descuadre voluntario`, value: 'incorrecto', clase: 'btn-secondary' },
+            ]
+        )
+        if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+        if (opcion === 'correcto') { await _guardarEdicion(rowId, { amount: pre.cuantiaCorrecta }); return }
+        await _guardarEdicion(rowId, { amount: nuevoAmount })
+        return
+    }
+
+    // ── Editando un prepago (is_final = false) ────────────────────────────
+    const cuantiaFinalNueva     = pre.cuantiaCorrecta + parseFloat(row.amount || 0) - nuevoAmount
+    const hitoActual            = pre.hitoFinal
+    const hitoFacturadoOCobrado = hitoActual && !!(hitoActual.invoiced || hitoActual.collected)
+
+    let titulo, desc
+    if (!hitoActual) {
+        titulo = 'Cambio de importe — prepago'
+        desc   = Math.abs(cuantiaFinalNueva) < 0.01
+            ? `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. El saldo resultante es 0 — no se creará cobro final ahora, pero se creará automáticamente cuando se edite algo desde el panel.`
+            : `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. Se creará un cobro final de <strong>${fmt(cuantiaFinalNueva)}</strong> para ${row.client_id}.`
+    } else if (!hitoFacturadoOCobrado) {
+        titulo = 'Cambio de importe — prepago'
+        desc   = `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. El cobro final de ${row.client_id} pasará de <strong>${fmt(hitoActual.amount)}</strong> a <strong>${fmt(cuantiaFinalNueva)}</strong>.`
+    } else {
+        const razon = hitoActual.invoiced ? 'facturado' : 'cobrado'
+        titulo = 'Cambio de importe — prepago'
+        desc   = `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. El cobro final existente ya está <strong>${razon}</strong> — se pasará a is_final=false automáticamente y se creará uno nuevo de <strong>${fmt(cuantiaFinalNueva)}</strong>.`
+    }
+    const opcion = await _modalOpciones(titulo, desc, [
+        { label: 'Guardar y recalcular cobro final', value: 'recalcular', clase: 'btn-primary' },
+        { label: 'Cancelar — no cambiar nada',        value: 'cancelar',   clase: 'btn-secondary' },
+        { label: 'Guardar solo este importe, sin recalcular ahora', value: 'solo', clase: 'btn-secondary' },
+    ])
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
     const { error } = await supabase.from('charges').update({ amount: nuevoAmount }).eq('id', rowId)
     if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+    if (opcion === 'solo') { await cargarTabla(); return }
 
     const { data: reservas } = await supabase.from('reservations')
-        .select('id, client_id, status, total_amount, origin_ref')
-        .eq('client_id', row.client_id)
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
     await persistirCobrosCliente(supabase, row.client_id, reservas ?? [])
     await cargarTabla()
 }
 
 async function _guardarAmountPago(rowId, nuevoAmount, row) {
     if (nuevoAmount === null) { renderTabla(); return }
+    const season = row.season ?? getTemporadaActiva()
+    const pre    = await _preCalcularPagos(row.provider_id, season)
+
+    // ── Editando el pago is_final directamente ────────────────────────────
+    if (row.is_final) {
+        const bloqueado = !!row.paid
+        const coincide  = Math.abs(nuevoAmount - pre.cuantiaCorrecta) < 0.01
+        if (bloqueado && !coincide) {
+            alert(`Este pago ya está pagado y el importe introducido (${fmt(nuevoAmount)}) no coincide con el coste calculado (${fmt(pre.cuantiaCorrecta)}). Para corregirlo, primero pásalo a is_final=false desde esta tabla.`)
+            renderTabla(); return
+        }
+        if (coincide) { await _guardarEdicion(rowId, { amount: nuevoAmount }); return }
+        const opcion = await _modalOpciones(
+            'Cambio de importe — pago final',
+            `El coste calculado para este proveedor es <strong>${fmt(pre.cuantiaCorrecta)}</strong>. El importe que introduces (<strong>${fmt(nuevoAmount)}</strong>) no coincide.`,
+            [
+                { label: `Guardar con el importe correcto: ${fmt(pre.cuantiaCorrecta)}`, value: 'correcto', clase: 'btn-primary' },
+                { label: 'Cancelar — no cambiar nada', value: 'cancelar', clase: 'btn-secondary' },
+                { label: `Guardar con ${fmt(nuevoAmount)} — descuadre voluntario`, value: 'incorrecto', clase: 'btn-secondary' },
+            ]
+        )
+        if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+        if (opcion === 'correcto') { await _guardarEdicion(rowId, { amount: pre.cuantiaCorrecta }); return }
+        await _guardarEdicion(rowId, { amount: nuevoAmount })
+        return
+    }
+
+    // ── Editando un prepago (is_final = false) ────────────────────────────
+    const cuantiaFinalNueva = pre.cuantiaCorrecta + parseFloat(row.amount || 0) - nuevoAmount
+    const hitoActual        = pre.hitoFinal
+    const hitoPagado        = hitoActual && !!hitoActual.paid
+
+    let titulo, desc
+    if (!hitoActual) {
+        titulo = 'Cambio de importe — prepago'
+        desc   = Math.abs(cuantiaFinalNueva) < 0.01
+            ? `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. El saldo resultante es 0 — no se creará pago final ahora, pero se creará automáticamente cuando se edite algo desde el panel.`
+            : `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. Se creará un pago final de <strong>${fmt(cuantiaFinalNueva)}</strong> para ${row.provider_id}.`
+    } else if (!hitoPagado) {
+        titulo = 'Cambio de importe — prepago'
+        desc   = `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. El pago final de ${row.provider_id} pasará de <strong>${fmt(hitoActual.amount)}</strong> a <strong>${fmt(cuantiaFinalNueva)}</strong>.`
+    } else {
+        titulo = 'Cambio de importe — prepago'
+        desc   = `Nuevo importe: <strong>${fmt(nuevoAmount)}</strong>. El pago final existente ya está <strong>pagado</strong> — se pasará a is_final=false automáticamente y se creará uno nuevo de <strong>${fmt(cuantiaFinalNueva)}</strong>.`
+    }
+    const opcion = await _modalOpciones(titulo, desc, [
+        { label: 'Guardar y recalcular pago final', value: 'recalcular', clase: 'btn-primary' },
+        { label: 'Cancelar — no cambiar nada',       value: 'cancelar',  clase: 'btn-secondary' },
+        { label: 'Guardar solo este importe, sin recalcular ahora', value: 'solo', clase: 'btn-secondary' },
+    ])
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
     const { error } = await supabase.from('payments').update({ amount: nuevoAmount }).eq('id', rowId)
     if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+    if (opcion === 'solo') { await cargarTabla(); return }
 
     const [{ data: reservas }, { data: disponibilidad }] = await Promise.all([
         supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
@@ -877,4 +1034,176 @@ async function _guardarSfcomSlots(rowId, nuevoValor, row) {
         }
     }
     await _guardarEdicion(rowId, { sfcom_slots_listed: nuevoValor })
+}
+
+// ===== C.2.B: EDICIÓN DE is_final EN COBROS Y PAGOS =====
+
+async function _guardarIsFinalCobro(rowId, nuevoValor, row) {
+    if (nuevoValor === row.is_final) { renderTabla(); return }
+
+    const season = row.season ?? getTemporadaActiva()
+    const pre    = await _preCalcularCobros(row.client_id, season)
+
+    // ── true → false (convertir en adelanto) ─────────────────────────────
+    if (!nuevoValor) {
+        // El row pasa a adelanto → el nuevo saldo final = cuantiaCorrecta − este importe
+        const cuantiaFinalNueva = pre.cuantiaCorrecta - parseFloat(row.amount || 0)
+        const textoResultado = Math.abs(cuantiaFinalNueva) < 0.01
+            ? `El saldo resultante es 0 — no se creará cobro final ahora, se creará automáticamente cuando se edite algo desde el panel.`
+            : `El saldo resultante es <strong>${fmt(cuantiaFinalNueva)}</strong> — se creará un nuevo cobro final con ese importe.`
+        const opcion = await _modalOpciones(
+            'Convertir cobro final en adelanto',
+            `El cobro de <strong>${fmt(row.amount)}</strong> dejará de ser el cobro final y pasará a ser un adelanto.<br><br>${textoResultado}`,
+            [
+                { label: 'Convertir en adelanto y recalcular',                       value: 'recalcular', clase: 'btn-primary' },
+                { label: 'Cancelar — no cambiar nada',                               value: 'cancelar',   clase: 'btn-secondary' },
+                { label: 'Convertir en adelanto solo el flag, sin recalcular ahora', value: 'solo',       clase: 'btn-secondary' },
+            ]
+        )
+        if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+        const { error } = await supabase.from('charges').update({ is_final: false }).eq('id', rowId)
+        if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+        if (opcion === 'solo') { await cargarTabla(); return }
+        const { data: reservas } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+        await persistirCobrosCliente(supabase, row.client_id, reservas ?? [])
+        await cargarTabla()
+        return
+    }
+
+    // ── false → true (convertir en cobro final) ───────────────────────────
+    // Cuantía correcta excluyendo este row de adelantos y añadiendo el hitoFinal existente
+    const hitoActual              = pre.hitoFinal  // existing is_final (otro row, no este)
+    const cuantiaCorrectaPromocion = pre.cuantiaCorrecta
+        + parseFloat(row.amount || 0)
+        - parseFloat(hitoActual?.amount || 0)
+    const coincide  = Math.abs(parseFloat(row.amount || 0) - cuantiaCorrectaPromocion) < 0.01
+    const bloqueado = !!(row.invoiced || row.collected)
+
+    if (!coincide && bloqueado) {
+        alert(`Este cobro ya está ${row.invoiced ? 'facturado' : 'cobrado'} y su importe (${fmt(row.amount)}) no coincide con el saldo correcto (${fmt(cuantiaCorrectaPromocion)}). No puede marcarse como cobro final.`)
+        renderTabla(); return
+    }
+
+    let desc = ''
+    if (hitoActual) desc += `El cobro final actual de ${row.client_id} (${fmt(hitoActual.amount)}) pasará a ser adelanto.<br>`
+    desc += coincide
+        ? `El importe de este cobro (<strong>${fmt(row.amount)}</strong>) es correcto.`
+        : `El importe correcto para este cobro final sería <strong>${fmt(cuantiaCorrectaPromocion)}</strong> (el actual es ${fmt(row.amount)}).`
+
+    const opciones = coincide
+        ? [
+            { label: hitoActual ? 'Confirmar — convertir el otro en adelanto y marcar este como final' : 'Confirmar — marcar como cobro final', value: 'aceptar', clase: 'btn-primary' },
+            { label: 'Cancelar', value: 'cancelar', clase: 'btn-secondary' },
+          ]
+        : [
+            { label: `Marcar como final y corregir importe a ${fmt(cuantiaCorrectaPromocion)}`, value: 'corregir',   clase: 'btn-primary' },
+            { label: 'Cancelar',                                                                 value: 'cancelar',  clase: 'btn-secondary' },
+            { label: `Marcar como final con importe actual (${fmt(row.amount)}) — descuadre voluntario`, value: 'incorrecto', clase: 'btn-secondary' },
+          ]
+
+    const opcion = await _modalOpciones('Convertir cobro en cobro final', desc, opciones)
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    if (hitoActual) {
+        const { error: e1 } = await supabase.from('charges').update({ is_final: false }).eq('id', hitoActual.id)
+        if (e1) { alert(`Error al convertir cobro existente en adelanto: ${e1.message}`); renderTabla(); return }
+    }
+    const updates = { is_final: true }
+    if (opcion === 'corregir') updates.amount = cuantiaCorrectaPromocion
+    const { error: e2 } = await supabase.from('charges').update(updates).eq('id', rowId)
+    if (e2) { alert(`Error al guardar: ${e2.message}`); renderTabla(); return }
+
+    if (opcion === 'incorrecto') { await cargarTabla(); return }
+
+    const { data: reservas } = await supabase.from('reservations')
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+    await persistirCobrosCliente(supabase, row.client_id, reservas ?? [])
+    await cargarTabla()
+}
+
+async function _guardarIsFinalPago(rowId, nuevoValor, row) {
+    if (nuevoValor === row.is_final) { renderTabla(); return }
+
+    const season = row.season ?? getTemporadaActiva()
+    const pre    = await _preCalcularPagos(row.provider_id, season)
+
+    // ── true → false (convertir en adelanto) ─────────────────────────────
+    if (!nuevoValor) {
+        const cuantiaFinalNueva = pre.cuantiaCorrecta - parseFloat(row.amount || 0)
+        const textoResultado = Math.abs(cuantiaFinalNueva) < 0.01
+            ? `El saldo resultante es 0 — no se creará pago final ahora, se creará automáticamente cuando se edite algo desde el panel.`
+            : `El saldo resultante es <strong>${fmt(cuantiaFinalNueva)}</strong> — se creará un nuevo pago final con ese importe.`
+        const opcion = await _modalOpciones(
+            'Convertir pago final en adelanto',
+            `El pago de <strong>${fmt(row.amount)}</strong> dejará de ser el pago final y pasará a ser un adelanto.<br><br>${textoResultado}`,
+            [
+                { label: 'Convertir en adelanto y recalcular',                       value: 'recalcular', clase: 'btn-primary' },
+                { label: 'Cancelar — no cambiar nada',                               value: 'cancelar',   clase: 'btn-secondary' },
+                { label: 'Convertir en adelanto solo el flag, sin recalcular ahora', value: 'solo',       clase: 'btn-secondary' },
+            ]
+        )
+        if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+        const { error } = await supabase.from('payments').update({ is_final: false }).eq('id', rowId)
+        if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+        if (opcion === 'solo') { await cargarTabla(); return }
+        const [{ data: reservas }, { data: disponibilidad }] = await Promise.all([
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*')
+        ])
+        await persistirPagosProveedor(supabase, row.provider_id, reservas ?? [], disponibilidad ?? [])
+        await cargarTabla()
+        return
+    }
+
+    // ── false → true (convertir en pago final) ────────────────────────────
+    const hitoActual              = pre.hitoFinal  // existing is_final (otro row, no este)
+    const cuantiaCorrectaPromocion = pre.cuantiaCorrecta
+        + parseFloat(row.amount || 0)
+        - parseFloat(hitoActual?.amount || 0)
+    const coincide  = Math.abs(parseFloat(row.amount || 0) - cuantiaCorrectaPromocion) < 0.01
+    const bloqueado = !!row.paid
+
+    if (!coincide && bloqueado) {
+        alert(`Este pago ya está pagado y su importe (${fmt(row.amount)}) no coincide con el coste calculado (${fmt(cuantiaCorrectaPromocion)}). No puede marcarse como pago final.`)
+        renderTabla(); return
+    }
+
+    let desc = ''
+    if (hitoActual) desc += `El pago final actual de ${row.provider_id} (${fmt(hitoActual.amount)}) pasará a ser adelanto.<br>`
+    desc += coincide
+        ? `El importe de este pago (<strong>${fmt(row.amount)}</strong>) es correcto.`
+        : `El importe correcto para este pago final sería <strong>${fmt(cuantiaCorrectaPromocion)}</strong> (el actual es ${fmt(row.amount)}).`
+
+    const opciones = coincide
+        ? [
+            { label: hitoActual ? 'Confirmar — convertir el otro en adelanto y marcar este como final' : 'Confirmar — marcar como pago final', value: 'aceptar', clase: 'btn-primary' },
+            { label: 'Cancelar', value: 'cancelar', clase: 'btn-secondary' },
+          ]
+        : [
+            { label: `Marcar como final y corregir importe a ${fmt(cuantiaCorrectaPromocion)}`, value: 'corregir',   clase: 'btn-primary' },
+            { label: 'Cancelar',                                                                 value: 'cancelar',  clase: 'btn-secondary' },
+            { label: `Marcar como final con importe actual (${fmt(row.amount)}) — descuadre voluntario`, value: 'incorrecto', clase: 'btn-secondary' },
+          ]
+
+    const opcion = await _modalOpciones('Convertir pago en pago final', desc, opciones)
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    if (hitoActual) {
+        const { error: e1 } = await supabase.from('payments').update({ is_final: false }).eq('id', hitoActual.id)
+        if (e1) { alert(`Error al convertir pago existente en adelanto: ${e1.message}`); renderTabla(); return }
+    }
+    const updates = { is_final: true }
+    if (opcion === 'corregir') updates.amount = cuantiaCorrectaPromocion
+    const { error: e2 } = await supabase.from('payments').update(updates).eq('id', rowId)
+    if (e2) { alert(`Error al guardar: ${e2.message}`); renderTabla(); return }
+
+    if (opcion === 'incorrecto') { await cargarTabla(); return }
+
+    const [{ data: reservas }, { data: disponibilidad }] = await Promise.all([
+        supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+        supabase.from('availability').select('*')
+    ])
+    await persistirPagosProveedor(supabase, row.provider_id, reservas ?? [], disponibilidad ?? [])
+    await cargarTabla()
 }
