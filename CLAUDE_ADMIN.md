@@ -622,13 +622,18 @@ Módulo ES6. Vista de todas las tablas con edición inline de campos específico
 Tabs disponibles: `reservations`, `charges`, `payments`, `reservation_requests`, `availability`, `venues`, `clients`, `providers`, `services`, `sfcom_listings`.
 
 **Edición inline:** los campos editables se definen en el mapa `EDITABLE` por tabla. Un clic en una celda editable abre un input inline con botón ✓/✗. Los campos con `cascade` disparan lógica adicional tras guardar:
-- `cascade: 'cobros'` → `persistirCobrosCliente` (charges.amount, reservations.price_per_slot)
-- `cascade: 'pagos'` → `persistirPagosProveedor` (payments.amount)
-- `cascade: 'cobros-final'` → modal con escenarios de cambio de is_final en charges
-- `cascade: 'pagos-final'` → modal con escenarios de cambio de is_final en payments
+- `cascade: 'cobros'` → `_guardarAmountCobro` → modal + `persistirCobrosCliente` (charges.amount)
+- `cascade: 'pagos'` → `_guardarAmountPago` → modal + `persistirPagosProveedor` (payments.amount)
+- `cascade: 'cobros-final'` → `_guardarIsFinalCobro` → modal con escenarios de cambio de is_final en charges
+- `cascade: 'pagos-final'` → `_guardarIsFinalPago` → modal con escenarios de cambio de is_final en payments
 - `cascade: 'sfcom-slots'` → verificación de plazas vendidas antes de actualizar sfcom_slots_listed
+- `cascade: 'price-per-slot'` → `_guardarPricePerSlot` → recalcula total_amount de la reserva, muestra delta en cobros, llama `persistirCobrosCliente`, invalida propuesta PDF compartida (limpia `proposal_number` y `proposal_path` de todas las reservas que comparten esa propuesta)
+- `cascade: 'avail-slots'` → `_guardarAvailSlots` → bloqueo duro si `plazasTotales > nuevoSlots` (no se permite reducir por debajo de las vendidas); si pasa el bloqueo, llama `persistirPagosProveedor`; si `sfcom_slots_listed > nuevoSlots`, reduce sfcom_slots_listed y sincroniza stock con `syncStockToSfcom`
+- `cascade: 'avail-price'` → `_guardarAvailPrice` → recalcula coste con disponibilidad modificada (simulación previa), llama `persistirPagosProveedor`; usado también por `billing_model`
 
 **Edición de is_final (charges y payments):** cambiar is_final activa un modal con todos los escenarios posibles (sin cambio → no-op silencioso; true→false → "convertir en adelanto" con opción de recalcular; false→true → "convertir en final" con verificación de importe y recálculo). El recálculo llama a `persistirCobrosCliente` / `persistirPagosProveedor`.
+
+**Propuesta PDF:** `_limpiarPropuestaReserva(row)` desvincula el PDF de todas las reservas que comparten la misma propuesta (por `proposal_number` o `proposal_path`). El archivo físico en Storage queda huérfano (aceptado). Se llama en `_guardarPricePerSlot` y se llamará en C.2.E (`_guardarSlots`).
 
 **Filosofía:** tablas.js es la herramienta de emergencia para corregir estados que no pueden arreglarse desde el panel normal. Se permite editar todo, pero nunca se deja la BD inconsistente sin que el usuario lo elija explícitamente. Toda inconsistencia elegida voluntariamente se autocorrige en el siguiente uso normal del panel (o la detecta la verificación financiera).
 

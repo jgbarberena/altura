@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago } from './utils.js'
+import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago, calcularCostoPago } from './utils.js'
+import { syncStockToSfcom } from './sfcom.js'
 import { ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 
@@ -214,6 +215,7 @@ const TABLAS = {
 // pairedLabel: texto para los modales del composite
 const EDITABLE = {
     reservations: {
+        price_per_slot:  { tipo: 'number', cascade: 'price-per-slot' },
         proposal_number: { tipo: 'proposal-picker' },
         proposal_path:   { tipo: 'proposal-picker' },
         origin_ref:      { tipo: 'text' },
@@ -266,6 +268,11 @@ const EDITABLE = {
         comments:     { tipo: 'textarea' },
     },
     availability: {
+        total_slots:         { tipo: 'number', cascade: 'avail-slots' },
+        price_per_slot:      { tipo: 'number', cascade: 'avail-price' },
+        billing_model:       { tipo: 'enum',   cascade: 'avail-price', opciones: [
+            ['capacity', 'Capacidad'], ['consumption', 'Consumo'], ['fixed', 'Cuota fija'],
+        ]},
         description:         { tipo: 'textarea' },
         access_instructions: { tipo: 'textarea' },
         comments:            { tipo: 'textarea' },
@@ -604,7 +611,13 @@ function _activarEditorInline(td, rowId, campo, conf, row) {
             nuevoValor = input.value.trim() || null
         }
 
-        if (conf.cascade === 'cobros') {
+        if (conf.cascade === 'price-per-slot') {
+            await _guardarPricePerSlot(rowId, nuevoValor, row)
+        } else if (conf.cascade === 'avail-slots') {
+            await _guardarAvailSlots(rowId, nuevoValor, row)
+        } else if (conf.cascade === 'avail-price') {
+            await _guardarAvailPrice(rowId, campo, nuevoValor, row)
+        } else if (conf.cascade === 'cobros') {
             await _guardarAmountCobro(rowId, nuevoValor, row)
         } else if (conf.cascade === 'pagos') {
             await _guardarAmountPago(rowId, nuevoValor, row)
@@ -877,6 +890,235 @@ async function _preCalcularPagos(providerId, season) {
     const { costTotal, prepagos, cuantiaCorrecta, hitoFinal } =
         calcularSaldoPago(venueIds, reservas ?? [], disponibilidad ?? [], payments ?? [])
     return { costTotal, prepagos, cuantiaCorrecta, hitoFinal }
+}
+
+// ===== C.2.D: CAMPOS DE AVAILABILITY CON CASCADA A PAGOS =====
+
+async function _guardarAvailSlots(rowId, nuevoSlots, row) {
+    if (nuevoSlots === null) { renderTabla(); return }
+    const season = getTemporadaActiva()
+
+    const { data: venue } = await supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
+    if (!venue) { renderTabla(); return }
+    const providerId = venue.provider_id
+
+    const [{ data: venuesProv }, { data: reservas }, { data: disponibilidad }, { data: payments }, { data: sfcomEntry }] = await Promise.all([
+        supabase.from('venues').select('id').eq('provider_id', providerId),
+        supabase.from('reservations').select('id, venue_id, service_id, status, slots, origin_ref'),
+        supabase.from('availability').select('*'),
+        supabase.from('payments').select('*').eq('provider_id', providerId).eq('season', season),
+        supabase.from('sfcom_listings').select('sfcom_slots_listed').eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle()
+    ])
+
+    const venueIds = new Set((venuesProv ?? []).map(v => v.id))
+    const reservasVS = (reservas ?? []).filter(r =>
+        r.venue_id === row.venue_id && r.service_id === row.service_id && r.status !== 'Cancelada')
+    const plazasTotales = reservasVS.reduce((s, r) => s + (r.slots ?? 0), 0)
+    const plazasSfcom   = reservasVS.filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const sfcomListados = sfcomEntry?.sfcom_slots_listed ?? 0
+
+    // Bloqueo duro: reducción por debajo de plazas ya vendidas
+    if (nuevoSlots < row.total_slots && plazasTotales > nuevoSlots) {
+        const directas = plazasTotales - plazasSfcom
+        const falta    = plazasTotales - nuevoSlots
+        await _modalOpciones(
+            '⛔ Reducción no permitida',
+            `Hay <strong>${plazasTotales} plaza${plazasTotales !== 1 ? 's' : ''} vendida${plazasTotales !== 1 ? 's' : ''}</strong> para esta venue+servicio (${directas} directas + ${plazasSfcom} sfcom). Para reducir a ${nuevoSlots} es necesario cancelar primero <strong>${falta} plaza${falta !== 1 ? 's' : ''}</strong>.`,
+            [{ label: 'Cerrar', value: 'cerrar', clase: 'btn-secondary' }]
+        )
+        renderTabla(); return
+    }
+
+    // Cálculo de impacto en coste
+    const { cuantiaCorrecta, costTotal, hitoFinal } = calcularSaldoPago(venueIds, reservas ?? [], disponibilidad ?? [], payments ?? [])
+    const dispMod    = (disponibilidad ?? []).map(d => d.id === rowId ? { ...d, total_slots: nuevoSlots } : d)
+    const costNuevo  = calcularCostoPago(venueIds, reservas ?? [], dispMod)
+    const nuevaCuant = cuantiaCorrecta + (costNuevo - costTotal)
+    const hitoBloq   = hitoFinal && !!hitoFinal.paid
+
+    // Impacto sfcom (solo si reducimos y sfcom_slots_listed queda por encima del nuevo total)
+    const sfcomReduccion = nuevoSlots < row.total_slots && sfcomListados > nuevoSlots
+    const sfcomAviso     = sfcomReduccion
+        ? `<br>Las plazas listadas en sfcom se reducirán de <strong>${sfcomListados}</strong> a <strong>${nuevoSlots}</strong> y se sincronizará el stock.`
+        : ''
+
+    let desc
+    if (Math.abs(costNuevo - costTotal) < 0.01) {
+        desc = `Capacidad actualizada a <strong>${nuevoSlots}</strong> plazas. El coste del proveedor no cambia.${sfcomAviso}`
+    } else if (!hitoFinal) {
+        desc = Math.abs(nuevaCuant) < 0.01
+            ? `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El saldo resultante es 0.${sfcomAviso}`
+            : `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. Se creará un pago final de <strong>${fmt(nuevaCuant)}</strong>.${sfcomAviso}`
+    } else if (!hitoBloq) {
+        desc = `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El pago final pasará de <strong>${fmt(hitoFinal.amount)}</strong> a <strong>${fmt(nuevaCuant)}</strong>.${sfcomAviso}`
+    } else {
+        const ajuste = nuevaCuant - parseFloat(hitoFinal.amount)
+        desc = `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El pago final ya está pagado — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajuste)}</strong>.${sfcomAviso}`
+    }
+
+    const sinCambioCoste = Math.abs(costNuevo - costTotal) < 0.01
+    const opcion = await _modalOpciones(
+        'Cambio de plazas disponibles',
+        desc,
+        sinCambioCoste
+            ? [
+                { label: 'Guardar', value: 'recalcular', clase: 'btn-primary' },
+                { label: 'Cancelar', value: 'cancelar', clase: 'btn-secondary' },
+              ]
+            : [
+                { label: 'Guardar y recalcular pago final', value: 'recalcular', clase: 'btn-primary' },
+                { label: 'Cancelar — no cambiar nada',       value: 'cancelar',  clase: 'btn-secondary' },
+                { label: 'Guardar sin recalcular ahora',     value: 'solo',      clase: 'btn-secondary' },
+              ]
+    )
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    const { error } = await supabase.from('availability').update({ total_slots: nuevoSlots }).eq('id', rowId)
+    if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+
+    if (sfcomReduccion) {
+        const { error: eSfc } = await supabase.from('sfcom_listings')
+            .update({ sfcom_slots_listed: nuevoSlots })
+            .eq('venue_id', row.venue_id).eq('service_id', row.service_id)
+        if (eSfc) console.error('Error actualizando sfcom_slots_listed:', eSfc)
+        else await syncStockToSfcom(supabase, rowId)
+    }
+
+    if (opcion === 'solo') { await cargarTabla(); return }
+
+    const { data: dispFresh } = await supabase.from('availability').select('*')
+    await persistirPagosProveedor(supabase, providerId, reservas ?? [], dispFresh ?? [])
+    await cargarTabla()
+}
+
+async function _guardarAvailPrice(rowId, campo, nuevoValor, row) {
+    if (nuevoValor === null) { renderTabla(); return }
+    const season = getTemporadaActiva()
+
+    const { data: venue } = await supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
+    if (!venue) { renderTabla(); return }
+    const providerId = venue.provider_id
+
+    const [{ data: venuesProv }, { data: reservas }, { data: disponibilidad }, { data: payments }] = await Promise.all([
+        supabase.from('venues').select('id').eq('provider_id', providerId),
+        supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+        supabase.from('availability').select('*'),
+        supabase.from('payments').select('*').eq('provider_id', providerId).eq('season', season)
+    ])
+
+    const venueIds = new Set((venuesProv ?? []).map(v => v.id))
+    const { cuantiaCorrecta, costTotal, hitoFinal } = calcularSaldoPago(venueIds, reservas ?? [], disponibilidad ?? [], payments ?? [])
+
+    const dispMod   = (disponibilidad ?? []).map(d => d.id === rowId ? { ...d, [campo]: nuevoValor } : d)
+    const costNuevo = calcularCostoPago(venueIds, reservas ?? [], dispMod)
+    const nuevaCuant = cuantiaCorrecta + (costNuevo - costTotal)
+    const hitoBloq   = hitoFinal && !!hitoFinal.paid
+
+    if (Math.abs(costNuevo - costTotal) < 0.01) {
+        await _guardarEdicion(rowId, { [campo]: nuevoValor })
+        return
+    }
+
+    let desc
+    if (!hitoFinal) {
+        desc = Math.abs(nuevaCuant) < 0.01
+            ? `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El saldo resultante es 0 — no se creará pago final ahora.`
+            : `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. Se creará un pago final de <strong>${fmt(nuevaCuant)}</strong>.`
+    } else if (!hitoBloq) {
+        desc = `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El pago final pasará de <strong>${fmt(hitoFinal.amount)}</strong> a <strong>${fmt(nuevaCuant)}</strong>.`
+    } else {
+        const ajuste = nuevaCuant - parseFloat(hitoFinal.amount)
+        desc = `El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El pago final ya está pagado — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajuste)}</strong>.`
+    }
+
+    const opcion = await _modalOpciones(
+        'Cambio de configuración — pago proveedor',
+        desc,
+        [
+            { label: 'Guardar y recalcular pago final', value: 'recalcular', clase: 'btn-primary' },
+            { label: 'Cancelar — no cambiar nada',       value: 'cancelar',  clase: 'btn-secondary' },
+            { label: 'Guardar sin recalcular ahora',     value: 'solo',      clase: 'btn-secondary' },
+        ]
+    )
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    const { error } = await supabase.from('availability').update({ [campo]: nuevoValor }).eq('id', rowId)
+    if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+    if (opcion === 'solo') { await cargarTabla(); return }
+
+    const { data: dispFresh } = await supabase.from('availability').select('*')
+    await persistirPagosProveedor(supabase, providerId, reservas ?? [], dispFresh ?? [])
+    await cargarTabla()
+}
+
+// ===== HELPER: desvincula la propuesta PDF de todas las reservas que la comparten =====
+// Llamar cuando se modifique price_per_slot o slots — el PDF queda huérfano en Storage (aceptado).
+
+async function _limpiarPropuestaReserva(row) {
+    if (!row.proposal_number && !row.proposal_path) return
+    const { error } = row.proposal_number
+        ? await supabase.from('reservations').update({ proposal_number: null, proposal_path: null }).eq('proposal_number', row.proposal_number)
+        : await supabase.from('reservations').update({ proposal_number: null, proposal_path: null }).eq('proposal_path', row.proposal_path)
+    if (error) console.error('Error limpiando propuesta:', error)
+}
+
+// ===== C.2.C: PRECIO POR PLAZA EN RESERVAS =====
+
+async function _guardarPricePerSlot(rowId, nuevoPrice, row) {
+    if (nuevoPrice === null) { renderTabla(); return }
+    const season = row.services?.season ?? getTemporadaActiva()
+    const pre    = await _preCalcularCobros(row.client_id, season)
+
+    const nuevaTotalReserva    = row.slots * nuevoPrice
+    const deltaCobros          = nuevaTotalReserva - parseFloat(row.total_amount || 0)
+    const nuevaCuantiaCorrecta = pre.cuantiaCorrecta + deltaCobros
+    const hitoActual           = pre.hitoFinal
+    const hitoBloqueado        = hitoActual && !!(hitoActual.invoice_number || hitoActual.collected)
+
+    // Sin cambio real en el total → guardar sin cascada ni aviso
+    if (Math.abs(deltaCobros) < 0.01) {
+        await _guardarEdicion(rowId, { price_per_slot: nuevoPrice })
+        return
+    }
+
+    const propuestaAviso = (row.proposal_number || row.proposal_path)
+        ? `<br><br>⚠️ La propuesta <strong>${row.proposal_number ?? 'sin número'}</strong> vinculada a esta reserva quedará desvinculada de todas las reservas que la comparten.`
+        : ''
+
+    let desc
+    if (!hitoActual) {
+        desc = Math.abs(nuevaCuantiaCorrecta) < 0.01
+            ? `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El saldo resultante es 0 — no se creará cobro final ahora.`
+            : `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. Se creará un cobro final de <strong>${fmt(nuevaCuantiaCorrecta)}</strong> para ${row.client_id}.`
+    } else if (!hitoBloqueado) {
+        desc = `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El cobro final de ${row.client_id} pasará de <strong>${fmt(hitoActual.amount)}</strong> a <strong>${fmt(nuevaCuantiaCorrecta)}</strong>.`
+    } else {
+        const motivo = hitoActual.invoice_number ? 'facturado' : 'cobrado'
+        const ajuste = nuevaCuantiaCorrecta - parseFloat(hitoActual.amount)
+        desc = `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El cobro final ya está <strong>${motivo}</strong> — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajuste)}</strong>.`
+    }
+    desc += propuestaAviso
+
+    const opcion = await _modalOpciones(
+        'Cambio de precio por plaza',
+        desc,
+        [
+            { label: 'Guardar y recalcular cobro final', value: 'recalcular', clase: 'btn-primary' },
+            { label: 'Cancelar — no cambiar nada',        value: 'cancelar',  clase: 'btn-secondary' },
+            { label: 'Guardar solo el precio, sin recalcular ahora', value: 'solo', clase: 'btn-secondary' },
+        ]
+    )
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    const { error } = await supabase.from('reservations').update({ price_per_slot: nuevoPrice }).eq('id', rowId)
+    if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+    await _limpiarPropuestaReserva(row)
+    if (opcion === 'solo') { await cargarTabla(); return }
+
+    const { data: reservas } = await supabase.from('reservations')
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+    await persistirCobrosCliente(supabase, row.client_id, reservas ?? [])
+    await cargarTabla()
 }
 
 // ===== C.2.A / C.2.B: EDICIÓN DE IMPORTES CON CASCADA =====
