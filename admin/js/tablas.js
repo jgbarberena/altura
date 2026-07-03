@@ -215,6 +215,7 @@ const TABLAS = {
 // pairedLabel: texto para los modales del composite
 const EDITABLE = {
     reservations: {
+        slots:           { tipo: 'number', cascade: 'slots' },
         price_per_slot:  { tipo: 'number', cascade: 'price-per-slot' },
         proposal_number: { tipo: 'proposal-picker' },
         proposal_path:   { tipo: 'proposal-picker' },
@@ -611,7 +612,9 @@ function _activarEditorInline(td, rowId, campo, conf, row) {
             nuevoValor = input.value.trim() || null
         }
 
-        if (conf.cascade === 'price-per-slot') {
+        if (conf.cascade === 'slots') {
+            await _guardarSlots(rowId, nuevoValor, row)
+        } else if (conf.cascade === 'price-per-slot') {
             await _guardarPricePerSlot(rowId, nuevoValor, row)
         } else if (conf.cascade === 'avail-slots') {
             await _guardarAvailSlots(rowId, nuevoValor, row)
@@ -981,7 +984,7 @@ async function _guardarAvailSlots(rowId, nuevoSlots, row) {
             .update({ sfcom_slots_listed: nuevoSlots })
             .eq('venue_id', row.venue_id).eq('service_id', row.service_id)
         if (eSfc) console.error('Error actualizando sfcom_slots_listed:', eSfc)
-        else await syncStockToSfcom(supabase, rowId)
+        else await syncStockToSfcom(supabase, row.venue_id, row.service_id)
     }
 
     if (opcion === 'solo') { await cargarTabla(); return }
@@ -1062,18 +1065,172 @@ async function _limpiarPropuestaReserva(row) {
     if (error) console.error('Error limpiando propuesta:', error)
 }
 
+// ===== C.2.E: PLAZAS EN RESERVAS =====
+
+async function _guardarSlots(rowId, nuevoSlots, row) {
+    if (nuevoSlots === null || nuevoSlots < 0) { renderTabla(); return }
+    if (nuevoSlots === row.slots) { renderTabla(); return }
+    const esWEB  = row.origin_ref?.startsWith('WEB')
+    const season = row.services?.season ?? getTemporadaActiva()
+    const nuevoTotal  = nuevoSlots * parseFloat(row.price_per_slot || 0)
+    const deltaCobros = nuevoTotal - parseFloat(row.total_amount || 0)
+
+    const [{ data: dispEntry }, { data: reservasVS }, { data: sfcomEntry }, { data: venue }] = await Promise.all([
+        supabase.from('availability').select('*').eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle(),
+        supabase.from('reservations').select('id, slots, origin_ref, status').eq('venue_id', row.venue_id).eq('service_id', row.service_id).neq('status', 'Cancelada'),
+        supabase.from('sfcom_listings').select('sfcom_slots_listed').eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle(),
+        supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
+    ])
+
+    // Comprobación de capacidad (solo si aumentamos plazas)
+    if (nuevoSlots > row.slots) {
+        const plazasOtras = (reservasVS ?? []).filter(r => String(r.id) !== String(rowId)).reduce((s, r) => s + (r.slots ?? 0), 0)
+        const capacidadDisponible = (dispEntry?.total_slots ?? 0) - plazasOtras
+        if (nuevoSlots > capacidadDisponible) {
+            await _modalOpciones('⛔ Sin capacidad',
+                `Solo hay <strong>${capacidadDisponible}</strong> plaza${capacidadDisponible !== 1 ? 's' : ''} disponibles para esta venue+servicio.`,
+                [{ label: 'Cerrar', value: 'cerrar', clase: 'btn-secondary' }])
+            renderTabla(); return
+        }
+    }
+
+    // Precálculo cobros (solo para reservas no-WEB%)
+    let pre = null
+    if (!esWEB) pre = await _preCalcularCobros(row.client_id, season)
+
+    // Precálculo pagos
+    const providerId = venue?.provider_id
+    let costActual = null, costNuevo = null, cuantPagoActual = null, hitoPago = null
+    if (providerId) {
+        const [{ data: venuesProv }, { data: todasRsPago }, { data: todasDisp }, { data: payments }] = await Promise.all([
+            supabase.from('venues').select('id').eq('provider_id', providerId),
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*'),
+            supabase.from('payments').select('*').eq('provider_id', providerId).eq('season', season)
+        ])
+        const venueIds = new Set((venuesProv ?? []).map(v => v.id))
+        ;({ costTotal: costActual, cuantiaCorrecta: cuantPagoActual, hitoFinal: hitoPago } =
+            calcularSaldoPago(venueIds, todasRsPago ?? [], todasDisp ?? [], payments ?? []))
+        const todasRsMod = (todasRsPago ?? []).map(r => String(r.id) === String(rowId) ? { ...r, slots: nuevoSlots } : r)
+        costNuevo = calcularCostoPago(venueIds, todasRsMod, todasDisp ?? [])
+    }
+
+    // Nota de overflow sfcom (informativa — la fórmula MAX(0,...) lo gestiona sin bloqueo)
+    const sfcomListados    = sfcomEntry?.sfcom_slots_listed ?? 0
+    const plazasWebActivas = (reservasVS ?? []).filter(r => r.origin_ref?.startsWith('WEB')).reduce((s, r) => s + (r.slots ?? 0), 0)
+    const sfcomOverflow    = esWEB && (nuevoSlots > row.slots) && sfcomEntry && ((nuevoSlots - row.slots) > (sfcomListados - plazasWebActivas))
+
+    const propuestaAviso = (row.proposal_number || row.proposal_path)
+        ? `<br>⚠️ La propuesta <strong>${row.proposal_number ?? 'sin número'}</strong> quedará desvinculada.`
+        : ''
+
+    let desc = ''
+    if (esWEB) {
+        const signo = deltaCobros > 0 ? '+' : ''
+        desc = `⚠️ Reserva sfcom (<code>${row.origin_ref}</code>).<br>Plazas a <strong>${nuevoSlots}</strong>. El total cambia a <strong>${fmt(nuevoTotal)}</strong>.`
+        if (Math.abs(deltaCobros) >= 0.01)
+            desc += `<br>Se añadirá un cobro de ajuste de <strong>${signo}${fmt(deltaCobros)}</strong> en la ficha de ${row.client_id} (ya cobrado vía sfcom). El cobro final de sfcom se ajustará automáticamente.`
+    } else {
+        const nuevaCuantiaCorrecta = (pre?.cuantiaCorrecta ?? 0) + deltaCobros
+        const hitoCobro   = pre?.hitoFinal
+        const hitoCobBloq = hitoCobro && !!(hitoCobro.invoice_number || hitoCobro.collected)
+        if (Math.abs(deltaCobros) < 0.01) {
+            desc = `Plazas actualizadas a <strong>${nuevoSlots}</strong>. El total de la reserva no cambia.`
+        } else if (!hitoCobro) {
+            desc = Math.abs(nuevaCuantiaCorrecta) < 0.01
+                ? `Plazas a <strong>${nuevoSlots}</strong>. El total cambia a <strong>${fmt(nuevoTotal)}</strong>. El saldo resultante es 0.`
+                : `Plazas a <strong>${nuevoSlots}</strong>. El total cambia a <strong>${fmt(nuevoTotal)}</strong>. Se creará un cobro final de <strong>${fmt(nuevaCuantiaCorrecta)}</strong> para ${row.client_id}.`
+        } else if (!hitoCobBloq) {
+            desc = `Plazas a <strong>${nuevoSlots}</strong>. El total cambia a <strong>${fmt(nuevoTotal)}</strong>. El cobro final de ${row.client_id} pasará de <strong>${fmt(hitoCobro.amount)}</strong> a <strong>${fmt(nuevaCuantiaCorrecta)}</strong>.`
+        } else {
+            const motivo = hitoCobro.invoice_number ? 'facturado' : 'cobrado'
+            const ajuste = nuevaCuantiaCorrecta - parseFloat(hitoCobro.amount)
+            desc = `Plazas a <strong>${nuevoSlots}</strong>. El total cambia a <strong>${fmt(nuevoTotal)}</strong>. El cobro final ya está <strong>${motivo}</strong> — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajuste)}</strong>.`
+        }
+    }
+
+    if (costNuevo !== null && Math.abs(costNuevo - costActual) >= 0.01) {
+        const nuevaCuantPago = (cuantPagoActual ?? 0) + (costNuevo - costActual)
+        const hitoPagoBloq   = hitoPago && !!hitoPago.paid
+        if (!hitoPago) {
+            desc += Math.abs(nuevaCuantPago) < 0.01
+                ? `<br>El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El saldo resultante es 0.`
+                : `<br>El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. Se creará un pago final de <strong>${fmt(nuevaCuantPago)}</strong>.`
+        } else if (!hitoPagoBloq) {
+            desc += `<br>El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El pago final pasará de <strong>${fmt(hitoPago.amount)}</strong> a <strong>${fmt(nuevaCuantPago)}</strong>.`
+        } else {
+            const ajustePago = nuevaCuantPago - parseFloat(hitoPago.amount)
+            desc += `<br>El coste de ${providerId} cambia a <strong>${fmt(costNuevo)}</strong>. El pago final ya está pagado — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajustePago)}</strong>.`
+        }
+    }
+
+    if (sfcomOverflow) {
+        const plazasWebNuevas = plazasWebActivas - row.slots + nuevoSlots
+        desc += `<br>Nota: sfcom tenía <strong>${sfcomListados}</strong> plaza${sfcomListados !== 1 ? 's' : ''} listadas pero quedarán <strong>${plazasWebNuevas}</strong> vendidas vía sfcom. El stock en sfcom se quedará a 0 — las plazas siguen dentro de la capacidad total.`
+    }
+    desc += propuestaAviso
+
+    const hayImpacto = Math.abs(deltaCobros) >= 0.01 || (costNuevo !== null && Math.abs(costNuevo - costActual) >= 0.01)
+    const opcion = await _modalOpciones('Cambio de plazas', desc,
+        hayImpacto
+            ? [
+                { label: 'Guardar y recalcular',                          value: 'recalcular', clase: 'btn-primary' },
+                { label: 'Cancelar — no cambiar nada',                    value: 'cancelar',   clase: 'btn-secondary' },
+                { label: 'Guardar solo las plazas, sin recalcular ahora', value: 'solo',       clase: 'btn-secondary' },
+              ]
+            : [
+                { label: 'Guardar',  value: 'recalcular', clase: 'btn-primary' },
+                { label: 'Cancelar', value: 'cancelar',   clase: 'btn-secondary' },
+              ]
+    )
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    const { error } = await supabase.from('reservations').update({ slots: nuevoSlots }).eq('id', rowId)
+    if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+    await _limpiarPropuestaReserva(row)
+    if (opcion === 'solo') { await cargarTabla(); return }
+
+    if (esWEB && Math.abs(deltaCobros) >= 0.01) {
+        const { error: errAdj } = await supabase.from('charges').insert({
+            client_id: row.client_id, amount: deltaCobros, due_date: hoy,
+            collected: true, collected_date: hoy,
+            comments: `${row.origin_ref} Cobrado vía sfcom`,
+            is_final: false, season
+        })
+        if (errAdj) { alert(`Error al crear cobro de ajuste: ${errAdj.message}`); renderTabla(); return }
+    }
+
+    const { data: reservasCli } = await supabase.from('reservations')
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+    await persistirCobrosCliente(supabase, row.client_id, reservasCli ?? [])
+    if (esWEB) {
+        const { data: todasRsAll } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref')
+        await persistirCobrosCliente(supabase, 'SFCOM', todasRsAll ?? [])
+    }
+
+    if (providerId) {
+        const [{ data: rsFresh }, { data: dispFresh }] = await Promise.all([
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*')
+        ])
+        await persistirPagosProveedor(supabase, providerId, rsFresh ?? [], dispFresh ?? [])
+    }
+
+    if (sfcomEntry) await syncStockToSfcom(supabase, row.venue_id, row.service_id)
+
+    await cargarTabla()
+}
+
 // ===== C.2.C: PRECIO POR PLAZA EN RESERVAS =====
 
 async function _guardarPricePerSlot(rowId, nuevoPrice, row) {
     if (nuevoPrice === null) { renderTabla(); return }
     const season = row.services?.season ?? getTemporadaActiva()
-    const pre    = await _preCalcularCobros(row.client_id, season)
+    const esWEB  = row.origin_ref?.startsWith('WEB')
 
-    const nuevaTotalReserva    = row.slots * nuevoPrice
-    const deltaCobros          = nuevaTotalReserva - parseFloat(row.total_amount || 0)
-    const nuevaCuantiaCorrecta = pre.cuantiaCorrecta + deltaCobros
-    const hitoActual           = pre.hitoFinal
-    const hitoBloqueado        = hitoActual && !!(hitoActual.invoice_number || hitoActual.collected)
+    const nuevaTotalReserva = row.slots * nuevoPrice
+    const deltaCobros       = nuevaTotalReserva - parseFloat(row.total_amount || 0)
 
     // Sin cambio real en el total → guardar sin cascada ni aviso
     if (Math.abs(deltaCobros) < 0.01) {
@@ -1086,16 +1243,27 @@ async function _guardarPricePerSlot(rowId, nuevoPrice, row) {
         : ''
 
     let desc
-    if (!hitoActual) {
-        desc = Math.abs(nuevaCuantiaCorrecta) < 0.01
-            ? `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El saldo resultante es 0 — no se creará cobro final ahora.`
-            : `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. Se creará un cobro final de <strong>${fmt(nuevaCuantiaCorrecta)}</strong> para ${row.client_id}.`
-    } else if (!hitoBloqueado) {
-        desc = `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El cobro final de ${row.client_id} pasará de <strong>${fmt(hitoActual.amount)}</strong> a <strong>${fmt(nuevaCuantiaCorrecta)}</strong>.`
+    if (esWEB) {
+        const signo = deltaCobros > 0 ? '+' : ''
+        desc = `⚠️ Reserva sfcom (<code>${row.origin_ref}</code>). €/plaza a <strong>${fmt(nuevoPrice)}</strong>. El total cambia a <strong>${fmt(nuevaTotalReserva)}</strong>.`
+        desc += `<br>Se añadirá un cobro de ajuste de <strong>${signo}${fmt(deltaCobros)}</strong> en la ficha de ${row.client_id} (ya cobrado vía sfcom). El cobro final de sfcom se ajustará automáticamente.`
     } else {
-        const motivo = hitoActual.invoice_number ? 'facturado' : 'cobrado'
-        const ajuste = nuevaCuantiaCorrecta - parseFloat(hitoActual.amount)
-        desc = `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El cobro final ya está <strong>${motivo}</strong> — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajuste)}</strong>.`
+        const pre = await _preCalcularCobros(row.client_id, season)
+        const nuevaCuantiaCorrecta = pre.cuantiaCorrecta + deltaCobros
+        const hitoActual           = pre.hitoFinal
+        const hitoBloqueado        = hitoActual && !!(hitoActual.invoice_number || hitoActual.collected)
+
+        if (!hitoActual) {
+            desc = Math.abs(nuevaCuantiaCorrecta) < 0.01
+                ? `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El saldo resultante es 0 — no se creará cobro final ahora.`
+                : `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. Se creará un cobro final de <strong>${fmt(nuevaCuantiaCorrecta)}</strong> para ${row.client_id}.`
+        } else if (!hitoBloqueado) {
+            desc = `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El cobro final de ${row.client_id} pasará de <strong>${fmt(hitoActual.amount)}</strong> a <strong>${fmt(nuevaCuantiaCorrecta)}</strong>.`
+        } else {
+            const motivo = hitoActual.invoice_number ? 'facturado' : 'cobrado'
+            const ajuste = nuevaCuantiaCorrecta - parseFloat(hitoActual.amount)
+            desc = `El total de la reserva cambia a <strong>${fmt(nuevaTotalReserva)}</strong>. El cobro final ya está <strong>${motivo}</strong> — se pasará a adelanto y se creará un hito de ajuste de <strong>${fmt(ajuste)}</strong>.`
+        }
     }
     desc += propuestaAviso
 
@@ -1115,9 +1283,24 @@ async function _guardarPricePerSlot(rowId, nuevoPrice, row) {
     await _limpiarPropuestaReserva(row)
     if (opcion === 'solo') { await cargarTabla(); return }
 
-    const { data: reservas } = await supabase.from('reservations')
+    if (esWEB && Math.abs(deltaCobros) >= 0.01) {
+        const { error: errAdj } = await supabase.from('charges').insert({
+            client_id: row.client_id, amount: deltaCobros, due_date: hoy,
+            collected: true, collected_date: hoy,
+            comments: `${row.origin_ref} Cobrado vía sfcom`,
+            is_final: false, season
+        })
+        if (errAdj) { alert(`Error al crear cobro de ajuste: ${errAdj.message}`); renderTabla(); return }
+    }
+
+    const { data: reservasCli } = await supabase.from('reservations')
         .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
-    await persistirCobrosCliente(supabase, row.client_id, reservas ?? [])
+    await persistirCobrosCliente(supabase, row.client_id, reservasCli ?? [])
+    if (esWEB) {
+        const { data: todasRsAll } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref')
+        await persistirCobrosCliente(supabase, 'SFCOM', todasRsAll ?? [])
+    }
     await cargarTabla()
 }
 

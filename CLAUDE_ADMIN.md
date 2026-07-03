@@ -627,13 +627,14 @@ Tabs disponibles: `reservations`, `charges`, `payments`, `reservation_requests`,
 - `cascade: 'cobros-final'` → `_guardarIsFinalCobro` → modal con escenarios de cambio de is_final en charges
 - `cascade: 'pagos-final'` → `_guardarIsFinalPago` → modal con escenarios de cambio de is_final en payments
 - `cascade: 'sfcom-slots'` → verificación de plazas vendidas antes de actualizar sfcom_slots_listed
-- `cascade: 'price-per-slot'` → `_guardarPricePerSlot` → recalcula total_amount de la reserva, muestra delta en cobros, llama `persistirCobrosCliente`, invalida propuesta PDF compartida (limpia `proposal_number` y `proposal_path` de todas las reservas que comparten esa propuesta)
-- `cascade: 'avail-slots'` → `_guardarAvailSlots` → bloqueo duro si `plazasTotales > nuevoSlots` (no se permite reducir por debajo de las vendidas); si pasa el bloqueo, llama `persistirPagosProveedor`; si `sfcom_slots_listed > nuevoSlots`, reduce sfcom_slots_listed y sincroniza stock con `syncStockToSfcom`
+- `cascade: 'slots'` → `_guardarSlots` → verifica capacidad si se aumenta (bloqueo duro si supera `total_slots - plazasOtras`); para WEB%: crea cobro de ajuste en ficha del cliente real (formato `"${origin_ref} Cobrado vía sfcom"`, `collected=true`, `is_final=false`) + llama `persistirCobrosCliente` para cliente real Y para `'SFCOM'`; para no-WEB%: solo llama `persistirCobrosCliente` para el cliente; siempre llama `persistirPagosProveedor` si hay proveedor y `syncStockToSfcom` si hay listing sfcom; invalida propuesta PDF compartida
+- `cascade: 'price-per-slot'` → `_guardarPricePerSlot` → para WEB%: crea cobro de ajuste (mismo formato/flags) + llama `persistirCobrosCliente` para cliente real Y para `'SFCOM'`; para no-WEB%: usa `_preCalcularCobros` + llama `persistirCobrosCliente`; invalida propuesta PDF compartida
+- `cascade: 'avail-slots'` → `_guardarAvailSlots` → bloqueo duro si `plazasTotales > nuevoSlots` (no se permite reducir por debajo de las vendidas); si pasa el bloqueo, llama `persistirPagosProveedor`; si `sfcom_slots_listed > nuevoSlots`, reduce sfcom_slots_listed y sincroniza stock con `syncStockToSfcom(supabase, row.venue_id, row.service_id)`
 - `cascade: 'avail-price'` → `_guardarAvailPrice` → recalcula coste con disponibilidad modificada (simulación previa), llama `persistirPagosProveedor`; usado también por `billing_model`
 
 **Edición de is_final (charges y payments):** cambiar is_final activa un modal con todos los escenarios posibles (sin cambio → no-op silencioso; true→false → "convertir en adelanto" con opción de recalcular; false→true → "convertir en final" con verificación de importe y recálculo). El recálculo llama a `persistirCobrosCliente` / `persistirPagosProveedor`.
 
-**Propuesta PDF:** `_limpiarPropuestaReserva(row)` desvincula el PDF de todas las reservas que comparten la misma propuesta (por `proposal_number` o `proposal_path`). El archivo físico en Storage queda huérfano (aceptado). Se llama en `_guardarPricePerSlot` y se llamará en C.2.E (`_guardarSlots`).
+**Propuesta PDF:** `_limpiarPropuestaReserva(row)` desvincula el PDF de todas las reservas que comparten la misma propuesta (por `proposal_number` o `proposal_path`). El archivo físico en Storage queda huérfano (aceptado). Se llama en `_guardarPricePerSlot` y en `_guardarSlots`.
 
 **Filosofía:** tablas.js es la herramienta de emergencia para corregir estados que no pueden arreglarse desde el panel normal. Se permite editar todo, pero nunca se deja la BD inconsistente sin que el usuario lo elija explícitamente. Toda inconsistencia elegida voluntariamente se autocorrige en el siguiente uso normal del panel (o la detecta la verificación financiera).
 
@@ -869,6 +870,12 @@ El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tar
 **Contexto del asistente incluye líneas del borrador ya resueltas.**
 
 Si hay líneas con `estado: 'descartada'` y Paula abre el asistente, Claude las ve. Fix correcto: actualizar `SYSTEM_PROMPT_ASISTENTE` para explicar el significado de cada valor de `estado`. Filtrar `'descartada'` del contexto es opcional y de bajo impacto.
+
+---
+
+**`formulario.js` no invalida propuestas al editar una reserva.**
+
+`tablas.js` llama a `_limpiarPropuestaReserva` cuando se cambia `price_per_slot` o `slots` desde la tabla. `formulario.js` no hace nada equivalente: si se editan esos campos desde el bloque de reservas del panel normal, la propuesta PDF queda desactualizada pero con `proposal_number` y `proposal_path` intactos. La deuda es baja porque la propuesta es un punto de venta que se regenera al reenviar, pero puede causar confusión si Paula ve un número de propuesta en una reserva con precio distinto al PDF. Solución: llamar a la función equivalente tras cada guardado en los campos que afectan al total.
 
 ---
 
