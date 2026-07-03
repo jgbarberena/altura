@@ -990,9 +990,10 @@ function componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarca
         const dia          = srv?.day   ?? '?'
         const hora         = srv?.start_time ?? '?'
         const venue        = disp?.venue_display_name ?? r.venue_id
+        const direccion    = disp?.venue_address ?? null
         const acceso       = disp?.access_instructions ?? null
 
-        let bloque = `📍 ${nombreEvento} — ${dia} de julio, ${hora}h\n${venue}\n${r.slots} personas`
+        let bloque = `📍 ${nombreEvento} — ${dia} de julio, ${hora}h\n${venue}${direccion ? ` (${direccion})` : ''}\n${r.slots} personas`
         if (acceso) bloque += `\n\nCómo llegar e instrucciones de acceso:\n${acceso}`
         return bloque
     })
