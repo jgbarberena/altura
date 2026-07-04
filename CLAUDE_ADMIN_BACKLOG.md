@@ -862,3 +862,11 @@ El boton "Cargar" de la cola de bienvenidas llamaba a cargarCliente(c) sin asign
 ### services.day para POBRE_DE_MI tenia valor 15 en BD — RESUELTO (jul 2026)
 
 El select selectServicioDia en proveedores.html tiene opciones 6-14. Con day=15 en BD el select caia silenciosamente a vacio, mientras el mensaje de bienvenida leia srv.day directo y mostraba "15 de julio". Fix de datos: UPDATE services SET day = 14 WHERE service_code = 'POBRE_DE_MI'. Fix de codigo: guardarDescripcionServicio ahora incluye day en el update y inputServicioDia esta conectado al auto-save.
+
+---
+
+### Fase 10 — Tablas: edición directa + Storage + notas solicitudes (jul 2026)
+
+**Completado:** edición inline en las 10 tablas con cascade para los campos financieros (status reserva, slots, precios, cobros, pagos); eliminaciones con bloqueo-e-informa en las 10 tablas; columna Temp. en reservations/charges/payments; campo Notas internas (comments) en vista expandida de solicitudes con autosave; tab 📁 Archivos en tablas.html con gestión completa de Storage (listar, subir, descargar, eliminar, detectar huérfanos, vincular facturas a cobros con picker cascada cliente↔cobro).
+
+**Descartado:** botón eliminar cliente en formulario.js (ya disponible en tablas.js, suficiente).
