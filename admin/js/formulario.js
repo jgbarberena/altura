@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva } from './utils.js'
-import { initFacturacion, abrirPanelFactura } from './factura.js'
+import { initFacturacion, abrirPanelFactura, baseDesdeTotalFacturado, totalFacturadoDesdeBase } from './factura.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom, resolverProductoSfcom } from './sfcom.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
@@ -88,6 +88,7 @@ const selectServicio  = document.getElementById('selectServicio')
 const selectProveedor = document.getElementById('selectProveedor')
 const inputPlazas     = document.getElementById('inputPlazas')
 const inputPrecio     = document.getElementById('inputPrecio')
+const inputPrecioFinal = document.getElementById('inputPrecioFinal')
 const selectEstado    = document.getElementById('selectEstado')
 const precioStatus    = document.getElementById('precio-status')
 const btnAnadir       = document.getElementById('btnAnadirReserva')
@@ -220,6 +221,7 @@ function limpiarFormularioReserva() {
     selectProveedor.disabled  = true
     inputPlazas.value  = ''
     inputPrecio.value  = ''
+    inputPrecioFinal.value = ''
     selectEstado.value = 'Confirmada'
     document.getElementById('inputReservaComments').value = ''
     document.getElementById('inputTotal').value           = '—'
@@ -331,6 +333,21 @@ inputPrecio.addEventListener('input', () => {
     actualizarBtnAnadir()
 })
 
+// "Precio final facturado" es un ayudante: convierte hacia atrás al precio sin IVA/IRPF
+// (el único que se persiste). _sincronizandoPrecioFinal evita que actualizarTotal()
+// sobrescriba este campo mientras Paula está tecleando en él.
+let _sincronizandoPrecioFinal = false
+
+inputPrecioFinal.addEventListener('input', () => {
+    const totalFacturado = parseFloat(inputPrecioFinal.value)
+    _sincronizandoPrecioFinal = true
+    inputPrecio.value = isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado).toFixed(2)
+    validarPrecio()
+    actualizarTotal()
+    actualizarBtnAnadir()
+    _sincronizandoPrecioFinal = false
+})
+
 selectProveedor.addEventListener('change', () => {
     validarPrecio()
     actualizarBtnAnadir()
@@ -353,6 +370,8 @@ function actualizarTotal() {
     const total  = plazas * precio
     document.getElementById('inputTotal').value =
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
+    if (!_sincronizandoPrecioFinal)
+        inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio).toFixed(2) : ''
 }
 
 function getPlazasInfo(venueId, servicioId, excluirId = null) {

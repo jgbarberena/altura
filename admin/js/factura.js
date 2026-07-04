@@ -24,6 +24,16 @@ const FACTURA_CONFIG = {
 // URL del logo — ruta relativa desde /admin/
 const LOGO_URL = '../img/logos/sanfermin-logo-red.png'
 
+// Relación entre base imponible y total facturado: totalFacturado = base * (1 + iva - irpf).
+// Único punto de esta fórmula — cualquier conversión precio final ↔ precio sin impuestos
+// (p.ej. el ayudante de precio en formulario.js) debe pasar por aquí.
+export function baseDesdeTotalFacturado(totalFacturado) {
+    return totalFacturado / (1 + FACTURA_CONFIG.iva - FACTURA_CONFIG.irpf)
+}
+export function totalFacturadoDesdeBase(base) {
+    return base * (1 + FACTURA_CONFIG.iva - FACTURA_CONFIG.irpf)
+}
+
 // ===== ESTADO DEL MÓDULO =====
 let _supabase      = null  // cliente Supabase inyectado al inicializar
 let _hitoActual    = null  // charge completo que se está facturando

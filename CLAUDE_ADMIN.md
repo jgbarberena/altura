@@ -399,6 +399,8 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 
 **Bloque 2 — Reserva:** Selector de servicio → selector de proveedor (filtrado por service_id) → plazas → precio → total calculado (no editable) → estado → comentarios. Antes de guardar llama a `checkAvailabilityBeforeSave`. Al guardar en modo edición, si cambia proveedor/servicio sincroniza stock sfcom para par original y nuevo.
 
+**Campo "Precio final facturado" (`inputPrecioFinal`):** ayudante junto al precio por plaza (`inputPrecio`), puramente informativo/calculadora — nunca se persiste. `inputPrecio` sigue siendo el único precio real (sin IVA ni IRPF, el que se guarda en `price_per_slot`). Al escribir en `inputPrecio`, `inputPrecioFinal` se recalcula solo mostrando a cuánto ascendería la factura (`totalFacturadoDesdeBase`, importado de `factura.js`). Al escribir directamente en `inputPrecioFinal`, ocurre lo contrario: se recalcula `inputPrecio` hacia atrás (`baseDesdeTotalFacturado`) para que ese sea el precio final exacto en la futura factura, y ese valor recalculado es el que se guarda como de costumbre. La flag de módulo `_sincronizandoPrecioFinal` evita que `actualizarTotal()` sobrescriba `inputPrecioFinal` mientras se está tecleando en él. Redondeo a 2 decimales en `price_per_slot`: el total facturado real puede desviarse en ±0,01€ del importe exacto tecleado. La fórmula (`base × (1 + iva − irpf)`) vive solo en `factura.js`, que la exporta para no duplicar los porcentajes de IVA/IRPF.
+
 **Disponibilidad al editar:** `getPlazasInfo(proveedorId, servicioId, excluirId)` excluye la reserva en edición activa para que su proveedor no aparezca con disponibilidad reducida por su propia reserva.
 
 **Bloque 3 — Disponibilidad:** Mapa visual de columnas por proveedor. Click en proveedor sin plazas abre panel de reorganización.
@@ -604,6 +606,8 @@ Módulo ES6, importado por formulario.js. `initFacturacion(supabase)`.
 Genera facturas PDF (via jsPDF) para hitos de cobro. Tres tipos: `adelanto` (pago parcial), `liquidacion` (pago final con adelantos previos ya facturados), `unico` (pago único sin adelantos).
 
 Emisor: Paula Díaz Echalecu, NIF 72694758S. IVA: 21%. IRPF: 15%. Serie: VSF. Número correlativo por ejercicio (calcula consultando invoice_number en charges del año en curso). Campos editables con `contenteditable`. Persiste `invoice_number` e `invoiced: true` en charges.
+
+Exporta `baseDesdeTotalFacturado(totalFacturado)` y `totalFacturadoDesdeBase(base)` — únicos puntos de la fórmula `total = base × (1 + iva − irpf)`. Usadas por `formulario.js` para el campo "Precio final facturado" del Bloque 2.
 
 El nombre del receptor usa `_cliente.company ?? _cliente.name ?? _cliente.id`.
 
@@ -846,6 +850,24 @@ Add-Content -Path "CLAUDE_ADMIN_BACKLOG.md" -Value "`n---`n`n### [Título] — �
 **`resolverCliente` en `utils.js` hace matching de nombre demasiado permisivo.**
 
 La comparación usa `.includes()` en ambas direcciones. Fix parcial aplicado (jun 2026): umbral mínimo de 5 caracteres. Pendiente: la comparación sigue siendo frágil cuando dos clientes comparten parte del nombre (p.ej. `"GARCIA PEDRO"` vs `"GARCIA MARIA"`). La solución completa requeriría coincidir al menos dos palabras completas o usar distancia de edición. El match por email y teléfono no tiene este problema.
+
+---
+
+**El modal de bienvenida no se cierra al pulsar el botón de enviar.**
+
+En `abrirModalBienvenida` (`formulario.js`), el callback `onUsado` de `mostrarOpcionesEnvio` (línea ~1115) actualiza `welcome_sent_at`, refresca el botón y muestra el toast, pero nunca llama a `overlay.close()`. El modal queda abierto tras el envío y Paula tiene que cerrarlo a mano con la ✕. Fix: llamar a `overlay.close()` al final de `onUsado`.
+
+---
+
+**El envío de bienvenida por WhatsApp pierde los emojis; por correo (mailto) se mantienen.**
+
+En `mostrarOpcionesEnvio` (`utils.js:633`) el botón de WhatsApp abre `https://wa.me/{telefono}?text=...` con `encodeURIComponent(texto)`, que sí codifica los emojis correctamente. El enlace abre primero el navegador y de ahí salta a la app de WhatsApp — en ese salto navegador→app se pierden los emojis del texto. El mailto (línea ~618) no pasa por ese salto y conserva los emojis. Pendiente investigar si es una limitación del propio `wa.me` en el traspaso a la app (`api.whatsapp.com/send` u otro esquema podrían comportarse distinto) o si hay una codificación adicional que se pueda ajustar en nuestro lado.
+
+---
+
+**El campo de ID de cliente no se refresca visualmente al cargar un cliente distinto; solo se corrige recargando la página.**
+
+Nombre, teléfono y demás campos se cargan y guardan correctamente en el cliente correcto — el problema es puramente visual, el input de ID sigue mostrando el ID del cliente anterior. En el código revisado (`cargarCliente`, `mostrarSugerenciasCliente` y las precargas por parámetro de URL en `formulario.js`) el orden de asignación de `inputId.value` antes de `cargarCliente(...)` es correcto, así que la causa no está localizada todavía. Pendiente reproducir el caso exacto (¿navegación entre fichas sin recarga completa? ¿autocompletado del navegador?) antes de intentar un fix.
 
 ---
 
