@@ -1040,6 +1040,39 @@ function _actualizarUrlCatalogo(venueId, serviceId) {
     })
 }
 
+function _commentsSection(sol) {
+    return `<div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--subtle)">Notas internas</span>
+            <span id="sol-comments-saving" style="font-size:10px;color:var(--subtle);visibility:hidden">guardando…</span>
+        </div>
+        <textarea id="sol-comments-ta" rows="2"
+            style="width:100%;box-sizing:border-box;font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;resize:vertical;font-family:inherit"
+            placeholder="Notas de uso interno…">${_esc(sol.comments || '')}</textarea>
+    </div>`
+}
+
+function _initCommentsListener(sol) {
+    const ta  = document.getElementById('sol-comments-ta')
+    const ind = document.getElementById('sol-comments-saving')
+    if (!ta) return
+    let timer = null
+    ta.addEventListener('input', () => {
+        clearTimeout(timer)
+        if (ind) ind.style.visibility = 'visible'
+        timer = setTimeout(async () => {
+            const texto = ta.value
+            const { error } = await supabase.from('reservation_requests').update({ comments: texto || null }).eq('id', sol.id)
+            if (!error) {
+                sol.comments = texto || null
+                const idx = _solicitudesActuales.findIndex(s => s.id === sol.id)
+                if (idx !== -1) _solicitudesActuales[idx].comments = texto || null
+            }
+            if (ind) ind.style.visibility = 'hidden'
+        }, 800)
+    })
+}
+
 function _logSection(logItems) {
     return `<div class="sol-log-section">
         <span class="sol-log-label">
@@ -1263,10 +1296,12 @@ function mostrarDetalle(sol) {
             </div>
             <div id="sol-extra" style="display:none;margin-top:4px">
                 <div id="sol-borrador-container"></div>
+                ${_commentsSection(sol)}
                 ${_logSection(logItems)}
                 ${accionesToggleHTML}
             </div>` : `
             <div id="sol-borrador-container"></div>
+            ${_commentsSection(sol)}
             ${_logSection(logItems)}
             ${accionesExtHTML}`}
 
@@ -1295,6 +1330,7 @@ function mostrarDetalle(sol) {
             _initEditListeners(sol, logArea)
         }
         _initLogListeners(sol)
+        _initCommentsListener(sol)
     }
 
     // ── Toggle historial: vistas condensadas ─────────────────────────────────
@@ -1318,6 +1354,7 @@ function mostrarDetalle(sol) {
                     }
                 })
                 _initLogListeners(sol)
+                _initCommentsListener(sol)
                 document.getElementById('btnAbrirAsistente')?.addEventListener('click', () => {
                     const borrador = _parsearLog(sol.conversation_notes).filter(i => i.type === 'message').find(i => i.isDraft)
                     abrirAsistenteRespuesta(sol, null, borrador?.text ?? null)

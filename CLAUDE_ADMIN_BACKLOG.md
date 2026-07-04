@@ -856,3 +856,9 @@ En abrirModalBienvenida (formulario.js), el callback onUsado de mostrarOpcionesE
 ### El campo de ID de cliente no se refresca al cargar desde la cola de bienvenidas — RESUELTO (jul 2026)
 
 El boton "Cargar" de la cola de bienvenidas llamaba a cargarCliente(c) sin asignar inputId.value = c.id antes. Todas las demas rutas de llamada a cargarCliente si lo hacian. Fix: anadir inputId.value = c.id en el click handler de cola-cargar (formulario.js).
+
+---
+
+### services.day para POBRE_DE_MI tenia valor 15 en BD — RESUELTO (jul 2026)
+
+El select selectServicioDia en proveedores.html tiene opciones 6-14. Con day=15 en BD el select caia silenciosamente a vacio, mientras el mensaje de bienvenida leia srv.day directo y mostraba "15 de julio". Fix de datos: UPDATE services SET day = 14 WHERE service_code = 'POBRE_DE_MI'. Fix de codigo: guardarDescripcionServicio ahora incluye day en el update y inputServicioDia esta conectado al auto-save.

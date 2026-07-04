@@ -192,3 +192,34 @@ td.cobrado-no        { color: var(--subtle); }
 td.cobrado-vencido   { color: var(--accent); font-weight: 500; }
 td.modelo-consumption { color: var(--accent-warn); }
 td.modelo-capacity    { color: var(--subtle); }
+
+/* Storage */
+.st-tab-btn {
+    font-size: 12px;
+    padding: 4px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: none;
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s, color 0.1s;
+}
+.st-tab-btn--active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+.st-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: default;
+}
+.st-dz--over {
+    border-color: var(--accent);
+    background: #f0faf0;
+}

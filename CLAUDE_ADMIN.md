@@ -170,7 +170,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | id | uuid PK, gen_random_uuid() |
 | client_name | text NOT NULL |
 | client_email, client_phone, client_address | text |
-| comments | Columna legacy. Ya no se escribe desde ningún flujo activo. La web pública solía escribir aquí el comentario libre del formulario; desde jun 2026 ese dato va dentro del JSON de `conversation_notes`. Los registros antiguos pueden tener valor; `_procesarWebFormsSinProcesar` lo usa como fallback (`rawData.comment \|\| sol.comments`). Pendiente de DROP en Fase 10. |
+| comments | Notas internas de uso libre para el equipo. Columna legacy reutilizada como campo de notas: la web pública solía escribir aquí el comentario libre del formulario; desde jun 2026 ese dato va dentro del JSON de `conversation_notes`. Los registros antiguos pueden tener valor; `_procesarWebFormsSinProcesar` lo usa como fallback (`rawData.comment \|\| sol.comments`). Editable desde la vista expandida de `solicitudes.js` (sección "Notas internas", entre borrador y conversación) con autosave. También editable desde `tablas.js` (tipo textarea). |
 | status | `'nueva'` → `'en_conversacion'` → `'respuesta_enviada'` → `'seguimiento_pendiente'` → `'convertida'` o `'descartada'`; default `'nueva'`. El valor `'cancelada_sfcom'` quedó obsoleto en jun 2026 — migrado automáticamente a `'nueva'` en `_verificarTransicionesAutomaticas()`. |
 | created_at | timestamptz, default now() |
 | updated_at | timestamptz — actualizado por trigger en cada UPDATE |
@@ -852,11 +852,6 @@ La comparación usa `.includes()` en ambas direcciones. Fix parcial aplicado (ju
 
 ---
 
-**`services.day` para POBRE_DE_MI tiene valor 15 en la BD (debe ser 14).**
-
-El select `selectServicioDia` en `proveedores.html` tiene opciones 6–14. Al cargar el servicio, el código hace `select.value = '15'`, que no coincide con ninguna opción → el select muestra "— Sin día —" (vacío). Entretanto, el mensaje de bienvenida lee `srv.day` directo del array en memoria → muestra "15 de julio". Fix de datos: `UPDATE services SET day = 14 WHERE service_code = 'POBRE_DE_MI';` en Supabase SQL Editor. Fix de código (aplicado jul 2026): `guardarDescripcionServicio` ahora incluye `day` en el `.update()` y `inputServicioDia` está conectado al auto-save.
-
----
 
 **El envío de bienvenida por WhatsApp pierde los emojis; por correo (mailto) se mantienen.**
 
@@ -1058,7 +1053,7 @@ Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAU
 | 9b | ✅ Completa | Mejoras asistente + fixes arquitectura web form + Edge Function notificar-solicitud |
 | 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
 | 9d | ✅ Completa | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
-| 10 | 🔲 Pendiente | Tablas: edición directa + gestión Storage + eliminar cliente sin reservas + limpieza PDFs huérfanos + mostrar columna temporada |
+| 10 | ✅ Completa | Tablas: edición directa + eliminaciones + temporada + notas solicitudes + gestión Storage con upload y vinculación de facturas |
 
 ### Dependencias duras entre fases
 
@@ -1131,26 +1126,17 @@ Reglas generales:
 1. Si cascada: eliminar las reservas afectadas (flujo completo) y recalcular cobros de clientes afectados.
 2. Orden: DELETE availability WHERE service_id (cascada: sfcom_listings) → DELETE services.
 
-**3. Gestión de Supabase Storage desde el panel**
+**3. ✅ Gestión de Supabase Storage desde el panel** — implementado en Fase 10.
 
-No hay UI para ver qué hay en los buckets ni borrar archivos huérfanos.
+Tab "📁 Archivos" en `tablas.html`. Dos sub-secciones (Propuestas / Facturas) con mini-tabs pill. Por cada bucket:
+- Lista archivos con nombre, tamaño, fecha (`updated_at`), estado vinculación.
+- Huérfanos (sin `proposal_path`/`invoice_path` activo en BD) en naranja.
+- Botón "Eliminar N huérfanos" con modal de confirmación que lista los archivos.
+- 📥 descarga vía `createSignedUrl` (1 hora). 🗑 eliminar individual con confirmación; si vinculado, pone `proposal_path`/`invoice_path = null` en la fila de BD correspondiente.
+- Subida de archivos: zona drag & drop + `<input multiple>` (solo `.pdf`). Uno a uno con `upsert: false` — no sobreescribe.
+- Facturas: columna "Cobro" editable — botón "Vincular"/"✏️" abre picker con dos selects reactivos: Cliente (filtra cobros) ↔ Cobro (auto-rellena cliente). Muestra `#id · cliente · fecha · Final/Adelanto · importe`. Guarda `charges.invoice_path` + `charges.invoice_number`. Si cambia de cobro, limpia el cobro anterior.
+- Propuestas: columna "Reservas" de solo lectura (lista las reservas que referencian ese path). Edición sigue vía el proposal-picker en la tabla de reservas.
 
-Diseño:
-- Nueva sección en `tablas.html` o pestaña separada: "Archivos".
-- Lista los archivos de `proposals/` e `invoices/` con su tamaño y fecha.
-- Detecta huérfanos: archivos cuya ruta no coincide con ningún `reservations.proposal_path` o `charges.invoice_path` activo.
-- Botón "Eliminar huérfanos" con confirmación; botón de descarga por archivo individual.
-- Lectura vía `supabase.storage.from('proposals').list()` / `.from('invoices').list()`.
+**4. ✅ Mostrar columna temporada en tablas** — implementado en Fase 10. Columna "Temp." en `reservations` (JOIN a `services.season`), `charges` y `payments` (columna directa `season`).
 
-**4. Mostrar columna temporada en tablas**
-
-Las tablas `reservations`, `charges` y `payments` tienen `season` implícita (via FK a services o columna directa en charges/payments). En `tablas.js`, cuando se muestra una de estas tablas, añadir columna "Temp." que muestre el valor de `season` para facilitar la lectura. Requiere un JOIN o lookup según la tabla (reservations → service_id → season; charges/payments → ya tienen `season` directa).
-
-**5. Limpieza de PDFs al eliminar reservas/charges**
-
-Actualmente `eliminarSeleccionadas` en `formulario.js` borra reservas y cobros sin limpiar los PDFs en Storage.
-
-Fix (unas 15 líneas en `formulario.js`):
-- Antes del DELETE de reservas: recoger `proposal_path` de las filas a eliminar → `supabase.storage.from('proposals').remove([...paths.filter(Boolean)])`.
-- En el caso `isLastReservation`: ampliar el SELECT de charges para incluir `invoice_path`; recoger los no nulos → `supabase.storage.from('invoices').remove([...paths])`.
-- Errores de Storage no son bloqueantes: si el remove falla, continuar con el DELETE igualmente (el archivo es recuperable manualmente desde el Dashboard de Supabase).
+**5. Limpieza de PDFs al eliminar** — No se implementa en `formulario.js`. Los PDFs huérfanos se gestionan desde la sección Storage de `tablas.html` (§3). Al eliminar una reserva desde `tablas.js`, el PDF de propuesta queda en Storage como huérfano y se limpia desde allí.
