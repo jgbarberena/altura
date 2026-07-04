@@ -84,7 +84,6 @@ Un proveedor puede tener múltiples venues. Al crear un proveedor nuevo desde el
 | description | text — descripción larga |
 | start_time | text — hora de inicio (ej: `'08:00'`) |
 | image_url | URL absoluta de imagen representativa. Fallback en propuestas cuando availability.photos está vacío. |
-| comments | text |
 
 UNIQUE `uq_services_code_season` en `(service_code, season)`: el mismo code puede existir en distintas temporadas.
 
@@ -102,7 +101,7 @@ UNIQUE `uq_services_code_season` en `(service_code, season)`: el mismo code pued
 | photos | text[] ARRAY — URLs de fotos del balcón para este par |
 | comments | text |
 
-Constraint UNIQUE(venue_id, service_id) (`uq_availability_venue_service`) añadido en jun 2026. La BD refuerza la unicidad además del JS.
+Constraints añadidos en jun/jul 2026: UNIQUE(venue_id, service_id) (`uq_availability_venue_service`). FK desde `reservations(venue_id, service_id)` con ON DELETE RESTRICT — PostgreSQL bloquea borrar una fila de availability si tiene reservas.
 
 **`sfcom_listings`** — Configuración de publicación en sfcom
 | Campo | Notas |
@@ -124,7 +123,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | id | text PK, formato `R0001` |
 | client_id | FK→clients |
 | service_id | **integer** FK→services.id (Fase 1: antes era text FK) |
-| venue_id | FK→venues |
+| venue_id | FK→venues NOT NULL (añadido jul 2026). FK compuesta con service_id → availability(venue_id, service_id) ON DELETE RESTRICT, ON UPDATE CASCADE (añadida jul 2026) |
 | slots | integer NOT NULL |
 | price_per_slot | decimal NOT NULL — precio de venta al cliente |
 | total_amount | decimal GENERATED ALWAYS AS `((slots)::numeric * price_per_slot)` — calculado por PostgreSQL. El JS no la calcula ni envía. |
@@ -156,7 +155,7 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | Campo | Notas |
 |---|---|
 | id | integer PK |
-| provider_id | FK→providers |
+| provider_id | FK→providers ON DELETE RESTRICT (cambiado de CASCADE a RESTRICT en jul 2026 — no se puede eliminar un proveedor con pagos) |
 | season | **integer NOT NULL** — temporada a la que pertenece el pago. Añadido en Fase 9d. |
 | amount | decimal NOT NULL |
 | due_date | date |
@@ -884,6 +883,14 @@ Patrón de fix: tras cualquier save con efectos secundarios conocidos, re-leer d
 **CSS del panel en móvil — deuda de revisión general.**
 
 El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tarjetas de KPIs económicos de `panel.html`, layout de `solicitudes.html`. Prioridad media. Acción antes de intervenir: recorrer las páginas principales en incógnito en móvil, documentar capturas y abordar en sesión dedicada.
+
+---
+
+### 7.4 Schema — pendiente
+
+**`service_code` no es editable desde `tablas.js` (deuda Fase 10).**
+
+Se decidió no hacerlo hasta auditar el código hardcoded que depende de `service_code`: la constante `TIPO_SERVICIO_ID` en `formulario.js`, la función `_inferirServiceId`, y los patrones regex `/^ENCIERRO_(\d+)$/`. Preguntas abiertas: con el PK entero ya en uso, ¿sigue siendo necesario el hardcode o se puede derivar dinámicamente? Hasta resolverlo, `service_code` no es editable. Acción: auditar `TIPO_SERVICIO_ID` y los regex en `formulario.js` y decidir si el hardcode puede eliminarse (probablemente sí, dado que las FK ya van por integer PK).
 
 ---
 

@@ -215,6 +215,9 @@ const TABLAS = {
 // pairedLabel: texto para los modales del composite
 const EDITABLE = {
     reservations: {
+        status:          { tipo: 'enum', cascade: 'status-reserva', opciones: [
+            ['Pendiente', 'Pendiente'], ['Confirmada', 'Confirmada'], ['Cancelada', 'Cancelada']
+        ]},
         slots:           { tipo: 'number', cascade: 'slots' },
         price_per_slot:  { tipo: 'number', cascade: 'price-per-slot' },
         proposal_number: { tipo: 'proposal-picker' },
@@ -297,7 +300,6 @@ const EDITABLE = {
         comments:       { tipo: 'textarea' },
     },
     services: {
-        service_code: { tipo: 'text' },
         season:       { tipo: 'number' },
         day:          { tipo: 'number' },
         event_type:   { tipo: 'text' },
@@ -308,6 +310,13 @@ const EDITABLE = {
     },
     sfcom_listings: {
         sfcom_slots_listed: { tipo: 'number', cascade: 'sfcom-slots' },
+        sfcom_service_name: { tipo: 'text' },
+        sfcom_product_id:   { tipo: 'number' },
+        sfcom_variation_id: { tipo: 'number' },
+        sfcom_status: { tipo: 'enum', opciones: [
+            [null, '—'], ['pending', 'Pending'], ['confirmed', 'Confirmed'], ['deactivation_pending', 'Desactivación pendiente']
+        ]},
+        sfcom_public_price: { tipo: 'number' },
     },
 }
 
@@ -399,7 +408,7 @@ function renderTabla() {
                                 onclick="abrirFiltro(event, ${i})">▼</span>
                         </div>
                     </th>
-                `).join('')}</tr>
+                `).join('')}<th style="width:34px"></th></tr>
             </thead>
             <tbody>
                 ${datosFiltrados.map(row => {
@@ -418,7 +427,9 @@ function renderTabla() {
                                 onclick="window._renombrarDesdeTabla('${tablaActual}','${String(val).replace(/'/g, "\\'")}')">✏️</button>`
                             : ''
                         return `<td class="${tdClass}"${tdData}>${texto}${btnRename}</td>`
-                    }).join('')}</tr>`
+                    }).join('')}<td style="text-align:center;padding:0 2px"><button
+                        style="font-size:11px;padding:1px 4px;cursor:pointer;background:none;border:1px solid var(--accent);border-radius:3px;color:var(--accent);line-height:1.4"
+                        onclick="window._eliminarFila('${tablaActual}','${rowIdStr}')">🗑</button></td></tr>`
                 }).join('')}
             </tbody>
         </table>
@@ -526,6 +537,7 @@ window._renombrarDesdeTabla = async (tabla, idActual) => {
     await abrirRenombrarId({ tabla, idActual, supabase, onSuccess: () => cargarTabla() })
 }
 
+
 document.getElementById('btnExportTabla')?.addEventListener('click', () => {
     const def  = TABLAS[tablaActual]
     const cols = def.cols.map(c => ({ key: c.campo, label: c.label, fmt: c.fmt }))
@@ -612,7 +624,9 @@ function _activarEditorInline(td, rowId, campo, conf, row) {
             nuevoValor = input.value.trim() || null
         }
 
-        if (conf.cascade === 'slots') {
+        if (conf.cascade === 'status-reserva') {
+            await _guardarStatusReserva(rowId, nuevoValor, row)
+        } else if (conf.cascade === 'slots') {
             await _guardarSlots(rowId, nuevoValor, row)
         } else if (conf.cascade === 'price-per-slot') {
             await _guardarPricePerSlot(rowId, nuevoValor, row)
@@ -910,7 +924,7 @@ async function _guardarAvailSlots(rowId, nuevoSlots, row) {
         supabase.from('reservations').select('id, venue_id, service_id, status, slots, origin_ref'),
         supabase.from('availability').select('*'),
         supabase.from('payments').select('*').eq('provider_id', providerId).eq('season', season),
-        supabase.from('sfcom_listings').select('sfcom_slots_listed').eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle()
+        supabase.from('sfcom_listings').select('sfcom_slots_listed').eq('availability_id', rowId).maybeSingle()
     ])
 
     const venueIds = new Set((venuesProv ?? []).map(v => v.id))
@@ -982,7 +996,7 @@ async function _guardarAvailSlots(rowId, nuevoSlots, row) {
     if (sfcomReduccion) {
         const { error: eSfc } = await supabase.from('sfcom_listings')
             .update({ sfcom_slots_listed: nuevoSlots })
-            .eq('venue_id', row.venue_id).eq('service_id', row.service_id)
+            .eq('availability_id', rowId)
         if (eSfc) console.error('Error actualizando sfcom_slots_listed:', eSfc)
         else await syncStockToSfcom(supabase, row.venue_id, row.service_id)
     }
@@ -1065,6 +1079,101 @@ async function _limpiarPropuestaReserva(row) {
     if (error) console.error('Error limpiando propuesta:', error)
 }
 
+// ===== C.2.F: ESTADO DE RESERVA =====
+
+async function _guardarStatusReserva(rowId, nuevoStatus, row) {
+    if (!nuevoStatus || nuevoStatus === row.status) { renderTabla(); return }
+    const esCancelacion  = nuevoStatus === 'Cancelada'
+    const esReactivacion = row.status === 'Cancelada'
+    const esWEB  = row.origin_ref?.startsWith('WEB')
+    const season = row.services?.season ?? getTemporadaActiva()
+
+    // Cambio simple entre estados activos: guardar sin más
+    if (!esCancelacion && !esReactivacion) {
+        await _guardarEdicion(rowId, { status: nuevoStatus })
+        return
+    }
+
+    // Cancelación: bloquear si hay propuesta vinculada? No — la propuesta ya queda desvinculada al cambiar slots/precio
+    // Reactivación: comprobar capacidad
+    if (esReactivacion) {
+        const [{ data: dispEntry }, { data: reservasVS }] = await Promise.all([
+            supabase.from('availability').select('total_slots')
+                .eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle(),
+            supabase.from('reservations').select('slots')
+                .eq('venue_id', row.venue_id).eq('service_id', row.service_id).neq('status', 'Cancelada')
+        ])
+        const plazasActivas = (reservasVS ?? []).reduce((s, r) => s + (r.slots ?? 0), 0)
+        const totalSlots    = dispEntry?.total_slots ?? 0
+        if (plazasActivas + (row.slots ?? 0) > totalSlots) {
+            await _modalOpciones('⛔ Sin capacidad',
+                `No hay ${row.slots} plaza(s) libres para reactivar esta reserva (${plazasActivas}/${totalSlots} ocupadas).`,
+                [{ label: 'Cerrar', value: 'cerrar', clase: 'btn-secondary' }])
+            renderTabla(); return
+        }
+    }
+
+    let desc
+    if (esCancelacion) {
+        desc = `La reserva <strong>${rowId}</strong> pasará a <strong>Cancelada</strong>.`
+        if (esWEB) desc += `<br>El cobro sfcom (<code>${row.origin_ref} Cobrado vía sfcom</code>) se eliminará. Los cobros, pagos y stock sfcom se recalcularán.`
+        else desc += `<br>Los cobros de ${row.client_id} y los pagos al proveedor se recalcularán.`
+    } else {
+        desc = `La reserva <strong>${rowId}</strong> se reactivará como <strong>${nuevoStatus}</strong>.`
+        if (esWEB) desc += `<br>Se recreará el cobro sfcom de <strong>${fmt(row.total_amount)}</strong>. Los cobros, pagos y stock sfcom se recalcularán.`
+        else desc += `<br>Los cobros de ${row.client_id} y los pagos al proveedor se recalcularán.`
+    }
+
+    const opcion = await _modalOpciones(
+        esCancelacion ? 'Cancelar reserva' : 'Reactivar reserva',
+        desc,
+        [
+            { label: esCancelacion ? 'Sí, cancelar' : 'Sí, reactivar', value: 'ejecutar', clase: esCancelacion ? 'btn-danger' : 'btn-primary' },
+            { label: 'No cambiar', value: 'cancelar', clase: 'btn-secondary' }
+        ]
+    )
+    if (!opcion || opcion === 'cancelar') { renderTabla(); return }
+
+    if (esCancelacion && esWEB) {
+        await supabase.from('charges').delete()
+            .eq('client_id', row.client_id)
+            .eq('comments', `${row.origin_ref} Cobrado vía sfcom`)
+    }
+
+    const { error } = await supabase.from('reservations').update({ status: nuevoStatus }).eq('id', rowId)
+    if (error) { alert(`Error al guardar: ${error.message}`); renderTabla(); return }
+
+    if (esReactivacion && esWEB) {
+        await supabase.from('charges').insert({
+            client_id: row.client_id, amount: row.total_amount,
+            due_date: hoy, collected: true, collected_date: hoy,
+            comments: `${row.origin_ref} Cobrado vía sfcom`,
+            is_final: false, season
+        })
+    }
+
+    const { data: reservasCli } = await supabase.from('reservations')
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+    await persistirCobrosCliente(supabase, row.client_id, reservasCli ?? [])
+    if (esWEB) {
+        const { data: todasRsAll } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref')
+        await persistirCobrosCliente(supabase, 'SFCOM', todasRsAll ?? [])
+    }
+
+    const { data: venue } = await supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
+    if (venue?.provider_id) {
+        const [{ data: rsFresh }, { data: dispFresh }] = await Promise.all([
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*')
+        ])
+        await persistirPagosProveedor(supabase, venue.provider_id, rsFresh ?? [], dispFresh ?? [])
+    }
+
+    await syncStockToSfcom(supabase, row.venue_id, row.service_id)
+    await cargarTabla()
+}
+
 // ===== C.2.E: PLAZAS EN RESERVAS =====
 
 async function _guardarSlots(rowId, nuevoSlots, row) {
@@ -1075,12 +1184,13 @@ async function _guardarSlots(rowId, nuevoSlots, row) {
     const nuevoTotal  = nuevoSlots * parseFloat(row.price_per_slot || 0)
     const deltaCobros = nuevoTotal - parseFloat(row.total_amount || 0)
 
-    const [{ data: dispEntry }, { data: reservasVS }, { data: sfcomEntry }, { data: venue }] = await Promise.all([
+    const [{ data: dispEntry }, { data: reservasVS }, { data: venue }] = await Promise.all([
         supabase.from('availability').select('*').eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle(),
         supabase.from('reservations').select('id, slots, origin_ref, status').eq('venue_id', row.venue_id).eq('service_id', row.service_id).neq('status', 'Cancelada'),
-        supabase.from('sfcom_listings').select('sfcom_slots_listed').eq('venue_id', row.venue_id).eq('service_id', row.service_id).maybeSingle(),
         supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
     ])
+    const { data: sfcomEntry } = await supabase.from('sfcom_listings')
+        .select('sfcom_slots_listed').eq('availability_id', dispEntry?.id).maybeSingle()
 
     // Comprobación de capacidad (solo si aumentamos plazas)
     if (nuevoSlots > row.slots) {
@@ -1630,5 +1740,286 @@ async function _guardarIsFinalPago(rowId, nuevoValor, row) {
         supabase.from('availability').select('*')
     ])
     await persistirPagosProveedor(supabase, row.provider_id, reservas ?? [], disponibilidad ?? [])
+    await cargarTabla()
+}
+
+// ===== ELIMINACIONES =====
+
+window._eliminarFila = async (tabla, rowId) => {
+    const row = datosRaw.find(r => String(r.id) === String(rowId))
+    if (!row) return
+    switch (tabla) {
+        case 'reservations':         return _eliminarReserva(rowId, row)
+        case 'reservation_requests': return _eliminarSolicitud(rowId)
+        case 'charges':              return _eliminarCobro(rowId, row)
+        case 'payments':             return _eliminarPago(rowId, row)
+        case 'clients':              return _eliminarCliente(rowId, row)
+        case 'venues':               return _eliminarVenue(rowId, row)
+        case 'providers':            return _eliminarProveedor(rowId, row)
+        case 'availability':         return _eliminarAvailability(rowId, row)
+        case 'services':             return _eliminarServicio(rowId, row)
+        case 'sfcom_listings':       return _eliminarSfcomListing(rowId, row)
+    }
+}
+
+async function _eliminarReserva(rowId, row) {
+    const esWEB  = row.origin_ref?.startsWith('WEB')
+    const season = row.services?.season ?? getTemporadaActiva()
+
+    let desc = `Eliminar reserva <strong>${rowId}</strong> de <strong>${row.client_id}</strong>.<br>
+        ${row.slots} plaza(s) · Total: <strong>${fmt(row.total_amount)}</strong> · Estado: ${row.status}.`
+    if (esWEB) desc += `<br>⚠️ Reserva sfcom (<code>${row.origin_ref}</code>). Se eliminarán los cobros de sfcom asociados.`
+    desc += `<br>Los cobros del cliente y los pagos al proveedor se recalcularán.`
+
+    const opcion = await _modalOpciones('Eliminar reserva', desc, [
+        { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+        { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+    ])
+    if (!opcion || opcion === 'cancelar') return
+
+    if (esWEB) {
+        await supabase.from('charges').delete()
+            .eq('client_id', row.client_id)
+            .eq('comments', `${row.origin_ref} Cobrado vía sfcom`)
+    }
+
+    const { error } = await supabase.from('reservations').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); await cargarTabla(); return }
+
+    const { data: reservasCli } = await supabase.from('reservations')
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+    await persistirCobrosCliente(supabase, row.client_id, reservasCli ?? [])
+    if (esWEB) {
+        const { data: todasRsAll } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref')
+        await persistirCobrosCliente(supabase, 'SFCOM', todasRsAll ?? [])
+    }
+
+    const { data: venue } = await supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
+    if (venue?.provider_id) {
+        const [{ data: rsFresh }, { data: dispFresh }] = await Promise.all([
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*')
+        ])
+        await persistirPagosProveedor(supabase, venue.provider_id, rsFresh ?? [], dispFresh ?? [])
+    }
+
+    await syncStockToSfcom(supabase, row.venue_id, row.service_id)
+    await cargarTabla()
+}
+
+async function _eliminarSolicitud(rowId) {
+    const opcion = await _modalOpciones('Eliminar solicitud',
+        '¿Eliminar esta solicitud? La acción es irreversible.',
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+    const { error } = await supabase.from('reservation_requests').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+    await cargarTabla()
+}
+
+async function _eliminarCobro(rowId, row) {
+    if (row.invoice_number) {
+        await _modalOpciones('⛔ Cobro facturado',
+            `Este cobro está vinculado a la factura <strong>${row.invoice_number}</strong>. No se puede eliminar directamente.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    if (row.comments?.includes('Cobrado vía sfcom')) {
+        await _modalOpciones('⛔ Cobro sfcom',
+            'Este cobro es un registro de sfcom. Cancela la reserva correspondiente para eliminarlo.',
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+
+    let desc = `Eliminar cobro de <strong>${fmt(row.amount)}</strong> de ${row.client_id}.`
+    if (row.collected) desc += '<br>⚠️ Este cobro ya fue recibido.'
+    const opcion = await _modalOpciones('Eliminar cobro', desc, [
+        { label: 'Sí, eliminar', value: 'ejecutar', clase: row.collected ? 'btn-danger' : 'btn-primary' },
+        { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+    ])
+    if (!opcion || opcion === 'cancelar') return
+
+    const { error } = await supabase.from('charges').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+
+    const { data: reservasCli } = await supabase.from('reservations')
+        .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+    await persistirCobrosCliente(supabase, row.client_id, reservasCli ?? [])
+    await cargarTabla()
+}
+
+async function _eliminarPago(rowId, row) {
+    let desc = `Eliminar pago de <strong>${fmt(row.amount)}</strong> a ${row.provider_id}.`
+    if (row.paid) desc += '<br>⚠️ Este pago ya fue realizado. Quedará sin registro.'
+    const opcion = await _modalOpciones('Eliminar pago', desc, [
+        { label: 'Sí, eliminar', value: 'ejecutar', clase: row.paid ? 'btn-danger' : 'btn-primary' },
+        { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+    ])
+    if (!opcion || opcion === 'cancelar') return
+
+    const { error } = await supabase.from('payments').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+
+    const [{ data: rsFresh }, { data: dispFresh }] = await Promise.all([
+        supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+        supabase.from('availability').select('*')
+    ])
+    await persistirPagosProveedor(supabase, row.provider_id, rsFresh ?? [], dispFresh ?? [])
+    await cargarTabla()
+}
+
+async function _eliminarCliente(rowId, row) {
+    const [{ data: reservas }, { data: cobros }] = await Promise.all([
+        supabase.from('reservations').select('id').eq('client_id', rowId),
+        supabase.from('charges').select('id').eq('client_id', rowId)
+    ])
+    if (reservas?.length || cobros?.length) {
+        const partes = []
+        if (reservas?.length) partes.push(`${reservas.length} reserva(s)`)
+        if (cobros?.length)   partes.push(`${cobros.length} cobro(s)`)
+        await _modalOpciones('⛔ No se puede eliminar',
+            `El cliente <strong>${rowId}</strong> tiene ${partes.join(' y ')}. Elimínalos antes.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    const opcion = await _modalOpciones('Eliminar cliente',
+        `¿Eliminar el cliente <strong>${rowId}</strong>?`,
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+    const { error } = await supabase.from('clients').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+    await cargarTabla()
+}
+
+async function _eliminarVenue(rowId, row) {
+    const { data: reservasActivas } = await supabase.from('reservations')
+        .select('id').eq('venue_id', rowId).neq('status', 'Cancelada')
+    if (reservasActivas?.length) {
+        await _modalOpciones('⛔ Tiene reservas activas',
+            `<strong>${rowId}</strong> tiene <strong>${reservasActivas.length} reserva(s) activa(s)</strong>. Cancélalas antes de eliminar la venue.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    const opcion = await _modalOpciones('Eliminar venue',
+        `¿Eliminar <strong>${rowId}</strong>?<br>Se eliminarán también sus entradas de disponibilidad y sfcom. Los pagos al proveedor se recalcularán.`,
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+
+    const providerId = row.provider_id
+    const { error } = await supabase.from('venues').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+
+    if (providerId) {
+        const [{ data: rsFresh }, { data: dispFresh }] = await Promise.all([
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*')
+        ])
+        await persistirPagosProveedor(supabase, providerId, rsFresh ?? [], dispFresh ?? [])
+    }
+    await cargarTabla()
+}
+
+async function _eliminarProveedor(rowId, row) {
+    const { data: venues } = await supabase.from('venues').select('id').eq('provider_id', rowId)
+    if (venues?.length) {
+        await _modalOpciones('⛔ Tiene venues',
+            `<strong>${rowId}</strong> tiene <strong>${venues.length} venue(s)</strong>. Elimínalas primero.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    const { data: payments } = await supabase.from('payments').select('id').eq('provider_id', rowId)
+    if (payments?.length) {
+        await _modalOpciones('⛔ Tiene pagos',
+            `<strong>${rowId}</strong> tiene <strong>${payments.length} pago(s)</strong>. Elimínalos primero.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    const opcion = await _modalOpciones('Eliminar proveedor',
+        `¿Eliminar el proveedor <strong>${rowId}</strong>?`,
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+    const { error } = await supabase.from('providers').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+    await cargarTabla()
+}
+
+async function _eliminarAvailability(rowId, row) {
+    const { data: reservasActivas } = await supabase.from('reservations')
+        .select('id').eq('venue_id', row.venue_id).eq('service_id', row.service_id).neq('status', 'Cancelada')
+    if (reservasActivas?.length) {
+        await _modalOpciones('⛔ Tiene reservas activas',
+            `Esta disponibilidad tiene <strong>${reservasActivas.length} reserva(s) activa(s)</strong>. Cancélalas antes.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    const serviceLabel = row.services?.service_code ?? row.service_id
+    const opcion = await _modalOpciones('Eliminar disponibilidad',
+        `¿Eliminar la disponibilidad de <strong>${row.venue_id}</strong> para <strong>${serviceLabel}</strong>?<br>
+        Se eliminará también su entrada en sfcom si existe. Los pagos al proveedor se recalcularán.`,
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+
+    const { data: venue } = await supabase.from('venues').select('provider_id').eq('id', row.venue_id).single()
+    const { error } = await supabase.from('availability').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+
+    if (venue?.provider_id) {
+        const [{ data: rsFresh }, { data: dispFresh }] = await Promise.all([
+            supabase.from('reservations').select('id, venue_id, service_id, status, slots'),
+            supabase.from('availability').select('*')
+        ])
+        await persistirPagosProveedor(supabase, venue.provider_id, rsFresh ?? [], dispFresh ?? [])
+    }
+    await cargarTabla()
+}
+
+async function _eliminarServicio(rowId, row) {
+    const { data: availRows } = await supabase.from('availability').select('id').eq('service_id', rowId)
+    if (availRows?.length) {
+        await _modalOpciones('⛔ Tiene disponibilidad',
+            `El servicio <strong>${row.service_code}</strong> tiene <strong>${availRows.length} entrada(s) de disponibilidad</strong>. Elimínalas antes.`,
+            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+    const opcion = await _modalOpciones('Eliminar servicio',
+        `¿Eliminar el servicio <strong>${row.service_code}</strong> (temporada ${row.season})?`,
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+    const { error } = await supabase.from('services').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
+    await cargarTabla()
+}
+
+async function _eliminarSfcomListing(rowId, row) {
+    const nombre = row.sfcom_service_name ?? `${row._venue_id} / ${row._service_code}`
+    const opcion = await _modalOpciones('Eliminar listado sfcom',
+        `¿Eliminar el listado de <strong>${nombre}</strong>?<br>
+        ⚠️ El stock en sfcom no se actualizará. Si el producto sigue publicado, contacta con Hilario.`,
+        [
+            { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+            { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+        ])
+    if (!opcion || opcion === 'cancelar') return
+    const { error } = await supabase.from('sfcom_listings').delete().eq('id', rowId)
+    if (error) { alert(`Error al eliminar: ${error.message}`); return }
     await cargarTabla()
 }

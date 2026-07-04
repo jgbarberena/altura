@@ -402,6 +402,8 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
 
     const { cuantiaCorrecta: pagoFinal, hitoFinal } = calcularSaldoPago(venueIds, todasReservas, todaDisponibilidad, payments ?? [])
 
+    if (!hitoFinal && pagoFinal < 0.01) return
+
     if (!hitoFinal) {
         const { error } = await supabase.from('payments').insert({
             provider_id: proveedorId, amount: pagoFinal,
