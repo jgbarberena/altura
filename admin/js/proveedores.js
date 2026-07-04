@@ -100,6 +100,7 @@ inputServicioDescription.addEventListener('change', guardarDescripcionServicio)
 inputServicioImageUrl.addEventListener('change',    guardarDescripcionServicio)
 inputServicioImageUrl.addEventListener('input',     _syncServicioImgPreview)
 inputServicioHora.addEventListener('change',        guardarDescripcionServicio)
+inputServicioDia.addEventListener('change',         guardarDescripcionServicio)
 
 btnRenombrarProveedor.addEventListener('click', () => {
     const idViejo = proveedorActual.id
@@ -951,11 +952,12 @@ async function guardarDescripcionServicio() {
     const desc     = inputServicioDescription.value.trim() || null
     const imgUrl   = inputServicioImageUrl.value.trim()    || null
     const hora     = inputServicioHora.value               || null
+    const dia      = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
     const { error } = await supabase.from('services')
-        .update({ name, description: desc, image_url: imgUrl, start_time: hora })
+        .update({ name, description: desc, image_url: imgUrl, start_time: hora, day: dia })
         .eq('id', svc.id)
     if (error) { console.error('Error al guardar descripción del servicio:', error.message); return }
-    Object.assign(svc, { name, description: desc, image_url: imgUrl, start_time: hora })
+    Object.assign(svc, { name, description: desc, image_url: imgUrl, start_time: hora, day: dia })
     todosServicios = todosServicios.map(s => s.id === svc.id ? svc : s)
 }
 
@@ -1523,16 +1525,17 @@ btnGuardarServicio.addEventListener('click', () => confirmarSiTemporadaNoActiva(
     const descSvc   = inputServicioDescription.value.trim() || null
     const imgUrlSvc = inputServicioImageUrl.value.trim()    || null
     const horaSvc   = inputServicioHora.value || null
+    const diaSvc    = inputServicioDia.value ? parseInt(inputServicioDia.value) : null
 
     // Obtener el integer id del servicio (ya existe o acaba de crearse)
     const svcIntId = todosServicios.find(s => s.service_code.toUpperCase() === servicioId)?.id
 
     // Actualizar campos del servicio en la tabla services
     await supabase.from('services')
-        .update({ name: nameSvc, description: descSvc, image_url: imgUrlSvc, start_time: horaSvc })
+        .update({ name: nameSvc, description: descSvc, image_url: imgUrlSvc, start_time: horaSvc, day: diaSvc })
         .eq('id', svcIntId)
     todosServicios = todosServicios.map(s =>
-        s.id === svcIntId ? { ...s, name: nameSvc, description: descSvc, image_url: imgUrlSvc, start_time: horaSvc } : s
+        s.id === svcIntId ? { ...s, name: nameSvc, description: descSvc, image_url: imgUrlSvc, start_time: horaSvc, day: diaSvc } : s
     )
 
     // Modal consultivo antes de escribir (para edición: muestra stock actual; para creación: silencioso)

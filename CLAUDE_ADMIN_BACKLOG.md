@@ -844,3 +844,15 @@ El bug ya no existía. Los campos `inputServicioNombre` e `inputServicioDescript
 ### §7.9 (alto) — Asistente múltiple skip silencioso de service_id duplicado — RESUELTO (jun 2026)
 
 En `proveedores.js`, cuando el asistente múltiple detectaba que un servicio ya existía para el venue (`yaExiste`), hacía `continue` sin aviso. Paula no recibía ninguna señal de que el servicio se había omitido. Fix: cambiado a `alert(...)` antes del `continue` para informar explícitamente del servicio omitido.
+
+---
+
+### El modal de bienvenida no se cierra al pulsar el botón de enviar — RESUELTO (jul 2026)
+
+En abrirModalBienvenida (formulario.js), el callback onUsado de mostrarOpcionesEnvio actualizaba welcome_sent_at, refrescaba el botón y mostraba el toast, pero nunca llamaba a overlay.close(). Fix: añadido overlay.close() al final de onUsado.
+
+---
+
+### El campo de ID de cliente no se refresca al cargar desde la cola de bienvenidas — RESUELTO (jul 2026)
+
+El boton "Cargar" de la cola de bienvenidas llamaba a cargarCliente(c) sin asignar inputId.value = c.id antes. Todas las demas rutas de llamada a cargarCliente si lo hacian. Fix: anadir inputId.value = c.id en el click handler de cola-cargar (formulario.js).

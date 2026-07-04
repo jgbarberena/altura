@@ -1109,7 +1109,7 @@ function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
     mostrarOpcionesEnvio({
         email:     clienteActual.email || null,
         telefono:  clienteActual.phone || null,
-        asunto:    'Tu experiencia en San Fermín',
+        asunto:    'Tu bienvenida a San Fermín — toda la información de acceso',
         getTexto:  () => panel.querySelector('#textoBienvenida').value,
         container: panel.querySelector('#bienvenida-botones-envio'),
         onUsado:   async () => {
@@ -1124,6 +1124,7 @@ function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
             actualizarBotonBienvenida()
             mostrarToast('✅ Bienvenida enviada')
             _onBienvenidaEnviada()
+            overlay.close()
         }
     })
 }
@@ -3091,6 +3092,7 @@ function _renderTablaColaBienvenidas() {
         btn.addEventListener('click', () => {
             const c = todosClientes.find(c => c.id === btn.dataset.id)
             if (c) {
+                inputId.value = c.id
                 cargarCliente(c)
                 _renderTablaColaBienvenidas()
                 document.getElementById('bloque-cliente')?.scrollIntoView({ behavior: 'smooth' })

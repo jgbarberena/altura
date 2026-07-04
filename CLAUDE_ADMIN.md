@@ -852,9 +852,9 @@ La comparación usa `.includes()` en ambas direcciones. Fix parcial aplicado (ju
 
 ---
 
-**El modal de bienvenida no se cierra al pulsar el botón de enviar.**
+**`services.day` para POBRE_DE_MI tiene valor 15 en la BD (debe ser 14).**
 
-En `abrirModalBienvenida` (`formulario.js`), el callback `onUsado` de `mostrarOpcionesEnvio` (línea ~1115) actualiza `welcome_sent_at`, refresca el botón y muestra el toast, pero nunca llama a `overlay.close()`. El modal queda abierto tras el envío y Paula tiene que cerrarlo a mano con la ✕. Fix: llamar a `overlay.close()` al final de `onUsado`.
+El select `selectServicioDia` en `proveedores.html` tiene opciones 6–14. Al cargar el servicio, el código hace `select.value = '15'`, que no coincide con ninguna opción → el select muestra "— Sin día —" (vacío). Entretanto, el mensaje de bienvenida lee `srv.day` directo del array en memoria → muestra "15 de julio". Fix de datos: `UPDATE services SET day = 14 WHERE service_code = 'POBRE_DE_MI';` en Supabase SQL Editor. Fix de código (aplicado jul 2026): `guardarDescripcionServicio` ahora incluye `day` en el `.update()` y `inputServicioDia` está conectado al auto-save.
 
 ---
 
@@ -864,9 +864,6 @@ En `mostrarOpcionesEnvio` (`utils.js:633`) el botón de WhatsApp abre `https://w
 
 ---
 
-**El campo de ID de cliente no se refresca visualmente al cargar un cliente distinto; solo se corrige recargando la página.**
-
-Nombre, teléfono y demás campos se cargan y guardan correctamente en el cliente correcto — el problema es puramente visual, el input de ID sigue mostrando el ID del cliente anterior. En el código revisado (`cargarCliente`, `mostrarSugerenciasCliente` y las precargas por parámetro de URL en `formulario.js`) el orden de asignación de `inputId.value` antes de `cargarCliente(...)` es correcto, así que la causa no está localizada todavía. Pendiente reproducir el caso exacto (¿navegación entre fichas sin recarga completa? ¿autocompletado del navegador?) antes de intentar un fix.
 
 ---
 
