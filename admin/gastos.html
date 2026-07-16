@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gastos — Vive San Fermín</title>
+    <link rel="icon" href="../img/logos/VIVESF_FAVICON.ico">
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <a href="../index.html" class="topbar-title topbar-home">Vive San Fermín</a>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="solicitudes.html">📬 Solicitudes</a>
+                <a href="formulario.html">📝 Gestión de Reservas</a>
+                <a href="proveedores.html">🏠 Gestión de Proveedores</a>
+                <a href="gastos.html" class="active">💰 Gastos</a>
+                <a href="tablas.html">📊 Tablas</a>
+                <a href="sfcom.html">🛒 Canal sfcom</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+
+            <div class="bloque">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <h2>💰 Gastos</h2>
+                    <button class="btn btn-primary" id="btnNuevoGasto">+ Nuevo gasto</button>
+                </div>
+                <p style="font-size:12px;color:var(--subtle);margin:0 0 16px">
+                    Archiva recibos y facturas de gastos generales (dominio, material, parking…).
+                    El apunte formal para Hacienda se hace desde el panel Fiscal.
+                </p>
+
+                <div id="form-nuevo-gasto" class="form-subseccion" style="display:none">
+                    <div class="form-grid">
+                        <div class="form-field" style="grid-column:1/-1">
+                            <label>Concepto <span style="color:var(--accent)">*</span></label>
+                            <input type="text" id="gastoConcepto" placeholder="Ej: Dominio web, Parking, Camisetas">
+                        </div>
+                        <div class="form-field" style="grid-column:1/-1">
+                            <label>Notas</label>
+                            <input type="text" id="gastoNotas" placeholder="Opcional">
+                        </div>
+                        <div class="form-field" style="grid-column:1/-1">
+                            <label>Documento (foto o PDF)</label>
+                            <label class="btn btn-secondary" style="cursor:pointer;display:inline-block;font-size:13px">
+                                📎 Seleccionar archivo
+                                <input type="file" id="gastoArchivo" accept="application/pdf,image/*" style="display:none">
+                            </label>
+                            <span id="gastoArchivoNombre" style="font-size:12px;color:var(--subtle);margin-left:8px"></span>
+                        </div>
+                    </div>
+                    <div class="btn-row">
+                        <button class="btn btn-primary" id="btnGuardarGasto">Guardar</button>
+                        <button class="btn btn-secondary" id="btnCancelarGasto">Cancelar</button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table id="tablaGastos">
+                        <thead><tr>
+                            <th>Concepto</th>
+                            <th>Fecha</th>
+                            <th>Documento</th>
+                            <th>Notas</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr></thead>
+                        <tbody id="tbody-gastos"></tbody>
+                    </table>
+                </div>
+                <div id="gastos-vacio" style="display:none;color:var(--subtle);font-size:13px;text-align:center;padding:24px 0">
+                    Sin gastos registrados para esta temporada.
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module" src="js/gastos.js"></script>
+</body>
+</html>
