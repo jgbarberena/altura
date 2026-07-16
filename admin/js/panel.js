@@ -139,10 +139,11 @@ function calcularAlertas() {
         document.getElementById('txt-solicitudes').textContent = `Solicitudes web — ${partes.join(', ')}`
     }
 
-    // Bienvenidas pendientes — clientes con al menos una confirmada sin welcome_sent_at
+    // Bienvenidas pendientes — clientes con al menos una confirmada sin welcome_sent_at y sin aviso descartado
+    const _bienvenidaSkip = _getBienvenidaSkip()
     const clientesBienvenidaPendiente = [...new Set(
         reservas
-            .filter(r => r.status === 'Confirmada' && !r.welcome_sent_at)
+            .filter(r => r.status === 'Confirmada' && !r.welcome_sent_at && !_bienvenidaSkip.has(r.client_id))
             .map(r => r.client_id)
     )]
     const alertaBienvenidas = document.getElementById('alerta-bienvenidas')
@@ -161,6 +162,17 @@ function calcularAlertas() {
         (haySobrereserva || _pagosV.length > 0 || _cobrosV.length > 0
         || solicitudesSfcom.length > 0 || hayWeb || leadsCancelados.length > 0
         || clientesBienvenidaPendiente.length > 0) ? 'block' : 'none'
+}
+
+// ===== BIENVENIDAS: SKIP (localStorage) =====
+
+function _getBienvenidaSkip() {
+    try { return new Set(JSON.parse(localStorage.getItem('bienvenida_skip') ?? '[]')) } catch { return new Set() }
+}
+function _addBienvenidaSkip(ids) {
+    const s = _getBienvenidaSkip()
+    ids.forEach(id => s.add(id))
+    localStorage.setItem('bienvenida_skip', JSON.stringify([...s]))
 }
 
 // ===== MODAL DE SELECCIÓN DE BIENVENIDAS =====
@@ -238,12 +250,21 @@ function _abrirModalSeleccionBienvenidas(idsPendientes) {
                 </table>
             </div>
             <div class="modal-actions" style="margin-top:14px">
-                <button id="mb-cancelar" class="btn btn-secondary">Cancelar</button>
-                <button id="mb-iniciar"  class="btn btn-primary">Iniciar asistente (0)</button>
+                <button id="mb-cancelar"  class="btn btn-secondary">Cancelar</button>
+                <button id="mb-descartar" class="btn btn-secondary" title="Marca los seleccionados como 'no enviar' — dejarán de aparecer en el aviso">🚫 Descartar aviso</button>
+                <button id="mb-iniciar"   class="btn btn-primary">Iniciar asistente (0)</button>
             </div>`
 
         panel.querySelector('#mb-cerrar').addEventListener('click',   () => overlay.close())
         panel.querySelector('#mb-cancelar').addEventListener('click', () => overlay.close())
+        panel.querySelector('#mb-descartar').addEventListener('click', () => {
+            const ids = [...seleccionados]
+            if (!ids.length) return
+            if (!confirm(`¿Descartar aviso de bienvenida para ${ids.length} cliente${ids.length !== 1 ? 's' : ''}? No aparecerán más en el aviso (puedes revertirlo borrando 'bienvenida_skip' de localStorage).`)) return
+            _addBienvenidaSkip(ids)
+            overlay.close()
+            calcularAlertas()
+        })
 
         panel.querySelector('#mb-todos').addEventListener('click', () => {
             datos.forEach(d => seleccionados.add(d.id))
@@ -534,9 +555,7 @@ function filaEvento(f, destacada) {
 }
 
 function filaDetalleProveedor(d) {
-    const venueLink = d.provId
-        ? `<a href="proveedores.html?proveedor=${encodeURIComponent(d.provId)}&venue=${encodeURIComponent(d.id)}" style="color:inherit;text-decoration:underline">${d.id}</a>`
-        : d.id
+    const venueLink = `<a href="proveedores.html?venue=${encodeURIComponent(d.id)}" style="color:inherit;text-decoration:underline">${d.id}</a>`
     return `<tr style="background:#fafafa">
         <td style="padding-left:24px;color:var(--subtle)">↳ ${d.dot ? `<span style="color:${d.dot};font-size:10px;margin-right:4px">●</span>` : ''}${venueLink}</td>
         <td>—</td>
@@ -604,9 +623,8 @@ function calcularEventos() {
                 : d.billing_model === 'capacity'
                     ? (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
                     : (confP + pendP) * parseFloat(d.price_per_slot ?? 0)
-            const dotP   = _margenIndicador(ingresoP, costeP)
-            const provId = venues?.find(v => v.id === d.venue_id)?.provider_id ?? null
-            return { id: d.venue_id, provId, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP, ingreso: ingresoP, coste: costeP, dot: dotP }
+            const dotP = _margenIndicador(ingresoP, costeP)
+            return { id: d.venue_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP, ingreso: ingresoP, coste: costeP, dot: dotP }
         })
 
         const clientesEvento     = [...new Set(reservasS.map(r => r.client_id))].join(', ')

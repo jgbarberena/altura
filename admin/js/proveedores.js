@@ -3217,15 +3217,25 @@ document.getElementById('btnExportServicios')?.addEventListener('click', () => {
 })
 
 // Precarga de proveedor (y opcionalmente venue) desde parámetros URL
-const _urlParams       = new URLSearchParams(location.search)
-const _proveedorParam  = _urlParams.get('proveedor')
-const _venueParam      = _urlParams.get('venue')
+const _urlParams      = new URLSearchParams(location.search)
+const _proveedorParam = _urlParams.get('proveedor')
+const _venueParam     = _urlParams.get('venue')?.toUpperCase() ?? null
 if (_proveedorParam) {
     const _proveedorPreload = todosProveedores.find(p => p.id === _proveedorParam.toUpperCase())
     if (_proveedorPreload) {
         inputProveedorId.value = _proveedorPreload.id
         cargarProveedor(_proveedorPreload)
-        if (_venueParam) selectVenueTab(_venueParam.toUpperCase())
+        if (_venueParam) selectVenueTab(_venueParam)
+    }
+} else if (_venueParam) {
+    const _venueObj = todosVenues.find(v => v.id === _venueParam)
+    if (_venueObj) {
+        const _provObj = todosProveedores.find(p => p.id === _venueObj.provider_id)
+        if (_provObj) {
+            inputProveedorId.value = _provObj.id
+            cargarProveedor(_provObj)
+            selectVenueTab(_venueParam)
+        }
     }
 }
 
