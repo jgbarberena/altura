@@ -590,16 +590,18 @@ async function cargarReservasCliente(clienteId) {
     if (_servicioIds.length === 0) return
     const { data: reservasRaw } = await supabase
         .from('reservations')
-        .select('*, services(description, name, day)')
+        .select('*, services(description, name, day), venues(display_name)')
         .eq('client_id', clienteId)
         .in('service_id', _servicioIds)
         .order('id')
     const reservas = (reservasRaw ?? []).map(r => ({
         ...r,
-        service_description: r.services?.description ?? null,
-        service_name:        r.services?.name        ?? null,
-        service_day:         r.services?.day         ?? null,
-        services: undefined
+        service_description:  r.services?.description  ?? null,
+        service_name:         r.services?.name         ?? null,
+        service_day:          r.services?.day          ?? null,
+        venue_display_name:   r.venues?.display_name   ?? null,
+        services: undefined,
+        venues:   undefined
     }))
 
     // Sincronizar todasReservas con datos frescos del cliente cargado

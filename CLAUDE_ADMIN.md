@@ -974,6 +974,8 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 
 **Uso mixto de `overlay.close()` y `overlay.remove()` para cerrar modales (`modal.js`).** `crearModal` registra `dialog.addEventListener('close', () => dialog.remove())`. Varios callers usan directamente `overlay.remove()`, sin disparar el evento `close`. Fix: unificar todos los callers para usar siempre `overlay.close()`.
 
+**Nombres de servicios con fecha embebida.** Algunos servicios incluyen la fecha en su `name` (ej. "Encierro 11 de Julio"), lo que produce redundancias si se concatena la fecha desde la columna `day`. Actualmente el concepto de factura usa `service_name — venue_display_name`. Pendiente: auditar todos los nombres de servicio; valorar si se elimina la fecha del `name` y se construye siempre desde `day` en facturas, propuestas, bienvenidas y otras comunicaciones con cliente.
+
 ---
 ## 8. Trampas técnicas conocidas
 

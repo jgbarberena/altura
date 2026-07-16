@@ -273,7 +273,8 @@ window.actualizarNivelDetalle = function() {
 }
 
 function _serviceLabel(r) {
-    if (r.service_name) return r.service_day ? `${r.service_name} — ${r.service_day} de julio` : r.service_name
+    const venue = r.venue_display_name || r.venue_id || ''
+    if (r.service_name) return venue ? `${r.service_name} — ${venue}` : r.service_name
     return r.service_description ?? String(r.service_id)
 }
 
