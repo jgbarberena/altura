@@ -870,3 +870,27 @@ El select selectServicioDia en proveedores.html tiene opciones 6-14. Con day=15 
 **Completado:** edición inline en las 10 tablas con cascade para los campos financieros (status reserva, slots, precios, cobros, pagos); eliminaciones con bloqueo-e-informa en las 10 tablas; columna Temp. en reservations/charges/payments; campo Notas internas (comments) en vista expandida de solicitudes con autosave; tab 📁 Archivos en tablas.html con gestión completa de Storage (listar, subir, descargar, eliminar, detectar huérfanos, vincular facturas a cobros con picker cascada cliente↔cobro).
 
 **Descartado:** botón eliminar cliente en formulario.js (ya disponible en tablas.js, suficiente).
+
+---
+
+### apiFetchStockAll silencioso — ✅ RESUELTO jul 2026
+
+`apiFetchStockAll` en `sfcom.js` devolvía `{}` si la respuesta del servidor PHP no traía el campo `.stock`, haciendo que todos los pares aparecieran como `fallos` sin mostrar el error real. Fix: la función ahora lanza `Error` con el cuerpo de la respuesta cuando `.stock` está ausente. Los callers ya tenían `catch` y propagan el error correctamente.
+
+---
+
+### idsMismatch en verificarSfcom — ✅ RESUELTO jul 2026
+
+`idsMismatch` era código muerto: `varNombreMap` siempre quedaba vacío porque `sf-api-paula.php` no expone endpoints de nombres de variaciones, por lo que el bloque `if (varNombreMap.size > 0)` nunca se ejecutaba. Eliminados en `sfcom.js`: `_varPorProducto`, `varNombreMap`, `variacionNombre`, bloque de detección y campo `idsMismatch` del objeto resultado. Eliminados en `verificacion.js`: función `_mostrarModalPreCorreccion`, variable `tieneIdsMismatch`, sección del modal y flujo en `ejecutarVerificacion`. Net: ~90 líneas borradas.
+
+---
+
+### Asistente incluye líneas del borrador descartadas — ✅ RESUELTO jul 2026
+
+Claude veía en el contexto líneas del borrador con `estado: 'descartada'` sin que el prompt explicara claramente que podían aparecer en el array. Fix: añadido párrafo en `SYSTEM_PROMPT_ASISTENTE` (`asistente-config.js`) indicando que el array `proposal_draft` puede contener líneas de cualquier estado, incluidas las descartadas, y cómo usarlas (contexto histórico, no volver a proponerlas).
+
+---
+
+### formulario.js no invalidaba propuesta al editar reserva — ✅ RESUELTO jul 2026
+
+`tablas.js` ya llamaba a `_limpiarPropuestaReserva` al cambiar `price_per_slot` o `slots` desde la tabla. `formulario.js` no lo hacía: al editar esos campos desde el bloque de reservas normal, la propuesta PDF quedaba con `proposal_number`/`proposal_path` intactos aunque el precio o plazas hubieran cambiado. Fix: añadida función `_limpiarPropuestaReserva` en `formulario.js` (lógica idéntica a la de `tablas.js`) y llamada condicional tras el UPDATE de edición, solo cuando `slots` o `price_per_slot` cambian respecto al valor original.

@@ -360,10 +360,9 @@ Módulo ES6. Importa `syncStockToSfcom`, `verificarSfcom`, `verificarConfirmarSf
 - `_cargarDatos(supabase)` — carga en paralelo: reservations, availability_with_sfcom, clients, venues, services, providers, reservation_requests (nueva), charges (*), payments (*).
 - `_verificarBD(dados)` → `{ errores, avisos, advertencias }`. Errores: FK rotas en reservas/cobros/pagos, slots≤0, sobrereserva, múltiples hitos finales por cliente, variation_id duplicado en sfcom. Advertencias (solo modoManual): inconsistencias collected/date, paid/date, invoiced/invoice_number. Avisos (solo modoManual): solicitudes pendientes.
 - `_computarFinanciero(dados)` → `{ problemasClientes, problemasProveedores, advertencias }`. Compara charges vs reservas por cliente (incluye SFCOM por separado: cobros SFCOM vs total reservas WEB). Compara payments vs coste teórico por proveedor (según billing_model). Advertencias (solo modoManual): cobros/pagos a cero.
-- `_mostrarResultado` — decide toast vs modal. En auto: abre modal solo si hay errores BD, discrepancias sfcom no explicadas, idsMismatch o problemas financieros. En manual: siempre abre modal con todo.
+- `_mostrarResultado` — decide toast vs modal. En auto: abre modal solo si hay errores BD, discrepancias sfcom no explicadas o problemas financieros. En manual: siempre abre modal con todo.
 - `_mostrarModal` — modal unificado con secciones: BD errores, sfcom discrepancias (reales y pendientes), sfcom fallos, financiero, BD advertencias, BD avisos, financiero advertencias.
 - `_corregirFinanciero` — ejecuta corrección automática de cobros/pagos usando `persistirCobros` y `persistirPagos` pasados por el llamador.
-- `_mostrarModalPreCorreccion` — flujo de corrección de idsMismatch (dead en la práctica — API sfcom no expone nombres de variaciones).
 
 ### formulario.js (~2600 líneas)
 Módulo ES6. Importa de `supabase.js`, `auth.js`, `utils.js`, `factura.js`, `propuesta.js`, `sfcom.js`, `verificacion.js`, `modal.js`, `asistente.js`.
@@ -570,7 +569,7 @@ nuevoStock = Math.max(0, Math.min(
 
 **`verificarSfcom({ reservas, availability, solicitudes })`**
 
-Recibe datos pre-cargados (no hace queries Supabase propias). Devuelve `{ verificado, discrepancias[], idsMismatch[], fallos[], avisos[], error }`. Llamado desde `verificacion.js` como parte de `ejecutarVerificacion`.
+Recibe datos pre-cargados (no hace queries Supabase propias). Devuelve `{ verificado, discrepancias[], fallos[], avisos[], error }`. Llamado desde `verificacion.js` como parte de `ejecutarVerificacion`.
 
 Comprobaciones que realiza:
 1. Integridad FK: reservas con venue/service/client que no existen en sus tablas maestras.
@@ -579,8 +578,6 @@ Comprobaciones que realiza:
 4. Servicios `confirmed` sin `sfcom_product_id` (aviso).
 5. Discrepancias de stock: compara stock real en sfcom (`stock-all`) con stock esperado según fórmula. Genera `sfcom.discrepancias[]`.
 6. IDs de variación duplicados: detecta si dos servicios del mismo producto comparten `sfcom_variation_id` en `sfcom_listings`. Resultado va a `errores[]`.
-
-`sfcom.idsMismatch[]` **siempre queda vacío** — sf-api-paula.php no expone `GET products/{id}/variations`, así que no es posible verificar el nombre de variación en WooCommerce. El parámetro `checkVariationNames` que aceptan los callers es ignorado.
 
 `resultado.ok` es `true` solo si `errores[]` está vacío (las discrepancias sfcom no bloquean `ok`; tienen su propia sección en el modal).
 
@@ -890,18 +887,6 @@ Se decidió no hacerlo hasta auditar el código hardcoded que depende de `servic
 
 ### 7.5 Mejoras de código
 
-**Contexto del asistente incluye líneas del borrador ya resueltas.** ✅ RESUELTO jul 2026
-
-`SYSTEM_PROMPT_ASISTENTE` actualizado en `asistente-config.js`: se añadió párrafo explícito indicando que el array `proposal_draft` puede incluir líneas con `estado: 'descartada'` y cómo usarlas.
-
----
-
-**`formulario.js` no invalida propuestas al editar una reserva.** ✅ RESUELTO jul 2026
-
-Añadida función `_limpiarPropuestaReserva` en `formulario.js` (análoga a la de `tablas.js`) y llamada condicional tras el UPDATE de edición, cuando `slots` o `price_per_slot` cambian respecto al valor original.
-
----
-
 **`formulario.js` demasiado grande (~2600 líneas).**
 
 Tres candidatos para extracción si el tamaño se convierte en problema práctico:
@@ -948,11 +933,6 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 #### Alto — comportamiento incorrecto en casuísticas reales
 
 **Sistema de inferencia sfcom — robusto en práctica, mejorable en teoría.** El punto débil (matching por día solo funciona para ENCIERRO cuando hay múltiples filas con el mismo `sfcom_service_name`) no afecta en práctica: los otros servicios tienen un único venue activo. El fallo real aparecería si dos venues vendieran el mismo servicio no-ENCIERRO. Pendiente (no urgente): si ocurre, generalizar la desambiguación para usar `<TIPO>_<day>` en lugar de hardcodear `ENCIERRO_`.
-
-
-**`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada.** ✅ RESUELTO jul 2026 — Ahora lanza `Error` con el cuerpo de la respuesta. Los callers reciben el error real en sus `catch`.
-
-**`idsMismatch` en verificarSfcom es código muerto en la práctica.** ✅ RESUELTO jul 2026 — Eliminados: `_varPorProducto`, `varNombreMap`, `variacionNombre`, bloque `idsMismatch` en `sfcom.js`; función `_mostrarModalPreCorreccion`, variable `tieneIdsMismatch`, sección modal y flujo en `verificacion.js`.
 
 ---
 
