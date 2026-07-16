@@ -656,12 +656,17 @@ function _mostrarModal(resultado, supabase, onReverify, { modoManual, persistirC
             <button id="btn-actualizar-stock-sfcom" class="btn btn-danger" style="white-space:nowrap">
                 🔄 Sincronizar todos
             </button>` : ''}
+            ${sfcom ? `
+            <button id="btn-deshabilitar-sfcom" class="btn btn-secondary" style="white-space:nowrap">
+                ⏸️ Deshabilitar sfcom
+            </button>` : ''}
             <button id="btn-verificacion-cerrar" class="${hayProblema ? 'btn btn-secondary' : 'btn btn-primary'}">
                 ${hayProblema ? 'Cerrar' : 'OK'}
             </button>
         </div>`
 
     panel.querySelector('#btn-verificacion-cerrar').addEventListener('click', () => overlay.remove())
+    panel.querySelector('#btn-deshabilitar-sfcom')?.addEventListener('click', () => setSfcomDisabled(true))
 
     // Botón corrección financiera
     if (tieneProblemasF && (persistirCobros || persistirPagos)) {
@@ -733,8 +738,7 @@ async function _mostrarResultado(resultado, supabase, onReverify, opts) {
     if (hayPendientes) {
         mostrarToast(`ℹ️ ${nPendientes} pedido(s) sfcom pendiente(s) de incorporar`, '#1d4ed8')
     } else if ((sfcom?.fallos?.length ?? 0) > 0 || (sfcom && !sfcom.verificado)) {
-        mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e',
-            { label: 'Deshabilitar sfcom', onClick: () => setSfcomDisabled(true) })
+        mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e')
     } else {
         mostrarToast('✅ Coherencia verificada y correcta')
     }
