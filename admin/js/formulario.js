@@ -103,38 +103,44 @@ servicios.forEach(s => {
 })
 
 // ===== AUTOCOMPLETE SERVICIO =====
-const _svcById   = new Map((servicios ?? []).map(s => [s.id, s]))
-const _inputSvc  = document.getElementById('selectServicioInput')
-const _listSvc   = document.getElementById('autocomplete-servicio-list')
+const _svcById  = new Map((servicios ?? []).map(s => [s.id, s]))
+const _inputSvc = document.getElementById('selectServicioInput')
+const _listSvc  = document.getElementById('autocomplete-servicio-list')
+
+// Si el HTML no tiene los elementos del autocomplete (p.ej. caché antigua), muestra el select nativo
+if (!_inputSvc || !_listSvc) { selectServicio.style.display = '' }
 
 function _syncServicioInput() {
+    if (!_inputSvc) return
     const val = parseInt(selectServicio.value) || null
     _inputSvc.value = val ? (_svcById.get(val)?.service_code ?? '') : ''
 }
 
-function _showSvcList(filter) {
-    const items = servicios.filter(s => !filter || s.service_code.toLowerCase().includes(filter.toLowerCase()))
-    _listSvc.innerHTML = items.map(s => `<div data-id="${s.id}">${s.service_code}</div>`).join('')
-    _listSvc.style.display = items.length ? 'block' : 'none'
-}
+if (_inputSvc && _listSvc) {
+    function _showSvcList(filter) {
+        const items = servicios.filter(s => !filter || s.service_code.toLowerCase().includes(filter.toLowerCase()))
+        _listSvc.innerHTML = items.map(s => `<div data-id="${s.id}">${s.service_code}</div>`).join('')
+        _listSvc.style.display = items.length ? 'block' : 'none'
+    }
 
-_inputSvc.addEventListener('focus', () => _showSvcList(_inputSvc.value))
-_inputSvc.addEventListener('input', () => {
-    _showSvcList(_inputSvc.value)
-    if (!_inputSvc.value) { selectServicio.value = ''; selectServicio.dispatchEvent(new Event('change')) }
-})
-_listSvc.addEventListener('click', e => {
-    const div = e.target.closest('[data-id]')
-    if (!div) return
-    selectServicio.value = div.dataset.id
-    _listSvc.style.display = 'none'
-    _inputSvc.value = div.textContent.trim()
-    selectServicio.dispatchEvent(new Event('change'))
-})
-document.addEventListener('click', e => {
-    if (!e.target.closest('#selectServicioInput') && !e.target.closest('#autocomplete-servicio-list'))
+    _inputSvc.addEventListener('focus', () => _showSvcList(_inputSvc.value))
+    _inputSvc.addEventListener('input', () => {
+        _showSvcList(_inputSvc.value)
+        if (!_inputSvc.value) { selectServicio.value = ''; selectServicio.dispatchEvent(new Event('change')) }
+    })
+    _listSvc.addEventListener('click', e => {
+        const div = e.target.closest('[data-id]')
+        if (!div) return
+        selectServicio.value = div.dataset.id
         _listSvc.style.display = 'none'
-})
+        _inputSvc.value = div.textContent.trim()
+        selectServicio.dispatchEvent(new Event('change'))
+    })
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#selectServicioInput') && !e.target.closest('#autocomplete-servicio-list'))
+            _listSvc.style.display = 'none'
+    })
+}
 
 inputId.addEventListener('keydown', e => {
     if (e.key === ' ') {
