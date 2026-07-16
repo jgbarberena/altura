@@ -711,7 +711,6 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
 
             resultado.discrepancias.push({
                 servicio:           avail.sfcom_service_name,
-                variacionNombre,
                 venueId:            avail.venue_id,
                 serviceId:          avail.service_id,
                 sfcom_slots_listed: avail.sfcom_slots_listed,
