@@ -629,17 +629,17 @@ function _mostrarModal(resultado, supabase, onReverify, { modoManual, persistirC
     }
 
     // ── Título y botones ──────────────────────────────────────────────────────
-    const colorTitulo = (tieneErroresBD || tieneIdsMismatch || tieneProblemasF) ? '#991b1b'
+    const colorTitulo = (tieneErroresBD || tieneProblemasF) ? '#991b1b'
         : tieneDiscrepancias ? '#92400e'
         : tienePendientes    ? '#1d4ed8'
         : tieneFallos        ? '#92400e'
         : '#166534'
-    const iconoTitulo = (tieneErroresBD || tieneIdsMismatch || tieneProblemasF) ? '❌'
+    const iconoTitulo = (tieneErroresBD || tieneProblemasF) ? '❌'
         : tieneDiscrepancias ? '⚠️'
         : tienePendientes    ? 'ℹ️'
         : tieneFallos        ? '⚠️'
         : '✅'
-    const textoTitulo = (tieneErroresBD || tieneIdsMismatch || tieneDiscrepancias || tieneProblemasF)
+    const textoTitulo = (tieneErroresBD || tieneDiscrepancias || tieneProblemasF)
         ? 'Inconsistencias detectadas'
         : tienePendientes ? 'Pedidos sfcom pendientes de incorporar'
         : tieneFallos     ? 'Verificación parcial de sfcom'
