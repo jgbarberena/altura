@@ -557,7 +557,7 @@ function filaEvento(f, destacada) {
 function filaDetalleProveedor(d) {
     const dot = d.dot ? `<span style="color:${d.dot};font-size:10px;margin-right:4px">●</span>` : ''
     return `<tr style="background:#fafafa">
-        <td style="padding-left:24px;cursor:pointer" onclick="location.href='proveedores.html?venue=${encodeURIComponent(d.id)}'">↳ ${dot}<span style="color:var(--accent);text-decoration:underline">${d.id}</span></td>
+        <td style="padding-left:24px;cursor:pointer" onclick="location.href='proveedores.html?venue=${encodeURIComponent(d.id)}'">↳ ${dot}${d.id}</td>
         <td>—</td>
         <td>${d.total}</td>
         <td class="ok">${d.confirmadas}</td>
