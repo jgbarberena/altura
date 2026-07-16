@@ -3216,11 +3216,17 @@ document.getElementById('btnExportServicios')?.addEventListener('click', () => {
     ], `servicios_${id}.xlsx`)
 })
 
-// Precarga de proveedor desde parámetro URL (ej: panel.html → proveedores.html?proveedor=BALCON_1)
-const _proveedorParam = new URLSearchParams(location.search).get('proveedor')
+// Precarga de proveedor (y opcionalmente venue) desde parámetros URL
+const _urlParams       = new URLSearchParams(location.search)
+const _proveedorParam  = _urlParams.get('proveedor')
+const _venueParam      = _urlParams.get('venue')
 if (_proveedorParam) {
     const _proveedorPreload = todosProveedores.find(p => p.id === _proveedorParam.toUpperCase())
-    if (_proveedorPreload) { inputProveedorId.value = _proveedorPreload.id; cargarProveedor(_proveedorPreload) }
+    if (_proveedorPreload) {
+        inputProveedorId.value = _proveedorPreload.id
+        cargarProveedor(_proveedorPreload)
+        if (_venueParam) selectVenueTab(_venueParam.toUpperCase())
+    }
 }
 
 // ===== WIZARD: IMPORTAR DISPONIBILIDAD DESDE TEMPORADA ANTERIOR =====

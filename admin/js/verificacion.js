@@ -8,9 +8,29 @@ import { crearModal } from './modal.js'
 // No importamos de utils.js — crearía dependencia circular (utils.js importa mostrarToast de aquí)
 const _fmt = n => parseFloat(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
 
+// ─── Deshabilitar sfcom ───────────────────────────────────────────────────────
+
+export function isSfcomDisabled()   { return localStorage.getItem('sfcom_disabled') === '1' }
+export function setSfcomDisabled(v) {
+    if (v) localStorage.setItem('sfcom_disabled', '1')
+    else   localStorage.removeItem('sfcom_disabled')
+    location.reload()
+}
+window._setSfcomDisabled = setSfcomDisabled
+
+// Badge persistente cuando sfcom está desactivado
+if (isSfcomDisabled()) {
+    const _badge = document.createElement('div')
+    _badge.id = 'sfcom-disabled-badge'
+    _badge.style.cssText = 'position:fixed;bottom:52px;right:12px;z-index:9000;background:#fef3c7;border:1px solid #d97706;border-radius:6px;padding:5px 10px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:8px'
+    _badge.innerHTML = '⏸️ sfcom desactivado <button onclick="window._setSfcomDisabled(false)" style="font-size:11px;cursor:pointer;background:none;border:1px solid #d97706;border-radius:4px;padding:1px 6px;color:#92400e">Reactivar</button>'
+    document.body.appendChild(_badge)
+}
+
 // ─── Toast genérico ──────────────────────────────────────────────────────────
 
-export function mostrarToast(mensaje, color = '#166534') {
+// action: { label, onClick } — muestra un botón clicable dentro del toast
+export function mostrarToast(mensaje, color = '#166534', action = null) {
     const prev = document.getElementById('toast-verificacion')
     if (prev) prev.remove()
 
@@ -22,12 +42,26 @@ export function mostrarToast(mensaje, color = '#166534') {
         'font-size:14px', 'font-family:system-ui,sans-serif', 'font-weight:500',
         'box-shadow:0 4px 20px rgba(0,0,0,0.2)', 'z-index:9999',
         'transition:opacity 0.6s ease', 'opacity:1', 'white-space:nowrap',
-        'pointer-events:none'
+        action ? 'pointer-events:auto;cursor:default;display:flex;align-items:center;gap:12px' : 'pointer-events:none'
     ].join(';')
-    toast.textContent = mensaje
+
+    if (action) {
+        const span = document.createElement('span')
+        span.textContent = mensaje
+        const btn = document.createElement('button')
+        btn.textContent = action.label
+        btn.style.cssText = 'font-size:12px;cursor:pointer;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.6);border-radius:4px;padding:2px 8px;color:#fff'
+        btn.addEventListener('click', () => { toast.remove(); action.onClick() })
+        toast.appendChild(span)
+        toast.appendChild(btn)
+    } else {
+        toast.textContent = mensaje
+    }
+
     document.body.appendChild(toast)
-    setTimeout(() => { toast.style.opacity = '0' }, 3500)
-    setTimeout(() => { toast.remove() }, 4200)
+    const delay = action ? 8000 : 3500
+    setTimeout(() => { toast.style.opacity = '0' }, delay)
+    setTimeout(() => { toast.remove() }, delay + 700)
     return toast
 }
 
@@ -699,7 +733,8 @@ async function _mostrarResultado(resultado, supabase, onReverify, opts) {
     if (hayPendientes) {
         mostrarToast(`ℹ️ ${nPendientes} pedido(s) sfcom pendiente(s) de incorporar`, '#1d4ed8')
     } else if ((sfcom?.fallos?.length ?? 0) > 0 || (sfcom && !sfcom.verificado)) {
-        mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e')
+        mostrarToast('⚠️ Reservas verificadas — sfcom no disponible', '#92400e',
+            { label: 'Deshabilitar sfcom', onClick: () => setSfcomDisabled(true) })
     } else {
         mostrarToast('✅ Coherencia verificada y correcta')
     }
@@ -731,7 +766,7 @@ export async function ejecutarVerificacion(supabase, {
         const financiero = incluirFinanciero ? _computarFinanciero(dados) : null
 
         let sfcom = null
-        if (incluirSfcom) {
+        if (incluirSfcom && !isSfcomDisabled()) {
             sfcom = await verificarSfcom({ reservas: dados.reservas, availability: dados.availability, solicitudes: dados.solicitudes })
         }
 

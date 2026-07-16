@@ -123,7 +123,11 @@
                     <div class="form-grid">
                         <div class="form-field">
                             <label>Servicio</label>
-                            <select id="selectServicio">
+                            <div class="autocomplete-wrap">
+                                <input type="text" id="selectServicioInput" placeholder="— Selecciona servicio —" autocomplete="off">
+                                <div class="autocomplete-list" id="autocomplete-servicio-list" style="display:none"></div>
+                            </div>
+                            <select id="selectServicio" style="display:none">
                                 <option value="">— Selecciona servicio —</option>
                             </select>
                         </div>

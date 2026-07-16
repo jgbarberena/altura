@@ -88,15 +88,15 @@ export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
     renderPanelFactura()
     abrirPanel()
 
-    const base       = parseFloat(_hitoActual.amount)
-    const totalPagar = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
-    const nombre     = valorO(_cliente.company, valorO(_cliente.name, _cliente.id))
+    const base         = parseFloat(_hitoActual.amount)
+    const totalPagar   = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
+    const nombreSaludo = valorO(_cliente.name, _cliente.id)
     mostrarOpcionesEnvio({
         tipo:      'pdf',
         email:     _cliente.email ?? null,
         telefono:  _cliente.phone ?? null,
         asunto:    FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')),
-        getTexto:  () => FACTURA_CONFIG.email_cuerpo_tpl(nombre, _numFacturaSig, fmt(totalPagar)),
+        getTexto:  () => FACTURA_CONFIG.email_cuerpo_tpl(nombreSaludo, _numFacturaSig, fmt(totalPagar)),
         onGenerar: _emitir,
         container: document.getElementById('factura-botones-envio')
     })
@@ -272,14 +272,20 @@ window.actualizarNivelDetalle = function() {
     }
 }
 
+function _serviceLabel(r) {
+    if (r.service_name) return r.service_day ? `${r.service_name} — ${r.service_day} de julio` : r.service_name
+    return r.service_description ?? String(r.service_id)
+}
+
 // Tabla de reservas — usada en HTML y en PDF
 function buildTablaReservas() {
     const reservasValidas = _reservas.filter(r => r.status !== 'Cancelada')
     if (reservasValidas.length === 0) return ''
     const totalGlobal = reservasValidas.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
-    const filas = reservasValidas.map(r => `
+    const filas = reservasValidas.map((r, i) => `
         <tr>
-            <td>${r.service_description ?? r.service_id}</td>
+            <td><span class="factura-editable" contenteditable="true" data-field="concepto-svc" data-idx="${i}"
+                style="display:block">${_serviceLabel(r)}</span></td>
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(parseFloat(r.price_per_slot))}</td>
             <td style="text-align:right">${fmt(parseFloat(r.total_amount ?? 0))}</td>
@@ -346,11 +352,12 @@ function buildLiquidacion() {
 
 // ===== EMISIÓN: GENERA PDF, SUBE A STORAGE Y MARCA EL HITO COMO FACTURADO =====
 async function _emitir() {
-    const preview  = document.getElementById('factura-preview')
-    const concepto = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
-    const nifEdit  = preview.querySelector('[data-field="nif"]')?.textContent?.trim()
-    const addrEdit = preview.querySelector('[data-field="address"]')?.textContent?.trim()
-    const nameEdit = preview.querySelector('[data-field="name"]')?.textContent?.trim()
+    const preview   = document.getElementById('factura-preview')
+    const concepto  = preview.querySelector('[data-field="concepto"]')?.textContent?.trim() || _hitoActual.comments
+    const nifEdit   = preview.querySelector('[data-field="nif"]')?.textContent?.trim()
+    const addrEdit  = preview.querySelector('[data-field="address"]')?.textContent?.trim()
+    const nameEdit  = preview.querySelector('[data-field="name"]')?.textContent?.trim()
+    const svcLabels = [...preview.querySelectorAll('[data-field="concepto-svc"]')].map(el => el.textContent.trim())
 
     const updates = {}
     if (!esVacio(nifEdit)  && nifEdit  !== _cliente.nif    && !nifEdit.includes('—'))  updates.nif     = nifEdit
@@ -364,7 +371,7 @@ async function _emitir() {
     }
 
     const hoy = new Date().toISOString().split('T')[0]
-    const pdfResult = await generarPDF()
+    const pdfResult = await generarPDF({ svcLabels })
 
     let invoicePath = null
     if (pdfResult?.blob) {
@@ -390,7 +397,7 @@ async function _emitir() {
 }
 
 // ===== GENERACIÓN DEL PDF con jsPDF puro =====
-async function generarPDF() {
+async function generarPDF({ svcLabels = [] } = {}) {
     if (!window.jspdf) {
         await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
     }
@@ -587,7 +594,7 @@ async function generarPDF() {
         dibujarCabTablaRsv()
 
         let totalGlobal = 0
-        reservasValidas.forEach(r => {
+        reservasValidas.forEach((r, i) => {
             // Si no cabe la fila, saltar página y repetir cabecera de tabla
             if (y + 7 > PIE_Y - 4) {
                 dibujarPie()
@@ -602,7 +609,8 @@ async function generarPDF() {
             }
 
             doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(NEGRO)
-            const svcLines = doc.splitTextToSize(r.service_description ?? r.service_id, CW * 0.55)
+            const svcLabel = svcLabels[i] || _serviceLabel(r)
+            const svcLines = doc.splitTextToSize(svcLabel, CW * 0.55)
             doc.text(svcLines,                          M + 2,         y + 4)
             doc.text(String(r.slots),                   M + CW * 0.6,  y + 4, { align: 'center' })
             doc.text(fmt(parseFloat(r.price_per_slot)), M + CW * 0.78, y + 4, { align: 'right' })

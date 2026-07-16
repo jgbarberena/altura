@@ -534,8 +534,11 @@ function filaEvento(f, destacada) {
 }
 
 function filaDetalleProveedor(d) {
+    const venueLink = d.provId
+        ? `<a href="proveedores.html?proveedor=${encodeURIComponent(d.provId)}&venue=${encodeURIComponent(d.id)}" style="color:inherit;text-decoration:underline">${d.id}</a>`
+        : d.id
     return `<tr style="background:#fafafa">
-        <td style="padding-left:24px;color:var(--subtle)">↳ ${d.dot ? `<span style="color:${d.dot};font-size:10px;margin-right:4px">●</span>` : ''}${d.id}</td>
+        <td style="padding-left:24px;color:var(--subtle)">↳ ${d.dot ? `<span style="color:${d.dot};font-size:10px;margin-right:4px">●</span>` : ''}${venueLink}</td>
         <td>—</td>
         <td>${d.total}</td>
         <td class="ok">${d.confirmadas}</td>
@@ -601,8 +604,9 @@ function calcularEventos() {
                 : d.billing_model === 'capacity'
                     ? (d.total_slots ?? 0) * parseFloat(d.price_per_slot ?? 0)
                     : (confP + pendP) * parseFloat(d.price_per_slot ?? 0)
-            const dotP = _margenIndicador(ingresoP, costeP)
-            return { id: d.venue_id, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP, ingreso: ingresoP, coste: costeP, dot: dotP }
+            const dotP   = _margenIndicador(ingresoP, costeP)
+            const provId = venues?.find(v => v.id === d.venue_id)?.provider_id ?? null
+            return { id: d.venue_id, provId, total: d.total_slots, confirmadas: confP, pendientes: pendP, libres: libP, pct: pctP, colorFill: colP, clientes: clientesP, clientesHTML: clientesHTMLP, ingreso: ingresoP, coste: costeP, dot: dotP }
         })
 
         const clientesEvento     = [...new Set(reservasS.map(r => r.client_id))].join(', ')
