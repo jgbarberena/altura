@@ -382,7 +382,7 @@ let _sincronizandoPrecioFinal = false
 inputPrecioFinal.addEventListener('input', () => {
     const totalFacturado = parseFloat(inputPrecioFinal.value)
     _sincronizandoPrecioFinal = true
-    inputPrecio.value = isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado).toFixed(2)
+    inputPrecio.value = isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado).toFixed(4)
     validarPrecio()
     actualizarTotal()
     actualizarBtnAnadir()
@@ -412,7 +412,7 @@ function actualizarTotal() {
     document.getElementById('inputTotal').value =
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
     if (!_sincronizandoPrecioFinal)
-        inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio).toFixed(2) : ''
+        inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio).toFixed(4) : ''
 }
 
 async function _limpiarPropuestaReserva(row) {
@@ -2557,7 +2557,7 @@ async function cargarDesdeSolicitud(data) {
             const bruto = parseFloat(raw)
             if (!isNaN(bruto)) {
                 setTimeout(() => {
-                    inputPrecio.value = (bruto / 1.15).toFixed(2)
+                    inputPrecio.value = (bruto / 1.15).toFixed(4)
                     validarPrecio()
                     actualizarTotal()
                 }, 150)

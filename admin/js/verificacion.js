@@ -256,24 +256,24 @@ function _computarFinanciero(dados) {
     const problemasClientes = []
     for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
         if (id === 'SFCOM') continue
-        const c = Math.round((chargesTotales.get(id) ?? 0) * 100) / 100
-        const r = Math.round((reservasTotales.get(id) ?? 0) * 100) / 100
+        const c = Math.round((chargesTotales.get(id) ?? 0) * 10000) / 10000
+        const r = Math.round((reservasTotales.get(id) ?? 0) * 10000) / 10000
         if (Math.abs(c - r) < 0.01) continue
         problemasClientes.push({
             id, enBD: c, deberiasSer: r,
-            diff: Math.round((c - r) * 100) / 100,
+            diff: Math.round((c - r) * 10000) / 10000,
             esHuerfano: r === 0 && c > 0,
             tieneHistorial: chargesHistorial.get(id) ?? false
         })
     }
 
     // Verificación SFCOM separada: cobros SFCOM vs total reservas de origen WEB
-    const sfcomC = Math.round((chargesTotales.get('SFCOM') ?? 0) * 100) / 100
-    const sfcomR = Math.round(sfcomReservasTotal * 100) / 100
+    const sfcomC = Math.round((chargesTotales.get('SFCOM') ?? 0) * 10000) / 10000
+    const sfcomR = Math.round(sfcomReservasTotal * 10000) / 10000
     if (Math.abs(sfcomC - sfcomR) >= 0.01) {
         problemasClientes.push({
             id: 'SFCOM', enBD: sfcomC, deberiasSer: sfcomR,
-            diff: Math.round((sfcomC - sfcomR) * 100) / 100,
+            diff: Math.round((sfcomC - sfcomR) * 10000) / 10000,
             esHuerfano: sfcomR === 0 && sfcomC > 0,
             tieneHistorial: chargesHistorial.get('SFCOM') ?? false
         })
@@ -305,10 +305,10 @@ function _computarFinanciero(dados) {
 
     const problemasProveedores = []
     for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
-        const p = Math.round((pagosTotales.get(id) ?? 0) * 100) / 100
-        const t = Math.round((costeTeorico.get(id) ?? 0) * 100) / 100
+        const p = Math.round((pagosTotales.get(id) ?? 0) * 10000) / 10000
+        const t = Math.round((costeTeorico.get(id) ?? 0) * 10000) / 10000
         if (Math.abs(p - t) < 0.01) continue
-        problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 100) / 100 })
+        problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 10000) / 10000 })
     }
 
     return { problemasClientes, problemasProveedores, advertencias }

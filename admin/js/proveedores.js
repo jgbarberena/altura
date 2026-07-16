@@ -1095,7 +1095,7 @@ inputPrecio.addEventListener('input', () => {
     if (selectModelo.value !== 'fixed') {
         const plazas = parseInt(inputPlazas.value) || 0
         const precio  = parseFloat(inputPrecio.value) || 0
-        if (plazas > 0 && precio >= 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
+        if (plazas > 0 && precio >= 0) inputCosteTotal.value = (plazas * precio).toFixed(4)
     }
     actualizarBtnServicio()
     actualizarCosteServicio()
@@ -1106,7 +1106,7 @@ inputCosteTotal.addEventListener('input', () => {
     if (selectModelo.value !== 'fixed') {
         const plazas = parseInt(inputPlazas.value) || 0
         const total  = parseFloat(inputCosteTotal.value) || 0
-        if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
+        if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(4)
     }
     actualizarBtnServicio()
     actualizarCosteServicio()
@@ -1117,10 +1117,10 @@ inputPlazas.addEventListener('input', () => {
     if (selectModelo.value !== 'fixed') {
         if (ultimoCampoActivo === 'precio') {
             const precio = parseFloat(inputPrecio.value) || 0
-            if (plazas > 0) inputCosteTotal.value = (plazas * precio).toFixed(2)
+            if (plazas > 0) inputCosteTotal.value = (plazas * precio).toFixed(4)
         } else {
             const total = parseFloat(inputCosteTotal.value) || 0
-            if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(2)
+            if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(4)
             else inputPrecio.value = ''
         }
     }
@@ -1784,11 +1784,11 @@ function cargarServicioEnFormulario(dispIds) {
         if (disps[0].billing_model === 'fixed') {
             inputPrecio.value    = ''
             inputPrecio.disabled = true
-            inputCosteTotal.value = parseFloat(disps[0].price_per_slot || 0).toFixed(2)
+            inputCosteTotal.value = parseFloat(disps[0].price_per_slot || 0).toFixed(4)
         } else {
             inputPrecio.value    = disps[0].price_per_slot
             inputPrecio.disabled = false
-            inputCosteTotal.value = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2)
+            inputCosteTotal.value = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(4)
         }
         // campos de services (compartidos entre venues)
         const svc = todosServicios.find(s => s.id === disps[0].service_id)
@@ -1831,12 +1831,12 @@ function cargarServicioEnFormulario(dispIds) {
         if (modeloIgual && disps[0].billing_model === 'fixed') {
             inputPrecio.value     = ''
             inputPrecio.disabled  = true
-            inputCosteTotal.value = precioIgual ? parseFloat(disps[0].price_per_slot || 0).toFixed(2) : ''
+            inputCosteTotal.value = precioIgual ? parseFloat(disps[0].price_per_slot || 0).toFixed(4) : ''
         } else {
             inputPrecio.value     = precioIgual   ? disps[0].price_per_slot : ''
             inputPrecio.disabled  = false
             inputCosteTotal.value = (plazasIguales && precioIgual)
-                ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(2) : ''
+                ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(4) : ''
         }
 
         inputServicioNombre.value      = ''
@@ -3021,14 +3021,14 @@ document.getElementById('dlgNuevoPlazas').addEventListener('input', () => {
     const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
     const r = parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
     if (document.getElementById('dlgNuevoModelo').value !== 'fixed' && p && r)
-        document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(2)
+        document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(4)
 })
 
 document.getElementById('dlgNuevoPrecio').addEventListener('input', () => {
     nuevoDlgUltimoCampoAsig = 'precio'
     const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
     const r = parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
-    if (p && r) document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(2)
+    if (p && r) document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(4)
 })
 
 document.getElementById('dlgNuevoCoste').addEventListener('input', () => {
@@ -3036,7 +3036,7 @@ document.getElementById('dlgNuevoCoste').addEventListener('input', () => {
     const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
     const c = parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
     if (document.getElementById('dlgNuevoModelo').value !== 'fixed' && p > 0)
-        document.getElementById('dlgNuevoPrecio').value = (c / p).toFixed(2)
+        document.getElementById('dlgNuevoPrecio').value = (c / p).toFixed(4)
 })
 
 document.getElementById('dlgNuevoModelo').addEventListener('change', () => {
@@ -3049,7 +3049,7 @@ document.getElementById('dlgNuevoModelo').addEventListener('change', () => {
         inpR.disabled = false
         const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
         const c = parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
-        if (p > 0 && c) inpR.value = (c / p).toFixed(2)
+        if (p > 0 && c) inpR.value = (c / p).toFixed(4)
     }
 })
 
