@@ -31,7 +31,7 @@ const TABLAS = {
             { label: 'Propuesta',   campo: 'proposal_number' },
             { label: 'PDF',         campo: 'proposal_path',   fmt: v => v ? '📄' : '—' },
             { label: 'Origen',      campo: 'origin_ref' },
-            { label: 'Bienvenida',  campo: 'welcome_sent_at', fmt: v => v ? new Date(v).toLocaleDateString('es-ES') : '—' },
+            { label: 'Bienvenida',  campo: 'welcome_sent_at', fmt: v => !v ? '—' : v.startsWith('0001-01-01') ? '⛔ No enviar' : new Date(v).toLocaleDateString('es-ES') },
             { label: 'Temp.',       campo: 'services',        fmt: v => v?.season ?? '—' },
             { label: 'Comentarios', campo: 'comments' },
         ]

@@ -139,11 +139,10 @@ function calcularAlertas() {
         document.getElementById('txt-solicitudes').textContent = `Solicitudes web — ${partes.join(', ')}`
     }
 
-    // Bienvenidas pendientes — clientes con al menos una confirmada sin welcome_sent_at y sin aviso descartado
-    const _bienvenidaSkip = _getBienvenidaSkip()
+    // Bienvenidas pendientes — clientes con al menos una confirmada sin welcome_sent_at (null = no decidido)
     const clientesBienvenidaPendiente = [...new Set(
         reservas
-            .filter(r => r.status === 'Confirmada' && !r.welcome_sent_at && !_bienvenidaSkip.has(r.client_id))
+            .filter(r => r.status === 'Confirmada' && !r.welcome_sent_at)
             .map(r => r.client_id)
     )]
     const alertaBienvenidas = document.getElementById('alerta-bienvenidas')
@@ -162,17 +161,6 @@ function calcularAlertas() {
         (haySobrereserva || _pagosV.length > 0 || _cobrosV.length > 0
         || solicitudesSfcom.length > 0 || hayWeb || leadsCancelados.length > 0
         || clientesBienvenidaPendiente.length > 0) ? 'block' : 'none'
-}
-
-// ===== BIENVENIDAS: SKIP (localStorage) =====
-
-function _getBienvenidaSkip() {
-    try { return new Set(JSON.parse(localStorage.getItem('bienvenida_skip') ?? '[]')) } catch { return new Set() }
-}
-function _addBienvenidaSkip(ids) {
-    const s = _getBienvenidaSkip()
-    ids.forEach(id => s.add(id))
-    localStorage.setItem('bienvenida_skip', JSON.stringify([...s]))
 }
 
 // ===== MODAL DE SELECCIÓN DE BIENVENIDAS =====
@@ -251,20 +239,11 @@ function _abrirModalSeleccionBienvenidas(idsPendientes) {
             </div>
             <div class="modal-actions" style="margin-top:14px">
                 <button id="mb-cancelar"  class="btn btn-secondary">Cancelar</button>
-                <button id="mb-descartar" class="btn btn-secondary" title="Marca los seleccionados como 'no enviar' — dejarán de aparecer en el aviso">🚫 Descartar aviso</button>
                 <button id="mb-iniciar"   class="btn btn-primary">Iniciar asistente (0)</button>
             </div>`
 
         panel.querySelector('#mb-cerrar').addEventListener('click',   () => overlay.close())
         panel.querySelector('#mb-cancelar').addEventListener('click', () => overlay.close())
-        panel.querySelector('#mb-descartar').addEventListener('click', () => {
-            const ids = [...seleccionados]
-            if (!ids.length) return
-            if (!confirm(`¿Descartar aviso de bienvenida para ${ids.length} cliente${ids.length !== 1 ? 's' : ''}? No aparecerán más en el aviso (puedes revertirlo borrando 'bienvenida_skip' de localStorage).`)) return
-            _addBienvenidaSkip(ids)
-            overlay.close()
-            calcularAlertas()
-        })
 
         panel.querySelector('#mb-todos').addEventListener('click', () => {
             datos.forEach(d => seleccionados.add(d.id))

@@ -1091,6 +1091,9 @@ function componerMensajeBienvenida(cliente, reservasIncluidas, pendientesNoMarca
     return texto
 }
 
+const WELCOME_SKIP_SENTINEL = '0001-01-01T00:00:00.000Z'
+const _isWelcomeSkipped = r => r.welcome_sent_at?.startsWith('0001-01-01')
+
 function actualizarBotonBienvenida() {
     const btn      = document.getElementById('btnEnviarBienvenida')
     const statusEl = document.getElementById('bienvenida-status')
@@ -1105,10 +1108,15 @@ function actualizarBotonBienvenida() {
     if (!statusEl) return
     const confirmadas = resDelCliente.filter(r => r.status === 'Confirmada')
     if (confirmadas.length > 0 && confirmadas.every(r => r.welcome_sent_at)) {
-        const fechaMax = new Date(Math.max(...confirmadas.map(r => new Date(r.welcome_sent_at).getTime())))
-        const dd = String(fechaMax.getDate()).padStart(2, '0')
-        const mm = String(fechaMax.getMonth() + 1).padStart(2, '0')
-        statusEl.textContent = `✅ Enviado el ${dd}/${mm}`
+        if (confirmadas.every(_isWelcomeSkipped)) {
+            statusEl.textContent = '⛔ Sin bienvenida'
+        } else {
+            const enviadas = confirmadas.filter(r => !_isWelcomeSkipped(r))
+            const fechaMax = new Date(Math.max(...enviadas.map(r => new Date(r.welcome_sent_at).getTime())))
+            const dd = String(fechaMax.getDate()).padStart(2, '0')
+            const mm = String(fechaMax.getMonth() + 1).padStart(2, '0')
+            statusEl.textContent = `✅ Enviado el ${dd}/${mm}`
+        }
     } else {
         statusEl.textContent = ''
     }
@@ -1143,6 +1151,7 @@ function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
         </div>
         <textarea id="textoBienvenida" class="modal-email-textarea" style="height:320px">${textoInicial}</textarea>
         <div id="bienvenida-botones-envio"></div>
+        <div id="bienvenida-botones-skip" style="margin-top:8px"></div>
     `
 
     panel.querySelector('#btnCerrarBienvenida').addEventListener('click', () => overlay.close())
@@ -1177,6 +1186,22 @@ function abrirModalBienvenida(reservasIncluidas, pendientesNoMarcadas) {
             _onBienvenidaEnviada()
             overlay.close()
         }
+    })
+
+    const btnSkip = panel.querySelector('#bienvenida-botones-skip')
+    btnSkip.innerHTML = `<button id="btnNoEnviarBienvenida" class="btn btn-secondary">⛔ No enviar bienvenida</button>`
+    btnSkip.querySelector('#btnNoEnviarBienvenida').addEventListener('click', async () => {
+        if (!confirm('¿Marcar la bienvenida de este cliente como "no enviar"? Dejará de aparecer en el aviso. Puedes revertirlo abriendo este mismo modal y enviando la bienvenida.')) return
+        const { error } = await supabase.from('reservations')
+            .update({ welcome_sent_at: WELCOME_SKIP_SENTINEL })
+            .in('id', idsIncluidas)
+        if (error) { console.error('[bienvenida] skip:', error); return }
+        todasReservas = todasReservas.map(r =>
+            idsIncluidas.includes(r.id) ? { ...r, welcome_sent_at: WELCOME_SKIP_SENTINEL } : r
+        )
+        actualizarBotonBienvenida()
+        mostrarToast('⛔ Bienvenida marcada como no enviar')
+        overlay.close()
     })
 }
 
