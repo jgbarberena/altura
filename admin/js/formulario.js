@@ -1911,9 +1911,12 @@ window.facturarHito = async function(hitoId) {
     const hitoTemp    = hitosClienteTemp.find(h => h.id === hitoId)
     const esHitoFinal = hitoTemp?.esFinal ?? false
 
+    // Charges sfcom: identificados por comments 'WEB-xxx Cobrado vía sfcom' (sin FK a reservation)
+    const _esSfcomCharge = h => !!(h.comments?.startsWith('WEB') && h.comments?.includes('Cobrado v'))
+
     if (esHitoFinal) {
         const sinFacturar = hitosClienteTemp.filter(h =>
-            h.id && h.id !== hitoId && !h.invoice_number
+            h.id && h.id !== hitoId && !h.invoice_number && !_esSfcomCharge(h)
         )
         if (sinFacturar.length > 0) {
             const lista = sinFacturar.map(h =>
@@ -1927,9 +1930,12 @@ window.facturarHito = async function(hitoId) {
         }
     }
 
-    const reservasConCharges = reservasCliente.map(r => ({
+    const reservasParaFactura = reservasCliente.filter(r => !r.origin_ref?.startsWith('WEB'))
+    const hitosParaFactura    = hitosClienteTemp.filter(h => h.id && !_esSfcomCharge(h))
+
+    const reservasConCharges = reservasParaFactura.map(r => ({
         ...r,
-        _charges: hitosClienteTemp.filter(h => h.id),
+        _charges: hitosParaFactura,
         _esFinal: esHitoFinal
     }))
     await abrirPanelFactura(hitoId, clienteActual, reservasConCharges)
