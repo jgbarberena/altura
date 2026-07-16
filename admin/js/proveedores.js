@@ -51,6 +51,8 @@ let proveedorActual      = null
 let servicioEditandoId   = null
 let serviciosEditandoIds = []
 let hitosProvTemp        = []
+let _docsProveedor       = []
+let _archivoDocProveedor = null
 let ultimoCampoActivo    = 'precio'
 let venuesDelProveedor   = []
 let venueActual          = null
@@ -2160,24 +2162,26 @@ async function cargarDocumentosProveedor(proveedorId) {
         supabase.from('supplier_invoices').select('document_id, invoice_number').eq('provider_id', proveedorId)
     ])
 
+    _docsProveedor = docs ?? []
     const registradoMap = new Map((invoices ?? []).map(i => [i.document_id, i.invoice_number]))
     const lista = document.getElementById('lista-docs-proveedor')
 
-    if (!docs || docs.length === 0) {
+    if (_docsProveedor.length === 0) {
         lista.innerHTML = '<p style="color:var(--subtle);font-size:12px;margin:4px 0 0">Sin facturas. Sube el PDF o foto de la factura del proveedor.</p>'
         return
     }
 
-    lista.innerHTML = docs.map(d => {
+    lista.innerHTML = _docsProveedor.map(d => {
         const numFactura = registradoMap.get(d.id)
         const nombre     = d.file_path.split('/').pop()
         const fecha      = d.uploaded_at.split('T')[0]
         return `
         <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
             <span style="flex:1;min-width:0">
+                ${d.concept ? `<strong style="font-size:13px">${d.concept}</strong> ` : ''}
                 <a href="#" onclick="verDocProveedor('${d.file_path}');return false"
-                   style="color:var(--text);word-break:break-all">📎 ${nombre}</a>
-                <span style="color:var(--subtle);margin-left:8px;font-size:11px">${fecha}</span>
+                   style="color:var(--subtle);font-size:11px;word-break:break-all">📎 ${nombre}</a>
+                <span style="color:var(--subtle);margin-left:6px;font-size:11px">${fecha}</span>
                 ${d.notes ? `<span style="color:var(--subtle);margin-left:6px;font-size:11px">· ${d.notes}</span>` : ''}
             </span>
             ${numFactura
@@ -2190,24 +2194,55 @@ async function cargarDocumentosProveedor(proveedorId) {
     }).join('')
 }
 
-document.getElementById('inputSubirDocProveedor').addEventListener('change', async function () {
-    if (!proveedorActual || !this.files[0]) return
-    const file = this.files[0]
-    const path = `${proveedorActual.id}/${Date.now()}_${file.name}`
+function _sugerirConceptoDoc() {
+    const hitos = hitosProvTemp
+        .filter(h => h.comments)
+        .slice()
+        .sort((a, b) => (a.due_date ?? '9999') < (b.due_date ?? '9999') ? -1 : 1)
+    if (hitos.length === 0) return ''
+    const hitosNombres = new Set(hitos.map(h => h.comments))
+    const coincidentes = _docsProveedor.filter(d => d.concept && hitosNombres.has(d.concept)).length
+    return hitos[Math.min(coincidentes, hitos.length - 1)].comments
+}
 
-    const { error: errUp } = await supabase.storage.from('supplier-invoices').upload(path, file)
+document.getElementById('inputSubirDocProveedor').addEventListener('change', function () {
+    if (!proveedorActual || !this.files[0]) return
+    _archivoDocProveedor = this.files[0]
+    this.value = ''
+    document.getElementById('docProvConcepto').value          = _sugerirConceptoDoc()
+    document.getElementById('docProvNotas').value             = ''
+    document.getElementById('docProvArchivoNombre').textContent = '📎 ' + _archivoDocProveedor.name
+    document.getElementById('form-doc-proveedor').style.display = 'block'
+    setTimeout(() => document.getElementById('docProvConcepto').focus(), 50)
+})
+
+document.getElementById('btnSubirDocProveedor').addEventListener('click', async () => {
+    if (!proveedorActual || !_archivoDocProveedor) return
+    const concepto = document.getElementById('docProvConcepto').value.trim()
+    const notas    = document.getElementById('docProvNotas').value.trim()
+    const path     = `${proveedorActual.id}/${Date.now()}_${_archivoDocProveedor.name}`
+
+    const { error: errUp } = await supabase.storage.from('supplier-invoices').upload(path, _archivoDocProveedor)
     if (errUp) { alert('Error al subir el documento: ' + errUp.message); return }
 
     const { error: errDoc } = await supabase.from('supplier_documents').insert({
         provider_id: proveedorActual.id,
+        concept:     concepto || null,
+        notes:       notas    || null,
         file_path:   path,
         season:      getTemporadaActiva(),
     })
     if (errDoc) { alert('Error al registrar el documento: ' + errDoc.message); return }
 
     mostrarToast('✅ Documento subido')
-    this.value = ''
+    _archivoDocProveedor = null
+    document.getElementById('form-doc-proveedor').style.display = 'none'
     cargarDocumentosProveedor(proveedorActual.id)
+})
+
+document.getElementById('btnCancelarDocProveedor').addEventListener('click', () => {
+    _archivoDocProveedor = null
+    document.getElementById('form-doc-proveedor').style.display = 'none'
 })
 
 window.verDocProveedor = async function (path) {

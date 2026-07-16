@@ -408,6 +408,23 @@
                             <input type="file" id="inputSubirDocProveedor" accept="application/pdf,image/*" style="display:none">
                         </label>
                     </div>
+                    <div id="form-doc-proveedor" class="form-subseccion" style="display:none">
+                        <div class="form-grid">
+                            <div class="form-field" style="grid-column:1/-1">
+                                <label>Concepto</label>
+                                <input type="text" id="docProvConcepto" placeholder="Nombre del pago o factura">
+                            </div>
+                            <div class="form-field" style="grid-column:1/-1">
+                                <label>Notas</label>
+                                <input type="text" id="docProvNotas" placeholder="Opcional">
+                            </div>
+                        </div>
+                        <div style="font-size:12px;color:var(--subtle);margin-bottom:8px" id="docProvArchivoNombre"></div>
+                        <div class="btn-row">
+                            <button class="btn btn-primary" id="btnSubirDocProveedor">Subir</button>
+                            <button class="btn btn-secondary" id="btnCancelarDocProveedor">Cancelar</button>
+                        </div>
+                    </div>
                     <div id="lista-docs-proveedor" style="font-size:13px"></div>
                 </div>
             </div>
