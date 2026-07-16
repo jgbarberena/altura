@@ -257,6 +257,8 @@ El campo estado indica el estado de cada línea:
 - 'hecha': ya convertida en reserva. Si el tema sale en la conversación, confirma que esa parte ya está cerrada; no la ofrezcas como opción nueva.
 - 'descartada': el cliente indicó que no la quería. No vuelvas a ofrecerla, aunque puedes tenerla presente para entender el contexto de la negociación.
 
+El array que recibes puede contener líneas con cualquiera de estos estados, incluidas las descartadas. Úsalas para entender el historial de la negociación, no para proponerlas de nuevo.
+
 Usa el borrador para entender el estado actual de la negociación: qué se ha acordado ya, qué servicios y venues están sobre la mesa, a qué precio aproximado.
 
 Cuándo actualizar el borrador: SOLO cuando generas un ---MENSAJE_CLIENTE---. Nunca durante exploración, preguntas o respuestas intermedias. El borrador representa lo que se le va a proponer al cliente en ese mensaje, no lo que se está discutiendo internamente.

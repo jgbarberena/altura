@@ -374,6 +374,14 @@ function actualizarTotal() {
         inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio).toFixed(2) : ''
 }
 
+async function _limpiarPropuestaReserva(row) {
+    if (!row.proposal_number && !row.proposal_path) return
+    const { error } = row.proposal_number
+        ? await supabase.from('reservations').update({ proposal_number: null, proposal_path: null }).eq('proposal_number', row.proposal_number)
+        : await supabase.from('reservations').update({ proposal_number: null, proposal_path: null }).eq('proposal_path', row.proposal_path)
+    if (error) console.error('Error limpiando propuesta:', error)
+}
+
 function getPlazasInfo(venueId, servicioId, excluirId = null) {
     const reservasPS  = todasReservas.filter(r =>
         r.venue_id   === venueId    &&
@@ -1234,6 +1242,10 @@ btnAnadir.addEventListener('click', () => confirmarSiTemporadaNoActiva('la reser
             slots: plazas, price_per_slot: precio, status: estado, comments
         }).eq('id', reservaEditandoId)
         if (error) { alert('Error al guardar: ' + error.message); return }
+
+        if (plazas !== reservaOriginal?.slots || precio !== reservaOriginal?.price_per_slot) {
+            await _limpiarPropuestaReserva(reservaOriginal)
+        }
 
         const { data: reservasActualizadas } = await supabase.from('reservations').select('*').in('service_id', _servicioIds)
         todasReservas = reservasActualizadas ?? []

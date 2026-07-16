@@ -280,52 +280,6 @@ function _computarFinanciero(dados) {
     return { problemasClientes, problemasProveedores, advertencias }
 }
 
-// ─── Modal pre-corrección de idsMismatch ─────────────────────────────────────
-
-function _mostrarModalPreCorreccion(mismatches) {
-    return new Promise(resolve => {
-        const prev = document.getElementById('modal-pre-correccion')
-        if (prev) prev.remove()
-
-        const lista = mismatches.map(m => `
-            <div style="font-size:12px;color:#374151;padding:4px 0;border-bottom:1px solid #fecaca">
-                <strong>${m.servicio}</strong>
-                <span style="color:#6b7280"> · ${m.venueId} · ${m.serviceId}</span><br>
-                Variación guardada: <span style="color:#991b1b">${m.storedVariationId} (día ${m.dayStored})</span>
-                → esperado: día ${m.dayExpected}
-            </div>`
-        ).join('')
-
-        const { overlay, panel } = crearModal('modal-pre-correccion')
-        panel.innerHTML = `
-            <div class="modal-header">
-                <span class="modal-header-icon">⚠️</span>
-                <div>
-                    <div class="modal-header-title" style="color:#991b1b">IDs de variación incorrectos</div>
-                    <div class="modal-header-desc">
-                        Se ${mismatches.length === 1 ? 'ha detectado' : 'han detectado'}
-                        ${mismatches.length} par${mismatches.length !== 1 ? 'es' : ''} con
-                        una variación de sfcom asignada incorrectamente.
-                        ¿Deseas corregirlos antes de ver los resultados?
-                    </div>
-                </div>
-            </div>
-            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;
-                        padding:10px 12px;display:flex;flex-direction:column;gap:4px">${lista}</div>
-            <div style="font-size:12px;color:#6b7280;background:#f9fafb;border-radius:6px;padding:8px 10px;line-height:1.5">
-                Si corriges, el sistema busca el producto correcto en sfcom por nombre y actualiza los IDs automáticamente.
-                Si continúas sin corregir, la comparación de stock de esos pares se omitirá.
-            </div>
-            <div class="modal-actions">
-                <button id="btn-precorr-continuar" class="btn btn-secondary">Continuar sin corregir</button>
-                <button id="btn-precorr-corregir" class="btn btn-danger">🔧 Corregir y reverificar</button>
-            </div>`
-
-        panel.querySelector('#btn-precorr-continuar').addEventListener('click', () => { overlay.remove(); resolve('continuar') })
-        panel.querySelector('#btn-precorr-corregir').addEventListener('click',  () => { overlay.remove(); resolve('corregir')  })
-    })
-}
-
 // ─── Modal de corrección financiera ──────────────────────────────────────────
 
 async function _corregirFinanciero(supabase, financiero, dados, persistirCobros, persistirPagos) {
@@ -361,7 +315,6 @@ function _mostrarModal(resultado, supabase, onReverify, { modoManual, persistirC
 
     const tieneErroresBD       = (bd?.errores?.length ?? 0) > 0
     const tieneDiscrepancias   = discrepanciasReales.length > 0
-    const tieneIdsMismatch     = (sfcom?.idsMismatch?.length ?? 0) > 0
     const tienePendientes      = discrepanciasPendientes.length > 0
     const tieneFallos          = (sfcom?.fallos?.length ?? 0) > 0
     const tieneProblemasF      = (financiero?.problemasClientes?.length ?? 0) > 0 || (financiero?.problemasProveedores?.length ?? 0) > 0
@@ -370,7 +323,7 @@ function _mostrarModal(resultado, supabase, onReverify, { modoManual, persistirC
     const tieneAvisosSfcom     = modoManual && (sfcom?.avisos?.length ?? 0) > 0
     const tieneAdvFinanciero   = modoManual && (financiero?.advertencias?.length ?? 0) > 0
 
-    const hayProblema = tieneErroresBD || tieneDiscrepancias || tieneIdsMismatch || tieneProblemasF
+    const hayProblema = tieneErroresBD || tieneDiscrepancias || tieneProblemasF
 
     // ── Helpers de tarjetas sfcom ─────────────────────────────────────────────
     function _gridPlazas(d, borderColor) {
@@ -436,34 +389,6 @@ function _mostrarModal(resultado, supabase, onReverify, { modoManual, persistirC
                 <ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;line-height:1.9">
                     ${bd.errores.map(e => `<li>${e}</li>`).join('')}
                 </ul>
-            </div>`
-    }
-
-    // sfcom — idsMismatch
-    if (tieneIdsMismatch) {
-        const tarjetas = (sfcom.idsMismatch ?? []).map(m => `
-            <div style="border:1px solid #fca5a5;border-radius:8px;padding:12px;background:#fef2f2;display:flex;flex-direction:column;gap:5px">
-                <div>
-                    <span style="font-size:13px;font-weight:600;color:#1f2937">${m.servicio}</span>
-                    <span style="font-size:11px;color:#6b7280;margin-left:6px">${m.venueId} · ${m.serviceId}</span>
-                </div>
-                <div style="font-size:12px;color:#374151">
-                    Variación guardada: <strong style="color:#991b1b">${m.storedVariationId} (${m.variacionNombre ?? '?'})</strong> — día ${m.dayStored}.
-                    Esperado: día ${m.dayExpected}.
-                </div>
-                <div style="font-size:12px;color:#6b7280">
-                    ${sfcom._sinBotonCorregir
-                        ? '⚠️ Elegiste continuar sin corregir — la comparación de stock para este par se ha omitido.'
-                        : 'Los PUTs de stock se han enviado a la variación incorrecta. La comparación de stock se ha omitido.'}
-                </div>
-            </div>`
-        ).join('')
-        secciones += `
-            <div>
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#991b1b;font-weight:700;margin-bottom:8px">
-                    ❌ IDs de variación incorrectos
-                </div>
-                <div style="display:flex;flex-direction:column;gap:8px">${tarjetas}</div>
             </div>`
     }
 
@@ -762,7 +687,6 @@ async function _mostrarResultado(resultado, supabase, onReverify, opts) {
 
     const hayProblemaAuto = (bd?.errores?.length ?? 0) > 0
         || discRepReal.length > 0
-        || (sfcom?.idsMismatch?.length ?? 0) > 0
         || (financiero?.problemasClientes?.length ?? 0) > 0
         || (financiero?.problemasProveedores?.length ?? 0) > 0
 
@@ -809,20 +733,6 @@ export async function ejecutarVerificacion(supabase, {
         let sfcom = null
         if (incluirSfcom) {
             sfcom = await verificarSfcom({ reservas: dados.reservas, availability: dados.availability, solicitudes: dados.solicitudes })
-
-            // Flujo idsMismatch (dead en la práctica — API no expone nombres de variaciones)
-            if ((sfcom.idsMismatch?.length ?? 0) > 0) {
-                toastEl?.remove()
-                const decision = await _mostrarModalPreCorreccion(sfcom.idsMismatch)
-                if (decision === 'corregir') {
-                    for (const m of sfcom.idsMismatch) {
-                        await verificarConfirmarSfcom(supabase, m.availId, m.servicio, m.serviceId)
-                    }
-                    sfcom = await verificarSfcom({ reservas: dados.reservas, availability: dados.availability, solicitudes: dados.solicitudes })
-                } else {
-                    sfcom = { ...sfcom, _sinBotonCorregir: true }
-                }
-            }
         }
 
         resultado = { bd, financiero, sfcom, _dados: dados }

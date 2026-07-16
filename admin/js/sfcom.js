@@ -125,7 +125,8 @@ function buildStockEndpoint(productId, variationId) {
 // Sin límite de uso — usar para todas las lecturas de stock.
 async function apiFetchStockAll() {
     const result = await apiFetch('stock-all')
-    return result?.stock ?? {}
+    if (!result?.stock) throw new Error(`stock-all: respuesta inesperada — ${JSON.stringify(result)}`)
+    return result.stock
 }
 
 // Stock sfcom = lo que queda de la cuota de sfcom, sin superar la capacidad total disponible.
@@ -577,7 +578,6 @@ function mostrarModalAvisoOrders() {
 //   {
 //     verificado: boolean,    — true si todos los GETs a sfcom completaron
 //     discrepancias: [...],   — stocks que no coinciden con lo esperado
-//     idsMismatch: [],        — siempre vacío (API no expone nombres de variaciones)
 //     fallos: [...],          — pares que no pudieron verificarse
 //     avisos: string[],       — confirmed sin product_id (informativos)
 //     error: string | null
@@ -588,7 +588,6 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
     const resultado = {
         verificado:   false,
         discrepancias: [],
-        idsMismatch:  [],
         fallos:       [],
         avisos:       [],
         error:        null
@@ -635,20 +634,6 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
         return resultado
     }
 
-    // Variation_id duplicado por mismo producto (error crítico → se retorna en bd.errores desde verificacion.js)
-    // Aquí lo detectamos de todos modos para que idsMismatch pueda incluirlo si en el futuro se añade
-    const _varPorProducto = new Map()
-    for (const avail of mappedAvails) {
-        if (!avail.sfcom_variation_id) continue
-        const pid = String(avail.sfcom_product_id)
-        if (!_varPorProducto.has(pid)) _varPorProducto.set(pid, new Map())
-        const varMap = _varPorProducto.get(pid)
-        const vid    = String(avail.sfcom_variation_id)
-        if (!varMap.has(vid)) varMap.set(vid, { venue_id: avail.venue_id, service_id: avail.service_id })
-    }
-
-    const varNombreMap = new Map()   // siempre vacío: sf-api-paula.php no expone endpoints de variaciones
-
     // Procesar cada par
     for (const avail of mappedAvails) {
         const yaEnFallos = resultado.fallos.some(f => f.venueId === avail.venue_id && f.serviceId === avail.service_id)
@@ -672,29 +657,6 @@ export async function verificarSfcom({ reservas, availability, solicitudes }) {
                 })
             }
             continue
-        }
-
-        const variacionNombre = avail.sfcom_variation_id ? (varNombreMap.get(avail.sfcom_variation_id) ?? null) : null
-
-        // idsMismatch: solo si varNombreMap tiene datos (API no lo soporta actualmente)
-        if (avail.sfcom_variation_id && varNombreMap.size > 0) {
-            const serviceDayMatch = /^ENCIERRO_(\d+)$/.exec(avail.service_code ?? '')
-            const serviceDay      = serviceDayMatch ? parseInt(serviceDayMatch[1]) : null
-            const varDay          = variacionNombre ? extraerDia(variacionNombre) : null
-            if (serviceDay !== null && varDay !== null && serviceDay !== varDay) {
-                resultado.idsMismatch.push({
-                    servicio:          avail.sfcom_service_name,
-                    variacionNombre,
-                    dayStored:         varDay,
-                    dayExpected:       serviceDay,
-                    venueId:           avail.venue_id,
-                    serviceId:         avail.service_id,
-                    availId:           avail.id,
-                    storedVariationId: avail.sfcom_variation_id,
-                    storedProductId:   avail.sfcom_product_id
-                })
-                continue
-            }
         }
 
         if (stockReal === null) continue  // producto sin gestión de stock en sfcom

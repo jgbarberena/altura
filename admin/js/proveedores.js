@@ -220,8 +220,14 @@ async function _savePhotos(esPrimeraFoto = false) {
         .update({ photos: payload })
         .eq('id', servicioEditandoId)
     if (error) { console.error('Error al guardar fotos:', error.message); return }
-    const d = todaDisponibilidad.find(d => d.id === servicioEditandoId)
-    if (d) d.photos = payload
+    // El trigger trg_sync_availability_event_type propaga photos a todas las filas
+    // del mismo venue_id + event_type. Sincronizamos en memoria para evitar datos obsoletos.
+    const current = todaDisponibilidad.find(d => d.id === servicioEditandoId)
+    if (current) {
+        todaDisponibilidad.forEach(d => {
+            if (d.venue_id === current.venue_id && d.event_type === current.event_type) d.photos = payload
+        })
+    }
     mostrarGuardado()
     if (esPrimeraFoto && _photos.length === 1 && !inputServicioImageUrl.value.trim()) {
         const svc = todosServicios.find(s => s.service_code === inputServicioId.value.trim().toUpperCase())

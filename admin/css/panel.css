@@ -195,8 +195,11 @@
     .selector-mobile         { display: block; }
     .ef-layout               { flex-direction: column; }
     .ef-saldo                { flex: none; padding: 16px; }
-    .ef-grupo                { grid-template-columns: 1fr 1fr; }
+    .ef-grupo                { grid-template-columns: 1fr 1fr 1fr; }
     .pv-tabla td             { padding: 6px 8px 6px 0; }
+    .ef-valor                { font-size: 15px; word-break: break-word; }
+    .kpi-dual__conf          { word-break: break-word; }
+    .kpi-dual__pend-row      { flex-wrap: wrap; }
 }
 
 #grafico-cashflow {

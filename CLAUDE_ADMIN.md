@@ -866,15 +866,17 @@ En `mostrarOpcionesEnvio` (`utils.js:633`) el botón de WhatsApp abre `https://w
 
 **UI no refleja datos derivados ni efectos secundarios hasta recargar la página.**
 
-Patrón recurrente: cuando una operación de guardado tiene efectos secundarios en Supabase (trigger, `persistirCobrosCliente`, `persistirPagosProveedor`, etc.), la UI actualiza solo lo que el JS modificó directamente. Caso confirmado: al guardar fotos en `proveedores.js`, el trigger `trg_sync_availability_event_type` propaga cambios a todas las filas del mismo venue+event_type — la UI no los refleja hasta recargar.
+Patrón recurrente: cuando una operación de guardado tiene efectos secundarios en Supabase (trigger, `persistirCobrosCliente`, `persistirPagosProveedor`, etc.), la UI actualiza solo lo que el JS modificó directamente.
 
-Patrón de fix: tras cualquier save con efectos secundarios conocidos, re-leer de Supabase los datos afectados y re-renderizar. Fix natural a incorporar cuando se toquen estos archivos en otras fases.
+Caso resuelto (jul 2026): `_savePhotos` en `proveedores.js` ya actualiza en memoria todas las filas con el mismo `venue_id + event_type` tras guardar, reflejando el efecto del trigger `trg_sync_availability_event_type`.
+
+Casos pendientes: los campos `description` y `access_instructions` se guardan vía `initAutoSave` sin callback que actualice filas hermanas en `todaDisponibilidad`. Fix natural cuando se toquen esos archivos.
 
 ---
 
-**CSS del panel en móvil — deuda de revisión general.**
+**CSS del panel en móvil — pendiente auditoría visual.**
 
-El CSS del panel no está auditado en móvil. Zonas con problemas conocidos: tarjetas de KPIs económicos de `panel.html`, layout de `solicitudes.html`. Prioridad media. Acción antes de intervenir: recorrer las páginas principales en incógnito en móvil, documentar capturas y abordar en sesión dedicada.
+Mejoras defensivas aplicadas (jul 2026): `.ef-grupo` pasa de 2 a 3 columnas en móvil (evita ítem huérfano), `word-break: break-word` en `.ef-valor` y `.kpi-dual__conf`, `flex-wrap` en `.kpi-dual__pend-row`. Pendiente: verificar visualmente en móvil real (incógnito, 360px). Zonas con más riesgo: KPIs económicos `panel.html`, layout `solicitudes.html`.
 
 ---
 
@@ -888,15 +890,15 @@ Se decidió no hacerlo hasta auditar el código hardcoded que depende de `servic
 
 ### 7.5 Mejoras de código
 
-**Contexto del asistente incluye líneas del borrador ya resueltas.**
+**Contexto del asistente incluye líneas del borrador ya resueltas.** ✅ RESUELTO jul 2026
 
-Si hay líneas con `estado: 'descartada'` y Paula abre el asistente, Claude las ve. Fix correcto: actualizar `SYSTEM_PROMPT_ASISTENTE` para explicar el significado de cada valor de `estado`. Filtrar `'descartada'` del contexto es opcional y de bajo impacto.
+`SYSTEM_PROMPT_ASISTENTE` actualizado en `asistente-config.js`: se añadió párrafo explícito indicando que el array `proposal_draft` puede incluir líneas con `estado: 'descartada'` y cómo usarlas.
 
 ---
 
-**`formulario.js` no invalida propuestas al editar una reserva.**
+**`formulario.js` no invalida propuestas al editar una reserva.** ✅ RESUELTO jul 2026
 
-`tablas.js` llama a `_limpiarPropuestaReserva` cuando se cambia `price_per_slot` o `slots` desde la tabla. `formulario.js` no hace nada equivalente: si se editan esos campos desde el bloque de reservas del panel normal, la propuesta PDF queda desactualizada pero con `proposal_number` y `proposal_path` intactos. La deuda es baja porque la propuesta es un punto de venta que se regenera al reenviar, pero puede causar confusión si Paula ve un número de propuesta en una reserva con precio distinto al PDF. Solución: llamar a la función equivalente tras cada guardado en los campos que afectan al total.
+Añadida función `_limpiarPropuestaReserva` en `formulario.js` (análoga a la de `tablas.js`) y llamada condicional tras el UPDATE de edición, cuando `slots` o `price_per_slot` cambian respecto al valor original.
 
 ---
 
@@ -948,9 +950,9 @@ Auditoría exhaustiva del panel completo realizada en jun 2026. Los ítems resue
 **Sistema de inferencia sfcom — robusto en práctica, mejorable en teoría.** El punto débil (matching por día solo funciona para ENCIERRO cuando hay múltiples filas con el mismo `sfcom_service_name`) no afecta en práctica: los otros servicios tienen un único venue activo. El fallo real aparecería si dos venues vendieran el mismo servicio no-ENCIERRO. Pendiente (no urgente): si ocurre, generalizar la desambiguación para usar `<TIPO>_<day>` en lugar de hardcodear `ENCIERRO_`.
 
 
-**`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada (`sfcom.js:92-95`).** El consumidor ve todos los availability como `fallos` pero el error real no se muestra.
+**`apiFetchStockAll` devuelve `{}` silenciosamente si la respuesta de la API es inesperada.** ✅ RESUELTO jul 2026 — Ahora lanza `Error` con el cuerpo de la respuesta. Los callers reciben el error real en sus `catch`.
 
-**`idsMismatch` en verificarSfcom es código muerto en la práctica.** `varNombreMap` siempre queda vacío porque sf-api-paula.php no expone endpoint de nombres de variaciones. Documentado en el código.
+**`idsMismatch` en verificarSfcom es código muerto en la práctica.** ✅ RESUELTO jul 2026 — Eliminados: `_varPorProducto`, `varNombreMap`, `variacionNombre`, bloque `idsMismatch` en `sfcom.js`; función `_mostrarModalPreCorreccion`, variable `tieneIdsMismatch`, sección modal y flujo en `verificacion.js`.
 
 ---
 
