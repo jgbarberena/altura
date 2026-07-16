@@ -894,3 +894,21 @@ Claude veía en el contexto líneas del borrador con `estado: 'descartada'` sin 
 ### formulario.js no invalidaba propuesta al editar reserva — ✅ RESUELTO jul 2026
 
 `tablas.js` ya llamaba a `_limpiarPropuestaReserva` al cambiar `price_per_slot` o `slots` desde la tabla. `formulario.js` no lo hacía: al editar esos campos desde el bloque de reservas normal, la propuesta PDF quedaba con `proposal_number`/`proposal_path` intactos aunque el precio o plazas hubieran cambiado. Fix: añadida función `_limpiarPropuestaReserva` en `formulario.js` (lógica idéntica a la de `tablas.js`) y llamada condicional tras el UPDATE de edición, solo cuando `slots` o `price_per_slot` cambian respecto al valor original.
+
+---
+
+### Mejoras jul 2026
+
+**Deshabilitar sfcom temporalmente.** `isSfcomDisabled()` / `setSfcomDisabled(bool)` en `verificacion.js` con persistencia en `localStorage('sfcom_disabled')`. Cuando está activo, `ejecutarVerificacion` omite la llamada a sfcom. Badge fijo bottom-right en todas las páginas del panel con botón "Reactivar". Botón "⏸️ Deshabilitar sfcom" disponible en el modal de verificación cuando hay discrepancias sfcom reales. Expuesto también en `window._setSfcomDisabled(bool)` para consola.
+
+**Autocomplete de servicio en formulario.** El selector de servicio en Bloque 2 (`formulario.html`) pasa de `<select>` visible a campo de texto con filtrado en tiempo real sobre un `<select>` oculto. El `<select>` sigue siendo la fuente de verdad para todo el JS existente. `_syncServicioInput()` mantiene el texto del input sincronizado al cambiar el valor programáticamente.
+
+**Concepto de factura: `service_name — venue_display_name`.** `_serviceLabel(r)` en `factura.js` usa el `display_name` del venue en lugar de la fecha del servicio. `cargarReservasCliente` amplía el join para incluir `venues(display_name)`, exponiendo `venue_display_name` en cada reserva. La celda del concepto es editable (`contenteditable`) antes de emitir; los labels editados se capturan en `svcLabels[]` y se pasan a `generarPDF`.
+
+**Saludo en email de facturas usa nombre de contacto.** `abrirPanelFactura` usa `_cliente.name ?? _cliente.id` para el saludo, no `_cliente.company`.
+
+**Aislamiento sfcom en facturación.** `facturarHito` en `formulario.js` filtra antes de llamar a `abrirPanelFactura`: excluye reservas con `origin_ref.startsWith('WEB')` y charges con `comments.startsWith('WEB') && comments.includes('Cobrado v')`. Evita que reservas sfcom aparezcan como líneas de servicio, que charges sfcom bloqueen la validación de factura final, y que inflen los importes en facturas de liquidación. Los charges sfcom no tienen FK a `reservation_id`; el pattern de `comments` es el único identificador.
+
+**Bienvenida: opción "no enviar" persistida en BD.** Sentinel `'0001-01-01T00:00:00.000Z'` en `welcome_sent_at` distingue "decidido no enviar" (truthy, excluido del aviso) de "pendiente" (NULL, incluido). Botón "⛔ No enviar bienvenida" en `abrirModalBienvenida`. Status "⛔ Sin bienvenida" en el botón cuando todas las confirmadas tienen el sentinel. Reversible: abrir el modal y enviar sobrescribe el sentinel. Eliminada la lógica previa basada en `localStorage('bienvenida_skip')`. Botón renombrado a "📩 Bienvenida". `tablas.js` muestra "⛔ No enviar" en la columna Bienvenida cuando detecta el sentinel.
+
+**Venue clicable en tabla de eventos.** `filaDetalleProveedor` en `panel.js` añade `onclick="location.href='proveedores.html?venue=ID'"` en la celda del venue. `proveedores.js` maneja `?venue=ID` buscando el venue en `todosVenues`, derivando el proveedor de `venue.provider_id`, cargando el proveedor y seleccionando la pestaña del venue con `selectVenueTab(venueId)`.

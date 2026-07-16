@@ -888,6 +888,8 @@ Mejoras defensivas aplicadas (jul 2026): `.ef-grupo` pasa de 2 a 3 columnas en m
 
 ### 7.4 Schema — pendiente
 
+**Temporada de `reservation_requests` se infiere de `created_at`, no de un campo explícito.** `temporadaDeFecha(created_at)` asigna la temporada: fechas antes del 15 de julio → temporada del año en curso; 15 de julio en adelante → siguiente. Una solicitud creada en 2026 antes del 15 de julio queda en temporada 2026 aunque debería ser 2027. El problema no bloquea el flujo actual (el filtro de temporada no aplica a solicitudes, solo a reservas), pero puede generar confusión en la vista de solicitudes. Pendiente: auditar si añadir columna `season` explícita a `reservation_requests` merece el cambio de schema, o si basta un ajuste en `temporadaDeFecha` para este tipo de entidad.
+
 **`service_code` no es editable desde `tablas.js` (deuda Fase 10).**
 
 Se decidió no hacerlo hasta auditar el código hardcoded que depende de `service_code`: la constante `TIPO_SERVICIO_ID` en `formulario.js`, la función `_inferirServiceId`, y los patrones regex `/^ENCIERRO_(\d+)$/`. Preguntas abiertas: con el PK entero ya en uso, ¿sigue siendo necesario el hardcode o se puede derivar dinámicamente? Hasta resolverlo, `service_code` no es editable. Acción: auditar `TIPO_SERVICIO_ID` y los regex en `formulario.js` y decidir si el hardcode puede eliminarse (probablemente sí, dado que las FK ya van por integer PK).
