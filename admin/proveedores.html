@@ -59,6 +59,10 @@
                         <input type="text" id="inputNombre" placeholder="Nombre del propietario">
                     </div>
                     <div class="form-field">
+                        <label>NIF/CIF</label>
+                        <input type="text" id="inputProveedorNif" placeholder="NIF o CIF del proveedor">
+                    </div>
+                    <div class="form-field">
                         <label>Dirección (contacto)</label>
                         <input type="text" id="inputDireccion" placeholder="Dirección del propietario">
                     </div>
@@ -366,6 +370,7 @@
                     <button class="btn btn-secondary" id="btnNuevoPagoProveedor">+ Añadir hito de pago</button>
                 </div>
                 <div id="form-nuevo-pago-proveedor" class="form-subseccion" style="display:none">
+
                     <div class="form-grid">
                         <div class="form-field">
                             <label>Concepto</label>
@@ -391,6 +396,18 @@
                         <button class="btn btn-primary" id="btnGuardarPagoProveedor">Guardar hito</button>
                         <button class="btn btn-secondary" id="btnCancelarPagoProveedor">Cancelar</button>
                     </div>
+                </div>
+
+                <!-- DOCUMENTOS RECIBIDOS -->
+                <div id="docs-proveedor-sep" style="border-top:1px solid var(--border);margin-top:20px;padding-top:16px;display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <h3 style="font-size:14px;font-weight:600;margin:0">📄 Facturas del proveedor</h3>
+                        <label class="btn btn-secondary" style="font-size:12px;cursor:pointer">
+                            ⬆ Subir documento
+                            <input type="file" id="inputSubirDocProveedor" accept="application/pdf,image/*" style="display:none">
+                        </label>
+                    </div>
+                    <div id="lista-docs-proveedor" style="font-size:13px"></div>
                 </div>
             </div>
 

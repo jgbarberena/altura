@@ -394,6 +394,42 @@ async function _emitir() {
         .eq('id', _hitoActual.id)
     if (errCharge) { alert('Error al marcar como facturado: ' + errCharge.message); return }
 
+    // Registrar en libro de facturas emitidas (upsert por charge_id para idempotencia)
+    const base = parseFloat(_hitoActual.amount)
+    const issuedPayload = {
+        invoice_number: _numFacturaSig,
+        issue_date:     hoy,
+        accrual_date:   hoy,
+        client_id:      _cliente.id,
+        client_name:    valorO(_cliente.company, valorO(_cliente.name, _cliente.id)),
+        client_nif:     _cliente.nif     ?? null,
+        client_address: _cliente.address ?? null,
+        total:          Math.round(base * (1 + FACTURA_CONFIG.iva - FACTURA_CONFIG.irpf) * 100) / 100,
+        file_path:      invoicePath,
+        charge_id:      _hitoActual.id,
+        season:         _hitoActual.season,
+        irpf_rate:      Math.round(FACTURA_CONFIG.irpf * 100),
+        irpf_amount:    Math.round(base * FACTURA_CONFIG.irpf * 100) / 100,
+        invoice_type:   tipoFactura(),
+        operation_type: 'interior',
+    }
+    const { data: issuedRow, error: errIssued } = await _supabase
+        .from('issued_invoices')
+        .upsert(issuedPayload, { onConflict: 'charge_id' })
+        .select('id')
+        .single()
+    if (errIssued) {
+        console.error('Error al registrar en libro de facturas emitidas:', errIssued.message)
+    } else {
+        await _supabase.from('issued_invoice_vat_lines').delete().eq('invoice_id', issuedRow.id)
+        await _supabase.from('issued_invoice_vat_lines').insert({
+            invoice_id:  issuedRow.id,
+            base_amount: base,
+            vat_rate:    Math.round(FACTURA_CONFIG.iva * 100),
+            vat_amount:  Math.round(base * FACTURA_CONFIG.iva * 100) / 100,
+        })
+    }
+
     document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId: _hitoActual.id } }))
 }
 

@@ -46,6 +46,7 @@ WITH ins AS (
     FROM   charges c
     JOIN   clients cl ON cl.id = c.client_id
     WHERE  c.invoice_number IS NOT NULL
+    AND    c.invoiced_at IS NOT NULL
     ORDER  BY c.invoice_number
     RETURNING id, charge_id
 )

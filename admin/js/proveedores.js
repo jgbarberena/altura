@@ -76,6 +76,7 @@ const checkFactura             = document.getElementById('checkFactura')
 const inputProveedorEmail      = document.getElementById('inputProveedorEmail')
 const inputProveedorPhone      = document.getElementById('inputProveedorPhone')
 const inputProveedorComments   = document.getElementById('inputProveedorComments')
+const inputProveedorNif        = document.getElementById('inputProveedorNif')
 const autoProvList             = document.getElementById('autocompleteProveedorList')
 const proveedorStatus          = document.getElementById('proveedor-status')
 const btnRenombrarProveedor    = document.getElementById('btnRenombrarProveedor')
@@ -635,6 +636,7 @@ document.addEventListener('click', e => {
 function cargarProveedor(p) {
     proveedorActual              = p
     inputNombre.value            = p.name           ?? ''
+    inputProveedorNif.value      = p.nif            ?? ''
     inputDireccion.value         = p.address        ?? ''
     selectFormaPago.value        = p.payment_method ?? ''
     checkFactura.checked         = p.invoice        ?? false
@@ -681,6 +683,7 @@ function limpiarProveedor() {
 
 function limpiarCamposProveedor() {
     inputNombre.value              = ''
+    inputProveedorNif.value        = ''
     inputDireccion.value           = ''
     inputVenueDireccion.value      = ''
     inputVenueDisplayName.value    = ''
@@ -696,8 +699,8 @@ function limpiarCamposProveedor() {
     renderVenueTabs([], null)
 }
 
-const camposProveedor = [inputNombre, inputDireccion, inputProveedorEmail, inputProveedorPhone, inputProveedorComments]
-const camposProvDB    = ['name', 'address', 'email', 'phone', 'comments']
+const camposProveedor = [inputNombre, inputProveedorNif, inputDireccion, inputProveedorEmail, inputProveedorPhone, inputProveedorComments]
+const camposProvDB    = ['name', 'nif', 'address', 'email', 'phone', 'comments']
 initAutoSave(supabase, camposProveedor, camposProvDB, 'providers', () => proveedorActual, {
     onSaved: mostrarGuardado
 })
@@ -2145,6 +2148,87 @@ async function cargarPagosProveedor(proveedorId) {
     renderHitosProveedor()
     actualizarResumenCoste(proveedorId, costTotal, prepagos, pagoFinal)
     document.getElementById('bloque-pagos-proveedor').style.display = 'block'
+    cargarDocumentosProveedor(proveedorId)
+}
+
+async function cargarDocumentosProveedor(proveedorId) {
+    const sep = document.getElementById('docs-proveedor-sep')
+    sep.style.display = 'block'
+
+    const [{ data: docs }, { data: invoices }] = await Promise.all([
+        supabase.from('supplier_documents').select('*').eq('provider_id', proveedorId).order('uploaded_at', { ascending: false }),
+        supabase.from('supplier_invoices').select('document_id, invoice_number').eq('provider_id', proveedorId)
+    ])
+
+    const registradoMap = new Map((invoices ?? []).map(i => [i.document_id, i.invoice_number]))
+    const lista = document.getElementById('lista-docs-proveedor')
+
+    if (!docs || docs.length === 0) {
+        lista.innerHTML = '<p style="color:var(--subtle);font-size:12px;margin:4px 0 0">Sin facturas. Sube el PDF o foto de la factura del proveedor.</p>'
+        return
+    }
+
+    lista.innerHTML = docs.map(d => {
+        const numFactura = registradoMap.get(d.id)
+        const nombre     = d.file_path.split('/').pop()
+        const fecha      = d.uploaded_at.split('T')[0]
+        return `
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+            <span style="flex:1;min-width:0">
+                <a href="#" onclick="verDocProveedor('${d.file_path}');return false"
+                   style="color:var(--text);word-break:break-all">📎 ${nombre}</a>
+                <span style="color:var(--subtle);margin-left:8px;font-size:11px">${fecha}</span>
+                ${d.notes ? `<span style="color:var(--subtle);margin-left:6px;font-size:11px">· ${d.notes}</span>` : ''}
+            </span>
+            ${numFactura
+                ? `<span style="font-size:11px;color:var(--accent-ok);white-space:nowrap">✅ ${numFactura}</span>`
+                : `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap"
+                       onclick="registrarDocProveedor(${d.id})">Registrar</button>`}
+            <button class="btn btn-danger" style="font-size:11px;padding:3px 8px"
+                onclick="eliminarDocProveedor(${d.id},'${d.file_path}')">🗑</button>
+        </div>`
+    }).join('')
+}
+
+document.getElementById('inputSubirDocProveedor').addEventListener('change', async function () {
+    if (!proveedorActual || !this.files[0]) return
+    const file = this.files[0]
+    const path = `${proveedorActual.id}/${Date.now()}_${file.name}`
+
+    const { error: errUp } = await supabase.storage.from('supplier-invoices').upload(path, file)
+    if (errUp) { alert('Error al subir el documento: ' + errUp.message); return }
+
+    const { error: errDoc } = await supabase.from('supplier_documents').insert({
+        provider_id: proveedorActual.id,
+        file_path:   path,
+        season:      getTemporadaActiva(),
+    })
+    if (errDoc) { alert('Error al registrar el documento: ' + errDoc.message); return }
+
+    mostrarToast('✅ Documento subido')
+    this.value = ''
+    cargarDocumentosProveedor(proveedorActual.id)
+})
+
+window.verDocProveedor = async function (path) {
+    const { data, error } = await supabase.storage.from('supplier-invoices').createSignedUrl(path, 3600)
+    if (error || !data?.signedUrl) { alert('No se pudo abrir el documento'); return }
+    window.open(data.signedUrl, '_blank')
+}
+
+window.eliminarDocProveedor = async function (docId, filePath) {
+    if (!confirm('¿Eliminar este documento? La acción no se puede deshacer.')) return
+    const { data: inv } = await supabase.from('supplier_invoices').select('id').eq('document_id', docId).maybeSingle()
+    if (inv) { alert('Este documento está registrado en el libro fiscal. Elimina la entrada del libro antes de borrarlo.'); return }
+    await supabase.storage.from('supplier-invoices').remove([filePath])
+    const { error } = await supabase.from('supplier_documents').delete().eq('id', docId)
+    if (error) { alert('Error al eliminar: ' + error.message); return }
+    mostrarToast('Documento eliminado')
+    cargarDocumentosProveedor(proveedorActual.id)
+}
+
+window.registrarDocProveedor = function (_docId) {
+    mostrarToast('Próximamente: registro en libro fiscal (Bloque 6)')
 }
 
 function renderHitosProveedor() {
