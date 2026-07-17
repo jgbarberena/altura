@@ -88,15 +88,13 @@ async function cargarTodo() {
     const { start, end } = quarterDates(year, q)
 
     const [
-        { data: gastos   },
-        { data: emitidas },
-        { data: cierre   },
+        { data: allGastos   },
+        { data: emitidas    },
+        { data: cierre      },
+        { data: allClosings },
     ] = await Promise.all([
         supabase.from('supplier_invoices')
-            .select('*, supplier_invoice_vat_lines(*)')
-            .gte('issue_date', start)
-            .lte('issue_date', end)
-            .order('issue_date', { ascending: true }),
+            .select('*, supplier_invoice_vat_lines(*)'),
         supabase.from('issued_invoices')
             .select('*, issued_invoice_vat_lines(*)')
             .gte('accrual_date', start)
@@ -108,9 +106,28 @@ async function cargarTodo() {
             .eq('year', year)
             .eq('quarter', q)
             .maybeSingle(),
+        supabase.from('fiscal_closings')
+            .select('year, quarter, presented_at')
+            .eq('model', 'F69'),
     ])
 
-    _gastosData   = gastos   ?? []
+    // Trimestres ya presentados (cerrados)
+    const closedSet = new Set(
+        (allClosings ?? []).filter(c => c.presented_at).map(c => `${c.year}-${c.quarter}`)
+    )
+
+    // Fecha efectiva: issue_date si su trimestre está abierto, booked_date si está cerrado
+    function _fechaEfectiva(inv) {
+        const [y, m] = inv.issue_date.split('-').map(Number)
+        const iq = Math.ceil(m / 3)
+        return closedSet.has(`${y}-${iq}`) ? inv.booked_date : inv.issue_date
+    }
+
+    const gastos = (allGastos ?? [])
+        .filter(inv => { const d = _fechaEfectiva(inv); return d >= start && d <= end })
+        .sort((a, b) => _fechaEfectiva(a).localeCompare(_fechaEfectiva(b)))
+
+    _gastosData   = gastos
     _emitidasData = emitidas ?? []
 
     renderGastos(_gastosData)
@@ -758,16 +775,10 @@ document.getElementById('btnZipGastos').addEventListener('click', exportarZipGas
 async function exportarZipGastos() {
     const year = +selectAno.value
     const q    = +selectTri.value
-    const { start, end } = quarterDates(year, q)
 
-    const { data: invoices } = await supabase
-        .from('supplier_invoices')
-        .select('id, invoice_number, issuer_name, document_id')
-        .gte('issue_date', start)
-        .lte('issue_date', end)
-        .not('document_id', 'is', null)
+    const invoices = _gastosData.filter(r => r.document_id != null)
 
-    if (!invoices?.length) {
+    if (!invoices.length) {
         mostrarToast('Sin documentos adjuntos en este trimestre', '#6b7280')
         return
     }
@@ -886,11 +897,11 @@ async function exportarPaqueteAsesor() {
             const lines = r.supplier_invoice_vat_lines ?? []
             const base  = lines.reduce((s, l) => s + (l.base_amount ?? 0), 0)
             const iva   = lines.reduce((s, l) => s + (l.vat_amount  ?? 0), 0)
-            return [r.booked_date, r.invoice_number ?? '', r.issuer_name ?? '', r.issuer_nif ?? '',
+            return [r.issue_date, r.invoice_number ?? '', r.issuer_name ?? '', r.issuer_nif ?? '',
                     +fmtN(base), +fmtN(iva), +fmtN(r.total), r.category ?? '', r.notes ?? '']
         })
         const ws = XLSX.utils.aoa_to_sheet([
-            ['Fecha libro', 'Nº factura', 'Emisor', 'NIF', 'Base', 'IVA', 'Total', 'Categoría', 'Notas'],
+            ['Fecha factura', 'Nº factura', 'Emisor', 'NIF', 'Base', 'IVA', 'Total', 'Categoría', 'Notas'],
             ...rows,
         ])
         XLSX.utils.book_append_sheet(wb, ws, 'Gastos')

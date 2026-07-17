@@ -416,6 +416,10 @@ const sfcomNombreAutoList  = document.getElementById('sfcomNombreAutoList')
 const sfcomNombreVariacion = document.getElementById('sfcomNombreVariacion')
 const sfcomSlotsListed     = document.getElementById('sfcomSlotsListed')
 const sfcomPrecioPublico   = document.getElementById('sfcomPrecioPublico')
+initPrecioInput(sfcomPrecioPublico)
+initPrecioInput(document.getElementById('pagoProvImporte'))
+initPrecioInput(document.getElementById('dlgNuevoPrecio'))
+initPrecioInput(document.getElementById('dlgNuevoCoste'))
 const sfcomEstadoLabel     = document.getElementById('sfcomEstadoLabel')
 const sfcomProductId       = document.getElementById('sfcomProductId')
 const sfcomVariationId     = document.getElementById('sfcomVariationId')
@@ -564,6 +568,7 @@ function _variacionAuto(serviceId) {
 }
 
 const inputCosteTotal        = document.getElementById('inputCosteTotal')
+initPrecioInput(inputCosteTotal)
 const selectModelo           = document.getElementById('selectModelo')
 const servicioStatus         = document.getElementById('servicio-status')
 const btnGuardarServicio     = document.getElementById('btnGuardarServicio')
@@ -1003,8 +1008,8 @@ inputServicioId.addEventListener('input', () => {
     autoList.style.display = coincidencias.length > 0 ? 'block' : 'none'
     // Limpiar siempre los campos de availability (son del par proveedor-servicio)
     inputPlazas.value     = ''
-    inputPrecio.value     = ''
-    inputCosteTotal.value = ''
+    setPrecioValue(inputPrecio, '')
+    setPrecioValue(inputCosteTotal, '')
     selectModelo.value    = 'capacity'
     document.getElementById('inputCosteServicio').value = '—'
     // Si el valor coincide exactamente con un servicio existente, cargar sus campos
@@ -1064,8 +1069,8 @@ document.getElementById('autocompleteServicioList').addEventListener('click', e 
     btnRenombrarServicio.style.display = 'none'
     // Limpiar siempre los campos de availability (son del par proveedor-servicio)
     inputPlazas.value     = ''
-    inputPrecio.value     = ''
-    inputCosteTotal.value = ''
+    setPrecioValue(inputPrecio, '')
+    setPrecioValue(inputCosteTotal, '')
     selectModelo.value    = 'capacity'
     document.getElementById('inputCosteServicio').value = '—'
     // Cargar campos del servicio seleccionado
@@ -1102,7 +1107,7 @@ inputPrecio.addEventListener('input', () => {
     if (selectModelo.value !== 'fixed') {
         const plazas = parseInt(inputPlazas.value) || 0
         const precio  = parseFloat(inputPrecio.value) || 0
-        if (plazas > 0 && precio >= 0) inputCosteTotal.value = (plazas * precio).toFixed(4)
+        if (plazas > 0 && precio >= 0) setPrecioValue(inputCosteTotal, plazas * precio)
     }
     actualizarBtnServicio()
     actualizarCosteServicio()
@@ -1113,7 +1118,7 @@ inputCosteTotal.addEventListener('input', () => {
     if (selectModelo.value !== 'fixed') {
         const plazas = parseInt(inputPlazas.value) || 0
         const total  = parseFloat(inputCosteTotal.value) || 0
-        if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(4)
+        if (plazas > 0) setPrecioValue(inputPrecio, total / plazas)
     }
     actualizarBtnServicio()
     actualizarCosteServicio()
@@ -1123,12 +1128,12 @@ inputPlazas.addEventListener('input', () => {
     const plazas = parseInt(inputPlazas.value) || 0
     if (selectModelo.value !== 'fixed') {
         if (ultimoCampoActivo === 'precio') {
-            const precio = parseFloat(inputPrecio.value) || 0
-            if (plazas > 0) inputCosteTotal.value = (plazas * precio).toFixed(4)
+            const precio = getPrecioValue(inputPrecio)
+            if (plazas > 0) setPrecioValue(inputCosteTotal, plazas * precio)
         } else {
-            const total = parseFloat(inputCosteTotal.value) || 0
-            if (plazas > 0) inputPrecio.value = (total / plazas).toFixed(4)
-            else inputPrecio.value = ''
+            const total = getPrecioValue(inputCosteTotal)
+            if (plazas > 0) setPrecioValue(inputPrecio, total / plazas)
+            else setPrecioValue(inputPrecio, '')
         }
     }
     actualizarBtnServicio()
@@ -1138,7 +1143,7 @@ inputPlazas.addEventListener('input', () => {
 selectModelo.addEventListener('change', () => {
     if (selectModelo.value === 'fixed') {
         inputPrecio.disabled = true
-        inputPrecio.value    = ''
+        setPrecioValue(inputPrecio, '')
     } else {
         inputPrecio.disabled = false
     }
@@ -1147,7 +1152,7 @@ selectModelo.addEventListener('change', () => {
 
 function actualizarCosteServicio() {
     const plazas    = parseInt(inputPlazas.value) || 0
-    const precio    = parseFloat(inputPrecio.value) || 0
+    const precio    = getPrecioValue(inputPrecio)
     const modelo    = selectModelo.value
     const servCode  = inputServicioId.value.trim().toUpperCase()
     const servIntId = todosServicios.find(s => s.service_code === servCode)?.id ?? null
@@ -1161,7 +1166,7 @@ function actualizarCosteServicio() {
         coste = plazas * precio
         document.getElementById('inputCosteServicio').value = fmt(coste)
     } else if (modelo === 'fixed') {
-        const costoFijo = parseFloat(inputCosteTotal.value) || 0
+        const costoFijo = getPrecioValue(inputCosteTotal)
         if (currentVenueId && servIntId) {
             const tieneReserva = todasReservas.some(r =>
                 r.venue_id   === currentVenueId &&
@@ -1204,7 +1209,7 @@ function actualizarSeccionSfcom(disp, modoNuevo = false) {
     sfcomNombreProducto.value  = disp?.sfcom_service_name ?? ''
     sfcomNombreVariacion.value = _variacionAuto(disp?.service_code ?? inputServicioId.value.trim().toUpperCase())
     sfcomSlotsListed.value     = disp?.sfcom_slots_listed ?? ''
-    sfcomPrecioPublico.value   = ''  // never stored in DB, always empty on load
+    setPrecioValue(sfcomPrecioPublico, '')  // never stored in DB, always empty on load
     sfcomProductId.value       = disp?.sfcom_product_id   ?? ''
     sfcomVariationId.value     = disp?.sfcom_variation_id ?? ''
 
@@ -1375,9 +1380,9 @@ function limpiarFormularioServicio() {
     inputServicioId.value    = ''
     inputServicioId.disabled = false
     inputPlazas.value        = ''
-    inputPrecio.value        = ''
+    setPrecioValue(inputPrecio, '')
     inputPrecio.disabled     = false
-    inputCosteTotal.value    = ''
+    setPrecioValue(inputCosteTotal, '')
     selectModelo.value              = 'capacity'
     inputServicioNombre.value       = ''
     inputServicioDescription.value  = ''
@@ -1418,8 +1423,8 @@ btnGuardarServicio.addEventListener('click', () => confirmarSiTemporadaNoActiva(
     const plazas      = parseInt(inputPlazas.value)
     const modelo      = selectModelo.value
     const precio      = modelo === 'fixed'
-        ? parseFloat(inputCosteTotal.value)
-        : parseFloat(inputPrecio.value)
+        ? getPrecioValue(inputCosteTotal)
+        : getPrecioValue(inputPrecio)
 
     if (plazas < 0) { alert('El número de plazas no puede ser negativo.'); return }
     if (plazas === 0) { if (!confirm('¿Quieres añadir un servicio con 0 plazas disponibles?')) return }
@@ -1512,7 +1517,7 @@ btnGuardarServicio.addEventListener('click', () => confirmarSiTemporadaNoActiva(
             } else {
                 sfcomNombreProducto.value = ''
                 sfcomSlotsListed.value    = ''
-                sfcomPrecioPublico.value  = ''
+                setPrecioValue(sfcomPrecioPublico, '')
                 sfcomDetalles.open        = false
                 _sfcomSinSolicitar        = true
             }
@@ -1789,13 +1794,13 @@ function cargarServicioEnFormulario(dispIds) {
         inputPlazas.value        = disps[0].total_slots
         selectModelo.value       = disps[0].billing_model
         if (disps[0].billing_model === 'fixed') {
-            inputPrecio.value    = ''
+            setPrecioValue(inputPrecio, '')
             inputPrecio.disabled = true
-            inputCosteTotal.value = parseFloat(disps[0].price_per_slot || 0).toFixed(4)
+            setPrecioValue(inputCosteTotal, parseFloat(disps[0].price_per_slot || 0))
         } else {
-            inputPrecio.value    = disps[0].price_per_slot
+            setPrecioValue(inputPrecio, disps[0].price_per_slot)
             inputPrecio.disabled = false
-            inputCosteTotal.value = (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(4)
+            setPrecioValue(inputCosteTotal, disps[0].total_slots * parseFloat(disps[0].price_per_slot))
         }
         // campos de services (compartidos entre venues)
         const svc = todosServicios.find(s => s.id === disps[0].service_id)
@@ -1836,14 +1841,14 @@ function cargarServicioEnFormulario(dispIds) {
         inputPlazas.value     = plazasIguales ? disps[0].total_slots    : ''
         selectModelo.value    = modeloIgual   ? disps[0].billing_model  : 'capacity'
         if (modeloIgual && disps[0].billing_model === 'fixed') {
-            inputPrecio.value     = ''
+            setPrecioValue(inputPrecio, '')
             inputPrecio.disabled  = true
-            inputCosteTotal.value = precioIgual ? parseFloat(disps[0].price_per_slot || 0).toFixed(4) : ''
+            setPrecioValue(inputCosteTotal, precioIgual ? parseFloat(disps[0].price_per_slot || 0) : '')
         } else {
-            inputPrecio.value     = precioIgual   ? disps[0].price_per_slot : ''
+            setPrecioValue(inputPrecio, precioIgual ? disps[0].price_per_slot : '')
             inputPrecio.disabled  = false
-            inputCosteTotal.value = (plazasIguales && precioIgual)
-                ? (disps[0].total_slots * parseFloat(disps[0].price_per_slot)).toFixed(4) : ''
+            setPrecioValue(inputCosteTotal, (plazasIguales && precioIgual)
+                ? disps[0].total_slots * parseFloat(disps[0].price_per_slot) : '')
         }
 
         inputServicioNombre.value      = ''
@@ -2377,7 +2382,7 @@ document.getElementById('btnCancelarPagoProveedor').addEventListener('click', ()
 
 document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () => confirmarSiTemporadaNoActiva('el pago al proveedor', async () => {
     const concepto = document.getElementById('pagoProvConcepto').value.trim() || 'Prepago'
-    const importe  = parseFloat(document.getElementById('pagoProvImporte').value)
+    const importe  = getPrecioValue(document.getElementById('pagoProvImporte'))
     const fecha    = document.getElementById('pagoProvFecha').value || null
     const pagado   = document.getElementById('pagoProvPagado').value === 'true'
     if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
@@ -2387,7 +2392,7 @@ document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () 
         { esFinal: false, comments: concepto, amount: importe, due_date: fecha, paid: pagado })
 
     document.getElementById('pagoProvConcepto').value = ''
-    document.getElementById('pagoProvImporte').value  = ''
+    setPrecioValue(document.getElementById('pagoProvImporte'), '')
     document.getElementById('pagoProvFecha').value    = ''
     document.getElementById('pagoProvPagado').value   = 'false'
     document.getElementById('form-nuevo-pago-proveedor').style.display = 'none'
@@ -2509,7 +2514,7 @@ function harvestMultipleValues() {
         const sp  = contenido.querySelector(`.m-sfcom-plazas[data-idx="${i}"]`)
         const se  = contenido.querySelector(`.m-sfcom-precio[data-idx="${i}"]`)
         if (p  && !p.disabled)  row.total_slots         = p.value === '' ? null : parseFloat(p.value)
-        if (r  && !r.disabled)  row.price_per_slot      = r.value === '' ? null : parseFloat(r.value)
+        if (r  && !r.disabled)  row.price_per_slot      = r.value === '' ? null : getPrecioValue(r)
         if (m  && !m.disabled)  row.billing_model       = m.value
         if (id) row.serviceId                           = id.value
         if (snp && !snp.disabled) row.sfcomNombreProducto = snp.value
@@ -2707,7 +2712,7 @@ function setupMultipleEvents() {
                         : input.classList.contains('m-precio')  ? 'price_per_slot'
                         : 'billing_model'
             const valor = campo === 'billing_model' ? input.value
-                        : (input.value === '' ? null : parseFloat(input.value))
+                        : (input.value === '' ? null : (campo === 'price_per_slot' ? getPrecioValue(input) : parseFloat(input.value)))
             row[campo]  = valor
             if (row.isExisting) {
                 row.modified = (
@@ -2756,6 +2761,8 @@ function setupMultipleEvents() {
             }
         })
     })
+
+    contenido.querySelectorAll('.m-precio').forEach(initPrecioInput)
 
     // Inputs sfcom — change (no input) para que smart fill no dispare al vuelo
     contenido.querySelectorAll('.m-sfcom-nombreproducto, .m-sfcom-plazas, .m-sfcom-precio').forEach(input => {
@@ -3067,9 +3074,9 @@ function abrirAsistenteNuevo() {
     document.getElementById('dlgNuevoImg').value     = ''
     _setDlgImgPicker(null)
     document.getElementById('dlgNuevoPlazas').value  = ''
-    document.getElementById('dlgNuevoPrecio').value  = ''
+    setPrecioValue(document.getElementById('dlgNuevoPrecio'), '')
     document.getElementById('dlgNuevoPrecio').disabled = false
-    document.getElementById('dlgNuevoCoste').value   = ''
+    setPrecioValue(document.getElementById('dlgNuevoCoste'), '')
     document.getElementById('dlgNuevoModelo').value  = 'capacity'
     document.getElementById('nuevo-asignacion').style.display = 'none'
 
@@ -3143,16 +3150,16 @@ document.getElementById('dlgNuevoImgClear').addEventListener('click', e => {
 // Bidireccionalidad precio/coste en asignación
 document.getElementById('dlgNuevoPlazas').addEventListener('input', () => {
     const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
-    const r = parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
+    const r = getPrecioValue(document.getElementById('dlgNuevoPrecio'))
     if (document.getElementById('dlgNuevoModelo').value !== 'fixed' && p && r)
-        document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(4)
+        setPrecioValue(document.getElementById('dlgNuevoCoste'), p * r)
 })
 
 document.getElementById('dlgNuevoPrecio').addEventListener('input', () => {
     nuevoDlgUltimoCampoAsig = 'precio'
     const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
     const r = parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
-    if (p && r) document.getElementById('dlgNuevoCoste').value = (p * r).toFixed(4)
+    if (p && r) setPrecioValue(document.getElementById('dlgNuevoCoste'), p * r)
 })
 
 document.getElementById('dlgNuevoCoste').addEventListener('input', () => {
@@ -3160,20 +3167,20 @@ document.getElementById('dlgNuevoCoste').addEventListener('input', () => {
     const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
     const c = parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
     if (document.getElementById('dlgNuevoModelo').value !== 'fixed' && p > 0)
-        document.getElementById('dlgNuevoPrecio').value = (c / p).toFixed(4)
+        setPrecioValue(document.getElementById('dlgNuevoPrecio'), c / p)
 })
 
 document.getElementById('dlgNuevoModelo').addEventListener('change', () => {
     const m     = document.getElementById('dlgNuevoModelo').value
     const inpR  = document.getElementById('dlgNuevoPrecio')
     if (m === 'fixed') {
-        inpR.value    = ''
+        setPrecioValue(inpR, '')
         inpR.disabled = true
     } else {
         inpR.disabled = false
         const p = parseFloat(document.getElementById('dlgNuevoPlazas').value) || 0
-        const c = parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
-        if (p > 0 && c) inpR.value = (c / p).toFixed(4)
+        const c = getPrecioValue(document.getElementById('dlgNuevoCoste'))
+        if (p > 0 && c) setPrecioValue(inpR, c / p)
     }
 })
 
@@ -3230,8 +3237,8 @@ document.getElementById('btnNuevoCrear').addEventListener('click', async () => {
     const modelo = document.getElementById('dlgNuevoModelo').value
     const plazas = parseInt(document.getElementById('dlgNuevoPlazas').value) || 0
     const precio = modelo === 'fixed'
-        ? parseFloat(document.getElementById('dlgNuevoCoste').value) || 0
-        : parseFloat(document.getElementById('dlgNuevoPrecio').value) || 0
+        ? getPrecioValue(document.getElementById('dlgNuevoCoste'))
+        : getPrecioValue(document.getElementById('dlgNuevoPrecio'))
     const hora      = document.getElementById('dlgNuevoHora').value || null
     const img       = document.getElementById('dlgNuevoImg').value.trim() || null
     const name      = document.getElementById('dlgNuevoNombre').value.trim() || null

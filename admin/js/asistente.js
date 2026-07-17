@@ -1,6 +1,6 @@
 import { crearModal } from './modal.js'
 import { mostrarToast } from './verificacion.js'
-import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador, anioTemporada, serviceCodesToIds } from './utils.js'
+import { mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, construirItemBorrador, anioTemporada, serviceCodesToIds, initPrecioInput, getPrecioValue } from './utils.js'
 import { SYSTEM_PROMPT_ASISTENTE, SYSTEM_PROMPT_PARSING } from './asistente-config.js'
 
 let _supabase, _getDisponibilidad, _getTodasReservas, _onEmailSaved, _esSfcom, _onRespuestaUsada, _onBorradorActualizado, _getNotasSesion
@@ -638,9 +638,12 @@ export async function abrirProcesarEmail() {
         wrap.querySelectorAll('.mn-venue').forEach(inp => inp.addEventListener('change', e => {
             modalDraft[parseInt(e.target.dataset.idx)].venue_display_name = e.target.value.trim() || null
         }))
-        wrap.querySelectorAll('.mn-price').forEach(inp => inp.addEventListener('change', e => {
-            modalDraft[parseInt(e.target.dataset.idx)].price = parseFloat(e.target.value) || null
-        }))
+        wrap.querySelectorAll('.mn-price').forEach(inp => {
+            inp.addEventListener('change', e => {
+                modalDraft[parseInt(e.target.dataset.idx)].price = getPrecioValue(e.target) || null
+            })
+            initPrecioInput(inp)
+        })
         wrap.querySelectorAll('.mn-del').forEach(btn => btn.addEventListener('click', e => {
             modalDraft.splice(parseInt(e.target.dataset.idx), 1)
             if (!modalDraft.length) modalDraft.push({ service_id:null, service_name:null, day:null, slots:null, price:null, venue_id:null, venue_display_name:null, catalogo_url:null })
@@ -670,7 +673,7 @@ export async function abrirProcesarEmail() {
             if (dia && !dia.readOnly) modalDraft[idx].day               = parseInt(dia.value)     || null
             if (sl)                   modalDraft[idx].slots             = parseInt(sl.value)      || null
             if (venue)                modalDraft[idx].venue_display_name = venue.value.trim()     || null
-            if (price)                modalDraft[idx].price             = parseFloat(price.value) || null
+            if (price)                modalDraft[idx].price             = getPrecioValue(price) || null
         })
     }
 

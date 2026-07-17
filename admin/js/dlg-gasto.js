@@ -3,9 +3,10 @@
 // Parámetros: doc (objeto supplier_documents o null), provider (objeto providers o null),
 //             onGuardado (() => void) — callback para refrescar la pantalla del caller.
 
-import { supabase }     from './supabase.js'
-import { crearModal }   from './modal.js'
-import { mostrarToast } from './verificacion.js'
+import { supabase }                        from './supabase.js'
+import { crearModal }                      from './modal.js'
+import { mostrarToast }                    from './verificacion.js'
+import { initPrecioInput, getPrecioValue } from './utils.js'
 
 export async function abrirDlgGasto(docOrId, provider, onGuardado) {
     let doc = (docOrId && typeof docOrId === 'object') ? docOrId : null
@@ -219,6 +220,10 @@ async function _abrirModal(doc, provider, onGuardado) {
         </div>
     `
 
+    initPrecioInput(document.getElementById('dlg-total-simp'))
+    initPrecioInput(document.getElementById('dlg-total-full'))
+    document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
+
     // ── Zoom en imagen ────────────────────────────────────────────────────────
     const imgEl = document.getElementById('dlg-img')
     if (imgEl && isImg) {
@@ -291,11 +296,13 @@ async function _abrirModal(doc, provider, onGuardado) {
     window._dlgVatAdd = () => {
         _vatLines.push({ base: '', rate: 21, vat: '' })
         document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+        document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
     }
 
     window._dlgVatRm = (idx) => {
         _vatLines.splice(idx, 1)
         document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+        document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
         window._dlgRecalcFull()
     }
 
@@ -365,6 +372,7 @@ async function _abrirModal(doc, provider, onGuardado) {
                     if (d.vat_lines?.length) {
                         _vatLines = d.vat_lines.map(l => ({ base: +(l.base||0), rate: +(l.rate||21), vat: +(l.vat||0) }))
                         document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+                        document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
                     }
                     set('dlg-irpf-rate', d.irpf_rate || null)
                     window._dlgRecalcFull()
@@ -393,7 +401,7 @@ async function _abrirModal(doc, provider, onGuardado) {
 
         if (isSimp) {
             window._dlgRecalcSimp()
-            total      = parseFloat(document.getElementById('dlg-total-simp')?.value)
+            total      = getPrecioValue(document.getElementById('dlg-total-simp'))
             invNum     = get('dlg-invoice-number') || `T-${Date.now()}`
             bookedDate = issueDate
             category   = 'otros'
@@ -409,7 +417,7 @@ async function _abrirModal(doc, provider, onGuardado) {
             isCapital  = document.getElementById('dlg-capital')?.checked ?? false
             irpfRate   = parseFloat(document.getElementById('dlg-irpf-rate')?.value) || 0
             irpfAmount = parseFloat(document.getElementById('dlg-irpf-amount')?.value) || 0
-            total      = parseFloat(document.getElementById('dlg-total-full')?.value)
+            total      = getPrecioValue(document.getElementById('dlg-total-full'))
         }
 
         if (!issuerName)              { alert('Falta el nombre del emisor'); return }

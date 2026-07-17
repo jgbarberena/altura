@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds, esVacio, initTemporada, getTemporadaActiva, temporadaDeFecha } from './utils.js'
+import { initSidebar, buildCatalogUrl, resolverCliente, parsearNivel, TIPO_SERVICIO_ID, mostrarOpcionesEnvio, persistirCobrosCliente, persistirPagosProveedor, construirItemBorrador, extraerQualifier, serviceCodesToIds, esVacio, initTemporada, getTemporadaActiva, temporadaDeFecha, initPrecioInput } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { initAsistente, abrirAsistenteRespuesta, abrirProcesarEmail } from './asistente.js'
 import { checkSfcomOrders, importarCanceladosSfcom, loadSfcomListings } from './sfcom.js'
@@ -969,6 +969,7 @@ function _renderBorrador(sol, container) {
             draft[idx].price = e.target.value !== '' ? parseFloat(e.target.value) : null
             _debounceSave(sol, getDraft)
         })
+        initPrecioInput(inp)
     })
 
     tbody.querySelectorAll('.bor-del').forEach(btn => {
