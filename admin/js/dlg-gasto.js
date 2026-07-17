@@ -126,8 +126,12 @@ async function _abrirModal(doc, provider, onGuardado) {
                     </div>
                     <div class="form-field">
                         <label>Fecha</label>
-                        <input type="date" id="dlg-issue-date" value="${hoy}">
+                        <input type="date" id="dlg-issue-date" value="${hoy}"
+                            oninput="window._dlgCheckFecha(this.value)">
                     </div>
+                </div>
+                <div id="dlg-fecha-aviso" style="display:none;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;padding:6px 10px;margin-top:6px">
+                    ⚠️ La fecha leída es de más de un trimestre atrás — comprueba que sea correcta antes de guardar.
                 </div>
 
                 <!-- Sección simplificada -->
@@ -239,6 +243,19 @@ async function _abrirModal(doc, provider, onGuardado) {
     }
     window._dlgSetTipo(_tipo)
 
+    window._dlgCheckFecha = (dateStr) => {
+        const aviso = document.getElementById('dlg-fecha-aviso')
+        if (!aviso || !dateStr) return
+        const now  = new Date()
+        const curY = now.getFullYear()
+        const curQ = Math.ceil((now.getMonth() + 1) / 3)
+        const prevQ = curQ - 1
+        const thresholdDate = prevQ > 0
+            ? `${curY}-${String((prevQ - 1) * 3 + 1).padStart(2, '0')}-01`
+            : `${curY - 1}-10-01`
+        aviso.style.display = dateStr < thresholdDate ? '' : 'none'
+    }
+
     window._dlgRecalcSimp = () => {
         const total   = parseFloat(document.getElementById('dlg-total-simp')?.value) || 0
         const ivaRate = parseFloat(document.getElementById('dlg-iva-simple')?.value) || 0
@@ -334,6 +351,7 @@ async function _abrirModal(doc, provider, onGuardado) {
                 set('dlg-issuer-nif',     d.issuer_nif)
                 set('dlg-invoice-number', d.invoice_number)
                 set('dlg-issue-date',     d.issue_date)
+                window._dlgCheckFecha(d.issue_date)
 
                 if (_tipo === 'simp') {
                     set('dlg-total-simp', d.total)
@@ -377,7 +395,7 @@ async function _abrirModal(doc, provider, onGuardado) {
             window._dlgRecalcSimp()
             total      = parseFloat(document.getElementById('dlg-total-simp')?.value)
             invNum     = get('dlg-invoice-number') || `T-${Date.now()}`
-            bookedDate = issueDate?.startsWith(hoy.slice(0, 4)) ? issueDate : hoy
+            bookedDate = issueDate
             category   = 'otros'
             dedPct     = 100
             isCapital  = false
