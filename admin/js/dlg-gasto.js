@@ -377,7 +377,7 @@ async function _abrirModal(doc, provider, onGuardado) {
             window._dlgRecalcSimp()
             total      = parseFloat(document.getElementById('dlg-total-simp')?.value)
             invNum     = get('dlg-invoice-number') || `T-${Date.now()}`
-            bookedDate = issueDate
+            bookedDate = issueDate?.startsWith(hoy.slice(0, 4)) ? issueDate : hoy
             category   = 'otros'
             dedPct     = 100
             isCapital  = false
