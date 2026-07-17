@@ -1,7 +1,8 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva } from './utils.js'
-import { initFacturacion, abrirPanelFactura, baseDesdeTotalFacturado, totalFacturadoDesdeBase } from './factura.js'
+import { initFacturacion, abrirPanelFactura, abrirPanelReemision, anularFacturaDeHito, baseDesdeTotalFacturado, totalFacturadoDesdeBase } from './factura.js'
+import { irpfRateParaCliente } from './fiscal-config.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
 import { syncStockToSfcom, checkSfcomOrders, checkAvailabilityBeforeSave, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, extraerNombreProducto, extraerDia, verificarConfirmarSfcom, importarCanceladosSfcom, resolverProductoSfcom } from './sfcom.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
@@ -78,8 +79,10 @@ const inputCompany = document.getElementById('inputCompany')
 const inputPhone   = document.getElementById('inputPhone')
 const inputEmail   = document.getElementById('inputEmail')
 const inputAddress = document.getElementById('inputAddress')
-const inputNif     = document.getElementById('inputNif')
-const inputComments = document.getElementById('inputComments')
+const inputNif        = document.getElementById('inputNif')
+const inputComments   = document.getElementById('inputComments')
+const inputIsBusiness = document.getElementById('inputIsBusiness')
+const inputCountry    = document.getElementById('inputCountry')
 const autoList            = document.getElementById('autocompleteList')
 const statusDiv           = document.getElementById('cliente-status')
 const btnRenombrarCliente = document.getElementById('btnRenombrarCliente')
@@ -214,8 +217,11 @@ function cargarCliente(cliente) {
     inputPhone.value    = cliente.phone    ?? ''
     inputEmail.value    = cliente.email    ?? ''
     inputAddress.value  = cliente.address  ?? ''
-    inputNif.value      = cliente.nif      ?? ''
-    inputComments.value = cliente.comments ?? ''
+    inputNif.value          = cliente.nif        ?? ''
+    inputComments.value     = cliente.comments   ?? ''
+    inputIsBusiness.checked = cliente.is_business ?? false
+    inputCountry.value      = cliente.country    ?? 'ES'
+    document.getElementById('nif-inferencia-sugerencia').innerHTML = ''
     statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente'
     statusDiv.style.color = 'var(--accent-ok)'
     btnRenombrarCliente.style.display = 'inline-flex'
@@ -227,6 +233,9 @@ function limpiarCamposCliente() {
     clienteActual = null
     inputName.value = inputCompany.value = inputPhone.value =
     inputEmail.value = inputComments.value = inputAddress.value = inputNif.value = ''
+    inputIsBusiness.checked = false
+    inputCountry.value      = 'ES'
+    document.getElementById('nif-inferencia-sugerencia').innerHTML = ''
     statusDiv.textContent = ''
     btnRenombrarCliente.style.display = 'none'
     document.getElementById('bloque-reservas-cliente').style.display = 'none'
@@ -293,6 +302,77 @@ initAutoSave(supabase, camposCliente, camposDB, 'clients', () => clienteActual, 
     }
 })
 
+// ── Autosave manual para campos no-texto ─────────────────────────────────────
+
+function _notificarGuardado() {
+    statusDiv.textContent = '✅ Guardado'
+    statusDiv.style.color = 'var(--accent-ok)'
+    setTimeout(() => { statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente' }, 2000)
+}
+
+inputIsBusiness.addEventListener('change', async () => {
+    if (!clienteActual) return
+    const val = inputIsBusiness.checked
+    const { error } = await supabase.from('clients').update({ is_business: val }).eq('id', clienteActual.id)
+    if (error) { console.error('Error guardando is_business:', error); return }
+    clienteActual.is_business = val
+    _notificarGuardado()
+    actualizarTotal()
+})
+
+inputCountry.addEventListener('change', async () => {
+    if (!clienteActual) return
+    const val = inputCountry.value.trim().toUpperCase() || 'ES'
+    inputCountry.value = val
+    const { error } = await supabase.from('clients').update({ country: val }).eq('id', clienteActual.id)
+    if (error) { console.error('Error guardando country:', error); return }
+    clienteActual.country = val
+    _notificarGuardado()
+    actualizarTotal()
+})
+
+// Inferencia fiscal a partir del NIF — propone is_business y country, nunca los cambia sola
+function _inferirFiscalDesdeNif(nif) {
+    const n = nif.trim().toUpperCase()
+    if (/^[ABCDEFGHJKLMNPQRSUVW]\d{7}[0-9A-J]$/.test(n)) return { is_business: true,  country: 'ES' }  // CIF
+    if (/^\d{8}[TRWAGMYFPDXBNJZSQVHLCKE]$/.test(n))       return { is_business: false, country: 'ES' }  // DNI
+    if (/^[XYZ]\d{7}[TRWAGMYFPDXBNJZSQVHLCKE]$/.test(n))  return { is_business: false, country: 'ES' }  // NIE
+    return { is_business: false, country: 'XX' }  // extranjero
+}
+
+inputNif.addEventListener('change', () => {
+    const divSug = document.getElementById('nif-inferencia-sugerencia')
+    if (!divSug) return
+    divSug.innerHTML = ''
+    const nif = inputNif.value.trim()
+    if (!nif || !clienteActual) return
+
+    const inferido    = _inferirFiscalDesdeNif(nif)
+    const bizActual   = clienteActual.is_business ?? false
+    const paisActual  = clienteActual.country     ?? 'ES'
+    if (inferido.is_business === bizActual && inferido.country === paisActual) return
+
+    const etiqueta = inferido.is_business        ? 'empresa española (CIF)'  :
+                     inferido.country === 'XX'   ? 'NIF extranjero'          : 'particular español'
+    divSug.innerHTML =
+        `<span style="color:var(--accent)">⚠️ ${etiqueta} detectado.</span> ` +
+        `<a href="#" id="btn-nif-aplicar" style="color:var(--accent-ok)">Aplicar</a>`
+
+    document.getElementById('btn-nif-aplicar')?.addEventListener('click', async e => {
+        e.preventDefault()
+        inputIsBusiness.checked = inferido.is_business
+        inputCountry.value      = inferido.country
+        divSug.innerHTML        = ''
+        const { error } = await supabase.from('clients')
+            .update({ is_business: inferido.is_business, country: inferido.country })
+            .eq('id', clienteActual.id)
+        if (error) { console.error('Error aplicando inferencia NIF:', error); return }
+        clienteActual.is_business = inferido.is_business
+        clienteActual.country     = inferido.country
+        actualizarTotal()
+    })
+})
+
 // Guarda un cliente nuevo en la BBDD sin necesidad de añadir una reserva
 // Se llama desde el enlace del statusDiv cuando el ID no existe en la BBDD
 window.guardarClienteNuevo = async function(e) {
@@ -301,18 +381,24 @@ window.guardarClienteNuevo = async function(e) {
     if (!clienteId) return
 
     const { error } = await supabase.from('clients').insert({
-        id:       clienteId,
-        name:     inputName.value.trim()     || null,
-        company:  inputCompany.value.trim()  || null,
-        phone:    inputPhone.value.trim()    || null,
-        email:    inputEmail.value.trim()    || null,
-        address:  inputAddress.value.trim()  || null,
-        nif:      inputNif.value.trim()      || null,
-        comments: inputComments.value.trim() || null
+        id:          clienteId,
+        name:        inputName.value.trim()     || null,
+        company:     inputCompany.value.trim()  || null,
+        phone:       inputPhone.value.trim()    || null,
+        email:       inputEmail.value.trim()    || null,
+        address:     inputAddress.value.trim()  || null,
+        nif:         inputNif.value.trim()      || null,
+        comments:    inputComments.value.trim() || null,
+        is_business: inputIsBusiness.checked,
+        country:     inputCountry.value.trim().toUpperCase() || 'ES',
     })
     if (error) { alert('Error al guardar el cliente: ' + error.message); return }
 
-    clienteActual = { id: clienteId, name: inputName.value.trim() || null }
+    clienteActual = {
+        id: clienteId, name: inputName.value.trim() || null,
+        is_business: inputIsBusiness.checked,
+        country:     inputCountry.value.trim().toUpperCase() || 'ES',
+    }
     todosClientes.push(clienteActual)
     statusDiv.innerHTML = ''
     statusDiv.textContent = '✅ Cliente guardado — los cambios se guardan automáticamente'
@@ -381,8 +467,9 @@ let _sincronizandoPrecioFinal = false
 
 inputPrecioFinal.addEventListener('input', () => {
     const totalFacturado = parseFloat(inputPrecioFinal.value)
+    const irpfRate       = irpfRateParaCliente(clienteActual)
     _sincronizandoPrecioFinal = true
-    inputPrecio.value = isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado).toFixed(4)
+    inputPrecio.value = isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado, irpfRate).toFixed(4)
     validarPrecio()
     actualizarTotal()
     actualizarBtnAnadir()
@@ -406,13 +493,14 @@ selectProveedor.addEventListener('change', () => {
 })
 
 function actualizarTotal() {
-    const plazas = parseInt(inputPlazas.value) || 0
-    const precio = parseFloat(inputPrecio.value) || 0
-    const total  = plazas * precio
+    const plazas   = parseInt(inputPlazas.value) || 0
+    const precio   = parseFloat(inputPrecio.value) || 0
+    const total    = plazas * precio
+    const irpfRate = irpfRateParaCliente(clienteActual)
     document.getElementById('inputTotal').value =
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
     if (!_sincronizandoPrecioFinal)
-        inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio).toFixed(4) : ''
+        inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio, irpfRate).toFixed(4) : ''
 }
 
 async function _limpiarPropuestaReserva(row) {
@@ -1366,17 +1454,23 @@ btnAnadir.addEventListener('click', () => confirmarSiTemporadaNoActiva('la reser
             const esSolicitudSfcom = _cargandoSolicitud && solicitudOriginRef?.startsWith('WEB')
             if (!esSolicitudSfcom && !confirm(`¿Crear cliente nuevo "${clienteId}"${nombre ? ' (' + nombre + ')' : ''}?`)) return
             const { error: errCliente } = await supabase.from('clients').insert({
-                id:       clienteId,
-                name:     nombre || null,
-                company:  inputCompany.value.trim()  || null,
-                phone:    inputPhone.value.trim()    || null,
-                email:    inputEmail.value.trim()    || null,
-                address:  inputAddress.value.trim()  || null,
-                nif:      inputNif.value.trim()      || null,
-                comments: inputComments.value.trim() || null
+                id:          clienteId,
+                name:        nombre || null,
+                company:     inputCompany.value.trim()  || null,
+                phone:       inputPhone.value.trim()    || null,
+                email:       inputEmail.value.trim()    || null,
+                address:     inputAddress.value.trim()  || null,
+                nif:         inputNif.value.trim()      || null,
+                comments:    inputComments.value.trim() || null,
+                is_business: inputIsBusiness.checked,
+                country:     inputCountry.value.trim().toUpperCase() || 'ES',
             })
             if (errCliente) { alert('Error al crear cliente: ' + errCliente.message); return }
-            clienteActual = { id: clienteId, name: nombre }
+            clienteActual = {
+                id: clienteId, name: nombre,
+                is_business: inputIsBusiness.checked,
+                country:     inputCountry.value.trim().toUpperCase() || 'ES',
+            }
             todosClientes.push(clienteActual)
             statusDiv.textContent = '✅ Cliente creado'
             statusDiv.style.color = 'var(--accent-ok)'
@@ -1680,11 +1774,17 @@ function renderCobrosCliente() {
             ? `<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
                    onclick="facturarHito('${h.id}')">📄 Facturar</button>`
             : yaFacturado
-                ? (h.invoice_path
-                    ? `<span style="font-size:11px;color:var(--accent-ok);margin-right:6px;cursor:pointer;text-decoration:underline"
-                           onclick="descargarFactura('${h.invoice_path}', '${h.invoice_number}')"
-                           title="Descargar factura ${h.invoice_number}">📄 ${h.invoice_number}</span>`
-                    : `<span style="font-size:11px;color:var(--accent-ok);margin-right:6px">📄 ${h.invoice_number}</span>`)
+                ? `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:4px">
+                       ${h.invoice_path
+                           ? `<span style="font-size:11px;color:var(--accent-ok);cursor:pointer;text-decoration:underline"
+                                  onclick="descargarFactura('${h.invoice_path}', '${h.invoice_number}')"
+                                  title="Descargar ${h.invoice_number}">📄 ${h.invoice_number}</span>`
+                           : `<span style="font-size:11px;color:var(--accent-ok)">📄 ${h.invoice_number}</span>`}
+                       <button class="btn btn-secondary" style="padding:2px 5px;font-size:10px"
+                           title="Reemitir factura" onclick="reemitirHito('${h.id}')">🔄</button>
+                       <button class="btn btn-danger" style="padding:2px 5px;font-size:10px"
+                           title="Anular factura" onclick="anularHito('${h.id}', '${h.invoice_number}')">✕</button>
+                   </span>`
                 : ''
 
         return `<tr>
@@ -1939,6 +2039,68 @@ window.facturarHito = async function(hitoId) {
         _esFinal: esHitoFinal
     }))
     await abrirPanelFactura(hitoId, clienteActual, reservasConCharges)
+}
+
+window.reemitirHito = async function(hitoId) {
+    if (!clienteActual) return
+    hitoId = parseInt(hitoId)
+    const hitoTemp = hitosClienteTemp.find(h => h.id === hitoId)
+    if (!hitoTemp) return
+
+    const { overlay, panel } = crearModal('modal-reemitir-factura', { narrow: true })
+    panel.innerHTML = `
+        <div>
+            <div class="modal-header-title">🔄 Reemitir factura</div>
+            <div class="modal-header-desc">
+                Se anulará el registro de <strong>${hitoTemp.invoice_number}</strong> y se generará
+                una nueva factura con el mismo número.<br><br>
+                ⚠️ Si ya enviaste esta factura al cliente, deberás informarle de la corrección.
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="modal-reemitir-cancel" class="btn btn-secondary">Cancelar</button>
+            <button id="modal-reemitir-ok" class="btn btn-primary">Continuar</button>
+        </div>`
+    panel.querySelector('#modal-reemitir-cancel').onclick = () => overlay.close()
+    panel.querySelector('#modal-reemitir-ok').onclick = async () => {
+        overlay.close()
+        const esHitoFinal = hitoTemp?.esFinal ?? false
+        const _esSfcomCharge = h => !!(h.comments?.startsWith('WEB') && h.comments?.includes('Cobrado v'))
+        const reservasParaFactura = reservasCliente.filter(r => !r.origin_ref?.startsWith('WEB'))
+        const hitosParaFactura    = hitosClienteTemp.filter(h => h.id && !_esSfcomCharge(h))
+        const reservasConCharges  = reservasParaFactura.map(r => ({
+            ...r,
+            _charges: hitosParaFactura,
+            _esFinal: esHitoFinal
+        }))
+        await abrirPanelReemision(hitoId, clienteActual, reservasConCharges)
+    }
+}
+
+window.anularHito = async function(hitoId, invoiceNumber) {
+    if (!clienteActual) return
+    hitoId = parseInt(hitoId)
+
+    const { overlay, panel } = crearModal('modal-anular-factura', { narrow: true })
+    panel.innerHTML = `
+        <div>
+            <div class="modal-header-title">⚠️ Anular factura</div>
+            <div class="modal-header-desc">
+                Se anulará <strong>${invoiceNumber}</strong> en el registro y el hito quedará
+                sin facturar.<br><br>
+                <strong>Esta acción no notifica al cliente.</strong>
+                Si ya se envió la factura, deberás gestionarlo manualmente.
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="modal-anular-cancel" class="btn btn-secondary">Cancelar</button>
+            <button id="modal-anular-ok" class="btn btn-danger">Anular factura</button>
+        </div>`
+    panel.querySelector('#modal-anular-cancel').onclick = () => overlay.close()
+    panel.querySelector('#modal-anular-ok').onclick = async () => {
+        overlay.close()
+        await anularFacturaDeHito(hitoId)
+    }
 }
 
 document.addEventListener('facturaEmitida', () => {

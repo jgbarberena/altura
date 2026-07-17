@@ -3,6 +3,7 @@
 // Se importa desde formulario.js y necesita acceso al cliente supabase y a los datos globales.
 
 import { mostrarOpcionesEnvio, valorO, esVacio, anioTemporada } from './utils.js'
+import { PERFIL_FISCAL, irpfRateParaCliente, esFacturaSimplificada } from './fiscal-config.js'
 
 // ===== CONFIGURACIÓN — editar aquí cuando cambien datos del emisor =====
 const FACTURA_CONFIG = {
@@ -13,8 +14,6 @@ const FACTURA_CONFIG = {
     iban:             'ES44 2100 2174 2502 0022 5124',
     web:              'experienciasanfermin.com',
     serie:            'VSF',    // Prefijo de serie: VSF-NN/AAAA
-    iva:              0.21,     // 21% — cambiar aquí si varía
-    irpf:             0.15,     // 15% — cambiar aquí si varía
     email_asunto_tpl: (num, fecha) =>
         `Factura ${num} — ${fecha} — Vive San Fermín a medida (www.experienciasanfermin.com)`,
     email_cuerpo_tpl: (nombreCliente, numFactura, totalAPagar) =>
@@ -24,23 +23,24 @@ const FACTURA_CONFIG = {
 // URL del logo — ruta relativa desde /admin/
 const LOGO_URL = '../img/logos/sanfermin-logo-red.png'
 
-// Relación entre base imponible y total facturado: totalFacturado = base * (1 + iva - irpf).
-// Único punto de esta fórmula — cualquier conversión precio final ↔ precio sin impuestos
-// (p.ej. el ayudante de precio en formulario.js) debe pasar por aquí.
-export function baseDesdeTotalFacturado(totalFacturado) {
-    return totalFacturado / (1 + FACTURA_CONFIG.iva - FACTURA_CONFIG.irpf)
+// Conversión precio final ↔ base imponible. irpfRate en puntos porcentuales (0, 15…).
+// Único punto de esta fórmula en todo el proyecto — formulario.js y factura.js pasan por aquí.
+export function baseDesdeTotalFacturado(totalFacturado, irpfRate = 0) {
+    return totalFacturado / (1 + PERFIL_FISCAL.iva_rate / 100 - irpfRate / 100)
 }
-export function totalFacturadoDesdeBase(base) {
-    return base * (1 + FACTURA_CONFIG.iva - FACTURA_CONFIG.irpf)
+export function totalFacturadoDesdeBase(base, irpfRate = 0) {
+    return base * (1 + PERFIL_FISCAL.iva_rate / 100 - irpfRate / 100)
 }
 
 // ===== ESTADO DEL MÓDULO =====
-let _supabase      = null  // cliente Supabase inyectado al inicializar
-let _hitoActual    = null  // charge completo que se está facturando
-let _reservas      = []    // reservas del cliente actual (con sus charges)
-let _cliente       = null  // objeto cliente actual
-let _numFacturaSig = null  // número de factura calculado para este ejercicio
-let _logoBase64    = null  // logo en base64 para el PDF (se carga al inicializar)
+let _supabase      = null   // cliente Supabase inyectado al inicializar
+let _hitoActual    = null   // charge completo que se está facturando
+let _reservas      = []     // reservas del cliente actual (con sus charges)
+let _cliente       = null   // objeto cliente actual
+let _numFacturaSig = null   // número de factura calculado (o existente en re-emisión)
+let _logoBase64    = null   // logo en base64 para el PDF (se carga al inicializar)
+let _modoReemision     = false  // true cuando se reabre el panel para re-emitir una factura ya emitida
+let _simplificadaManual = null  // null = auto-detect, true/false = elección explícita del usuario
 
 // ===== TIPOS DE FACTURA =====
 // 'adelanto'   — pago parcial, quedan hitos pendientes
@@ -74,8 +74,10 @@ export function initFacturacion(supabaseClient) {
     })
 }
 
-// ===== PUNTO DE ENTRADA =====
+// ===== PUNTOS DE ENTRADA =====
 export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
+    _modoReemision      = false
+    _simplificadaManual = null
     _cliente  = clienteObj
     _reservas = reservasCliente
 
@@ -88,8 +90,9 @@ export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
     renderPanelFactura()
     abrirPanel()
 
+    const irpfRate     = irpfRateParaCliente(_cliente)
     const base         = parseFloat(_hitoActual.amount)
-    const totalPagar   = base + base * FACTURA_CONFIG.iva - base * FACTURA_CONFIG.irpf
+    const totalPagar   = totalFacturadoDesdeBase(base, irpfRate)
     const nombreSaludo = valorO(_cliente.name, _cliente.id)
     mostrarOpcionesEnvio({
         tipo:      'pdf',
@@ -98,8 +101,67 @@ export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
         asunto:    FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')),
         getTexto:  () => FACTURA_CONFIG.email_cuerpo_tpl(nombreSaludo, _numFacturaSig, fmt(totalPagar)),
         onGenerar: _emitir,
+        onUsado:   cerrarPanel,
         container: document.getElementById('factura-botones-envio')
     })
+}
+
+// Re-emitir: conserva el número de factura existente, anula el registro anterior al emitir
+export async function abrirPanelReemision(hitoId, clienteObj, reservasCliente) {
+    _modoReemision      = true
+    _simplificadaManual = null
+    _cliente  = clienteObj
+    _reservas = reservasCliente
+
+    const { data: hito, error } = await _supabase
+        .from('charges').select('*').eq('id', hitoId).single()
+    if (error || !hito) { alert('Error al cargar el hito: ' + (error?.message ?? 'no encontrado')); _modoReemision = false; return }
+    _hitoActual    = hito
+    _numFacturaSig = hito.invoice_number  // conservar número existente
+
+    renderPanelFactura()
+    abrirPanel()
+
+    const irpfRate     = irpfRateParaCliente(_cliente)
+    const base         = parseFloat(_hitoActual.amount)
+    const totalPagar   = totalFacturadoDesdeBase(base, irpfRate)
+    const nombreSaludo = valorO(_cliente.name, _cliente.id)
+    mostrarOpcionesEnvio({
+        tipo:      'pdf',
+        email:     _cliente.email ?? null,
+        telefono:  _cliente.phone ?? null,
+        asunto:    FACTURA_CONFIG.email_asunto_tpl(_numFacturaSig, new Date().toLocaleDateString('es-ES')),
+        getTexto:  () => FACTURA_CONFIG.email_cuerpo_tpl(nombreSaludo, _numFacturaSig, fmt(totalPagar)),
+        onGenerar: _emitir,
+        onUsado:   cerrarPanel,
+        container: document.getElementById('factura-botones-envio')
+    })
+}
+
+// Anular sin re-emitir: marca is_void en issued_invoices y limpia el charge
+export async function anularFacturaDeHito(hitoId) {
+    const { data: existente } = await _supabase
+        .from('issued_invoices')
+        .select('id')
+        .eq('charge_id', hitoId)
+        .eq('is_void', false)
+        .maybeSingle()
+
+    if (existente) {
+        const { error: errVoid } = await _supabase
+            .from('issued_invoices')
+            .update({ is_void: true })
+            .eq('id', existente.id)
+        if (errVoid) { alert('Error al anular la factura: ' + errVoid.message); return }
+    }
+
+    const { error: errCharge } = await _supabase
+        .from('charges')
+        .update({ invoiced: false, invoice_number: null, invoice_path: null, invoiced_at: null })
+        .eq('id', hitoId)
+    if (errCharge) { alert('Error al actualizar el hito: ' + errCharge.message); return }
+
+    document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId } }))
 }
 
 // ===== CÁLCULO DEL SIGUIENTE NÚMERO DE FACTURA =====
@@ -121,15 +183,54 @@ async function calcularSiguienteNumero() {
     return `${FACTURA_CONFIG.serie}-${String(maxNum + 1).padStart(2, '0')}/${anio}`
 }
 
+// Devuelve si la factura es simplificada, respetando la elección manual si existe
+function _efectivaSimplificada() {
+    if (_simplificadaManual !== null) return _simplificadaManual
+    const base       = parseFloat(_hitoActual.amount)
+    const totalConIva = Math.round((base + base * PERFIL_FISCAL.iva_rate / 100) * 100) / 100
+    return esFacturaSimplificada(_cliente, totalConIva)
+}
+
+window.facturaTipoChange = function(tipo) {
+    _simplificadaManual = (tipo === 'simplificada')
+    renderPanelFactura()
+}
+
 // ===== RENDERIZADO DEL PANEL =====
 function renderPanelFactura() {
+    const prefijo = _modoReemision ? '🔄 RE-EMISIÓN — ' : ''
     document.getElementById('panel-factura-subtitulo').textContent =
-        `Hito: ${valorO(_hitoActual.comments, '—')}  ·  ${fmt(_hitoActual.amount)}`
+        `${prefijo}${valorO(_hitoActual.comments, '—')}  ·  ${fmt(_hitoActual.amount)}`
+
+    const base        = parseFloat(_hitoActual.amount)
+    const totalConIva = Math.round((base + base * PERFIL_FISCAL.iva_rate / 100) * 100) / 100
+    const autoSimp    = esFacturaSimplificada(_cliente, totalConIva)
+    const simplified  = _efectivaSimplificada()
+
+    // Toolbar de tipo (solo cuando la simplificada es aplicable)
+    const toolbar = document.getElementById('panel-factura-toolbar')
+    if (autoSimp) {
+        toolbar.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:6px 0 4px;font-size:13px;border-bottom:1px solid var(--border);margin-bottom:8px">
+            <span style="color:var(--subtle);font-size:12px">Tipo de documento:</span>
+            <label style="cursor:pointer;display:flex;align-items:center;gap:4px">
+                <input type="radio" name="tipo-factura" value="simplificada" ${simplified ? 'checked' : ''}
+                    onchange="facturaTipoChange('simplificada')"> Simplificada
+            </label>
+            <label style="cursor:pointer;display:flex;align-items:center;gap:4px">
+                <input type="radio" name="tipo-factura" value="completa" ${!simplified ? 'checked' : ''}
+                    onchange="facturaTipoChange('completa')"> Completa (con datos cliente)
+            </label>
+        </div>`
+    } else {
+        toolbar.innerHTML = ''
+    }
 
     const alerta          = document.getElementById('panel-factura-alerta')
     const camposFaltantes = []
-    if (esVacio(_cliente.nif))     camposFaltantes.push('NIF/CIF del cliente')
-    if (esVacio(_cliente.address)) camposFaltantes.push('dirección del cliente')
+    if (!simplified) {
+        if (esVacio(_cliente.nif))     camposFaltantes.push('NIF/CIF del cliente')
+        if (esVacio(_cliente.address)) camposFaltantes.push('dirección del cliente')
+    }
     if (camposFaltantes.length > 0) {
         alerta.style.display = 'block'
         alerta.textContent   = `⚠️ Faltan datos editables: ${camposFaltantes.join(', ')}. Puedes completarlos directamente en la factura.`
@@ -142,14 +243,17 @@ function renderPanelFactura() {
 
 // ===== HTML DE LA FACTURA (previsualización en panel) =====
 function buildFacturaHTML() {
-    const tipo       = tipoFactura()
-    const base       = parseFloat(_hitoActual.amount)
-    const iva        = base * FACTURA_CONFIG.iva
-    const irpf       = base * FACTURA_CONFIG.irpf
-    const totalPagar = base + iva - irpf
-    const fechaHoy   = new Date().toLocaleDateString('es-ES')
+    const tipo        = tipoFactura()
+    const irpfRate    = irpfRateParaCliente(_cliente)
+    const base        = parseFloat(_hitoActual.amount)
+    const iva         = base * PERFIL_FISCAL.iva_rate / 100
+    const irpf        = base * irpfRate / 100
+    const totalPagar  = base + iva - irpf
+    const fechaHoy    = new Date().toLocaleDateString('es-ES')
+    const simplified  = _efectivaSimplificada()
 
-    const etiquetaTipo = tipo === 'adelanto' ? 'Pago anticipado' : 'Cobro final'
+    const etiquetaTipo  = tipo === 'adelanto' ? 'Pago anticipado' : 'Cobro final'
+    const etiquetaDocto = simplified ? 'FACTURA SIMPLIFICADA' : 'FACTURA'
 
     return `
     <div class="factura-doc" id="factura-preview">
@@ -167,7 +271,7 @@ function buildFacturaHTML() {
                 <div class="factura-meta" style="align-self:flex-start;padding-top:2px">
                     <div class="factura-num">${_numFacturaSig}</div>
                     <div>Fecha: <span class="factura-editable" contenteditable="true">${fechaHoy}</span></div>
-                    <div class="factura-tipo">FACTURA</div>
+                    <div class="factura-tipo">${etiquetaDocto}</div>
                 </div>
             </div>
 
@@ -181,6 +285,7 @@ function buildFacturaHTML() {
                         ${FACTURA_CONFIG.emisor_cp_ciudad}
                     </div>
                 </div>
+                ${!simplified ? `
                 <div class="factura-party">
                     <div class="factura-party-label">Cliente</div>
                     <div class="factura-party-name factura-editable" contenteditable="true"
@@ -191,7 +296,7 @@ function buildFacturaHTML() {
                         <span class="factura-editable" contenteditable="true"
                             data-field="address">${valorO(_cliente.address, '— introducir dirección —')}</span>
                     </div>
-                </div>
+                </div>` : ''}
             </div>
 
             <div class="factura-section">
@@ -226,13 +331,14 @@ function buildFacturaHTML() {
                 <div class="factura-totales-grid">
                     <div class="factura-tot-row"><span>Base imponible</span><span>${fmt(base)}</span></div>
                     <div class="factura-tot-row">
-                        <span>IVA (${Math.round(FACTURA_CONFIG.iva * 100)}%)</span>
+                        <span>IVA (${PERFIL_FISCAL.iva_rate}%)</span>
                         <span>+ ${fmt(iva)}</span>
                     </div>
+                    ${irpfRate > 0 ? `
                     <div class="factura-tot-row">
-                        <span>Retención IRPF (${Math.round(FACTURA_CONFIG.irpf * 100)}%)</span>
+                        <span>Retención IRPF (${irpfRate}%)</span>
                         <span>- ${fmt(irpf)}</span>
-                    </div>
+                    </div>` : ''}
                     <div class="factura-tot-row factura-tot-final">
                         <span>TOTAL A PAGAR</span><span>${fmt(totalPagar)}</span>
                     </div>
@@ -380,7 +486,8 @@ async function _emitir() {
             .from('invoices')
             .upload(pdfResult.nombreArchivo, pdfResult.blob, { contentType: 'application/pdf', upsert: true })
         if (errUpload) {
-            console.error('Error al subir factura a Storage:', errUpload.message)
+            alert(`Error al subir la factura a Storage: ${errUpload.message}\n\nEl PDF se ha descargado correctamente. Puedes subirlo manualmente al bucket si es necesario.`)
+            throw new Error(errUpload.message)
         } else {
             invoicePath = uploadData.path
         }
@@ -394,8 +501,12 @@ async function _emitir() {
         .eq('id', _hitoActual.id)
     if (errCharge) { alert('Error al marcar como facturado: ' + errCharge.message); return }
 
-    // Registrar en libro de facturas emitidas (upsert por charge_id para idempotencia)
-    const base = parseFloat(_hitoActual.amount)
+    // Registrar en libro de facturas emitidas
+    const irpfRate   = irpfRateParaCliente(_cliente)
+    const base       = parseFloat(_hitoActual.amount)
+    const totalNet   = Math.round(totalFacturadoDesdeBase(base, irpfRate) * 100) / 100
+    const simplified = _efectivaSimplificada()
+
     const issuedPayload = {
         invoice_number: _numFacturaSig,
         issue_date:     hoy,
@@ -404,32 +515,57 @@ async function _emitir() {
         client_name:    valorO(_cliente.company, valorO(_cliente.name, _cliente.id)),
         client_nif:     _cliente.nif     ?? null,
         client_address: _cliente.address ?? null,
-        total:          Math.round(base * (1 + FACTURA_CONFIG.iva - FACTURA_CONFIG.irpf) * 100) / 100,
+        total:          totalNet,
         file_path:      invoicePath,
         charge_id:      _hitoActual.id,
         season:         _hitoActual.season,
-        irpf_rate:      Math.round(FACTURA_CONFIG.irpf * 100),
-        irpf_amount:    Math.round(base * FACTURA_CONFIG.irpf * 100) / 100,
+        irpf_rate:      irpfRate,
+        irpf_amount:    Math.round(base * irpfRate / 100 * 100) / 100,
         invoice_type:   tipoFactura(),
         operation_type: 'interior',
+        is_simplified:  simplified,
     }
-    const { data: issuedRow, error: errIssued } = await _supabase
+
+    // Guard: si ya existe una factura activa para este hito, actualizar en lugar de duplicar.
+    // (re-emisión con anulación explícita se gestiona desde BLOQUE 4)
+    const { data: existente } = await _supabase
         .from('issued_invoices')
-        .upsert(issuedPayload, { onConflict: 'charge_id' })
         .select('id')
-        .single()
-    if (errIssued) {
-        console.error('Error al registrar en libro de facturas emitidas:', errIssued.message)
+        .eq('charge_id', _hitoActual.id)
+        .eq('is_void', false)
+        .maybeSingle()
+
+    let issuedRow = null
+    if (_modoReemision && existente) {
+        // Re-emisión: anular registro anterior e insertar el nuevo con el mismo número
+        await _supabase.from('issued_invoices').update({ is_void: true }).eq('id', existente.id)
+        const { data, error: errIns } = await _supabase
+            .from('issued_invoices').insert(issuedPayload).select('id').single()
+        if (errIns) console.error('Error al registrar re-emisión en libro de facturas:', errIns.message)
+        else issuedRow = data
+    } else if (existente) {
+        const { data, error: errUpd } = await _supabase
+            .from('issued_invoices').update(issuedPayload).eq('id', existente.id).select('id').single()
+        if (errUpd) console.error('Error al actualizar en libro de facturas emitidas:', errUpd.message)
+        else issuedRow = data
     } else {
+        const { data, error: errIns } = await _supabase
+            .from('issued_invoices').insert(issuedPayload).select('id').single()
+        if (errIns) console.error('Error al registrar en libro de facturas emitidas:', errIns.message)
+        else issuedRow = data
+    }
+
+    if (issuedRow) {
         await _supabase.from('issued_invoice_vat_lines').delete().eq('invoice_id', issuedRow.id)
         await _supabase.from('issued_invoice_vat_lines').insert({
             invoice_id:  issuedRow.id,
             base_amount: base,
-            vat_rate:    Math.round(FACTURA_CONFIG.iva * 100),
-            vat_amount:  Math.round(base * FACTURA_CONFIG.iva * 100) / 100,
+            vat_rate:    PERFIL_FISCAL.iva_rate,
+            vat_amount:  Math.round(base * PERFIL_FISCAL.iva_rate / 100 * 100) / 100,
         })
     }
 
+    _modoReemision = false
     document.dispatchEvent(new CustomEvent('facturaEmitida', { detail: { hitoId: _hitoActual.id } }))
 }
 
@@ -450,11 +586,13 @@ async function generarPDF({ svcLabels = [] } = {}) {
     const nameCli  = preview.querySelector('[data-field="name"]')?.textContent?.trim()    || _cliente.company || _cliente.name || _cliente.id
     const fechaTxt = preview.querySelector('.factura-meta .factura-editable')?.textContent?.trim() || new Date().toLocaleDateString('es-ES')
 
+    const irpfRate   = irpfRateParaCliente(_cliente)
     const base       = parseFloat(_hitoActual.amount)
-    const iva        = base * FACTURA_CONFIG.iva
-    const irpf       = base * FACTURA_CONFIG.irpf
+    const iva        = base * PERFIL_FISCAL.iva_rate / 100
+    const irpf       = base * irpfRate / 100
     const totalPagar = base + iva - irpf
     const tipo       = tipoFactura()
+    const simplified  = _efectivaSimplificada()
 
     // Colores
     const ROJO     = [179, 0, 0]
@@ -507,7 +645,7 @@ async function generarPDF({ svcLabels = [] } = {}) {
         doc.text(_numFacturaSig, W - M, yMetaT + 5, { align: 'right' })
         doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(GRIS)
         doc.text(`Fecha: ${fechaTxt}`, W - M, yMetaT + 11, { align: 'right' })
-        doc.text('FACTURA', W - M, yMetaT + 15.5, { align: 'right' })
+        doc.text(simplified ? 'FACTURA SIMPLIFICADA' : 'FACTURA', W - M, yMetaT + 15.5, { align: 'right' })
 
         // Logo + nombre izquierda — centrado verticalmente
         if (_logoBase64) {
@@ -575,7 +713,7 @@ async function generarPDF({ svcLabels = [] } = {}) {
     const colMid = M + CW / 2
     doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
     doc.text('EMISOR', M, y)
-    doc.text('CLIENTE', colMid, y)
+    if (!simplified) doc.text('CLIENTE', colMid, y)
     y += 4
 
     doc.setFontSize(10); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
@@ -585,12 +723,14 @@ async function generarPDF({ svcLabels = [] } = {}) {
     doc.text(FACTURA_CONFIG.emisor_direccion,      M, y + 9)
     doc.text(FACTURA_CONFIG.emisor_cp_ciudad,      M, y + 13)
 
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
-    doc.text(nameCli, colMid, y)
-    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(GRIS)
-    doc.text(`NIF/CIF: ${nifCli}`, colMid, y + 5)
-    const addrLines = doc.splitTextToSize(addrCli, CW / 2 - 4)
-    doc.text(addrLines, colMid, y + 9)
+    if (!simplified) {
+        doc.setFontSize(10); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
+        doc.text(nameCli, colMid, y)
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(GRIS)
+        doc.text(`NIF/CIF: ${nifCli}`, colMid, y + 5)
+        const addrLines = doc.splitTextToSize(addrCli, CW / 2 - 4)
+        doc.text(addrLines, colMid, y + 9)
+    }
 
     y += 22
     line(M, y, W - M, y, [200, 200, 200], 0.35)
@@ -754,19 +894,25 @@ async function generarPDF({ svcLabels = [] } = {}) {
     const xV = W - M - 2
 
     doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(GRIS)
-    doc.text('Base imponible',                                     xL, y + 6)
-    doc.text(fmt(base),                                            xV, y + 6,  { align: 'right' })
-    doc.text(`IVA (${Math.round(FACTURA_CONFIG.iva  * 100)}%)`,   xL, y + 12)
-    doc.text(`+ ${fmt(iva)}`,                                      xV, y + 12, { align: 'right' })
-    doc.text(`Retencion IRPF (${Math.round(FACTURA_CONFIG.irpf * 100)}%)`, xL, y + 18)
-    doc.text(`- ${fmt(irpf)}`,                                     xV, y + 18, { align: 'right' })
+    doc.text('Base imponible',                           xL, y + 6)
+    doc.text(fmt(base),                                  xV, y + 6,  { align: 'right' })
+    doc.text(`IVA (${PERFIL_FISCAL.iva_rate}%)`,         xL, y + 12)
+    doc.text(`+ ${fmt(iva)}`,                            xV, y + 12, { align: 'right' })
 
-    line(xL, y + 20, W - M, y + 20, ROJO, 0.6)
+    let yOff = 18
+    if (irpfRate > 0) {
+        doc.text(`Retencion IRPF (${irpfRate}%)`,        xL, y + yOff)
+        doc.text(`- ${fmt(irpf)}`,                       xV, y + yOff, { align: 'right' })
+        yOff += 6
+    }
+
+    line(xL, y + yOff, W - M, y + yOff, ROJO, 0.6)
+    yOff += 2
 
     doc.setFontSize(11); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
-    doc.text('TOTAL A PAGAR', xL, y + 27)
-    doc.text(fmt(totalPagar), xV, y + 27, { align: 'right' })
-    y += 32
+    doc.text('TOTAL A PAGAR',  xL, y + yOff + 6)
+    doc.text(fmt(totalPagar),  xV, y + yOff + 6, { align: 'right' })
+    y += yOff + 11
 
     // ── Pie en la última página ───────────────────────────────────────────────
     dibujarPie()
@@ -800,6 +946,8 @@ function abrirPanel() {
 }
 
 function cerrarPanel() {
+    _modoReemision      = false
+    _simplificadaManual = null
     document.getElementById('dialogFactura').close()
 }
 

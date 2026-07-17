@@ -108,6 +108,23 @@
                     <div class="form-field">
                         <label>NIF / CIF</label>
                         <input type="text" id="inputNif" placeholder="NIF o CIF">
+                        <div id="nif-inferencia-sugerencia" style="font-size:11px;margin-top:3px"></div>
+                    </div>
+                    <div class="form-field">
+                        <label>Fiscal</label>
+                        <div class="form-fiscal">
+                            <label class="check-inline" style="margin-top:0">
+                                <input type="checkbox" id="inputIsBusiness"> Empresa / profesional
+                            </label>
+                            <div class="form-fiscal-pais">
+                                <span>País</span>
+                                <select id="inputCountry">
+                                    <option value="ES">ES — España</option>
+                                    <option value="EU">EU — Unión Europea</option>
+                                    <option value="XX">XX — Internacional</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-field">
                         <label>Notas internas</label>
@@ -310,6 +327,7 @@
             <button class="btn btn-secondary dialog-cerrar" id="btnCerrarFactura">✕ Cerrar</button>
         </div>
         <div id="panel-factura-alerta" class="panel-factura-alerta" style="display:none"></div>
+        <div id="panel-factura-toolbar"></div>
         <div id="panel-factura-contenido"></div>
         <div class="dialog-footer">
             <button class="btn btn-secondary" id="btnCancelarFactura">Cancelar</button>

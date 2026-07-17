@@ -225,6 +225,8 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | file_path | text NULLABLE — ruta al PDF en bucket `invoices`. NULL = backfill incompleto o upload fallido |
 | charge_id | integer UNIQUE FK→charges(id) ON DELETE SET NULL |
 | season | integer NOT NULL |
+| is_void | boolean NOT NULL default false — true para facturas anuladas o re-emitidas |
+| is_simplified | boolean — true si es factura simplificada (particular + total ≤ 400 € IVA incluido) |
 | notes | text |
 
 **`issued_invoice_vat_lines`** — Líneas de IVA de facturas emitidas
@@ -696,11 +698,20 @@ Módulo ES6, importado por formulario.js. `initFacturacion(supabase)`.
 
 Genera facturas PDF (via jsPDF) para hitos de cobro. Tres tipos: `adelanto` (pago parcial), `liquidacion` (pago final con adelantos previos ya facturados), `unico` (pago único sin adelantos).
 
-Emisor: Paula Díaz Echalecu, NIF 72694758S. IVA: 21%. IRPF: 15%. Serie: VSF. Número correlativo por ejercicio (calcula consultando invoice_number en charges del año en curso). Campos editables con `contenteditable`. Persiste `invoice_number` e `invoiced: true` en charges.
+Emisor: Paula Díaz Echalecu, NIF 72694758S. IVA: 21%. IRPF: según cliente (15% si ES + empresa, 0% en caso contrario). Serie: VSF. Número correlativo por ejercicio (calcula consultando invoice_number en charges del año en curso). Campos editables con `contenteditable`. Persiste `invoice_number` e `invoiced: true` en charges.
+
+La lógica fiscal está centralizada en `fiscal-config.js`: `PERFIL_FISCAL`, `irpfRateParaCliente(cliente)` y `esFacturaSimplificada(cliente, totalConIva)`. `irpfRateParaCliente` devuelve 15 solo si el cliente es empresa (`is_business=true`) y país ES; devuelve 0 en cualquier otro caso. Una factura es simplificada si el cliente es particular (`is_business=false`) Y el total con IVA ≤ 400 €.
 
 Exporta `baseDesdeTotalFacturado(totalFacturado)` y `totalFacturadoDesdeBase(base)` — únicos puntos de la fórmula `total = base × (1 + iva − irpf)`. Usadas por `formulario.js` para el campo "Precio final facturado" del Bloque 2.
 
 El nombre del receptor usa `_cliente.company ?? _cliente.name ?? _cliente.id`. El saludo en email usa `_cliente.name ?? _cliente.id` (nombre de contacto, no empresa).
+
+**Facturas simplificadas:** cuando el cliente es particular y el total IVA incluido ≤ 400 €, la factura omite el bloque de datos del destinatario (nombre, NIF, dirección) tanto en el HTML de previsualización como en el PDF. El panel muestra un selector radio "Simplificada / Completa" para sobrescribir la detección automática cuando sea necesario. Estado en `_simplificadaManual` (null = auto).
+
+**Re-emisión y anulación:**
+- `abrirPanelReemision(hitoId, clienteObj, reservasCliente)` — abre el panel de factura en modo re-emisión: usa el mismo número de factura ya emitido, al confirmar marca el registro anterior como `is_void=true` e inserta uno nuevo. El PDF se sube con el mismo nombre (la política UPDATE de Storage permite sobreescribir).
+- `anularFacturaDeHito(hitoId)` — marca `is_void=true` en `issued_invoices` y limpia el hito (`invoiced=false`, `invoice_number=null`, `invoice_path=null`, `invoiced_at=null`).
+- Ambas se exportan y se llaman desde `formulario.js`. Los botones 🔄 y ✕ aparecen junto al número de factura en la tabla de cobros cuando el hito está facturado.
 
 **Concepto de servicio (`_serviceLabel(r)`):** `service_name — venue_display_name` (fallback: `venue_id` si `display_name` es null; si no hay `service_name`, usa `service_description` o `service_id`). La celda es editable con `contenteditable` antes de emitir. Los labels editados se capturan en `_emitir()` como `svcLabels[]` y se pasan a `generarPDF`. La query de `cargarReservasCliente` join `venues(display_name)` para tener `venue_display_name` disponible en cada reserva.
 
@@ -1205,6 +1216,20 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 
 **Migraciones SQL:**
 - `supabase/sql/migration_fase11_cierre_fiscal.sql` — tablas `supplier_documents`, `supplier_invoices`, `supplier_invoice_vat_lines`, `issued_invoices`, `issued_invoice_vat_lines`, `fiscal_closings` + triggers de inmutabilidad + RLS. Añade `providers.nif`.
-- `supabase/sql/migration_fase11_issued_backfill.sql` — backfill: charges con invoice_number → issued_invoices (25 filas). `charges.amount` ES la base imponible; total = amount × 1.06; IVA 21%, IRPF 15%.
+- `supabase/sql/migration_fase11_issued_backfill.sql` — versión original del backfill (obsoleta, IVA fijo al 21% IRPF fijo al 15%). Ver Fase 11b para el backfill correcto.
+
+**Fase 11b (completado jul 2026) — Retenciones, factura simplificada y re-emisión:**
+
+_Corrección de datos históricos:_
+- 11 facturas (VSF-09 a VSF-19 y VSF-23) habían sido emitidas con base imponible calculada como `total / 1.06` (asumiendo 15% IRPF) en lugar de `total / 1.21` (0% IRPF, eran particulares). Corrección aplicada directamente en BD: `UPDATE charges SET amount = ROUND(amount*1.06)/1.21 WHERE invoice_number IN (...)` y el mismo factor en `reservations.price_per_slot`.
+- Política UPDATE añadida en Storage bucket `invoices`: `CREATE POLICY "Allow authenticated update on invoices" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'invoices') WITH CHECK (bucket_id = 'invoices')`. Sin esta política, el `upsert: true` de Storage lanzaba error RLS al re-emitir.
+- Backfill completo (DELETE + re-INSERT) de `issued_invoices` e `issued_invoice_vat_lines` con lógica correcta: IRPF por cliente (`irpfRateParaCliente`), `is_simplified` por umbrales, `accrual_date` = `collected_date` si cobrado antes del 1 de julio 2026, `'2026-07-15'` en caso contrario.
+
+_Nuevas funcionalidades en formulario.js + factura.js:_
+- Botones 🔄 (re-emitir) y ✕ (anular) en la columna "Cobrado" de la tabla de hitos para facturas ya emitidas.
+- `abrirPanelReemision` y `anularFacturaDeHito` exportados desde `factura.js`.
+- Selector radio "Simplificada / Completa" en el toolbar del panel de factura cuando la detección automática activa simplificada.
+- Facturas simplificadas omiten el bloque de destinatario en HTML y PDF.
+- El diálogo de factura se cierra automáticamente tras emitir (callback `onUsado: cerrarPanel`).
 
 **Pendiente (Bloque 6):** drawer/modal dlgGasto para registrar documentos en el libro fiscal desde el panel (ver §7.6).
