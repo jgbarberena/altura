@@ -2158,7 +2158,7 @@ function _renderStorageSeccion(archivos, pathMap) {
 
     content.innerHTML = `
         ${huerfanosBtn ? `<div style="margin-bottom:12px">${huerfanosBtn}</div>` : ''}
-        <div class="table-wrapper table-wrapper--limited-15">
+        <div class="table-wrapper">
             <table class="data-table">
                 <thead><tr>
                     <th>Nombre</th>

@@ -164,6 +164,95 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | is_final | boolean — hito final del pago a proveedor |
 | comments | text — nota opcional sobre el hito |
 
+**`supplier_documents`** — Bandeja de documentos recibidos (archivo operativo, no fiscal directamente)
+| Campo | Notas |
+|---|---|
+| id | bigint PK, IDENTITY |
+| provider_id | text FK→providers, NULLABLE — null para gastos generales sin proveedor en BD |
+| file_path | text NOT NULL — ruta en bucket `supplier-invoices`. Sentinel de sin-archivo: termina en `_sin_archivo` |
+| uploaded_at | timestamptz NOT NULL, default now() |
+| season | integer NOT NULL |
+| concept | text — concepto del documento (campo de conveniencia) |
+| notes | text — notas adicionales |
+
+**`supplier_invoices`** — Libro de facturas recibidas (registro fiscal)
+| Campo | Notas |
+|---|---|
+| id | bigint PK, IDENTITY |
+| document_id | bigint NOT NULL UNIQUE FK→supplier_documents(id) ON DELETE RESTRICT |
+| provider_id | text FK→providers, NULLABLE |
+| issuer_name | text NOT NULL |
+| issuer_nif | text NOT NULL |
+| invoice_number | text NOT NULL |
+| issue_date | date NOT NULL |
+| booked_date | date NOT NULL — fecha de registro; **determina el trimestre fiscal** |
+| operation_type | text NOT NULL, default `'interior'` — CHECK IN ('interior','intracomunitaria','extracomunitaria','inversion_sujeto_pasivo') |
+| category | text NOT NULL, default `'proveedores'` |
+| deductible_pct | numeric NOT NULL, default 100 |
+| is_capital_good | boolean NOT NULL, default false |
+| irpf_rate | numeric |
+| irpf_amount | numeric |
+| total | numeric NOT NULL |
+| season | integer NOT NULL |
+| notes | text |
+| UNIQUE | (issuer_nif, invoice_number) |
+
+**`supplier_invoice_vat_lines`** — Líneas de IVA de facturas recibidas
+| Campo | Notas |
+|---|---|
+| id | bigint PK, IDENTITY |
+| invoice_id | bigint NOT NULL FK→supplier_invoices(id) ON DELETE CASCADE |
+| base_amount | numeric NOT NULL |
+| vat_rate | numeric NOT NULL |
+| vat_amount | numeric NOT NULL |
+
+**`issued_invoices`** — Libro de facturas emitidas (registro fiscal)
+| Campo | Notas |
+|---|---|
+| id | bigint PK, IDENTITY |
+| invoice_number | text NOT NULL UNIQUE — serie `VSF-NN/AAAA` |
+| issue_date | date NOT NULL |
+| accrual_date | date NOT NULL — fecha de devengo; **determina el trimestre fiscal** |
+| client_id | text FK→clients ON DELETE RESTRICT, NULLABLE |
+| client_name | text NOT NULL — congelado en el momento de emisión, no hacer JOIN a clients |
+| client_nif | text |
+| client_address | text |
+| operation_type | text NOT NULL, default `'interior'` |
+| invoice_type | text — CHECK IN ('adelanto','liquidacion','unico') o NULL |
+| irpf_rate | numeric |
+| irpf_amount | numeric |
+| total | numeric NOT NULL |
+| file_path | text NULLABLE — ruta al PDF en bucket `invoices`. NULL = backfill incompleto o upload fallido |
+| charge_id | integer UNIQUE FK→charges(id) ON DELETE SET NULL |
+| season | integer NOT NULL |
+| notes | text |
+
+**`issued_invoice_vat_lines`** — Líneas de IVA de facturas emitidas
+| Campo | Notas |
+|---|---|
+| id | bigint PK, IDENTITY |
+| invoice_id | bigint NOT NULL FK→issued_invoices(id) ON DELETE CASCADE |
+| base_amount | numeric NOT NULL |
+| vat_rate | numeric NOT NULL |
+| vat_amount | numeric NOT NULL |
+
+**`fiscal_closings`** — Candado de trimestres presentados
+| Campo | Notas |
+|---|---|
+| id | bigint PK, IDENTITY |
+| model | text NOT NULL, default `'F69'` |
+| year | integer NOT NULL |
+| quarter | integer NOT NULL — CHECK BETWEEN 1 AND 4 |
+| presented_at | **date** (no timestamptz) — NULL = pendiente; fecha real = presentado |
+| result_amount | numeric |
+| vat_to_compensate_next | numeric |
+| notes | text |
+| UNIQUE | (model, year, quarter) |
+
+**Protección de trimestres cerrados:** los triggers `trg_supplier_invoices_immutable` y `trg_issued_invoices_immutable` bloquean INSERT/UPDATE/DELETE en `supplier_invoices` e `issued_invoices` cuando el trimestre de `booked_date`/`accrual_date` tiene `presented_at IS NOT NULL` en `fiscal_closings`. Los triggers de las líneas de IVA heredan la misma protección. La función `fiscal_period_is_closed(date)` es la fuente común.
+
+**Función `providers.nif`:** columna `text` añadida en Fase 11 (prerelleno de comodidad, no requisito fiscal).
+
 **`reservation_requests`** — Solicitudes recibidas
 | Campo | Notas |
 |---|---|
@@ -256,12 +345,13 @@ Las vistas `service_availability` y `catalogo_publico` deben estar definidas con
 
 ### Storage
 
-Dos buckets privados (sin acceso público directo):
+Tres buckets privados (sin acceso público directo):
 
 | Bucket | Uso |
 |---|---|
 | `proposals` | PDFs de propuestas generados desde `propuesta.js` |
-| `invoices` | PDFs de facturas generados desde `factura.js` |
+| `invoices` | PDFs de facturas emitidas generados desde `factura.js`. Referenciados en `issued_invoices.file_path`. |
+| `supplier-invoices` | Documentos de proveedores (facturas recibidas, albaranes) y gastos generales. Subidos desde `proveedores.js` y `gastos.js`. Referenciados en `supplier_documents.file_path`. |
 
 Ninguno tiene `file_size_limit` ni `allowed_mime_types` configurados. El acceso es solo a través de URLs firmadas generadas desde el panel autenticado.
 
@@ -896,6 +986,28 @@ Se decidió no hacerlo hasta auditar el código hardcoded que depende de `servic
 
 ---
 
+### 7.6 Fiscal — deudas pendientes
+
+**Botones "Descartar aviso" en alertas fiscales sin persistencia.**
+
+Los cinco tipos de alerta en `fiscal.js` muestran un botón "Descartar" por fila que actualmente no hace nada (toast "pendiente de implementar"). El dismiss debe persistir en BD para no depender de localStorage (multi-dispositivo, multi-sesión). Diseño propuesto:
+- Alerta 1 (docs sin anotar): sentinel en `supplier_documents.notes` — prefijo `*` indica "descartado". Revisar si agregar columna `dismissed_at` es más limpio.
+- Alerta 2 (proveedores sin factura): similar, una tabla `fiscal_alert_dismissals(type, ref_id, dismissed_at)` o columna específica.
+- Alertas 3/4/5: igual. Decidir si se crea una tabla genérica o se extienden las tablas existentes.
+
+Hasta que se implemente, el dismiss es no-op. No afecta al funcionamiento del libro fiscal.
+
+**Bloque 6 (dlgGasto) — registro de gastos desde el panel fiscal.**
+
+El botón "+ Añadir" en la pestaña Gastos y el botón "Anotar" de la alerta 1 son placeholders. El Bloque 6 consiste en un drawer/modal que permite:
+1. Ver el documento (PDF o imagen del bucket `supplier-invoices`)
+2. Rellenar los campos del libro fiscal (issuer, NIF, número factura, fecha, líneas de IVA)
+3. Guardar en `supplier_invoices` + `supplier_invoice_vat_lines`
+
+Modo secuencial (queue): al pulsar "Anotar" en la alerta, el modal debería abrir el siguiente documento pendiente automáticamente tras guardar cada uno.
+
+---
+
 ### 7.5 Mejoras de código
 
 **`formulario.js` demasiado grande (~2600 líneas).**
@@ -1049,6 +1161,7 @@ Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAU
 | 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
 | 9d | ✅ Completa | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
 | 10 | ✅ Completa | Tablas: edición directa + eliminaciones + temporada + notas solicitudes + gestión Storage con upload y vinculación de facturas |
+| 11 | 🔄 En curso | Módulo fiscal: libro gastos/emitidas, F69, alertas, paquete asesor, ZIP docs |
 
 ### Dependencias duras entre fases
 
@@ -1062,3 +1175,36 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 ---
 
 ### Fase 10 — ✅ Completa: tablas edición directa + Storage + notas solicitudes
+
+---
+
+### Fase 11 — 🔄 En curso: módulo de cierre fiscal
+
+**Objetivo:** panel completo para el libro de IVA (gastos recibidos + emitidos), resumen F69 por trimestre, paquete de documentación para el asesor, alertas fiscales transversales.
+
+**Bloque 5 (completado jul 2026):**
+- `admin/fiscal.html` + `admin/js/fiscal.js`
+- Selector de año/trimestre con persistencia en `localStorage('vsf_trimestre_activo')`
+- Tres pestañas: Gastos (libro recibidas), Emitidas (libro emitidas), F69 (resumen IVA + estado trimestre)
+- Tab Gastos: tabla de `supplier_invoices` con líneas de VAT, totales, acceso al doc (bucket `supplier-invoices`), eliminar (bloqueado por trigger si trimestre cerrado)
+- Tab Emitidas: tabla de `issued_invoices` con líneas de VAT, totales, acceso al PDF (bucket `invoices`), badge ⚠️ si no hay PDF
+- Tab F69: IVA devengado y soportado agrupados por tipo, resultado del trimestre, botón "Marcar como presentado" que escribe en `fiscal_closings`
+- Exportar Excel por pestaña (usando `exportTable` de utils.js)
+- ZIP documentos recibidos (bucket `supplier-invoices`) y ZIP PDFs emitidos (bucket `invoices`)
+- Botón "📦 Paquete asesor": ZIP con Excel de dos hojas (Gastos + Emitidas) + subcarpetas `facturas_recibidas/` y `facturas_emitidas/` con todos los PDFs del trimestre. Pre-check de emitidas sin PDF con confirm.
+- 5 alertas fiscales transversales (independientes del trimestre selector), colapsables:
+  1. Documentos sin registrar en el libro (supplier_documents sin fila en supplier_invoices)
+  2. Proveedores con pagos (paid=true) sin factura registrada suficiente
+  3. Facturas emitidas sin PDF en el libro (issued_invoices.file_path IS NULL)
+  4. Cobros sin facturar (charges.invoice_number IS NULL AND amount>=0.1, excluye sfcom por comments LIKE 'WEB%')
+  5. Trimestres pasados con datos pero sin fiscal_closing.presented_at
+- Botones "Descartar" por fila en cada alerta: no-op (toast), pendiente de implementar (deuda §7.6)
+- Botón "Anotar" en alerta 1: no-op (toast), pendiente de Bloque 6 (deuda §7.6)
+- Botón "Ir al trimestre" en alerta 5: navega al trimestre y abre pestaña F69
+- Sidebar reordenado en todas las páginas del admin: Gastos pasa a posición justo antes del separador visual (`<div class="nav-sep">`) y Fiscal después. `.nav-sep` añadido a `admin.css`.
+
+**Migraciones SQL:**
+- `supabase/sql/migration_fase11_cierre_fiscal.sql` — tablas `supplier_documents`, `supplier_invoices`, `supplier_invoice_vat_lines`, `issued_invoices`, `issued_invoice_vat_lines`, `fiscal_closings` + triggers de inmutabilidad + RLS. Añade `providers.nif`.
+- `supabase/sql/migration_fase11_issued_backfill.sql` — backfill: charges con invoice_number → issued_invoices (25 filas). `charges.amount` ES la base imponible; total = amount × 1.06; IVA 21%, IRPF 15%.
+
+**Pendiente (Bloque 6):** drawer/modal dlgGasto para registrar documentos en el libro fiscal desde el panel (ver §7.6).

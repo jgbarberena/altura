@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiscal — Vive San Fermín</title>
+    <link rel="icon" href="../img/logos/VIVESF_FAVICON.ico">
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/panel.css">
+    <link rel="stylesheet" href="css/tablas.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <a href="../index.html" class="topbar-title topbar-home">Vive San Fermín</a>
+        <button class="hamburger" id="hamburger">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+
+    <div class="overlay-menu" id="overlayMenu"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="../index.html" style="text-decoration:none">
+                    <h1>Vive San Fermín</h1>
+                </a>
+                <p>Gestión de reservas</p>
+            </div>
+            <nav>
+                <a href="panel.html">📈 Panel de control</a>
+                <a href="solicitudes.html">📬 Solicitudes</a>
+                <a href="formulario.html">📝 Gestión de Reservas</a>
+                <a href="proveedores.html">🏠 Gestión de Proveedores</a>
+                <a href="tablas.html">📊 Tablas</a>
+                <a href="sfcom.html">🛒 Canal sfcom</a>
+                <a href="gastos.html">💰 Gastos</a>
+                <div class="nav-sep"></div>
+                <a href="fiscal.html" class="active">📑 Fiscal</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+            </div>
+        </aside>
+
+        <main class="content">
+
+            <div class="bloque">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2>📑 Fiscal</h2>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-secondary" id="btnPaqueteAsesor" style="font-size:12px">📦 Paquete asesor</button>
+                        <select id="selectAno" style="width:auto"></select>
+                        <select id="selectTrimestre" style="width:auto">
+                            <option value="1">T1</option>
+                            <option value="2">T2</option>
+                            <option value="3">T3</option>
+                            <option value="4">T4</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="alertas-fiscales" style="margin-bottom:12px"></div>
+
+                <div class="tabla-tabs" style="margin-bottom:16px">
+                    <button class="tab-btn active" data-tab="gastos">📥 Gastos</button>
+                    <button class="tab-btn" data-tab="emitidas">📤 Emitidas</button>
+                    <button class="tab-btn" data-tab="f69">🧮 F69</button>
+                </div>
+
+                <!-- TAB: GASTOS (recibidas) -->
+                <div id="tab-gastos">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <span style="font-size:12px;color:var(--subtle)">Facturas recibidas registradas en el libro fiscal</span>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-secondary" id="btnExportGastos" style="font-size:12px">⬇ Excel</button>
+                            <button class="btn btn-secondary" id="btnZipGastos" style="font-size:12px">🗜 ZIP docs</button>
+                            <button class="btn btn-primary" id="btnNuevoGastoFiscal" style="font-size:12px" disabled title="Disponible en la próxima fase">+ Añadir</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table id="tablaGastosFiscal">
+                            <thead><tr>
+                                <th>Fecha libro</th>
+                                <th>Nº factura</th>
+                                <th>Emisor</th>
+                                <th>NIF</th>
+                                <th style="text-align:right">Base</th>
+                                <th style="text-align:right">IVA</th>
+                                <th style="text-align:right">Total</th>
+                                <th>Categoría</th>
+                                <th></th>
+                            </tr></thead>
+                            <tbody id="tbody-gastos-fiscal"></tbody>
+                        </table>
+                    </div>
+                    <div id="gastos-fiscal-vacio" style="display:none;color:var(--subtle);font-size:13px;text-align:center;padding:24px 0">
+                        Sin facturas recibidas en este trimestre.
+                    </div>
+                    <div id="gastos-fiscal-totales" style="display:none;font-size:13px;text-align:right;padding:10px 8px 0;border-top:1px solid var(--border);margin-top:4px"></div>
+                </div>
+
+                <!-- TAB: EMITIDAS -->
+                <div id="tab-emitidas" style="display:none">
+                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+                        <button class="btn btn-secondary" id="btnExportEmitidas" style="font-size:12px">⬇ Excel</button>
+                        <button class="btn btn-secondary" id="btnZipEmitidas" style="font-size:12px">🗜 ZIP docs</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="tablaEmitidas">
+                            <thead><tr>
+                                <th>Fecha devengo</th>
+                                <th>Nº factura</th>
+                                <th>Cliente</th>
+                                <th>NIF</th>
+                                <th style="text-align:right">Base</th>
+                                <th style="text-align:right">IVA</th>
+                                <th style="text-align:right">IRPF</th>
+                                <th style="text-align:right">Total</th>
+                                <th>Tipo</th>
+                                <th></th>
+                            </tr></thead>
+                            <tbody id="tbody-emitidas"></tbody>
+                        </table>
+                    </div>
+                    <div id="emitidas-vacio" style="display:none;color:var(--subtle);font-size:13px;text-align:center;padding:24px 0">
+                        Sin facturas emitidas en este trimestre.
+                    </div>
+                    <div id="emitidas-totales" style="display:none;font-size:13px;text-align:right;padding:10px 8px 0;border-top:1px solid var(--border);margin-top:4px"></div>
+                </div>
+
+                <!-- TAB: F69 -->
+                <div id="tab-f69" style="display:none">
+                    <div id="f69-content" style="padding:8px 0"></div>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module" src="js/fiscal.js"></script>
+</body>
+</html>

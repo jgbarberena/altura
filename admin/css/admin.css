@@ -168,6 +168,11 @@ nav a.active {
     font-weight: 500;
 }
 
+.nav-sep {
+    border-top: 1px solid var(--border);
+    margin: 6px 16px;
+}
+
 .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
 .btn-logout {
     width: 100%; padding: 8px;
