@@ -1248,8 +1248,6 @@ dialog.modal-dialog-overlay::backdrop {
     display: grid;
     grid-template-columns: 45% 1fr;
     gap: 16px;
-    min-height: 55vh;
-    max-height: 78vh;
 }
 .dlg-gasto-viewer {
     display: flex;
@@ -1258,7 +1256,8 @@ dialog.modal-dialog-overlay::backdrop {
     border-radius: 6px;
     overflow: hidden;
     background: var(--bg-subtle,#f3f4f6);
-    min-height: 300px;
+    height: 50vh;
+    min-height: 200px;
 }
 .dlg-gasto-viewer iframe,
 .dlg-gasto-viewer .dlg-img {
@@ -1268,15 +1267,9 @@ dialog.modal-dialog-overlay::backdrop {
     object-fit: contain;
     min-height: 0;
 }
-.dlg-gasto-form {
-    overflow-y: auto;
-}
 @media (max-width: 768px) {
-    .dlg-gasto-layout {
-        grid-template-columns: 1fr;
-        max-height: none;
-    }
-    .dlg-gasto-viewer { height: 40vh; min-height: 180px; flex: none; }
+    .dlg-gasto-layout { grid-template-columns: 1fr; }
+    .dlg-gasto-viewer { height: 40vh; min-height: 180px; }
     .modal-panel--doc  { max-width: 100%; }
 }
 

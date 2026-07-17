@@ -40,7 +40,7 @@ async function _abrirModal(doc, provider, onGuardado) {
     }
     const canPreview = !!signedUrl && (isImg || isPdf)
 
-    const { panel } = crearModal('dlgGasto', { wide: true })
+    const { panel } = crearModal('dlgGasto', { wide: true, scroll: true })
     if (canPreview) panel.classList.add('modal-panel--doc')
 
     const hoy  = new Date().toISOString().split('T')[0]
