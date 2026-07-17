@@ -311,7 +311,11 @@ async function _abrirModal(doc, provider, onGuardado) {
                             content: [
                                 { type: cType, source: { type: 'base64', media_type: mediaType, data: b64 } },
                                 { type: 'text', text:
-                                    'Extrae los datos fiscales. Responde SOLO JSON sin texto adicional:\n' +
+                                    'Extrae los datos fiscales de esta factura. ' +
+                                    'IMPORTANTE: issuer_name e issuer_nif son del EMISOR (quien vende/presta el servicio), ' +
+                                    'NO del destinatario ni del cliente. ' +
+                                    'Si aparece "Paula Díaz" o NIF "72694758S", ese es el DESTINATARIO — ignóralo para issuer. ' +
+                                    'Responde SOLO JSON sin texto adicional:\n' +
                                     '{"issuer_name":"","issuer_nif":"","invoice_number":"",' +
                                     '"issue_date":"YYYY-MM-DD","vat_lines":[{"base":0,"rate":21,"vat":0}],' +
                                     '"irpf_rate":0,"irpf_amount":0,"total":0}' }
