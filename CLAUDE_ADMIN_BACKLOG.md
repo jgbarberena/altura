@@ -912,3 +912,45 @@ Claude veía en el contexto líneas del borrador con `estado: 'descartada'` sin 
 **Bienvenida: opción "no enviar" persistida en BD.** Sentinel `'0001-01-01T00:00:00.000Z'` en `welcome_sent_at` distingue "decidido no enviar" (truthy, excluido del aviso) de "pendiente" (NULL, incluido). Botón "⛔ No enviar bienvenida" en `abrirModalBienvenida`. Status "⛔ Sin bienvenida" en el botón cuando todas las confirmadas tienen el sentinel. Reversible: abrir el modal y enviar sobrescribe el sentinel. Eliminada la lógica previa basada en `localStorage('bienvenida_skip')`. Botón renombrado a "📩 Bienvenida". `tablas.js` muestra "⛔ No enviar" en la columna Bienvenida cuando detecta el sentinel.
 
 **Venue clicable en tabla de eventos.** `filaDetalleProveedor` en `panel.js` añade `onclick="location.href='proveedores.html?venue=ID'"` en la celda del venue. `proveedores.js` maneja `?venue=ID` buscando el venue en `todosVenues`, derivando el proveedor de `venue.provider_id`, cargando el proveedor y seleccionando la pestaña del venue con `selectVenueTab(venueId)`.
+
+---
+
+### Fase 11 — ✅ COMPLETA (jul 2026): módulo fiscal
+
+**Bloque 5:** `admin/fiscal.html` + `admin/js/fiscal.js`
+- Selector año/trimestre con persistencia en `localStorage('vsf_trimestre_activo')`
+- Tab Gastos: libro de facturas recibidas con líneas IVA, totales, eliminar, acceso doc (bucket `supplier-invoices`)
+- Tab Emitidas: libro de facturas emitidas con líneas IVA, totales, PDF adjunto, badge ⚠️ sin PDF
+- Tab F69: IVA devengado/soportado por tipo, resultado del trimestre, botón "Marcar como presentado" escribe en `fiscal_closings`
+- Excel por pestaña; ZIP documentos recibidos; ZIP PDFs emitidos
+- Paquete asesor: ZIP con Excel dos hojas (Gastos + Emitidas) + subcarpetas `facturas_recibidas/` y `facturas_emitidas/`
+- 5 alertas fiscales transversales colapsables (independientes del trimestre selector):
+  1. Documentos sin registrar (supplier_documents sin fila en supplier_invoices)
+  2. Proveedores con pagos (paid=true) sin factura suficiente
+  3. Facturas emitidas sin PDF (issued_invoices.file_path IS NULL)
+  4. Cobros sin facturar (charges.invoice_number IS NULL AND amount>=0.1, excluye sfcom: comments LIKE 'WEB%')
+  5. Trimestres pasados con datos pero sin fiscal_closing.presented_at
+- Botón "Ir al trimestre" en alerta 5: navega y abre pestaña F69
+- Sidebar reordenado en todas las páginas: Gastos antes del separador visual, Fiscal después. `.nav-sep` añadido a `admin.css`.
+- Migraciones: `migration_fase11_cierre_fiscal.sql` (tablas, triggers inmutabilidad, RLS, `providers.nif`) + `migration_fase11_issued_backfill.sql` (backfill `issued_invoices`, ver Fase 11b)
+
+**Fase 11b:** corrección de retenciones históricas, re-emisión y factura simplificada.
+- 12 facturas históricas corregidas en BD (base mal calculada con factor 1.06 en lugar de 1.21)
+- Política UPDATE en bucket `invoices` para permitir re-emisión vía Storage upsert
+- Backfill completo de `issued_invoices` con IRPF correcto por cliente, `is_simplified` por umbrales, `accrual_date` por regla `collected_date` / `'2026-07-15'`
+- Botones 🔄 re-emitir y ✕ anular en hitos facturados (`formulario.js` + `factura.js`)
+- Selector radio Simplificada/Completa en toolbar de factura cuando auto-detección activa simplificada
+- Facturas simplificadas omiten bloque de destinatario en HTML y PDF
+
+**Bloque 6 — dlgGasto:** `admin/js/dlg-gasto.js` — modal compartido para registrar facturas recibidas
+- `abrirDlgGasto(docOrId, provider, onGuardado)` — puntos de entrada: fiscal.js, gastos.js, proveedores.js
+- Layout dos columnas PC (45% visor / 1fr form), una columna mobile. `.modal-panel--doc`, `.dlg-gasto-layout`, `.dlg-gasto-viewer`
+- Toggle Simplificada (defecto si imagen: jpg/jpeg/png/webp) / Completa (defecto si PDF o sin doc)
+- Modo simplificada: emisor, NIF opcional, fecha, selector IVA, total. `booked_date = issue_date`.
+- Modo completa: todos los campos del libro (fecha registro, categoría, % deducible, bien de inversión, líneas IVA múltiples, IRPF, total)
+- Botón "✨ Leer con IA" (Haiku): extrae JSON fiscal de imagen/PDF, rellena campos. Prompt aclara que el emisor = quien vende, no Paula Díaz (NIF 72694758S = destinatario)
+- Aviso `_dlgCheckFecha()`: si la fecha leída es anterior al primer día del trimestre anterior al actual, muestra banner amarillo (no bloquea ni cambia la fecha)
+- Imagen: click para zoom. PDF: iframe inline con enlace "⤢ Abrir en pestaña"
+
+**Regla de filtrado de trimestre** en `cargarTodo()` (`fiscal.js`):
+`_fechaEfectiva(inv)` — usa `issue_date` si el trimestre de `issue_date` está abierto; usa `booked_date` si ya está presentado (`fiscal_closings.presented_at IS NOT NULL`). ZIP y paquete asesor usan `_gastosData` directamente (ya filtrado), no re-consultan Supabase.

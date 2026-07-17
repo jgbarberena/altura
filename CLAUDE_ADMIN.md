@@ -1011,15 +1011,6 @@ Los cinco tipos de alerta en `fiscal.js` muestran un botón "Descartar" por fila
 
 Hasta que se implemente, el dismiss es no-op. No afecta al funcionamiento del libro fiscal.
 
-**Bloque 6 (dlgGasto) — registro de gastos desde el panel fiscal.**
-
-El botón "+ Añadir" en la pestaña Gastos y el botón "Anotar" de la alerta 1 son placeholders. El Bloque 6 consiste en un drawer/modal que permite:
-1. Ver el documento (PDF o imagen del bucket `supplier-invoices`)
-2. Rellenar los campos del libro fiscal (issuer, NIF, número factura, fecha, líneas de IVA)
-3. Guardar en `supplier_invoices` + `supplier_invoice_vat_lines`
-
-Modo secuencial (queue): al pulsar "Anotar" en la alerta, el modal debería abrir el siguiente documento pendiente automáticamente tras guardar cada uno.
-
 ---
 
 ### 7.5 Mejoras de código
@@ -1149,7 +1140,7 @@ Verificado empíricamente en jun 2026 durante la prueba de Fase 0a (ver §9).
 
 ## 9. Plan de fases
 
-Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAUDE_ADMIN_BACKLOG.md §9`.
+Las fases completadas (-1 a 11) con sus descripciones detalladas están en `CLAUDE_ADMIN_BACKLOG.md §9`.
 
 ### Estado de cada fase
 
@@ -1175,7 +1166,7 @@ Las fases completadas (-1 a 9c) con sus descripciones detalladas están en `CLAU
 | 9c | ✅ Completa | Migración services.id: text PK → integer + service_code |
 | 9d | ✅ Completa | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
 | 10 | ✅ Completa | Tablas: edición directa + eliminaciones + temporada + notas solicitudes + gestión Storage con upload y vinculación de facturas |
-| 11 | 🔄 En curso | Módulo fiscal: libro gastos/emitidas, F69, alertas, paquete asesor, ZIP docs |
+| 11 | ✅ Completa | Módulo fiscal: libro gastos/emitidas, F69, alertas, paquete asesor, ZIP docs, dlgGasto con IA |
 
 ### Dependencias duras entre fases
 
@@ -1192,62 +1183,6 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 
 ---
 
-### Fase 11 — 🔄 En curso: módulo de cierre fiscal
+### Fase 11 — ✅ Completa: módulo fiscal
 
-**Objetivo:** panel completo para el libro de IVA (gastos recibidos + emitidos), resumen F69 por trimestre, paquete de documentación para el asesor, alertas fiscales transversales.
-
-**Bloque 5 (completado jul 2026):**
-- `admin/fiscal.html` + `admin/js/fiscal.js`
-- Selector de año/trimestre con persistencia en `localStorage('vsf_trimestre_activo')`
-- Tres pestañas: Gastos (libro recibidas), Emitidas (libro emitidas), F69 (resumen IVA + estado trimestre)
-- Tab Gastos: tabla de `supplier_invoices` con líneas de VAT, totales, acceso al doc (bucket `supplier-invoices`), eliminar (bloqueado por trigger si trimestre cerrado)
-- Tab Emitidas: tabla de `issued_invoices` con líneas de VAT, totales, acceso al PDF (bucket `invoices`), badge ⚠️ si no hay PDF
-- Tab F69: IVA devengado y soportado agrupados por tipo, resultado del trimestre, botón "Marcar como presentado" que escribe en `fiscal_closings`
-- Exportar Excel por pestaña (usando `exportTable` de utils.js)
-- ZIP documentos recibidos (bucket `supplier-invoices`) y ZIP PDFs emitidos (bucket `invoices`)
-- Botón "📦 Paquete asesor": ZIP con Excel de dos hojas (Gastos + Emitidas) + subcarpetas `facturas_recibidas/` y `facturas_emitidas/` con todos los PDFs del trimestre. Pre-check de emitidas sin PDF con confirm.
-- 5 alertas fiscales transversales (independientes del trimestre selector), colapsables:
-  1. Documentos sin registrar en el libro (supplier_documents sin fila en supplier_invoices)
-  2. Proveedores con pagos (paid=true) sin factura registrada suficiente
-  3. Facturas emitidas sin PDF en el libro (issued_invoices.file_path IS NULL)
-  4. Cobros sin facturar (charges.invoice_number IS NULL AND amount>=0.1, excluye sfcom por comments LIKE 'WEB%')
-  5. Trimestres pasados con datos pero sin fiscal_closing.presented_at
-- Botones "Descartar" por fila en cada alerta: no-op (toast), pendiente de implementar (deuda §7.6)
-- Botón "Anotar" en alerta 1: ~~no-op~~ → conectado al Bloque 6 (ver más abajo)
-- Botón "Ir al trimestre" en alerta 5: navega al trimestre y abre pestaña F69
-- Sidebar reordenado en todas las páginas del admin: Gastos pasa a posición justo antes del separador visual (`<div class="nav-sep">`) y Fiscal después. `.nav-sep` añadido a `admin.css`.
-
-**Migraciones SQL:**
-- `supabase/sql/migration_fase11_cierre_fiscal.sql` — tablas `supplier_documents`, `supplier_invoices`, `supplier_invoice_vat_lines`, `issued_invoices`, `issued_invoice_vat_lines`, `fiscal_closings` + triggers de inmutabilidad + RLS. Añade `providers.nif`.
-- `supabase/sql/migration_fase11_issued_backfill.sql` — versión original del backfill (obsoleta, IVA fijo al 21% IRPF fijo al 15%). Ver Fase 11b para el backfill correcto.
-
-**Fase 11b (completado jul 2026) — Retenciones, factura simplificada y re-emisión:**
-
-_Corrección de datos históricos:_
-- 11 facturas (VSF-09 a VSF-19 y VSF-23) habían sido emitidas con base imponible calculada como `total / 1.06` (asumiendo 15% IRPF) en lugar de `total / 1.21` (0% IRPF, eran particulares). Corrección aplicada directamente en BD: `UPDATE charges SET amount = ROUND(amount*1.06)/1.21 WHERE invoice_number IN (...)` y el mismo factor en `reservations.price_per_slot`.
-- Política UPDATE añadida en Storage bucket `invoices`: `CREATE POLICY "Allow authenticated update on invoices" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'invoices') WITH CHECK (bucket_id = 'invoices')`. Sin esta política, el `upsert: true` de Storage lanzaba error RLS al re-emitir.
-- Backfill completo (DELETE + re-INSERT) de `issued_invoices` e `issued_invoice_vat_lines` con lógica correcta: IRPF por cliente (`irpfRateParaCliente`), `is_simplified` por umbrales, `accrual_date` = `collected_date` si cobrado antes del 1 de julio 2026, `'2026-07-15'` en caso contrario.
-
-_Nuevas funcionalidades en formulario.js + factura.js:_
-- Botones 🔄 (re-emitir) y ✕ (anular) en la columna "Cobrado" de la tabla de hitos para facturas ya emitidas.
-- `abrirPanelReemision` y `anularFacturaDeHito` exportados desde `factura.js`.
-- Selector radio "Simplificada / Completa" en el toolbar del panel de factura cuando la detección automática activa simplificada.
-- Facturas simplificadas omiten el bloque de destinatario en HTML y PDF.
-- El diálogo de factura se cierra automáticamente tras emitir (callback `onUsado: cerrarPanel`).
-
-**Bloque 6 (completado jul 2026) — dlgGasto: modal compartido para registrar facturas recibidas:**
-
-- `admin/js/dlg-gasto.js` — módulo compartido exportando `abrirDlgGasto(docOrId, provider, onGuardado)`.
-  - Acepta doc como objeto o como ID (lo carga). Si `provider` es null y el doc tiene `provider_id`, lo carga automáticamente.
-  - Vista de dos columnas en PC (visor doc a la izquierda, formulario a la derecha); una columna en mobile. CSS en `.dlg-gasto-layout`, `.dlg-gasto-viewer`, `.dlg-gasto-form`, `.modal-panel--doc` (`admin/css/admin.css`).
-  - Toggle Ticket/simplificada ↔ Factura completa. Defecto: **simplificada si el doc es imagen** (jpg/jpeg/png/webp); **completa si es PDF o no hay doc**.
-  - Modo simplificada: emisor, NIF (opcional), fecha, selector IVA (21/10/4/0%), total. NIF y nº factura opcionales; si se omiten se generan `N/A` y `T-{timestamp}`.
-  - Modo completa: todos los campos del libro (fecha registro, categoría, % deducible, bien de inversión, líneas de IVA múltiples, IRPF, total).
-  - Botón "✨ Leer con IA" (solo si hay documento previsualizable): llama a `claude-proxy` con Haiku, extrae JSON fiscal, rellena campos según modo activo.
-  - Guardar: crea `supplier_documents` con sentinel `_sin_archivo` si no hay doc previo; inserta en `supplier_invoices` + `supplier_invoice_vat_lines`; llama `onGuardado()`.
-- Puntos de entrada:
-  - `fiscal.js`: botón "+ Añadir" pestaña Gastos + botón "Anotar" en alerta 1 → `abrirDlgGasto(null/docId, null, () => { cargarTodo(); cargarAlertas() })`
-  - `gastos.js`: botón "Anotar" en filas sin factura registrada → `abrirDlgGasto(docId, null, () => cargarGastos())`
-  - `proveedores.js`: botón "Anotar" en documentos del proveedor → `abrirDlgGasto(docId, {id,name,nif}, () => cargarDocumentosProveedor(...))`
-- Imagen: click para zoom (object-fit contain → none y vuelta). PDF: iframe inline con enlace "⤢ Abrir en pestaña".
-- **Regla de filtrado de trimestre en `fiscal.js`:** para determinar a qué trimestre pertenece una factura recibida, se usa `_fechaEfectiva(inv)`: si el trimestre de `issue_date` está abierto (sin `presented_at` en `fiscal_closings`), se usa `issue_date`; si el trimestre de `issue_date` ya está cerrado (presentado), se usa `booked_date`. Esto permite anotar facturas de trimestres abiertos con la fecha de factura real aunque se registren tarde. El aviso `_dlgCheckFecha()` en el diálogo alerta si la fecha leída es anterior al trimestre anterior al actual.
+Descripción completa en `CLAUDE_ADMIN_BACKLOG.md §9`. Pendiente de la fase: botones "Descartar" en alertas (deuda §7.6).
