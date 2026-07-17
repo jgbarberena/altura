@@ -492,6 +492,51 @@ export function resolverCliente(datos, todosClientes) {
     return { match: 'ninguno', cliente: null }
 }
 
+// ── Utilidades de visualización de precios ──────────────────────────────────
+
+function _fmtPrecio(input) {
+    const v = parseFloat(input.value)
+    if (!isNaN(v)) {
+        input.dataset.rawValue = input.value
+        input.value = v.toFixed(2)
+    }
+}
+
+// Aplica comportamiento 2dp-on-blur a un <input type=number> de precio.
+// Muestra 2 decimales cuando no está enfocado; al enfocar restaura la precisión completa.
+// Es idempotente: no hace nada si ya fue inicializado.
+export function initPrecioInput(input) {
+    if (!input || input._precioInited) return
+    input._precioInited = true
+    input.addEventListener('focus', () => {
+        if (input.dataset.rawValue !== undefined && input.dataset.rawValue !== '')
+            input.value = input.dataset.rawValue
+    })
+    input.addEventListener('blur', () => _fmtPrecio(input))
+    _fmtPrecio(input)
+}
+
+// Asigna un valor a un input de precio gestionado por initPrecioInput.
+// Guarda la precisión completa en rawValue y muestra 2 decimales.
+export function setPrecioValue(input, value) {
+    if (value === '' || value === null || value === undefined) {
+        input.value = ''; delete input.dataset.rawValue; return
+    }
+    const str = String(value)
+    input.dataset.rawValue = str
+    const v = parseFloat(str)
+    input.value = isNaN(v) ? str : v.toFixed(2)
+}
+
+// Lee el valor de un input de precio con precisión completa.
+// Si el input está enfocado (usuario tecleando) lee .value; si está desenfocado usa rawValue.
+export function getPrecioValue(input) {
+    if (document.activeElement === input) return parseFloat(input.value) || 0
+    const src = (input.dataset.rawValue !== undefined && input.dataset.rawValue !== '')
+        ? input.dataset.rawValue : input.value
+    return parseFloat(src) || 0
+}
+
 export function buildCatalogUrl(slug, eventType) {
     if (!slug || !eventType) return null
     return `https://www.experienciasanfermin.com/catalogo/balcon.html?v=${slug}&et=${eventType}`

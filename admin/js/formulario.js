@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, initPrecioInput, setPrecioValue, getPrecioValue } from './utils.js'
 import { initFacturacion, abrirPanelFactura, abrirPanelReemision, anularFacturaDeHito, baseDesdeTotalFacturado, totalFacturadoDesdeBase } from './factura.js'
 import { irpfRateParaCliente } from './fiscal-config.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
@@ -92,6 +92,9 @@ const selectProveedor = document.getElementById('selectProveedor')
 const inputPlazas     = document.getElementById('inputPlazas')
 const inputPrecio     = document.getElementById('inputPrecio')
 const inputPrecioFinal = document.getElementById('inputPrecioFinal')
+initPrecioInput(inputPrecio)
+initPrecioInput(inputPrecioFinal)
+initPrecioInput(document.getElementById('cobroImporte'))
 const selectEstado    = document.getElementById('selectEstado')
 const precioStatus    = document.getElementById('precio-status')
 const btnAnadir       = document.getElementById('btnAnadirReserva')
@@ -270,8 +273,8 @@ function limpiarFormularioReserva() {
     selectProveedor.innerHTML = '<option value="">— Selecciona servicio primero —</option>'
     selectProveedor.disabled  = true
     inputPlazas.value  = ''
-    inputPrecio.value  = ''
-    inputPrecioFinal.value = ''
+    setPrecioValue(inputPrecio, '')
+    setPrecioValue(inputPrecioFinal, '')
     selectEstado.value = 'Confirmada'
     document.getElementById('inputReservaComments').value = ''
     document.getElementById('inputTotal').value           = '—'
@@ -469,7 +472,7 @@ inputPrecioFinal.addEventListener('input', () => {
     const totalFacturado = parseFloat(inputPrecioFinal.value)
     const irpfRate       = irpfRateParaCliente(clienteActual)
     _sincronizandoPrecioFinal = true
-    inputPrecio.value = isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado, irpfRate).toFixed(4)
+    setPrecioValue(inputPrecio, isNaN(totalFacturado) ? '' : baseDesdeTotalFacturado(totalFacturado, irpfRate))
     validarPrecio()
     actualizarTotal()
     actualizarBtnAnadir()
@@ -494,13 +497,13 @@ selectProveedor.addEventListener('change', () => {
 
 function actualizarTotal() {
     const plazas   = parseInt(inputPlazas.value) || 0
-    const precio   = parseFloat(inputPrecio.value) || 0
+    const precio   = getPrecioValue(inputPrecio)
     const total    = plazas * precio
     const irpfRate = irpfRateParaCliente(clienteActual)
     document.getElementById('inputTotal').value =
         total > 0 ? total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '—'
     if (!_sincronizandoPrecioFinal)
-        inputPrecioFinal.value = precio > 0 ? totalFacturadoDesdeBase(precio, irpfRate).toFixed(4) : ''
+        setPrecioValue(inputPrecioFinal, precio > 0 ? totalFacturadoDesdeBase(precio, irpfRate) : '')
 }
 
 async function _limpiarPropuestaReserva(row) {
@@ -828,7 +831,7 @@ function cargarReservaEnFormulario(reserva) {
     }, 50)
 
     inputPlazas.value  = reserva.slots
-    inputPrecio.value  = reserva.price_per_slot
+    setPrecioValue(inputPrecio, reserva.price_per_slot)
     selectEstado.value = reserva.status
     document.getElementById('inputReservaComments').value = reserva.comments ?? ''
     document.getElementById('titulo-bloque-reserva').textContent = `✏️ Editando ${reserva.id}`
@@ -1335,7 +1338,7 @@ btnAnadir.addEventListener('click', () => confirmarSiTemporadaNoActiva('la reser
     const servicioId = parseInt(selectServicio.value) || null
     const venueId    = selectProveedor.value
     const plazas     = parseInt(inputPlazas.value)
-    const precio     = parseFloat(inputPrecio.value)
+    const precio     = getPrecioValue(inputPrecio)
     const estado     = selectEstado.value
     const comments   = document.getElementById('inputReservaComments').value.trim() || null
 
@@ -1924,7 +1927,7 @@ document.getElementById('btnCancelarNuevoCobro').addEventListener('click', () =>
 
 document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => confirmarSiTemporadaNoActiva('el cobro', async () => {
     const concepto = document.getElementById('cobroConcepto').value.trim() || 'Prepago'
-    const importe  = parseFloat(document.getElementById('cobroImporte').value)
+    const importe  = getPrecioValue(document.getElementById('cobroImporte'))
     const fecha    = document.getElementById('cobroFecha').value || null
     const cobrado  = document.getElementById('cobroCobrado').value === 'true'
     if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
@@ -1946,7 +1949,7 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
     if (idxF >= 0) hitosClienteTemp[idxF].amount = total - prepagos
 
     document.getElementById('cobroConcepto').value = ''
-    document.getElementById('cobroImporte').value  = ''
+    setPrecioValue(document.getElementById('cobroImporte'), '')
     document.getElementById('cobroFecha').value    = ''
     document.getElementById('cobroCobrado').value  = 'false'
     document.getElementById('form-nuevo-cobro-cliente').style.display = 'none'
@@ -2226,10 +2229,11 @@ function renderPanelReorganizar() {
             <td>
                 <input type="number" step="0.01" value="${r.price_per_slot}"
                     style="font-size:11px; padding:3px 4px; width:80px; text-align:right"
-                    onchange="reorgCambiarPrecio(${idx}, this.value)">
+                    onchange="reorgCambiarPrecio(${idx}, this.dataset.rawValue ?? this.value)">
             </td>
         </tr>`
     }).join('')
+    tbody.querySelectorAll('input[type=number]').forEach(inp => initPrecioInput(inp))
 }
 
 window.reorgCambiarServicio = function(idx, nuevoServicio) {
@@ -2719,7 +2723,7 @@ async function cargarDesdeSolicitud(data) {
             const bruto = parseFloat(raw)
             if (!isNaN(bruto)) {
                 setTimeout(() => {
-                    inputPrecio.value = (bruto / 1.15).toFixed(4)
+                    setPrecioValue(inputPrecio, bruto / 1.15)
                     validarPrecio()
                     actualizarTotal()
                 }, 150)
@@ -2784,7 +2788,7 @@ async function cargarDesdeSolicitud(data) {
                         }
                     }
                     if (linea.price != null) {
-                        inputPrecio.value = linea.price
+                        setPrecioValue(inputPrecio, linea.price)
                         validarPrecio()
                         actualizarTotal()
                         actualizarBtnAnadir()
@@ -3178,7 +3182,7 @@ function _cargarLineaEnBloque2(linea) {
             selectProveedor.dispatchEvent(new Event('change'))
         }
         if (linea.price != null) {
-            inputPrecio.value = linea.price
+            setPrecioValue(inputPrecio, linea.price)
             validarPrecio()
             actualizarTotal()
             actualizarBtnAnadir()

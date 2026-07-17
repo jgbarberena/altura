@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, fechaPagoDefault } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, fechaPagoDefault, initPrecioInput, setPrecioValue, getPrecioValue } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { abrirDlgGasto } from './dlg-gasto.js'
@@ -87,6 +87,7 @@ const servicioDescStatus       = document.getElementById('servicio-desc-status')
 const inputServicioId          = document.getElementById('inputServicioId')
 const inputPlazas              = document.getElementById('inputPlazas')
 const inputPrecio              = document.getElementById('inputPrecio')
+initPrecioInput(inputPrecio)
 const inputServicioNombre      = document.getElementById('inputServicioNombre')
 const inputServicioDescription = document.getElementById('inputServicioDescription')
 const inputServicioImageUrl    = document.getElementById('inputServicioImageUrl')

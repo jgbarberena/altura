@@ -94,9 +94,9 @@ async function cargarTodo() {
     ] = await Promise.all([
         supabase.from('supplier_invoices')
             .select('*, supplier_invoice_vat_lines(*)')
-            .gte('booked_date', start)
-            .lte('booked_date', end)
-            .order('booked_date', { ascending: true }),
+            .gte('issue_date', start)
+            .lte('issue_date', end)
+            .order('issue_date', { ascending: true }),
         supabase.from('issued_invoices')
             .select('*, issued_invoice_vat_lines(*)')
             .gte('accrual_date', start)
@@ -146,7 +146,7 @@ function renderGastos(rows) {
         sumIva   += iva
         sumTotal += r.total ?? 0
         return `<tr>
-            <td style="white-space:nowrap">${r.booked_date}</td>
+            <td style="white-space:nowrap">${r.issue_date}</td>
             <td style="font-size:12px">${r.invoice_number ?? '—'}</td>
             <td>${r.issuer_name ?? '—'}</td>
             <td style="font-size:11px;color:var(--subtle)">${r.issuer_nif ?? '—'}</td>
@@ -709,7 +709,7 @@ document.getElementById('btnExportGastos').addEventListener('click', async () =>
             }
         }),
         [
-            { key: 'booked_date',    label: 'Fecha libro' },
+            { key: 'issue_date',     label: 'Fecha factura' },
             { key: 'invoice_number', label: 'Nº factura' },
             { key: 'issuer_name',    label: 'Emisor' },
             { key: 'issuer_nif',     label: 'NIF' },
@@ -763,8 +763,8 @@ async function exportarZipGastos() {
     const { data: invoices } = await supabase
         .from('supplier_invoices')
         .select('id, invoice_number, issuer_name, document_id')
-        .gte('booked_date', start)
-        .lte('booked_date', end)
+        .gte('issue_date', start)
+        .lte('issue_date', end)
         .not('document_id', 'is', null)
 
     if (!invoices?.length) {
