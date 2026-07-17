@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, exportTable } from './utils.js'
 import { mostrarToast } from './verificacion.js'
+import { crearModal } from './modal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -685,8 +686,379 @@ window.descartarAlerta = function (_id) {
     mostrarToast('Pendiente de implementar', '#6b7280')
 }
 
-window.anotarGasto = function (_docId) {
-    mostrarToast('Registro de gasto pendiente (Bloque 6)', '#6b7280')
+// ===== BLOQUE 6: REGISTRAR FACTURA EN LIBRO FISCAL =====
+
+document.getElementById('btnNuevoGastoFiscal').addEventListener('click', () => _abrirDlgGasto(null, null))
+
+window.anotarGasto = async function (docId) {
+    const { data: doc } = await supabase
+        .from('supplier_documents').select('*').eq('id', docId).single()
+    if (!doc) { alert('Documento no encontrado'); return }
+
+    let provider = null
+    if (doc.provider_id) {
+        const { data: prov } = await supabase
+            .from('providers').select('id, name, nif').eq('id', doc.provider_id).maybeSingle()
+        provider = prov
+    }
+    _abrirDlgGasto(doc, provider)
+}
+
+function _abrirDlgGasto(doc, provider) {
+    const { overlay, panel } = crearModal('dlgGasto', { wide: true, scroll: true })
+
+    const hoy       = new Date().toISOString().split('T')[0]
+    const sinArch   = !doc || doc.file_path?.endsWith('_sin_archivo')
+    const provNombre = provider?.name ?? ''
+    const provNif    = provider?.nif  ?? ''
+
+    let _vatLines = [{ base: '', rate: 21, vat: '' }]
+
+    function _renderVatLines() {
+        return _vatLines.map((l, i) => `
+            <div class="dlg-vat-line" data-idx="${i}"
+                 style="display:grid;grid-template-columns:1fr 90px 1fr auto;gap:8px;align-items:end;margin-bottom:6px">
+                <div class="form-field" style="margin:0">
+                    <label style="font-size:11px">Base imponible (€)</label>
+                    <input type="number" class="vat-base" step="0.01" placeholder="0.00" value="${l.base}"
+                        oninput="window._dlgVatChange(${i},'base',this.value)">
+                </div>
+                <div class="form-field" style="margin:0">
+                    <label style="font-size:11px">IVA %</label>
+                    <input type="number" class="vat-rate" step="0.1" placeholder="21" value="${l.rate}"
+                        oninput="window._dlgVatChange(${i},'rate',this.value)">
+                </div>
+                <div class="form-field" style="margin:0">
+                    <label style="font-size:11px">Cuota IVA (€)</label>
+                    <input type="number" class="vat-vat" step="0.01" placeholder="0.00" value="${l.vat}"
+                        style="background:var(--bg-subtle)" readonly>
+                </div>
+                ${_vatLines.length > 1
+                    ? `<button class="btn btn-danger" style="padding:4px 8px;font-size:12px;align-self:flex-end"
+                           onclick="window._dlgVatRemove(${i})">✕</button>`
+                    : '<div></div>'}
+            </div>`).join('')
+    }
+
+    panel.innerHTML = `
+        <div class="dialog-header">
+            <div>
+                <h2 class="dialog-titulo">📥 Registrar factura recibida</h2>
+                ${doc ? `<div style="font-size:12px;color:var(--subtle)">${provNombre || doc.concept || '—'} · ${(doc.uploaded_at ?? '').split('T')[0]}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+                ${!sinArch ? `<button class="btn btn-secondary" id="dlg-ver-doc" style="font-size:12px">📄 Ver documento</button>` : ''}
+                ${!sinArch ? `<button class="btn btn-secondary" id="dlg-ia" style="font-size:12px">✨ Leer con IA</button>` : ''}
+                <button class="btn btn-secondary" onclick="document.getElementById('dlgGasto').close()">✕ Cerrar</button>
+            </div>
+        </div>
+
+        <div style="padding:4px 0 16px">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label>Emisor (nombre)</label>
+                    <input type="text" id="dlg-issuer-name" placeholder="Nombre del proveedor" value="${provNombre}">
+                </div>
+                <div class="form-field">
+                    <label>NIF emisor</label>
+                    <input type="text" id="dlg-issuer-nif" placeholder="B12345678" value="${provNif}">
+                </div>
+                <div class="form-field">
+                    <label>Nº factura proveedor</label>
+                    <input type="text" id="dlg-invoice-number" placeholder="F-2026-001">
+                </div>
+                <div class="form-field">
+                    <label>Fecha factura</label>
+                    <input type="date" id="dlg-issue-date" value="${hoy}">
+                </div>
+                <div class="form-field">
+                    <label>Fecha registro en libro</label>
+                    <input type="date" id="dlg-booked-date" value="${hoy}">
+                </div>
+                <div class="form-field">
+                    <label>Categoría</label>
+                    <select id="dlg-category">
+                        <option value="proveedores">Proveedores (balcones)</option>
+                        <option value="arrendamiento">Arrendamiento</option>
+                        <option value="servicios">Servicios profesionales</option>
+                        <option value="suministros">Suministros</option>
+                        <option value="otros">Otros</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>% Deducible</label>
+                    <input type="number" id="dlg-deductible" value="100" step="1" min="0" max="100">
+                </div>
+                <div class="form-field" style="display:flex;align-items:center;gap:8px;padding-top:22px">
+                    <label class="check-inline" style="margin:0">
+                        <input type="checkbox" id="dlg-capital"> Bien de inversión
+                    </label>
+                </div>
+            </div>
+
+            <div style="margin-top:16px">
+                <h3 style="font-size:13px;font-weight:600;margin:0 0 8px">Líneas de IVA</h3>
+                <div id="dlg-vat-lines">${_renderVatLines()}</div>
+                <button class="btn btn-secondary" style="font-size:12px;margin-top:4px"
+                    onclick="window._dlgVatAdd()">+ Línea IVA</button>
+            </div>
+
+            <div class="form-grid" style="margin-top:16px">
+                <div class="form-field">
+                    <label>IRPF %</label>
+                    <input type="number" id="dlg-irpf-rate" step="0.1" placeholder="0"
+                        oninput="window._dlgRecalcTotal()">
+                </div>
+                <div class="form-field">
+                    <label>IRPF importe (€)</label>
+                    <input type="number" id="dlg-irpf-amount" step="0.01" placeholder="0.00"
+                        style="background:var(--bg-subtle)" readonly>
+                </div>
+                <div class="form-field">
+                    <label>Total a pagar (€)</label>
+                    <input type="number" id="dlg-total" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-field">
+                    <label>Notas</label>
+                    <input type="text" id="dlg-notes" placeholder="Opcional">
+                </div>
+            </div>
+        </div>
+
+        <div class="dialog-footer">
+            <button class="btn btn-secondary" onclick="document.getElementById('dlgGasto').close()">Cancelar</button>
+            <button class="btn btn-primary" id="dlg-guardar">Guardar en libro</button>
+        </div>
+    `
+
+    if (!sinArch && doc) {
+        document.getElementById('dlg-ver-doc').addEventListener('click', async () => {
+            const { data } = await supabase.storage
+                .from('supplier-invoices').createSignedUrl(doc.file_path, 3600)
+            if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+            else alert('No se pudo abrir el documento')
+        })
+    }
+
+    window._dlgVatChange = (idx, field, val) => {
+        _vatLines[idx][field] = val
+        const base = parseFloat(_vatLines[idx].base) || 0
+        const rate = parseFloat(_vatLines[idx].rate) || 0
+        const vat  = Math.round(base * rate / 100 * 100) / 100
+        _vatLines[idx].vat = vat || ''
+        const vatEl = document.querySelector(`#dlg-vat-lines .dlg-vat-line[data-idx="${idx}"] .vat-vat`)
+        if (vatEl) vatEl.value = vat || ''
+        window._dlgRecalcTotal()
+    }
+
+    window._dlgVatAdd = () => {
+        _vatLines.push({ base: '', rate: 21, vat: '' })
+        document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+        window._dlgRecalcTotal()
+    }
+
+    window._dlgVatRemove = (idx) => {
+        _vatLines.splice(idx, 1)
+        document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+        window._dlgRecalcTotal()
+    }
+
+    window._dlgRecalcTotal = () => {
+        const sumBase = _vatLines.reduce((s, l) => s + (parseFloat(l.base) || 0), 0)
+        const sumVat  = _vatLines.reduce((s, l) => s + (parseFloat(l.vat)  || 0), 0)
+        const irpfRate   = parseFloat(document.getElementById('dlg-irpf-rate')?.value) || 0
+        const irpfAmount = Math.round(sumBase * irpfRate / 100 * 100) / 100
+        const total = Math.round((sumBase + sumVat - irpfAmount) * 100) / 100
+
+        const irpfEl  = document.getElementById('dlg-irpf-amount')
+        const totalEl = document.getElementById('dlg-total')
+        if (irpfEl)  irpfEl.value  = irpfAmount || ''
+        if (totalEl) totalEl.value = total || ''
+    }
+
+    if (!sinArch && doc) {
+        document.getElementById('dlg-ia').addEventListener('click', () => _cargarConIA())
+    }
+
+    document.getElementById('dlg-guardar').addEventListener('click', () =>
+        _guardarGasto(doc, provider, _vatLines))
+
+    async function _cargarConIA() {
+        const btn = document.getElementById('dlg-ia')
+        btn.disabled    = true
+        btn.textContent = '⏳ Leyendo…'
+
+        try {
+            // Obtener la URL firmada y descargar el documento
+            const { data: urlData } = await supabase.storage
+                .from('supplier-invoices').createSignedUrl(doc.file_path, 300)
+            if (!urlData?.signedUrl) throw new Error('No se pudo acceder al documento')
+
+            const resp   = await fetch(urlData.signedUrl)
+            const buffer = await resp.arrayBuffer()
+            const bytes  = new Uint8Array(buffer)
+            let binary = ''
+            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+            const base64 = btoa(binary)
+
+            // Detectar tipo de archivo
+            const ext = doc.file_path.split('.').pop().toLowerCase()
+            let mediaType   = 'application/pdf'
+            let contentType = 'document'
+            if (['jpg', 'jpeg'].includes(ext)) { mediaType = 'image/jpeg'; contentType = 'image' }
+            else if (ext === 'png')            { mediaType = 'image/png';  contentType = 'image' }
+            else if (ext === 'webp')           { mediaType = 'image/webp'; contentType = 'image' }
+
+            const { data: result, error: errIA } = await supabase.functions.invoke('claude-proxy', {
+                body: {
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 600,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: contentType, source: { type: 'base64', media_type: mediaType, data: base64 } },
+                            { type: 'text', text:
+                                'Extrae los datos fiscales de esta factura. Responde SOLO con JSON válido, sin texto adicional:\n' +
+                                '{"issuer_name":"","issuer_nif":"","invoice_number":"","issue_date":"YYYY-MM-DD",' +
+                                '"vat_lines":[{"base":0,"rate":21,"vat":0}],"irpf_rate":0,"irpf_amount":0,"total":0}' }
+                        ]
+                    }]
+                }
+            })
+
+            if (errIA) throw new Error(errIA.message)
+
+            const text      = result?.content?.[0]?.text ?? ''
+            const jsonMatch = text.match(/\{[\s\S]*\}/)
+            if (!jsonMatch) throw new Error('Respuesta no contiene JSON')
+            const datos = JSON.parse(jsonMatch[0])
+
+            // Rellenar campos
+            if (datos.issuer_name)    document.getElementById('dlg-issuer-name').value    = datos.issuer_name
+            if (datos.issuer_nif)     document.getElementById('dlg-issuer-nif').value     = datos.issuer_nif
+            if (datos.invoice_number) document.getElementById('dlg-invoice-number').value = datos.invoice_number
+            if (datos.issue_date)     document.getElementById('dlg-issue-date').value     = datos.issue_date
+            if (datos.irpf_rate)      document.getElementById('dlg-irpf-rate').value      = datos.irpf_rate
+
+            if (datos.vat_lines?.length) {
+                _vatLines = datos.vat_lines.map(l => ({
+                    base: +(l.base ?? 0),
+                    rate: +(l.rate ?? 21),
+                    vat:  +(l.vat  ?? 0),
+                }))
+                document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+            }
+
+            window._dlgRecalcTotal()
+
+            // El total de la IA se aplica tras recalcular (puede diferir por redondeo)
+            if (datos.total) document.getElementById('dlg-total').value = datos.total
+
+            btn.textContent = '✅ Datos cargados'
+            btn.disabled    = false
+
+        } catch (e) {
+            console.error('IA fiscal:', e)
+            btn.textContent = '✨ Leer con IA'
+            btn.disabled    = false
+            mostrarToast('No se pudieron extraer datos automáticamente', '#d97706')
+        }
+    }
+}
+
+async function _guardarGasto(doc, provider, vatLines) {
+    const issuerName = document.getElementById('dlg-issuer-name').value.trim()
+    const issuerNif  = document.getElementById('dlg-issuer-nif').value.trim()
+    const invNum     = document.getElementById('dlg-invoice-number').value.trim()
+    const issueDate  = document.getElementById('dlg-issue-date').value
+    const bookedDate = document.getElementById('dlg-booked-date').value
+    const category   = document.getElementById('dlg-category').value
+    const dedPct     = parseFloat(document.getElementById('dlg-deductible').value) ?? 100
+    const isCapital  = document.getElementById('dlg-capital').checked
+    const irpfRate   = parseFloat(document.getElementById('dlg-irpf-rate').value) || 0
+    const irpfAmount = parseFloat(document.getElementById('dlg-irpf-amount').value) || 0
+    const total      = parseFloat(document.getElementById('dlg-total').value)
+    const notes      = document.getElementById('dlg-notes').value.trim() || null
+
+    if (!issuerName) { alert('Falta el nombre del emisor'); return }
+    if (!issuerNif)  { alert('Falta el NIF del emisor'); return }
+    if (!invNum)     { alert('Falta el número de factura'); return }
+    if (!issueDate)  { alert('Falta la fecha de la factura'); return }
+    if (!bookedDate) { alert('Falta la fecha de registro'); return }
+    if (isNaN(total) || total <= 0) { alert('El total debe ser mayor que 0'); return }
+
+    const validLines = vatLines.filter(l => parseFloat(l.base) > 0)
+    if (!validLines.length) { alert('Añade al menos una línea de IVA con base imponible'); return }
+
+    const season = parseInt(bookedDate.split('-')[0])
+
+    const btn = document.getElementById('dlg-guardar')
+    btn.disabled    = true
+    btn.textContent = 'Guardando…'
+
+    // Si no hay doc existente, crear supplier_documents con sentinel
+    let docId = doc?.id ?? null
+    if (!docId) {
+        const { data: newDoc, error: errDoc } = await supabase
+            .from('supplier_documents')
+            .insert({
+                provider_id: provider?.id ?? null,
+                concept:     `${issuerName} — ${invNum}`,
+                file_path:   `_gastos/${season}/${Date.now()}_sin_archivo`,
+                season,
+            })
+            .select('id').single()
+        if (errDoc) {
+            alert('Error al crear entrada de documento: ' + errDoc.message)
+            btn.disabled = false; btn.textContent = 'Guardar en libro'
+            return
+        }
+        docId = newDoc.id
+    }
+
+    const { data: inv, error: errInv } = await supabase
+        .from('supplier_invoices')
+        .insert({
+            document_id:     docId,
+            provider_id:     provider?.id ?? doc?.provider_id ?? null,
+            issuer_name:     issuerName,
+            issuer_nif:      issuerNif,
+            invoice_number:  invNum,
+            issue_date:      issueDate,
+            booked_date:     bookedDate,
+            operation_type:  'interior',
+            category,
+            deductible_pct:  dedPct,
+            is_capital_good: isCapital,
+            irpf_rate:       irpfRate  || null,
+            irpf_amount:     irpfAmount || null,
+            total,
+            season,
+            notes,
+        })
+        .select('id').single()
+
+    if (errInv) {
+        alert('Error al guardar en el libro: ' + errInv.message)
+        btn.disabled = false; btn.textContent = 'Guardar en libro'
+        return
+    }
+
+    const { error: errVat } = await supabase
+        .from('supplier_invoice_vat_lines')
+        .insert(validLines.map(l => ({
+            invoice_id:  inv.id,
+            base_amount: parseFloat(l.base),
+            vat_rate:    parseFloat(l.rate),
+            vat_amount:  parseFloat(l.vat),
+        })))
+
+    if (errVat) alert('Factura guardada pero error en líneas de IVA: ' + errVat.message)
+
+    document.getElementById('dlgGasto')?.close()
+    mostrarToast('Factura registrada en el libro fiscal')
+    cargarTodo()
+    cargarAlertas()
 }
 
 // ===== EXCEL EXPORT =====
