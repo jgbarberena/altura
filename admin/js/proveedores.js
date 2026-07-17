@@ -3,6 +3,7 @@ import { requireAuth, logout } from './auth.js'
 import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, fechaPagoDefault } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
+import { abrirDlgGasto } from './dlg-gasto.js'
 import { syncStockToSfcom, computeExpectedStock, mostrarModalConfirmacionSfcom, confirmarStockSfcom, verificarConfirmarSfcom, editarNombreSfcom, mostrarModalCorreoHilario, mostrarModalCorreoCancelacionSfcom, mostrarModalCorreoBajaSfcom, verificarBajaSfcom } from './sfcom.js'
 
 await requireAuth()
@@ -2186,8 +2187,8 @@ async function cargarDocumentosProveedor(proveedorId) {
             </span>
             ${numFactura
                 ? `<span style="font-size:11px;color:var(--accent-ok);white-space:nowrap">✅ ${numFactura}</span>`
-                : `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;white-space:nowrap"
-                       onclick="registrarDocProveedor(${d.id})">Registrar</button>`}
+                : `<button class="btn btn-primary" style="font-size:11px;padding:3px 8px;white-space:nowrap"
+                       onclick="registrarDocProveedor(${d.id})">Anotar</button>`}
             <button class="btn btn-danger" style="font-size:11px;padding:3px 8px"
                 onclick="eliminarDocProveedor(${d.id},'${d.file_path}')">🗑</button>
         </div>`
@@ -2262,8 +2263,11 @@ window.eliminarDocProveedor = async function (docId, filePath) {
     cargarDocumentosProveedor(proveedorActual.id)
 }
 
-window.registrarDocProveedor = function (_docId) {
-    mostrarToast('Próximamente: registro en libro fiscal (Bloque 6)')
+window.registrarDocProveedor = function (docId) {
+    const prov = proveedorActual
+        ? { id: proveedorActual.id, name: proveedorActual.name ?? proveedorActual.id, nif: proveedorActual.nif ?? '' }
+        : null
+    abrirDlgGasto(docId, prov, () => cargarDocumentosProveedor(proveedorActual?.id))
 }
 
 function renderHitosProveedor() {

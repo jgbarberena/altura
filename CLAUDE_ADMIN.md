@@ -1210,7 +1210,7 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
   4. Cobros sin facturar (charges.invoice_number IS NULL AND amount>=0.1, excluye sfcom por comments LIKE 'WEB%')
   5. Trimestres pasados con datos pero sin fiscal_closing.presented_at
 - Botones "Descartar" por fila en cada alerta: no-op (toast), pendiente de implementar (deuda §7.6)
-- Botón "Anotar" en alerta 1: no-op (toast), pendiente de Bloque 6 (deuda §7.6)
+- Botón "Anotar" en alerta 1: ~~no-op~~ → conectado al Bloque 6 (ver más abajo)
 - Botón "Ir al trimestre" en alerta 5: navega al trimestre y abre pestaña F69
 - Sidebar reordenado en todas las páginas del admin: Gastos pasa a posición justo antes del separador visual (`<div class="nav-sep">`) y Fiscal después. `.nav-sep` añadido a `admin.css`.
 
@@ -1232,4 +1232,18 @@ _Nuevas funcionalidades en formulario.js + factura.js:_
 - Facturas simplificadas omiten el bloque de destinatario en HTML y PDF.
 - El diálogo de factura se cierra automáticamente tras emitir (callback `onUsado: cerrarPanel`).
 
-**Pendiente (Bloque 6):** drawer/modal dlgGasto para registrar documentos en el libro fiscal desde el panel (ver §7.6).
+**Bloque 6 (completado jul 2026) — dlgGasto: modal compartido para registrar facturas recibidas:**
+
+- `admin/js/dlg-gasto.js` — módulo compartido exportando `abrirDlgGasto(docOrId, provider, onGuardado)`.
+  - Acepta doc como objeto o como ID (lo carga). Si `provider` es null y el doc tiene `provider_id`, lo carga automáticamente.
+  - Vista de dos columnas en PC (visor doc a la izquierda, formulario a la derecha); una columna en mobile. CSS en `.dlg-gasto-layout`, `.dlg-gasto-viewer`, `.dlg-gasto-form`, `.modal-panel--doc` (`admin/css/admin.css`).
+  - Toggle Ticket/simplificada ↔ Factura completa. Defecto: **simplificada si el doc es imagen** (jpg/jpeg/png/webp); **completa si es PDF o no hay doc**.
+  - Modo simplificada: emisor, NIF (opcional), fecha, selector IVA (21/10/4/0%), total. NIF y nº factura opcionales; si se omiten se generan `N/A` y `T-{timestamp}`.
+  - Modo completa: todos los campos del libro (fecha registro, categoría, % deducible, bien de inversión, líneas de IVA múltiples, IRPF, total).
+  - Botón "✨ Leer con IA" (solo si hay documento previsualizable): llama a `claude-proxy` con Haiku, extrae JSON fiscal, rellena campos según modo activo.
+  - Guardar: crea `supplier_documents` con sentinel `_sin_archivo` si no hay doc previo; inserta en `supplier_invoices` + `supplier_invoice_vat_lines`; llama `onGuardado()`.
+- Puntos de entrada:
+  - `fiscal.js`: botón "+ Añadir" pestaña Gastos + botón "Anotar" en alerta 1 → `abrirDlgGasto(null/docId, null, () => { cargarTodo(); cargarAlertas() })`
+  - `gastos.js`: botón "Anotar" en filas sin factura registrada → `abrirDlgGasto(docId, null, () => cargarGastos())`
+  - `proveedores.js`: botón "Anotar" en documentos del proveedor → `abrirDlgGasto(docId, {id,name,nif}, () => cargarDocumentosProveedor(...))`
+- Imagen: click para zoom (object-fit contain → none y vuelta). PDF: iframe inline con enlace "⤢ Abrir en pestaña".

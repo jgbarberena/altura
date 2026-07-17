@@ -50,7 +50,7 @@ async function _abrirModal(doc, provider, onGuardado) {
         ? `${pNom || doc.concept || '—'} · ${(doc.uploaded_at ?? '').split('T')[0]}`
         : 'Nueva entrada'
 
-    let _tipo     = 'simp'
+    let _tipo     = isImg ? 'simp' : 'full'
     let _vatLines = [{ base: '', rate: 21, vat: '' }]
 
     function _renderVatLines() {
@@ -237,6 +237,7 @@ async function _abrirModal(doc, provider, onGuardado) {
         document.getElementById('dlg-row-invnum').style.display = simp  ? 'none' : ''
         document.getElementById('dlg-nif-opt').style.display    = simp  ? '' : 'none'
     }
+    window._dlgSetTipo(_tipo)
 
     window._dlgRecalcSimp = () => {
         const total   = parseFloat(document.getElementById('dlg-total-simp')?.value) || 0
