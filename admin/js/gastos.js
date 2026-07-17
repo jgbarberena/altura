@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
 import { initSidebar, initTemporada, getTemporadaActiva } from './utils.js'
 import { mostrarToast } from './verificacion.js'
+import { abrirDlgGasto } from './dlg-gasto.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
@@ -130,7 +131,8 @@ async function cargarGastos() {
             <td style="font-size:12px;color:var(--subtle)">${d.notes ?? ''}</td>
             <td>${numFactura
                 ? `<span style="font-size:11px;color:var(--accent-ok)">✅ ${numFactura}</span>`
-                : `<span style="font-size:11px;color:var(--subtle)">Pendiente</span>`
+                : `<button class="btn btn-primary" style="font-size:11px;padding:3px 8px"
+                       onclick="_anotarGastoRow(${d.id})">Anotar</button>`
             }</td>
             <td style="white-space:nowrap">
                 <button class="btn btn-danger" style="font-size:11px;padding:3px 8px"
@@ -156,6 +158,9 @@ window.eliminarGasto = async function (docId, filePath, sinArchivo) {
     mostrarToast('Gasto eliminado')
     cargarGastos()
 }
+
+window._anotarGastoRow = (docId) =>
+    abrirDlgGasto(docId, null, () => cargarGastos())
 
 // ===== ARRANQUE =====
 cargarGastos()

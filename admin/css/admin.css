@@ -1241,6 +1241,44 @@ dialog.modal-dialog-overlay::backdrop {
 .modal-panel--wide   { max-width: 640px; }
 .modal-panel--narrow { max-width: 480px; }
 .modal-panel--scroll { max-height: 90vh; overflow-y: auto; }
+.modal-panel--doc    { max-width: min(90vw, 1100px); }
+
+/* Layout de dos columnas para dlgGasto cuando hay documento adjunto */
+.dlg-gasto-layout {
+    display: grid;
+    grid-template-columns: 45% 1fr;
+    gap: 16px;
+    min-height: 55vh;
+    max-height: 78vh;
+}
+.dlg-gasto-viewer {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-subtle,#f3f4f6);
+    min-height: 300px;
+}
+.dlg-gasto-viewer iframe,
+.dlg-gasto-viewer .dlg-img {
+    flex: 1;
+    width: 100%;
+    border: none;
+    object-fit: contain;
+    min-height: 0;
+}
+.dlg-gasto-form {
+    overflow-y: auto;
+}
+@media (max-width: 768px) {
+    .dlg-gasto-layout {
+        grid-template-columns: 1fr;
+        max-height: none;
+    }
+    .dlg-gasto-viewer { height: 40vh; min-height: 180px; flex: none; }
+    .modal-panel--doc  { max-width: 100%; }
+}
 
 .modal-header {
     display: flex;
