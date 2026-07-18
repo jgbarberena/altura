@@ -559,8 +559,11 @@ async function cargarAlertas() {
             const fecha  = d.uploaded_at.split('T')[0]
             const nombre = d.concept || d.notes?.replace(/^\*/, '').trim()
                 || d.file_path.split('/').pop().replace(/^\d+_/, '')
+            const provCell = d.provider_id
+                ? `<td style="padding:4px 8px;cursor:pointer" onclick="location.href='proveedores.html?proveedor=${d.provider_id}'">${prov}</td>`
+                : `<td style="padding:4px 8px">${prov}</td>`
             return `<tr style="font-size:12px">
-                <td style="padding:4px 8px">${prov}</td>
+                ${provCell}
                 <td style="padding:4px 8px;color:var(--subtle)">${fecha}</td>
                 <td style="padding:4px 8px">${nombre}</td>
                 <td style="padding:4px 8px;white-space:nowrap">
@@ -602,7 +605,7 @@ async function cargarAlertas() {
     // Alerta 2: proveedores con pagos sin factura
     if (provsConDiscrepancia.length > 0 || provsDismissed.length > 0) {
         const filas = provsConDiscrepancia.map(p => `<tr style="font-size:12px">
-            <td style="padding:4px 8px;font-weight:600">${p.id}</td>
+            <td style="padding:4px 8px;font-weight:600;cursor:pointer" onclick="location.href='proveedores.html?proveedor=${p.id}'">${p.id}</td>
             <td style="padding:4px 8px;color:var(--subtle)">${p.name ?? ''}</td>
             <td style="padding:4px 8px;text-align:right">${fmt(paidMap[p.id] ?? 0)}</td>
             <td style="padding:4px 8px;text-align:right;color:var(--accent)">${fmt(invoiceMap[p.id] ?? 0)}</td>
@@ -670,7 +673,7 @@ async function cargarAlertas() {
     if (chargesActivos.length > 0 || chargesDescartados.length > 0) {
         const clientesActivos = new Set(chargesActivos.map(c => c.client_id)).size
         const filas = chargesActivos.map(c => `<tr style="font-size:12px">
-            <td style="padding:4px 8px;font-weight:600">${c.client_id}</td>
+            <td style="padding:4px 8px;font-weight:600;cursor:pointer" onclick="location.href='formulario.html?cliente=${c.client_id}'">${c.client_id}</td>
             <td style="padding:4px 8px;text-align:right">${fmt(c.amount)}</td>
             <td style="padding:4px 8px;color:var(--subtle);font-size:11px">${c.comments || '—'}</td>
             <td style="padding:4px 8px;white-space:nowrap">
