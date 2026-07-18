@@ -18,7 +18,7 @@ Dos clientes Supabase:
 
 ### Edge Functions
 
-Las Edge Functions corren en el runtime de Deno de Supabase. **No se despliegan por FTP ni git** — solo desde el Dashboard (editor de código de cada función) o vía Supabase CLI. El directorio `supabase/functions/` del repo es la copia de referencia; está excluido del deploy FTP.
+Las Edge Functions corren en el runtime de Deno de Supabase. **No se despliegan por FTP ni git** — solo desde el Dashboard (editor de código de cada función) o vía Supabase CLI. El directorio `admin/supabase/functions/` del repo es la copia de referencia; está excluido del deploy FTP.
 
 **Funciones activas:**
 
@@ -311,7 +311,7 @@ Se guardan manualmente ("Guardar log"). Su uso principal: pasarlos a Claude.ai p
 
 ### Vistas y funciones SQL
 
-Definiciones SQL exactas en `supabase/sql/views_pre_migration.sql` (estado pre-Fase1) y en el archivo de migración `supabase/sql/migration_fase1_services_pk.sql` (estado post-Fase1).
+Definiciones SQL exactas en `admin/supabase/sql/views_pre_migration.sql` (estado pre-Fase1) y en el archivo de migración `admin/supabase/sql/migration_fase1_services_pk.sql` (estado post-Fase1).
 
 **Función `public.public_season()`** — STABLE function. Devuelve el año de la temporada vigente para las vistas públicas: si `EXTRACT(MONTH FROM NOW()) >= 8` → `año_actual + 1`, si no → `año_actual`. Definida en Fase 9d. Usada por `service_availability` y `catalogo_publico` para filtrar por temporada sin hardcodear años. No requiere mantenimiento anual.
 
@@ -983,10 +983,6 @@ Caso resuelto (jul 2026): `_savePhotos` en `proveedores.js` ya actualiza en memo
 Casos pendientes: los campos `description` y `access_instructions` se guardan vía `initAutoSave` sin callback que actualice filas hermanas en `todaDisponibilidad`. Fix natural cuando se toquen esos archivos.
 
 ---
-
-**CSS del panel en móvil — pendiente auditoría visual.**
-
-Mejoras defensivas aplicadas (jul 2026): `.ef-grupo` pasa de 2 a 3 columnas en móvil (evita ítem huérfano), `word-break: break-word` en `.ef-valor` y `.kpi-dual__conf`, `flex-wrap` en `.kpi-dual__pend-row`. Pendiente: verificar visualmente en móvil real (incógnito, 360px). Zonas con más riesgo: KPIs económicos `panel.html`, layout `solicitudes.html`.
 
 ---
 

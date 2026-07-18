@@ -336,6 +336,45 @@ function _syncServicioImgPreview() {
     }
 }
 
+// ── Upload imagen de servicio desde archivo ────────────────────────────────
+
+const dzSvcImg          = document.getElementById('dropzone-svc-img')
+const inputSvcImgArchivo = document.getElementById('inputSvcImgArchivo')
+const svcImgUploadStatus = document.getElementById('svcImgUploadStatus')
+
+async function _procesarImagenServicio(file) {
+    svcImgUploadStatus.textContent = '⏳ Subiendo…'
+    const form = new FormData()
+    form.append('file', file)
+    form.append('dir', 'services')
+    try {
+        const { data, error } = await supabase.functions.invoke('upload-venue-photo', { body: form })
+        if (error) throw error
+        if (!data?.url) throw new Error('Sin URL en la respuesta')
+        inputServicioImageUrl.value = data.url
+        _syncServicioImgPreview()
+        await guardarDescripcionServicio()
+        svcImgUploadStatus.textContent = '✅ Guardada'
+        setTimeout(() => { svcImgUploadStatus.textContent = '' }, 3000)
+    } catch (err) {
+        svcImgUploadStatus.textContent = '❌ Error al subir'
+        alert('Error al subir la imagen: ' + err.message)
+    } finally {
+        inputSvcImgArchivo.value = ''
+    }
+}
+
+inputSvcImgArchivo.addEventListener('change', async (e) => {
+    if (e.target.files[0]) await _procesarImagenServicio(e.target.files[0])
+})
+dzSvcImg.addEventListener('dragover',  e => { e.preventDefault(); dzSvcImg.classList.add('st-dz--over') })
+dzSvcImg.addEventListener('dragleave', () => dzSvcImg.classList.remove('st-dz--over'))
+dzSvcImg.addEventListener('drop', async e => {
+    e.preventDefault()
+    dzSvcImg.classList.remove('st-dz--over')
+    if (e.dataTransfer.files[0]) await _procesarImagenServicio(e.dataTransfer.files[0])
+})
+
 // ===== TABS PAR / SERVICIO =====
 
 function _seleccionarTabAvail(tabName, mostrarAviso = true) {

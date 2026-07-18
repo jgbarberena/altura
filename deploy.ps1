@@ -56,7 +56,7 @@ function Should-Ignore([string]$path) {
     if ($p -match '\.ps1$')                              { return $true }
     if ($p -match '\.zip$')                              { return $true }
     if ($p -match '(^|/)index-template\.html$')          { return $true }
-    if ($p -eq 'supabase' -or $p.StartsWith('supabase/')) { return $true }
+    if ($p -eq 'admin/supabase' -or $p.StartsWith('admin/supabase/')) { return $true }
     return $false
 }
 

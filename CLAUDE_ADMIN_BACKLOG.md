@@ -674,7 +674,7 @@ ON CONFLICT (client_id, amount, due_date) DO NOTHING;
 
 **`tablas.js`:** columna `id` de la tabla `services` ya no tiene `renameable: true`. Nueva columna `Código` expone `service_code`.
 
-**SQL:** `supabase/sql/migration_fase1_services_pk.sql` (ejecutar en Supabase SQL Editor). **Referencia pre-migración:** `supabase/sql/views_pre_migration.sql`.
+**SQL:** `admin/supabase/sql/migration_fase1_services_pk.sql` (ejecutar en Supabase SQL Editor). **Referencia pre-migración:** `admin/supabase/sql/views_pre_migration.sql`.
 
 ---
 
@@ -954,3 +954,11 @@ Claude veía en el contexto líneas del borrador con `estado: 'descartada'` sin 
 
 **Regla de filtrado de trimestre** en `cargarTodo()` (`fiscal.js`):
 `_fechaEfectiva(inv)` — usa `issue_date` si el trimestre de `issue_date` está abierto; usa `booked_date` si ya está presentado (`fiscal_closings.presented_at IS NOT NULL`). ZIP y paquete asesor usan `_gastosData` directamente (ya filtrado), no re-consultan Supabase.
+
+### [RESUELTO jul 2026] §7.2 CSS del panel en móvil
+
+Fixes aplicados en admin.css y panel.css:
+- table-wrapper en móvil: max-height: none + overflow-y: visible (sin scroll vertical interno, solo scroll horizontal dentro del contenedor)
+- panel-fila: display: block en móvil para que overflow-x: auto funcione correctamente en las tablas de pagos/cobros
+- pv-seccion: overflow-x: auto para el bloque "Por vender"
+- Mejoras defensivas: ef-grupo 3 col, word-break en ef-valor/kpi-dual__conf, flex-wrap en kpi-dual__pend-row

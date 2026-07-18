@@ -16,9 +16,11 @@ const CORS = {
     'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info'
 }
 
-const FTP_PORT    = 21
-const REMOTE_DIR  = '/httpdocs/img/venues'
-const PUBLIC_BASE = 'https://experienciasanfermin.com/img/venues'
+const FTP_PORT = 21
+const DIRS: Record<string, { remote: string; base: string }> = {
+    venues:   { remote: '/httpdocs/img/venues',   base: 'https://experienciasanfermin.com/img/venues' },
+    services: { remote: '/httpdocs/img/services',  base: 'https://experienciasanfermin.com/img/services' },
+}
 
 // ── Cliente FTP mínimo (solo upload) ──────────────────────────────────────
 
@@ -119,6 +121,11 @@ Deno.serve(async (req: Request) => {
     const file = form.get('file') as File | null
     if (!file) return json({ error: 'Campo "file" requerido' }, 400)
 
+    const dirKey = (form.get('dir')?.toString() ?? 'venues') in DIRS
+        ? form.get('dir')!.toString()
+        : 'venues'
+    const { remote: remoteDir, base: publicBase } = DIRS[dirKey]
+
     // Sanitizar nombre: conservar extensión y caracteres seguros
     const ext      = (file.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
     const base     = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80)
@@ -138,7 +145,7 @@ Deno.serve(async (req: Request) => {
         await ftp.connect(host, FTP_PORT)
         await ftp.cmd(`USER ${ftpUser}`)
         await ftp.cmd(`PASS ${pass}`)
-        await ftp.upload(REMOTE_DIR, filename, fileData)
+        await ftp.upload(remoteDir, filename, fileData)
     } catch (e) {
         ftp.close()
         const msg = e instanceof Error ? e.message : String(e)
@@ -147,7 +154,7 @@ Deno.serve(async (req: Request) => {
     }
     ftp.close()
 
-    return json({ ok: true, url: `${PUBLIC_BASE}/${filename}`, filename })
+    return json({ ok: true, url: `${publicBase}/${filename}`, filename })
 })
 
 function json(body: unknown, status = 200): Response {
