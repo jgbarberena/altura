@@ -271,7 +271,7 @@
 ========================= */
 .pv-resumen { margin-bottom: 20px; }
 
-.pv-seccion { margin-bottom: 4px; }
+.pv-seccion { margin-bottom: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .pv-seccion--gap { margin-top: 24px; }
 
 .pv-titulo {
