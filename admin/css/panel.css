@@ -189,8 +189,8 @@
    RESPONSIVE
 ========================= */
 @media (max-width: 768px) {
-    .panel-fila              { flex-direction: column; }
-    .panel-resumen-negocio   { flex: none; width: 100%; }
+    .panel-fila              { display: block; }
+    .panel-resumen-negocio   { width: 100%; }
     .kpi-grid--wide          { grid-template-columns: repeat(2, 1fr); }
     .selector-mobile         { display: block; }
     .ef-layout               { flex-direction: column; }
