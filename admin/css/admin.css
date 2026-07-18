@@ -620,7 +620,10 @@ details[open] .sfcom-summary-chevron { transform: rotate(90deg); }
     .sidebar { left: -100%; transition: left 0.3s ease; width: 240px; }
     .sidebar.open { left: 0; }
     .content { margin-left: 0; padding: 16px; }
-    .table-wrapper--limited thead th { position: static; }
+    .table-wrapper--limited,
+    .table-wrapper--limited-15 { max-height: none; overflow-y: visible; }
+    .table-wrapper--limited thead th,
+    .table-wrapper--limited-15 thead th { position: static; }
     #fila-reserva          { flex-direction: column; }
     #bloque-reserva        { max-width: 100%; }
     #bloque-disponibilidad { max-width: 100%; }
