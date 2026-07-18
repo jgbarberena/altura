@@ -1002,14 +1002,18 @@ Se decidió no hacerlo hasta auditar el código hardcoded que depende de `servic
 
 ### 7.6 Fiscal — deudas pendientes
 
-**Botones "Descartar aviso" en alertas fiscales sin persistencia.**
+Sin deudas pendientes en este bloque.
 
-Los cinco tipos de alerta en `fiscal.js` muestran un botón "Descartar" por fila que actualmente no hace nada (toast "pendiente de implementar"). El dismiss debe persistir en BD para no depender de localStorage (multi-dispositivo, multi-sesión). Diseño propuesto:
-- Alerta 1 (docs sin anotar): sentinel en `supplier_documents.notes` — prefijo `*` indica "descartado". Revisar si agregar columna `dismissed_at` es más limpio.
-- Alerta 2 (proveedores sin factura): similar, una tabla `fiscal_alert_dismissals(type, ref_id, dismissed_at)` o columna específica.
-- Alertas 3/4/5: igual. Decidir si se crea una tabla genérica o se extienden las tablas existentes.
+**Dismiss de alertas fiscales — implementado con sentinels (jul 2026).**
 
-Hasta que se implemente, el dismiss es no-op. No afecta al funcionamiento del libro fiscal.
+Los 5 tipos de alerta usan sentinels en tablas existentes, sin migración de esquema:
+- Alerta 1 (docs sin anotar): prefijo `*` en `supplier_documents.notes`. Recuperar limpia el prefijo.
+- Alerta 2 (proveedores con pagos sin factura): prefijo `*importe ` en `providers.comments`. Auto-revive si el importe de la discrepancia cambia más de 0,01€ respecto al sentinel almacenado.
+- Alerta 3 (emitidas sin PDF): sin dismiss — adjuntar el PDF es la única acción válida.
+- Alerta 4 (cobros sin facturar): sentinel `invoiced_at = '0001-01-01'` en `charges`, por cobro individual. Recuperar restaura `invoiced_at = null`.
+- Alerta 5 (trimestres sin presentar): sin dismiss — presentar es la única acción válida.
+
+Función `descartarAlerta(key, extra)` y `recuperarDescartados(tipo)` en `fiscal.js` (globales).
 
 ---
 
@@ -1193,4 +1197,4 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 
 ### Fase 11 — ✅ Completa: módulo fiscal
 
-Descripción completa en `CLAUDE_ADMIN_BACKLOG.md §9`. Pendiente de la fase: botones "Descartar" en alertas (deuda §7.6).
+Descripción completa en `CLAUDE_ADMIN_BACKLOG.md §9`. Incluye dismiss con sentinels en todas las alertas pertinentes (ver §7.6).

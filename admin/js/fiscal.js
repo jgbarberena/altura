@@ -443,13 +443,13 @@ async function cargarAlertas() {
         { data: allClosings },
     ] = await Promise.all([
         supabase.from('supplier_invoices').select('document_id'),
-        supabase.from('providers').select('id, name').eq('invoice', true),
+        supabase.from('providers').select('id, name, comments').eq('invoice', true),
         supabase.from('issued_invoices')
             .select('id, invoice_number, client_name, accrual_date, total')
             .is('file_path', null)
             .order('accrual_date', { ascending: false }),
         supabase.from('charges')
-            .select('id, client_id, amount, comments')
+            .select('id, client_id, amount, comments, invoiced_at')
             .is('invoice_number', null)
             .gte('amount', 0.1),
         supabase.from('supplier_invoices').select('booked_date'),
@@ -486,10 +486,12 @@ async function cargarAlertas() {
     ])
 
     // Procesar alerta 1: docs sin anotar (filtrar sin_archivo en JS)
-    const pendingDocs = (allPendingDocs ?? []).filter(d => !d.file_path.endsWith('_sin_archivo'))
+    const allUnregistered = (allPendingDocs ?? []).filter(d => !d.file_path.endsWith('_sin_archivo'))
+    const activeDocs    = allUnregistered.filter(d => !d.notes?.startsWith('*'))
+    const dismissedDocs = allUnregistered.filter(d =>  d.notes?.startsWith('*'))
 
-    // Obtener nombres de proveedores para los docs pendientes
-    const docProvIds = [...new Set(pendingDocs.filter(d => d.provider_id).map(d => d.provider_id))]
+    // Obtener nombres de proveedores para todos los docs (incluyendo descartados)
+    const docProvIds = [...new Set(allUnregistered.filter(d => d.provider_id).map(d => d.provider_id))]
     let provNamesMap = {}
     if (docProvIds.length > 0) {
         const { data: provNamesData } = await supabase.from('providers').select('id, name').in('id', docProvIds)
@@ -502,21 +504,26 @@ async function cargarAlertas() {
     for (const p of (paidPayments ?? [])) paidMap[p.provider_id]    = (paidMap[p.provider_id]    ?? 0) + (p.amount ?? 0)
     for (const i of (provInvoices  ?? [])) invoiceMap[i.provider_id] = (invoiceMap[i.provider_id] ?? 0) + (i.total  ?? 0)
 
-    const provsConDiscrepancia = (provsConFactura ?? []).filter(p => {
-        const paid     = paidMap[p.id]    ?? 0
+    const provsConDiscrepancia = []
+    const provsDismissed = []
+    for (const p of (provsConFactura ?? [])) {
+        const paid = paidMap[p.id] ?? 0
         const invoiced = invoiceMap[p.id] ?? 0
-        return paid > 0.01 && (paid - invoiced) > 0.01
-    })
+        const disc = paid - invoiced
+        if (!(paid > 0.01 && disc > 0.01)) continue
+        const m = p.comments?.match(/^\*(\d+(?:\.\d+)?) /)
+        if (m && Math.abs(disc - parseFloat(m[1])) < 0.01) {
+            provsDismissed.push({ ...p, _disc: disc })
+        } else {
+            provsConDiscrepancia.push({ ...p, _disc: disc })
+        }
+    }
 
     // Procesar alerta 4: charges sin facturar (excluir sfcom)
-    const chargesSinFacturar = (allChargesRaw ?? []).filter(c => !c.comments?.startsWith('WEB'))
-    const chargesMap = {}
-    for (const c of chargesSinFacturar) {
-        chargesMap[c.client_id] = (chargesMap[c.client_id] ?? 0) + (c.amount ?? 0)
-    }
-    const chargesAgrupados = Object.entries(chargesMap)
-        .map(([clientId, total]) => ({ clientId, total }))
-        .sort((a, b) => b.total - a.total)
+    const allUnbilled = (allChargesRaw ?? []).filter(c => !c.comments?.startsWith('WEB'))
+    const chargesActivos     = allUnbilled.filter(c => c.invoiced_at !== '0001-01-01')
+        .sort((a, b) => a.client_id.localeCompare(b.client_id) || (b.amount ?? 0) - (a.amount ?? 0))
+    const chargesDescartados = allUnbilled.filter(c => c.invoiced_at === '0001-01-01')
 
     // Procesar alerta 5: trimestres pasados sin presentar con datos
     const quartersWithData = new Set()
@@ -546,11 +553,11 @@ async function cargarAlertas() {
     const partes = []
 
     // Alerta 1: documentos sin anotar
-    if (pendingDocs.length > 0) {
-        const filas = pendingDocs.map(d => {
+    if (activeDocs.length > 0 || dismissedDocs.length > 0) {
+        const filas = activeDocs.map(d => {
             const prov   = d.provider_id ? (provNamesMap[d.provider_id] ?? d.provider_id) : 'Gasto general'
             const fecha  = d.uploaded_at.split('T')[0]
-            const nombre = d.concept || d.notes
+            const nombre = d.concept || d.notes?.replace(/^\*/, '').trim()
                 || d.file_path.split('/').pop().replace(/^\d+_/, '')
             return `<tr style="font-size:12px">
                 <td style="padding:4px 8px">${prov}</td>
@@ -565,10 +572,8 @@ async function cargarAlertas() {
             </tr>`
         }).join('')
 
-        partes.push(_alerta(
-            'docs-pendientes', 'warning',
-            `${pendingDocs.length} documento${pendingDocs.length > 1 ? 's' : ''} sin registrar en el libro fiscal`,
-            `<table style="width:100%;border-collapse:collapse;margin-top:8px">
+        const bodyTabla = activeDocs.length > 0
+            ? `<table style="width:100%;border-collapse:collapse;margin-top:8px">
                 <thead><tr style="font-size:11px;color:var(--subtle)">
                     <th style="text-align:left;padding:4px 8px">Proveedor</th>
                     <th style="text-align:left;padding:4px 8px">Fecha</th>
@@ -577,31 +582,39 @@ async function cargarAlertas() {
                 </tr></thead>
                 <tbody>${filas}</tbody>
             </table>`
+            : `<p style="font-size:12px;color:var(--subtle);padding:8px 0 4px">Sin documentos pendientes.</p>`
+
+        const recuperarBtn1 = dismissedDocs.length > 0
+            ? `<div style="margin-top:8px;text-align:right">
+                 <button class="btn btn-secondary" style="font-size:11px"
+                     onclick="recuperarDescartados('docs')">⟲ Recuperar descartados (${dismissedDocs.length})</button>
+               </div>` : ''
+
+        partes.push(_alerta(
+            'docs-pendientes', 'warning',
+            activeDocs.length > 0
+                ? `${activeDocs.length} documento${activeDocs.length > 1 ? 's' : ''} sin registrar en el libro fiscal`
+                : `Documentos sin registrar — todos descartados`,
+            bodyTabla + recuperarBtn1
         ))
     }
 
     // Alerta 2: proveedores con pagos sin factura
-    if (provsConDiscrepancia.length > 0) {
-        const filas = provsConDiscrepancia.map(p => {
-            const paid     = paidMap[p.id]    ?? 0
-            const invoiced = invoiceMap[p.id] ?? 0
-            return `<tr style="font-size:12px">
-                <td style="padding:4px 8px;font-weight:600">${p.id}</td>
-                <td style="padding:4px 8px;color:var(--subtle)">${p.name ?? ''}</td>
-                <td style="padding:4px 8px;text-align:right">${fmt(paid)}</td>
-                <td style="padding:4px 8px;text-align:right;color:var(--accent)">${fmt(invoiced)}</td>
-                <td style="padding:4px 8px;text-align:right;font-weight:600">${fmt(paid - invoiced)}</td>
-                <td style="padding:4px 8px;white-space:nowrap">
-                    <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
-                        onclick="descartarAlerta('prov-${p.id}')">Descartar</button>
-                </td>
-            </tr>`
-        }).join('')
+    if (provsConDiscrepancia.length > 0 || provsDismissed.length > 0) {
+        const filas = provsConDiscrepancia.map(p => `<tr style="font-size:12px">
+            <td style="padding:4px 8px;font-weight:600">${p.id}</td>
+            <td style="padding:4px 8px;color:var(--subtle)">${p.name ?? ''}</td>
+            <td style="padding:4px 8px;text-align:right">${fmt(paidMap[p.id] ?? 0)}</td>
+            <td style="padding:4px 8px;text-align:right;color:var(--accent)">${fmt(invoiceMap[p.id] ?? 0)}</td>
+            <td style="padding:4px 8px;text-align:right;font-weight:600">${fmt(p._disc)}</td>
+            <td style="padding:4px 8px;white-space:nowrap">
+                <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
+                    onclick="descartarAlerta('prov-${p.id}', ${p._disc})">Descartar</button>
+            </td>
+        </tr>`).join('')
 
-        partes.push(_alerta(
-            'provs-sin-factura', 'error',
-            `${provsConDiscrepancia.length} proveedor${provsConDiscrepancia.length > 1 ? 'es' : ''} con pagos sin factura registrada`,
-            `<table style="width:100%;border-collapse:collapse;margin-top:8px">
+        const bodyTabla2 = provsConDiscrepancia.length > 0
+            ? `<table style="width:100%;border-collapse:collapse;margin-top:8px">
                 <thead><tr style="font-size:11px;color:var(--subtle)">
                     <th style="text-align:left;padding:4px 8px">ID</th>
                     <th style="text-align:left;padding:4px 8px">Nombre</th>
@@ -612,20 +625,30 @@ async function cargarAlertas() {
                 </tr></thead>
                 <tbody>${filas}</tbody>
             </table>`
+            : `<p style="font-size:12px;color:var(--subtle);padding:8px 0 4px">Sin proveedores pendientes.</p>`
+
+        const recuperarBtn2 = provsDismissed.length > 0
+            ? `<div style="margin-top:8px;text-align:right">
+                 <button class="btn btn-secondary" style="font-size:11px"
+                     onclick="recuperarDescartados('provs')">⟲ Recuperar descartados (${provsDismissed.length})</button>
+               </div>` : ''
+
+        partes.push(_alerta(
+            'provs-sin-factura', 'error',
+            provsConDiscrepancia.length > 0
+                ? `${provsConDiscrepancia.length} proveedor${provsConDiscrepancia.length > 1 ? 'es' : ''} con pagos sin factura registrada`
+                : `Proveedores con pagos — todos descartados`,
+            bodyTabla2 + recuperarBtn2
         ))
     }
 
-    // Alerta 3: emitidas sin PDF
+    // Alerta 3: emitidas sin PDF (sin dismiss — adjuntar el PDF es la única acción válida)
     if ((sinPdf ?? []).length > 0) {
         const filas = sinPdf.map(r => `<tr style="font-size:12px">
             <td style="padding:4px 8px;font-size:11px">${r.invoice_number}</td>
             <td style="padding:4px 8px">${r.client_name}</td>
             <td style="padding:4px 8px;color:var(--subtle)">${r.accrual_date}</td>
             <td style="padding:4px 8px;text-align:right">${fmt(r.total)}</td>
-            <td style="padding:4px 8px;white-space:nowrap">
-                <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
-                    onclick="descartarAlerta('em-${r.id}')">Descartar</button>
-            </td>
         </tr>`).join('')
 
         partes.push(_alerta(
@@ -637,7 +660,6 @@ async function cargarAlertas() {
                     <th style="text-align:left;padding:4px 8px">Cliente</th>
                     <th style="text-align:left;padding:4px 8px">Devengo</th>
                     <th style="text-align:right;padding:4px 8px">Total</th>
-                    <th style="padding:4px 8px"></th>
                 </tr></thead>
                 <tbody>${filas}</tbody>
             </table>`
@@ -645,40 +667,53 @@ async function cargarAlertas() {
     }
 
     // Alerta 4: charges sin facturar
-    if (chargesAgrupados.length > 0) {
-        const filas = chargesAgrupados.map(({ clientId, total }) => `<tr style="font-size:12px">
-            <td style="padding:4px 8px;font-weight:600">${clientId}</td>
-            <td style="padding:4px 8px;text-align:right">${fmt(total)}</td>
+    if (chargesActivos.length > 0 || chargesDescartados.length > 0) {
+        const clientesActivos = new Set(chargesActivos.map(c => c.client_id)).size
+        const filas = chargesActivos.map(c => `<tr style="font-size:12px">
+            <td style="padding:4px 8px;font-weight:600">${c.client_id}</td>
+            <td style="padding:4px 8px;text-align:right">${fmt(c.amount)}</td>
+            <td style="padding:4px 8px;color:var(--subtle);font-size:11px">${c.comments || '—'}</td>
             <td style="padding:4px 8px;white-space:nowrap">
                 <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
-                    onclick="descartarAlerta('ch-${clientId}')">Descartar</button>
+                    onclick="descartarAlerta('ch-${c.id}')">Descartar</button>
             </td>
         </tr>`).join('')
 
-        partes.push(_alerta(
-            'charges-sin-factura', 'warning',
-            `${chargesAgrupados.length} cliente${chargesAgrupados.length > 1 ? 's' : ''} con cobros sin facturar`,
-            `<table style="width:100%;border-collapse:collapse;margin-top:8px">
+        const bodyTabla4 = chargesActivos.length > 0
+            ? `<table style="width:100%;border-collapse:collapse;margin-top:8px">
                 <thead><tr style="font-size:11px;color:var(--subtle)">
                     <th style="text-align:left;padding:4px 8px">Cliente</th>
-                    <th style="text-align:right;padding:4px 8px">Base imponible sin facturar</th>
+                    <th style="text-align:right;padding:4px 8px">Importe</th>
+                    <th style="text-align:left;padding:4px 8px">Concepto</th>
                     <th style="padding:4px 8px"></th>
                 </tr></thead>
                 <tbody>${filas}</tbody>
             </table>`
+            : `<p style="font-size:12px;color:var(--subtle);padding:8px 0 4px">Sin cobros pendientes.</p>`
+
+        const recuperarBtn4 = chargesDescartados.length > 0
+            ? `<div style="margin-top:8px;text-align:right">
+                 <button class="btn btn-secondary" style="font-size:11px"
+                     onclick="recuperarDescartados('charges')">⟲ Recuperar descartados (${chargesDescartados.length})</button>
+               </div>` : ''
+
+        partes.push(_alerta(
+            'charges-sin-factura', 'warning',
+            chargesActivos.length > 0
+                ? `${clientesActivos} cliente${clientesActivos > 1 ? 's' : ''} con cobros sin facturar`
+                : `Cobros sin facturar — todos descartados`,
+            bodyTabla4 + recuperarBtn4
         ))
     }
 
-    // Alerta 5: trimestres pasados no presentados
+    // Alerta 5: trimestres pasados no presentados (sin dismiss — presentar es la única acción válida)
     if (trimestresAbiertos.length > 0) {
         const filas = trimestresAbiertos.map(({ year, q }) => `<tr style="font-size:12px">
             <td style="padding:4px 8px;font-weight:600">${year} T${q}</td>
             <td style="padding:4px 8px;color:var(--accent)">⏳ Pendiente de presentación</td>
             <td style="padding:4px 8px;white-space:nowrap">
-                <button class="btn btn-primary" style="font-size:11px;padding:2px 6px;margin-right:4px"
+                <button class="btn btn-primary" style="font-size:11px;padding:2px 6px"
                     onclick="irATrimestre(${year},${q})">Ir al trimestre</button>
-                <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
-                    onclick="descartarAlerta('trim-${year}-${q}')">Descartar</button>
             </td>
         </tr>`).join('')
 
@@ -699,8 +734,48 @@ async function cargarAlertas() {
     el.innerHTML = partes.join('')
 }
 
-window.descartarAlerta = function (_id) {
-    mostrarToast('Pendiente de implementar', '#6b7280')
+window.descartarAlerta = async function (key, extra) {
+    if (key.startsWith('doc-')) {
+        const id = parseInt(key.slice(4))
+        const { data } = await supabase.from('supplier_documents').select('notes').eq('id', id).single()
+        await supabase.from('supplier_documents').update({ notes: '*' + (data?.notes ?? '') }).eq('id', id)
+    } else if (key.startsWith('prov-')) {
+        const id = key.slice(5)
+        const disc = extra
+        const { data } = await supabase.from('providers').select('comments').eq('id', id).single()
+        await supabase.from('providers').update({ comments: '*' + disc.toFixed(2) + ' ' + (data?.comments ?? '') }).eq('id', id)
+    } else if (key.startsWith('ch-')) {
+        const id = parseInt(key.slice(3))
+        await supabase.from('charges').update({ invoiced_at: '0001-01-01' }).eq('id', id)
+    }
+    cargarAlertas()
+}
+
+window.recuperarDescartados = async function (tipo) {
+    if (tipo === 'docs') {
+        const { data } = await supabase.from('supplier_documents').select('id, notes').like('notes', '*%')
+        if (data?.length) {
+            await Promise.all(data.map(d =>
+                supabase.from('supplier_documents').update({ notes: d.notes.slice(1) || null }).eq('id', d.id)
+            ))
+        }
+    } else if (tipo === 'provs') {
+        const { data } = await supabase.from('providers').select('id, comments').like('comments', '*%')
+        const dismissed = (data ?? []).filter(p => /^\*\d+(?:\.\d+)? /.test(p.comments))
+        if (dismissed.length) {
+            await Promise.all(dismissed.map(p =>
+                supabase.from('providers').update({ comments: p.comments.replace(/^\*\d+(?:\.\d+)? /, '') || null }).eq('id', p.id)
+            ))
+        }
+    } else if (tipo === 'charges') {
+        const { data } = await supabase.from('charges').select('id').eq('invoiced_at', '0001-01-01').is('invoice_number', null)
+        if (data?.length) {
+            await Promise.all(data.map(c =>
+                supabase.from('charges').update({ invoiced_at: null }).eq('id', c.id)
+            ))
+        }
+    }
+    cargarAlertas()
 }
 
 // ===== BLOQUE 6: REGISTRAR FACTURA EN LIBRO FISCAL =====

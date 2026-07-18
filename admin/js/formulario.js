@@ -1793,6 +1793,7 @@ function renderCobrosCliente() {
         return `<tr>
             <td>${h.comments}</td>
             <td>${fmt(h.amount)}${h.esFinal ? ' <span style="font-size:11px;color:var(--subtle)">(calculado)</span>' : ''}</td>
+            <td>${fmt(totalFacturadoDesdeBase(h.amount, irpfRateParaCliente(clienteActual)))}</td>
             <td>${h.esFinal
                 ? `<input type="date" value="${h.due_date ?? ''}"
                     style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px"
