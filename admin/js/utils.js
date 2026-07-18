@@ -351,7 +351,7 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
         })
         if (error) { console.error('persistirCobrosCliente: error creando cobro final:', error); return }
         console.log(`💰 Cobro final creado para ${clienteId}: ${cobroFinal}€`)
-    } else if (Math.abs(parseFloat(hitoFinal.amount) - cobroFinal) >= 0.01) {
+    } else if (Math.abs(Math.round(parseFloat(hitoFinal.amount) * 100) - Math.round(cobroFinal * 100)) >= 1) {
         const bloqueado = !!(hitoFinal.invoice_number || hitoFinal.collected)
         if (bloqueado) {
             const diferencia = cobroFinal - parseFloat(hitoFinal.amount)
@@ -412,7 +412,7 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
         })
         if (error) { console.error('persistirPagosProveedor: error creando pago final:', error); return }
         console.log(`💸 Pago final creado para ${proveedorId}: ${pagoFinal}€`)
-    } else if (Math.abs(parseFloat(hitoFinal.amount) - pagoFinal) >= 0.01) {
+    } else if (Math.abs(Math.round(parseFloat(hitoFinal.amount) * 100) - Math.round(pagoFinal * 100)) >= 1) {
         if (hitoFinal.paid) {
             // El hito ya fue pagado — no se puede editar su importe sin perder el historial.
             // Se degrada a prepago histórico y se crea un nuevo hito con el saldo pendiente.
@@ -433,7 +433,7 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
             const { error: e1 } = await supabase.from('payments')
                 .update({ is_final: false }).eq('id', hitoFinal.id)
             if (e1) { console.error('persistirPagosProveedor: error degradando hito pagado:', e1); return }
-            if (Math.abs(nuevoSaldo) >= 0.01) {
+            if (Math.abs(Math.round(nuevoSaldo * 100)) >= 1) {
                 const { error: e2 } = await supabase.from('payments').insert({
                     provider_id: proveedorId, amount: nuevoSaldo,
                     due_date: fechaPagoDefault(), paid: false, paid_date: null,
