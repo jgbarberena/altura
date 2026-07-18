@@ -141,6 +141,9 @@ function fmtN(n) { return (+(n ?? 0)).toFixed(2) }
 
 // ===== TAB GASTOS =====
 function renderGastos(rows) {
+    // Solo gastos sin proveedor — los de proveedor se ven en su ficha
+    rows = rows.filter(r => r.provider_id == null)
+
     const tbody   = document.getElementById('tbody-gastos-fiscal')
     const vacio   = document.getElementById('gastos-fiscal-vacio')
     const totales = document.getElementById('gastos-fiscal-totales')
