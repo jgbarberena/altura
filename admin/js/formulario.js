@@ -643,7 +643,7 @@ function validarPrecio() {
     if (precio < coste) {
         inputPrecio.className    = 'error'
         precioStatus.style.color = 'var(--accent)'
-        precioStatus.textContent = `❌ Por debajo del coste (${coste}€/plaza)`
+        precioStatus.textContent = `❌ Por debajo del coste (${fmt(coste)}/plaza)`
     } else if (precio === coste) {
         inputPrecio.className    = 'warn'
         precioStatus.style.color = 'var(--accent-warn)'
@@ -651,11 +651,11 @@ function validarPrecio() {
     } else if (margen < 0.15) {
         inputPrecio.className    = 'warn'
         precioStatus.style.color = 'var(--accent-warn)'
-        precioStatus.textContent = `⚠️ Margen bajo — coste: ${coste}€/plaza`
+        precioStatus.textContent = `⚠️ Margen bajo — coste: ${fmt(coste)}/plaza`
     } else {
         inputPrecio.className    = 'ok'
         precioStatus.style.color = 'var(--accent-ok)'
-        precioStatus.textContent = `✅ Margen OK — coste: ${coste}€/plaza`
+        precioStatus.textContent = `✅ Margen OK — coste: ${fmt(coste)}/plaza`
     }
 }
 
@@ -786,8 +786,8 @@ function renderTablaReservas() {
             <td>${servicios.find(s => s.id === r.service_id)?.service_code ?? '—'}</td>
             <td>${r.venue_id}</td>
             <td>${r.slots}</td>
-            <td>${r.price_per_slot != null ? r.price_per_slot + '€' : '—'}</td>
-            <td>${r.total_amount}€</td>
+            <td>${r.price_per_slot != null ? fmt(r.price_per_slot) : '—'}</td>
+            <td>${fmt(r.total_amount)}</td>
             <td class="${r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'}">${r.status}</td>
             <td>${celdaPropuesta}</td>
         </tr>`
@@ -2349,7 +2349,7 @@ window.confirmarReorganizacion = async function() {
         if (cambio.venue_id !== undefined && cambio.venue_id !== original.venue_id)
             partes.push(`${original.venue_id} → ${cambio.venue_id}`)
         if (cambio.price_per_slot !== undefined)
-            partes.push(`precio ${original.price_per_slot}€ → ${cambio.price_per_slot}€`)
+            partes.push(`precio ${fmt(original.price_per_slot)} → ${fmt(cambio.price_per_slot)}`)
         return `${id}  ${original.client_id}  ${partes.join('  |  ')}`
     })
 
