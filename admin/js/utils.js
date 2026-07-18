@@ -455,14 +455,16 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
 }
 
 // Resuelve si los datos de contacto de una solicitud corresponden a un cliente existente.
-// Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar (ambiguo).
+// Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre por tokens.
+// Devuelve { match, cliente, candidatos } — candidatos es la lista completa de ambiguos, ordenados por score.
+// Matching por nombre: tokens ≥4 chars, cobertura ≥60% del nombre más corto. Un solo token suficiente si coincide.
 export function resolverCliente(datos, todosClientes) {
     const email = (datos.email || '').trim().toLowerCase()
     const tel   = (datos.telefono || '').replace(/\D/g, '')
 
     if (email) {
         const c = todosClientes.find(c => c.email && c.email.trim().toLowerCase() === email)
-        if (c) return { match: 'exacto', cliente: c }
+        if (c) return { match: 'exacto', cliente: c, candidatos: [c] }
     }
 
     if (tel && tel.length >= 9) {
@@ -470,26 +472,31 @@ export function resolverCliente(datos, todosClientes) {
             const ct = (c.phone || '').replace(/\D/g, '')
             return ct && (ct === tel || ct === '34' + tel || tel === '34' + ct)
         })
-        if (c) return { match: 'exacto', cliente: c }
+        if (c) return { match: 'exacto', cliente: c, candidatos: [c] }
     }
 
-    const normNom = s => (s || '').toUpperCase()
+    const tokenizar = s => (s || '').toUpperCase()
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^A-Z0-9 ]/g, '').trim().replace(/\s+/g, ' ')
+        .replace(/[^A-Z0-9 ]/g, '').trim().split(/\s+/)
+        .filter(t => t.length >= 4)
 
-    const dNom = normNom(datos.nombre)
-    if (dNom) {
-        const c = todosClientes.find(c => {
-            const cn = normNom(c.name) || normNom(c.id.replace(/_/g, ' '))
-            if (!cn) return false
-            if (dNom === cn) return true
-            if (dNom.length < 5 || cn.length < 5) return false
-            return dNom.includes(cn) || cn.includes(dNom)
-        })
-        if (c) return { match: 'ambiguo', cliente: c }
+    const dTokens = tokenizar(datos.nombre)
+    if (dTokens.length === 0) return { match: 'ninguno', cliente: null, candidatos: [] }
+
+    const candidatos = []
+    for (const c of todosClientes) {
+        const cTokens = tokenizar((c.name || '') + ' ' + c.id.replace(/_/g, ' '))
+        if (cTokens.length === 0) continue
+        const interseccion = dTokens.filter(t => cTokens.includes(t)).length
+        if (interseccion === 0) continue
+        const score = interseccion / Math.min(dTokens.length, cTokens.length)
+        if (score >= 0.6) candidatos.push({ cliente: c, score })
     }
 
-    return { match: 'ninguno', cliente: null }
+    if (candidatos.length === 0) return { match: 'ninguno', cliente: null, candidatos: [] }
+    candidatos.sort((a, b) => b.score - a.score)
+    const lista = candidatos.map(x => x.cliente)
+    return { match: 'ambiguo', cliente: lista[0], candidatos: lista }
 }
 
 // ── Utilidades de visualización de precios ──────────────────────────────────

@@ -291,8 +291,8 @@ function limpiarFormularioReserva() {
     sortReservasDir = 'asc'
 }
 
-const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputAddress, inputNif, inputComments]
-const camposDB      = ['name', 'company', 'phone', 'email', 'address', 'nif', 'comments']
+const camposCliente = [inputName, inputCompany, inputPhone, inputEmail, inputAddress, inputComments]
+const camposDB      = ['name', 'company', 'phone', 'email', 'address', 'comments']
 initAutoSave(supabase, camposCliente, camposDB, 'clients', () => clienteActual, {
     onSaved: () => {
         statusDiv.textContent = '✅ Guardado'
@@ -313,25 +313,191 @@ function _notificarGuardado() {
     setTimeout(() => { statusDiv.textContent = '✅ Cliente existente — los cambios se guardan automáticamente' }, 2000)
 }
 
+// Comprueba si cambiar el tipo fiscal del cliente es seguro.
+// Retorna: 'ok' | 'bloqueado' | 'cancelado' | { chargesParaAnular: [...] }
+async function _guardFiscalCliente() {
+    if (!clienteActual) return 'ok'
+
+    const { data: chargesFacturados } = await supabase
+        .from('charges')
+        .select('id, invoice_number, invoice_path, amount')
+        .eq('client_id', clienteActual.id)
+        .not('invoice_number', 'is', null)
+
+    if (!chargesFacturados?.length) return 'ok'
+
+    const chargeIds = chargesFacturados.map(c => c.id)
+    const [{ data: issuedRows }, { data: closings }] = await Promise.all([
+        supabase.from('issued_invoices')
+            .select('charge_id, accrual_date')
+            .in('charge_id', chargeIds)
+            .eq('is_void', false),
+        supabase.from('fiscal_closings')
+            .select('year, quarter')
+            .eq('model', 'F69')
+            .not('presented_at', 'is', null),
+    ])
+
+    const closedSet = new Set((closings ?? []).map(c => `${c.year}-${c.quarter}`))
+    const hayEnCerrado = (issuedRows ?? []).some(r => {
+        if (!r.accrual_date) return false
+        const [y, m] = r.accrual_date.split('-').map(Number)
+        return closedSet.has(`${y}-${Math.ceil(m / 3)}`)
+    })
+
+    if (hayEnCerrado) {
+        const trimestres = [...new Set(
+            (issuedRows ?? [])
+                .filter(r => {
+                    if (!r.accrual_date) return false
+                    const [y, m] = r.accrual_date.split('-').map(Number)
+                    return closedSet.has(`${y}-${Math.ceil(m / 3)}`)
+                })
+                .map(r => {
+                    const [y, m] = r.accrual_date.split('-').map(Number)
+                    return `${y} T${Math.ceil(m / 3)}`
+                })
+        )].join(', ')
+        return new Promise(resolve => {
+            const { overlay, panel } = crearModal('modal-guard-fiscal-bloqueado', { narrow: true })
+            panel.innerHTML = `
+                <div>
+                    <div class="modal-header-title">⛔ Cambio bloqueado</div>
+                    <div class="modal-header-desc">
+                        Este cliente tiene facturas anotadas en trimestres ya presentados a Hacienda (${trimestres}).<br><br>
+                        Para corregirlas hace falta una <strong>factura rectificativa</strong>.
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" autofocus>Entendido</button>
+                </div>`
+            panel.querySelector('button').onclick = () => { overlay.close(); resolve('bloqueado') }
+        })
+    }
+
+    // Modal con lista: Reemitir las que quiera, anular las que no reemita
+    const reemitidas = new Set()
+
+    function _renderFilas() {
+        return chargesFacturados.map(c => {
+            const done = reemitidas.has(c.id)
+            return `<tr style="font-size:12px">
+                <td style="padding:4px 8px;font-weight:600">${c.invoice_number}</td>
+                <td style="padding:4px 8px;text-align:right">${fmt(c.amount)}</td>
+                <td style="padding:4px 8px;text-align:right;white-space:nowrap">
+                    ${done
+                        ? `<span style="color:var(--accent-ok);font-size:11px">✅ Reemitida</span>`
+                        : `<button class="btn btn-primary" style="font-size:11px;padding:2px 8px"
+                               data-hito-id="${c.id}">Reemitir</button>`}
+                </td>
+            </tr>`
+        }).join('')
+    }
+
+    return new Promise(resolve => {
+        const { overlay, panel } = crearModal('modal-guard-fiscal-aviso', { narrow: true })
+
+        function renderModal() {
+            const pendientes = chargesFacturados.filter(c => !reemitidas.has(c.id)).length
+            panel.innerHTML = `
+                <div>
+                    <div class="modal-header-title">⚠️ ${chargesFacturados.length} factura${chargesFacturados.length > 1 ? 's' : ''} emitida${chargesFacturados.length > 1 ? 's' : ''}</div>
+                    <div class="modal-header-desc" style="margin-bottom:12px">
+                        Al cambiar el tipo fiscal quedan incorrectas. Reemite las que quieras conservar.
+                        <strong>Las que no reemitas se anularán y quedará un hueco en la numeración.</strong>
+                    </div>
+                </div>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+                    <thead><tr style="font-size:11px;color:var(--subtle)">
+                        <th style="text-align:left;padding:4px 8px">Nº factura</th>
+                        <th style="text-align:right;padding:4px 8px">Importe</th>
+                        <th style="padding:4px 8px"></th>
+                    </tr></thead>
+                    <tbody>${_renderFilas()}</tbody>
+                </table>
+                <div class="modal-actions">
+                    <button id="guard-fiscal-cancel" class="btn btn-secondary">Cancelar cambio</button>
+                    <button id="guard-fiscal-ok" class="btn btn-danger" autofocus>
+                        ${pendientes > 0 ? `Aceptar y anular ${pendientes}` : 'Aceptar cambio'}
+                    </button>
+                </div>`
+
+            panel.querySelectorAll('[data-hito-id]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const hitoId  = parseInt(btn.dataset.hitoId)
+                    const esSfcom = h => !!(h.comments?.startsWith('WEB') && h.comments?.includes('Cobrado v'))
+                    const hitoTemp = hitosClienteTemp.find(h => h.id === hitoId)
+                    if (!hitoTemp) return
+                    const reservasParaFactura = reservasCliente.filter(r => !r.origin_ref?.startsWith('WEB'))
+                    const hitosParaFactura    = hitosClienteTemp.filter(h => h.id && !esSfcom(h))
+                    const reservasConCharges  = reservasParaFactura.map(r => ({
+                        ...r, _charges: hitosParaFactura, _esFinal: hitoTemp.esFinal ?? false
+                    }))
+                    await abrirPanelReemision(hitoId, clienteActual, reservasConCharges)
+                })
+            })
+
+            panel.querySelector('#guard-fiscal-cancel').onclick = () => { overlay.close(); resolve('cancelado') }
+            panel.querySelector('#guard-fiscal-ok').onclick = () => {
+                const parAnular = chargesFacturados.filter(c => !reemitidas.has(c.id))
+                overlay.close()
+                resolve({ chargesParaAnular: parAnular })
+            }
+        }
+
+        renderModal()
+
+        function onFacturaEmitida(e) { reemitidas.add(e.detail.hitoId); renderModal() }
+        document.addEventListener('facturaEmitida', onFacturaEmitida)
+        overlay.addEventListener('close', () => document.removeEventListener('facturaEmitida', onFacturaEmitida))
+    })
+}
+
+// Anula las facturas de los charges indicados: borra asiento fiscal, PDF y limpia campos del hito.
+// NUNCA borra la fila del charge — solo pone a null sus campos de facturación.
+async function _anularFacturas(charges) {
+    for (const c of charges) {
+        const { data: issued } = await supabase
+            .from('issued_invoices').select('id')
+            .eq('charge_id', c.id).eq('is_void', false).maybeSingle()
+        if (issued) {
+            await supabase.from('issued_invoice_vat_lines').delete().eq('invoice_id', issued.id)
+            await supabase.from('issued_invoices').delete().eq('id', issued.id)
+        }
+        if (c.invoice_path) await supabase.storage.from('invoices').remove([c.invoice_path])
+        await supabase.from('charges').update({
+            invoice_number: null, invoice_path: null, invoiced: false, invoiced_at: null,
+        }).eq('id', c.id)
+    }
+}
+
 inputIsBusiness.addEventListener('change', async () => {
     if (!clienteActual) return
-    const val = inputIsBusiness.checked
-    const { error } = await supabase.from('clients').update({ is_business: val }).eq('id', clienteActual.id)
-    if (error) { console.error('Error guardando is_business:', error); return }
-    clienteActual.is_business = val
+    const newVal = inputIsBusiness.checked
+    const result = await _guardFiscalCliente()
+    if (result === 'bloqueado' || result === 'cancelado') { inputIsBusiness.checked = clienteActual.is_business ?? false; return }
+    const { error } = await supabase.from('clients').update({ is_business: newVal }).eq('id', clienteActual.id)
+    if (error) { console.error('Error guardando is_business:', error); inputIsBusiness.checked = clienteActual.is_business ?? false; return }
+    clienteActual.is_business = newVal
     _notificarGuardado()
     actualizarTotal()
+    const parAnular = typeof result === 'object' ? result.chargesParaAnular : []
+    if (parAnular.length) { await _anularFacturas(parAnular); cargarReservasCliente(clienteActual.id) }
 })
 
 inputCountry.addEventListener('change', async () => {
     if (!clienteActual) return
-    const val = inputCountry.value.trim().toUpperCase() || 'ES'
-    inputCountry.value = val
-    const { error } = await supabase.from('clients').update({ country: val }).eq('id', clienteActual.id)
-    if (error) { console.error('Error guardando country:', error); return }
-    clienteActual.country = val
+    const newVal = inputCountry.value.trim().toUpperCase() || 'ES'
+    inputCountry.value = newVal
+    const result = await _guardFiscalCliente()
+    if (result === 'bloqueado' || result === 'cancelado') { inputCountry.value = clienteActual.country ?? 'ES'; return }
+    const { error } = await supabase.from('clients').update({ country: newVal }).eq('id', clienteActual.id)
+    if (error) { console.error('Error guardando country:', error); inputCountry.value = clienteActual.country ?? 'ES'; return }
+    clienteActual.country = newVal
     _notificarGuardado()
     actualizarTotal()
+    const parAnular = typeof result === 'object' ? result.chargesParaAnular : []
+    if (parAnular.length) { await _anularFacturas(parAnular); cargarReservasCliente(clienteActual.id) }
 })
 
 // Inferencia fiscal a partir del NIF — propone is_business y country, nunca los cambia sola
@@ -363,6 +529,8 @@ inputNif.addEventListener('change', () => {
 
     document.getElementById('btn-nif-aplicar')?.addEventListener('click', async e => {
         e.preventDefault()
+        const result = await _guardFiscalCliente()
+        if (result === 'bloqueado' || result === 'cancelado') { divSug.innerHTML = ''; return }
         inputIsBusiness.checked = inferido.is_business
         inputCountry.value      = inferido.country
         divSug.innerHTML        = ''
@@ -373,7 +541,28 @@ inputNif.addEventListener('change', () => {
         clienteActual.is_business = inferido.is_business
         clienteActual.country     = inferido.country
         actualizarTotal()
+        const parAnular = typeof result === 'object' ? result.chargesParaAnular : []
+        if (parAnular.length) { await _anularFacturas(parAnular); cargarReservasCliente(clienteActual.id) }
     })
+})
+
+// Guardado de NIF con guard fiscal (separado de initAutoSave para poder interceptar)
+inputNif.addEventListener('change', async () => {
+    if (!clienteActual) return
+    const newVal = inputNif.value.trim() || null
+    const result = await _guardFiscalCliente()
+    if (result === 'bloqueado' || result === 'cancelado') { inputNif.value = clienteActual.nif ?? ''; return }
+    const { error } = await supabase.from('clients').update({ nif: newVal }).eq('id', clienteActual.id)
+    if (error) {
+        statusDiv.textContent = '❌ Error: ' + error.message
+        statusDiv.style.color = 'var(--accent)'
+        inputNif.value = clienteActual.nif ?? ''
+        return
+    }
+    clienteActual.nif = newVal
+    _notificarGuardado()
+    const parAnular = typeof result === 'object' ? result.chargesParaAnular : []
+    if (parAnular.length) { await _anularFacturas(parAnular); cargarReservasCliente(clienteActual.id) }
 })
 
 // Guarda un cliente nuevo en la BBDD sin necesidad de añadir una reserva
@@ -2622,23 +2811,31 @@ async function cargarSolicitudes() {
     })
 }
 
-function _confirmarClienteAmbiguo(clienteExistente) {
+function _confirmarClienteAmbiguo(candidatos) {
     return new Promise(resolve => {
         const { overlay, panel } = crearModal('modal-resolver-cliente', { narrow: true })
+        const filas = candidatos.map(c => {
+            const detalle = [c.name, c.phone, c.email].filter(Boolean).join(' · ')
+            return `<button class="btn btn-secondary" style="text-align:left;width:100%;margin-bottom:6px" data-id="${c.id}">
+                <strong>${c.id}</strong>${detalle ? `<br><span style="font-size:11px;font-weight:400;color:var(--subtle)">${detalle}</span>` : ''}
+            </button>`
+        }).join('')
         panel.innerHTML = `
             <div class="modal-header">
                 <span class="modal-header-icon">👤</span>
                 <div>
-                    <div class="modal-header-title">¿Es el mismo cliente?</div>
-                    <div class="modal-header-desc">Ya existe un cliente llamado <strong>${clienteExistente.id}</strong> con datos de contacto distintos.</div>
+                    <div class="modal-header-title">¿Es alguno de estos clientes?</div>
+                    <div class="modal-header-desc">El nombre coincide parcialmente con ${candidatos.length === 1 ? 'un cliente existente' : `${candidatos.length} clientes existentes`}.</div>
                 </div>
             </div>
+            <div style="margin:12px 0">${filas}</div>
             <div class="modal-actions">
-                <button id="btnClienteNoMismo" class="btn btn-secondary">No, es otra persona</button>
-                <button id="btnClienteSiMismo" class="btn btn-primary">Sí, es el mismo</button>
+                <button id="btnClienteNinguno" class="btn btn-secondary">No, es persona nueva</button>
             </div>`
-        panel.querySelector('#btnClienteSiMismo').onclick = () => { overlay.close(); resolve(true) }
-        panel.querySelector('#btnClienteNoMismo').onclick = () => { overlay.close(); resolve(false) }
+        panel.querySelectorAll('[data-id]').forEach(btn => {
+            btn.onclick = () => { overlay.close(); resolve(candidatos.find(c => c.id === btn.dataset.id) ?? null) }
+        })
+        panel.querySelector('#btnClienteNinguno').onclick = () => { overlay.close(); resolve(null) }
     })
 }
 
@@ -2664,8 +2861,7 @@ async function cargarDesdeSolicitud(data) {
     if (resolucion.match === 'exacto') {
         clienteResuelto = resolucion.cliente
     } else if (resolucion.match === 'ambiguo') {
-        const esMismo = await _confirmarClienteAmbiguo(resolucion.cliente)
-        if (esMismo) clienteResuelto = resolucion.cliente
+        clienteResuelto = await _confirmarClienteAmbiguo(resolucion.candidatos)
     }
 
     _cargandoSolicitud = true
@@ -3484,8 +3680,7 @@ if (!_clienteParam && (_solName || _solServiceId)) {
         if (resolucion.match === 'exacto') {
             _clienteResuelto = resolucion.cliente
         } else if (resolucion.match === 'ambiguo') {
-            const esMismo = await _confirmarClienteAmbiguo(resolucion.cliente)
-            if (esMismo) _clienteResuelto = resolucion.cliente
+            _clienteResuelto = await _confirmarClienteAmbiguo(resolucion.candidatos)
         }
 
         if (_clienteResuelto) {
