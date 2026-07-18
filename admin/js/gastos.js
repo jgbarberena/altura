@@ -36,6 +36,18 @@ inputArchivo.addEventListener('change', () => {
     lblArchivo.textContent = _archivoSeleccionado ? _archivoSeleccionado.name : ''
 })
 
+const dzGasto = document.getElementById('dropzone-gasto')
+dzGasto.addEventListener('dragover',  e => { e.preventDefault(); dzGasto.classList.add('st-dz--over') })
+dzGasto.addEventListener('dragleave', () => dzGasto.classList.remove('st-dz--over'))
+dzGasto.addEventListener('drop', e => {
+    e.preventDefault()
+    dzGasto.classList.remove('st-dz--over')
+    const file = e.dataTransfer.files[0]
+    if (!file) return
+    _archivoSeleccionado = file
+    lblArchivo.textContent = file.name
+})
+
 btnGuardar.addEventListener('click', async () => {
     const concepto = inputConcepto.value.trim()
     if (!concepto) { inputConcepto.focus(); return }

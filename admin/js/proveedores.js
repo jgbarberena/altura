@@ -287,15 +287,10 @@ async function _subirFotoArchivo(file) {
     if (!data?.url) throw new Error('Sin URL en la respuesta')
     return data.url
 }
-document.getElementById('btnUploadFoto').addEventListener('click', () => {
-    document.getElementById('inputFotoArchivo').click()
-})
-document.getElementById('inputFotoArchivo').addEventListener('change', async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    const btn = document.getElementById('btnUploadFoto')
-    btn.disabled = true
-    btn.textContent = '⏳'
+async function _procesarFotoArchivo(file) {
+    const dz = document.getElementById('dropzone-foto-venue')
+    const spanOrig = dz.querySelector('span')
+    spanOrig.textContent = '⏳ Subiendo…'
     try {
         const url = await _subirFotoArchivo(file)
         const esPrimera = _photos.length === 0
@@ -307,10 +302,25 @@ document.getElementById('inputFotoArchivo').addEventListener('change', async (e)
     } catch (err) {
         alert('Error al subir la foto: ' + err.message)
     } finally {
-        btn.disabled = false
-        btn.textContent = '📁'
-        e.target.value = ''
+        spanOrig.innerHTML = '📁 Arrastra imagen aquí o <label for="inputFotoArchivo" style="cursor:pointer;color:var(--accent);text-decoration:underline">selecciona</label>'
+        document.getElementById('inputFotoArchivo').value = ''
     }
+}
+
+document.getElementById('inputFotoArchivo').addEventListener('change', async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    await _procesarFotoArchivo(file)
+})
+
+const dzFoto = document.getElementById('dropzone-foto-venue')
+dzFoto.addEventListener('dragover',  e => { e.preventDefault(); dzFoto.classList.add('st-dz--over') })
+dzFoto.addEventListener('dragleave', () => dzFoto.classList.remove('st-dz--over'))
+dzFoto.addEventListener('drop', async e => {
+    e.preventDefault()
+    dzFoto.classList.remove('st-dz--over')
+    const file = e.dataTransfer.files[0]
+    if (file) await _procesarFotoArchivo(file)
 })
 
 function _syncServicioImgPreview() {
@@ -2212,15 +2222,30 @@ function _sugerirConceptoDoc() {
     return hitos[Math.min(coincidentes, hitos.length - 1)].comments
 }
 
-document.getElementById('inputSubirDocProveedor').addEventListener('change', function () {
-    if (!proveedorActual || !this.files[0]) return
-    _archivoDocProveedor = this.files[0]
-    this.value = ''
-    document.getElementById('docProvConcepto').value          = _sugerirConceptoDoc()
-    document.getElementById('docProvNotas').value             = ''
-    document.getElementById('docProvArchivoNombre').textContent = '📎 ' + _archivoDocProveedor.name
+function _seleccionarDocProveedor(file) {
+    if (!proveedorActual) return
+    _archivoDocProveedor = file
+    document.getElementById('docProvConcepto').value            = _sugerirConceptoDoc()
+    document.getElementById('docProvNotas').value               = ''
+    document.getElementById('docProvArchivoNombre').textContent = '📎 ' + file.name
     document.getElementById('form-doc-proveedor').style.display = 'block'
     setTimeout(() => document.getElementById('docProvConcepto').focus(), 50)
+}
+
+document.getElementById('inputSubirDocProveedor').addEventListener('change', function () {
+    if (!this.files[0]) return
+    _seleccionarDocProveedor(this.files[0])
+    this.value = ''
+})
+
+const dzDocProv = document.getElementById('dropzone-doc-proveedor')
+dzDocProv.addEventListener('dragover',  e => { e.preventDefault(); dzDocProv.classList.add('st-dz--over') })
+dzDocProv.addEventListener('dragleave', () => dzDocProv.classList.remove('st-dz--over'))
+dzDocProv.addEventListener('drop', e => {
+    e.preventDefault()
+    dzDocProv.classList.remove('st-dz--over')
+    const file = e.dataTransfer.files[0]
+    if (file) _seleccionarDocProveedor(file)
 })
 
 document.getElementById('btnSubirDocProveedor').addEventListener('click', async () => {

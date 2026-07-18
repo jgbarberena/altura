@@ -1026,6 +1026,14 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ---
 
+### 7.7 Mejoras de UX — pendiente de decisión
+
+**Subida de imágenes para servicios (`services.image_url`) desde archivo.**
+
+Actualmente el widget `.img-picker` de `proveedores.js` solo acepta una URL. Para subir desde archivo habría que extender la Edge Function `upload-venue-photo` con una nueva ruta (o crear una nueva función) para imágenes de servicio, y añadir un dropzone equivalente al que existe para fotos de venue. No se ha decidido si merece la pena dado que las imágenes de servicio cambian raramente y se pueden gestionar manualmente. Pendiente de decisión por Javier.
+
+---
+
 ### 7.8 Conocido y aceptado
 
 **Falsos positivos en verificación sfcom por TTL de caché del servidor.** `stock-all` en `sf-api-paula.php` trabaja contra una caché con su propio TTL. Una verificación justo después de un PUT puede mostrar discrepancia aunque el PUT fue correcto. Desaparece sola; no requiere acción.

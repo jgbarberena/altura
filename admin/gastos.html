@@ -66,11 +66,11 @@
                         </div>
                         <div class="form-field" style="grid-column:1/-1">
                             <label>Documento (foto o PDF)</label>
-                            <label class="btn btn-secondary" style="cursor:pointer;display:inline-block;font-size:13px">
-                                📎 Seleccionar archivo
+                            <div id="dropzone-gasto" class="st-dropzone" style="margin-top:4px;margin-bottom:4px">
+                                <span style="color:var(--subtle);font-size:13px">⬆ Arrastra aquí o <label for="gastoArchivo" style="cursor:pointer;color:var(--accent);text-decoration:underline">selecciona</label></span>
                                 <input type="file" id="gastoArchivo" accept="application/pdf,image/*" style="display:none">
-                            </label>
-                            <span id="gastoArchivoNombre" style="font-size:12px;color:var(--subtle);margin-left:8px"></span>
+                            </div>
+                            <span id="gastoArchivoNombre" style="font-size:12px;color:var(--subtle);display:block;margin-bottom:4px"></span>
                         </div>
                     </div>
                     <div class="btn-row">

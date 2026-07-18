@@ -1737,4 +1737,19 @@ dialog.modal-dialog-overlay::backdrop {
 }
 .dia-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
 
+/* ── Dropzone compartida (gastos, documentos de proveedor, fotos de venue) ── */
+.st-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: default;
+}
+.st-dz--over {
+    border-color: var(--accent);
+    background: #f0faf0;
+}
+
 .text-microcopy { font-size: 11px; color: var(--subtle); }
