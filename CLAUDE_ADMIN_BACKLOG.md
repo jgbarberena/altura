@@ -962,3 +962,10 @@ Fixes aplicados en admin.css y panel.css:
 - panel-fila: display: block en móvil para que overflow-x: auto funcione correctamente en las tablas de pagos/cobros
 - pv-seccion: overflow-x: auto para el bloque "Por vender"
 - Mejoras defensivas: ef-grupo 3 col, word-break en ef-valor/kpi-dual__conf, flex-wrap en kpi-dual__pend-row
+
+### [RESUELTO jul 2026] §7.7 Subida de imágenes de servicio desde archivo
+
+Implementado dropzone en proveedores.html (tab "Info general" de disponibilidad) para subir imagen a services.image_url desde archivo.
+- Edge Function upload-venue-photo extendida con campo opcional dir (venues por defecto, services para imágenes de servicio). Las imágenes van a /httpdocs/img/services/ → https://experienciasanfermin.com/img/services/
+- Lógica en proveedores.js: _procesarImagenServicio, drag/drop + file input, misma clase CSS st-dropzone
+- Al subir: URL se rellena en inputServicioImageUrl y se guarda automáticamente en services.image_url via guardarDescripcionServicio

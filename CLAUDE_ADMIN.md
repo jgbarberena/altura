@@ -1028,9 +1028,7 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ### 7.7 Mejoras de UX — pendiente de decisión
 
-**Subida de imágenes para servicios (`services.image_url`) desde archivo.**
-
-Actualmente el widget `.img-picker` de `proveedores.js` solo acepta una URL. Para subir desde archivo habría que extender la Edge Function `upload-venue-photo` con una nueva ruta (o crear una nueva función) para imágenes de servicio, y añadir un dropzone equivalente al que existe para fotos de venue. No se ha decidido si merece la pena dado que las imágenes de servicio cambian raramente y se pueden gestionar manualmente. Pendiente de decisión por Javier.
+Sin deudas pendientes en este bloque.
 
 ---
 
