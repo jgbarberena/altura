@@ -164,16 +164,35 @@ Cada fila de `availability` tiene como máximo una fila en `sfcom_listings`. Sol
 | is_final | boolean — hito final del pago a proveedor |
 | comments | text — nota opcional sobre el hito |
 
-**`supplier_documents`** — Bandeja de documentos recibidos (archivo operativo, no fiscal directamente)
+**`supplier_documents`** — Bandeja de documentos recibidos: dos capas de datos
+
+Capa operativa (gastos del negocio):
 | Campo | Notas |
 |---|---|
 | id | bigint PK, IDENTITY |
-| provider_id | text FK→providers, NULLABLE — null para gastos generales sin proveedor en BD |
-| file_path | text NOT NULL — ruta en bucket `supplier-invoices`. Sentinel de sin-archivo: termina en `_sin_archivo` |
+| provider_id | text FK→providers, NULLABLE — null para gastos generales sin proveedor |
+| file_path | text NOT NULL — ruta en bucket `supplier-invoices`. Sentinel sin-archivo: termina en `_sin_archivo` |
 | uploaded_at | timestamptz NOT NULL, default now() |
 | season | integer NOT NULL |
-| concept | text — concepto del documento (campo de conveniencia) |
-| notes | text — notas adicionales |
+| concept | text — concepto del gasto |
+| expense_date | date — fecha del gasto (introducida por el usuario) |
+| amount | numeric — importe total del gasto |
+| has_invoice | boolean NOT NULL DEFAULT true — si tiene factura o justificante. Si false, no aparece "Anotar" ni en alertas fiscales |
+| notes | text — notas adicionales (usado por dismiss de Alerta 1: prefijo `*`) |
+
+Capa de pre-extracción IA (datos extraídos automáticamente del documento, usados para pre-rellenar el modal de "Contabilizar"):
+| Campo | Notas |
+|---|---|
+| issuer_name | text — nombre del emisor (quien vende) |
+| issuer_nif | text — NIF del emisor |
+| invoice_number | text — número de factura detectado |
+| issue_date | date — fecha de la factura detectada |
+| irpf_rate | numeric — tipo IRPF detectado |
+| irpf_amount | numeric — importe IRPF detectado |
+| suggested_category | text — categoría sugerida (`proveedores`, `arrendamiento`, `servicios`, `suministros`, `otros`) |
+| ai_vat_lines | jsonb — desglose de IVA: `[{"base": 0, "rate": 21, "vat": 0}]`. Mismo formato que `_vatLines` en `dlg-gasto.js` |
+
+Los campos IA se rellenan al pulsar "Leer con IA" en `gastos.js` o `proveedores.js`. Se borran automáticamente (UPDATE a null) si se guarda con un nuevo archivo sin releer la IA, para evitar datos de extracción desfasados. El campo `issuer_nif` (o `ai_vat_lines`) siendo no nulo indica que la IA ya procesó el documento.
 
 **`supplier_invoices`** — Libro de facturas recibidas (registro fiscal)
 | Campo | Notas |
@@ -892,7 +911,31 @@ Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestaña 
 **Exportaciones / paquete asesor:** Excel de gastos (SheetJS), ZIP de documentos recibidos (bucket `supplier-invoices`), ZIP de facturas emitidas (bucket `invoices`), paquete asesor (ZIP con ambos ZIPs + Excel + modelo F69 en PDF). Todos operan sobre `_gastosData` / `_emitidasData` completos, sin el filtro de presentación.
 
 ### gastos.js
-Módulo ES6. Página `gastos.html`. Gestión operativa del archivo de documentos recibidos (`supplier_documents`) y registro en el libro fiscal (`supplier_invoices`). Permite subir PDFs al bucket `supplier-invoices`, crear y editar registros de gastos, y anotar facturas de proveedor desde el documento. Complementa `proveedores.html` (que anota gastos de proveedor desde la ficha) y `fiscal.html` (que muestra el resultado en el libro fiscal).
+Módulo ES6. Página `gastos.html`. Gestión operativa de gastos generales del negocio (`supplier_documents` con `provider_id IS NULL`): alta, edición, eliminación y anotación fiscal. Complementa `proveedores.html` (gastos de proveedor) y `fiscal.html` (libro fiscal resultante).
+
+**Tabla de gastos:** columnas Concepto · Fecha · Importe · Documento · Estado fiscal · Acciones. Cada fila es clicable para editar. La columna de acciones muestra 🔒 (trimestre cerrado, sin edición) o 🗑 (borrar). El botón "Anotar" solo aparece si `has_invoice !== false`.
+
+**Formulario único** para alta y edición (mismo HTML, título y botón cambian). Campos: concepto (req), fecha del gasto (req, default hoy), importe (req), checkbox "tiene factura", selector de temporada (discreto), dropzone de archivo. Al hacer clic en una fila se carga el gasto en el formulario (modo edición).
+
+**Leer con IA (`claude-haiku-4-5-20251001`):** extrae `issuer_name`, `issuer_nif`, `invoice_number`, `issue_date`, `vat_lines`, `irpf_rate/amount`, `suggested_category`, `concept` y `total`. Cuatro estados del botón:
+- `disabled` — sin archivo disponible
+- `🤖 Leer con IA` — archivo disponible, no leído aún
+- `⚠️ Re-leer con IA` (opacidad 55%) — ya leído (`issuer_nif || ai_vat_lines` presentes); tooltip advierte del coste
+- `✅ Leído` — procesado en esta sesión
+
+En modo edición con archivo existente, el botón se habilita obteniendo una URL firmada del bucket (igual que `dlg-gasto.js`). Al seleccionar un nuevo archivo sobre un doc con IA previa, los campos concepto/fecha/importe toman borde ámbar como señal de que pueden ser del documento anterior; desaparece al releer.
+
+**Comportamiento de prefill IA:** modo nuevo → solo rellena campos vacíos (fecha solo si sigue en HOY). Modo edición → sobreescribe todos los campos extraídos.
+
+**Cambio de archivo en edición:** el archivo viejo no se borra del bucket ni se cambia `file_path` hasta el save. Si se guarda con nuevo archivo sin releer IA, los campos IA se ponen a `null` en BD.
+
+**Fiscal check dos niveles** (función `_guardarFiscalCheck(docId, accion)`): comprueba si el doc tiene entrada en `supplier_invoices` y si su trimestre (`booked_date`) está cerrado en `fiscal_closings`. Resultados: `'libre'` (no hay asiento), `'bloqueado'` (trimestre cerrado → alert), `'cancelado'` (usuario rechazó confirm), `'ok'` (asiento borrado, vat lines en cascade). Se aplica al guardar en edición y al eliminar.
+
+**has_invoice → false en edición:** si el doc no tenía asiento (`'libre'`), pide confirmación leve. Si tenía asiento, el fiscal check ya pidió confirmación y lo borró.
+
+**Filas en trimestre cerrado:** `opacity: 0.7`, sin onclick, 🔒 en lugar de 🗑.
+
+**Alerta 1 en `fiscal.js`:** los gastos con `has_invoice !== false` pero sin anotar aparecen en alertas. Se dividen en dos sub-secciones: los que tienen archivo (Anotar + Descartar) y los que usan el sentinel `_sin_archivo` (solo Descartar + enlace a `gastos.html`).
 
 ### fiscal-config.js
 Exporta constantes y funciones de lógica fiscal compartidas entre `factura.js` y cualquier otro módulo que necesite calcular IVA o IRPF. Ver documentación en `### factura.js` arriba.
@@ -1205,6 +1248,7 @@ Las fases completadas (-1 a 11) con sus descripciones detalladas están en `CLAU
 | 9d | ✅ Completa | Sistema de temporadas: selector sidebar, filtros por season, confirmación modal, función public_season() |
 | 10 | ✅ Completa | Tablas: edición directa + eliminaciones + temporada + notas solicitudes + gestión Storage con upload y vinculación de facturas |
 | 11 | ✅ Completa | Módulo fiscal: libro gastos/emitidas, F69, alertas, paquete asesor, ZIP docs, dlgGasto con IA |
+| 11d | ✅ Completa | Gastos del negocio: tabla editable, campos operativos en supplier_documents, extracción IA, fiscal check dos niveles |
 
 ### Dependencias duras entre fases
 
@@ -1224,3 +1268,9 @@ todas → 9 ✅ (refactors de archivos grandes van últimos)
 ### Fase 11 — ✅ Completa: módulo fiscal
 
 Descripción completa en `CLAUDE_ADMIN_BACKLOG.md §9`. Incluye dismiss con sentinels en todas las alertas pertinentes (ver §7.6).
+
+---
+
+### Fase 11d — ✅ Completa: gastos del negocio
+
+`supplier_documents` ampliada con capa operativa (`amount`, `expense_date`, `has_invoice`) y capa de pre-extracción IA (ver §2). `gastos.js` y `gastos.html` reescritos con formulario dual alta/edición, fiscal check dos niveles, y lógica de estados del botón IA. Ver documentación completa en `### gastos.js` arriba.
