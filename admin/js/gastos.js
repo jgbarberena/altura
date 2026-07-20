@@ -20,6 +20,7 @@ let _aiData               = null
 let _editingDocId         = null
 let _editingOrigFile      = null
 let _editingOrigHasInv    = null
+let _editingSignedUrl     = null  // URL del archivo en storage para releer con IA en modo edición
 let _docsMap              = new Map()
 
 // ===== FORM =====
@@ -66,12 +67,13 @@ btnCancelar.addEventListener('click', resetForm)
 inputArchivo.addEventListener('change', () => {
     _archivoSeleccionado = inputArchivo.files[0] ?? null
     if (_archivoSeleccionado) {
+        _editingSignedUrl      = null  // nuevo archivo local reemplaza la URL de storage
         lblArchivo.textContent = _archivoSeleccionado.name
         btnLeerIA.disabled     = false
         btnLeerIA.textContent  = '🤖 Leer con IA'
     } else {
         lblArchivo.textContent = _archivoNombreDoc()
-        btnLeerIA.disabled     = true
+        btnLeerIA.disabled     = !_editingSignedUrl
     }
 })
 
@@ -84,6 +86,7 @@ dzGasto.addEventListener('drop', e => {
     const file = e.dataTransfer.files[0]
     if (!file) return
     _archivoSeleccionado  = file
+    _editingSignedUrl      = null  // nuevo archivo local reemplaza la URL de storage
     lblArchivo.textContent = file.name
     btnLeerIA.disabled     = false
     btnLeerIA.textContent  = '🤖 Leer con IA'
@@ -96,8 +99,15 @@ function _archivoNombreDoc() {
 
 // ===== LEER CON IA =====
 btnLeerIA.addEventListener('click', async () => {
-    if (!_archivoSeleccionado) return
-    const ext   = _archivoSeleccionado.name.split('.').pop().toLowerCase()
+    const hasLocalFile   = !!_archivoSeleccionado
+    const hasStorageFile = !!_editingSignedUrl
+    if (!hasLocalFile && !hasStorageFile) return
+
+    // Determinar extensión según la fuente
+    const ext = hasLocalFile
+        ? _archivoSeleccionado.name.split('.').pop().toLowerCase()
+        : (_editingOrigFile ?? '').split('.').pop().toLowerCase()
+
     const isImg = ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
     const isPdf = ext === 'pdf'
     if (!isImg && !isPdf) { mostrarToast('Solo se pueden leer PDFs e imágenes con IA', '#d97706'); return }
@@ -106,8 +116,16 @@ btnLeerIA.addEventListener('click', async () => {
     btnLeerIA.textContent = '⏳ Leyendo…'
 
     try {
-        const buffer = await _archivoSeleccionado.arrayBuffer()
-        const bytes  = new Uint8Array(buffer)
+        let buffer
+        if (hasLocalFile) {
+            buffer = await _archivoSeleccionado.arrayBuffer()
+        } else {
+            const resp = await fetch(_editingSignedUrl)
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+            buffer = await resp.arrayBuffer()
+        }
+
+        const bytes = new Uint8Array(buffer)
         let binary = ''
         for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
         const b64 = btoa(binary)
@@ -204,10 +222,11 @@ async function _guardarFiscalCheck(docId, accion = 'editar') {
 }
 
 // ===== CARGAR DOC EN FORMULARIO (modo edición) =====
-function _cargarEnFormulario(doc) {
+async function _cargarEnFormulario(doc) {
     _editingDocId      = doc.id
     _editingOrigFile   = doc.file_path
     _editingOrigHasInv = doc.has_invoice
+    _editingSignedUrl  = null
     _archivoSeleccionado = null
     _aiData              = null
 
@@ -227,6 +246,16 @@ function _cargarEnFormulario(doc) {
     btnGuardar.disabled     = false
     formGasto.style.display = 'block'
     setTimeout(() => formGasto.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+
+    // Obtener URL firmada para habilitar el botón IA sobre el archivo existente
+    const sinArch = !doc.file_path || doc.file_path.endsWith('_sin_archivo')
+    if (!sinArch) {
+        const { data } = await supabase.storage.from('supplier-invoices').createSignedUrl(doc.file_path, 3600)
+        if (data?.signedUrl) {
+            _editingSignedUrl  = data.signedUrl
+            btnLeerIA.disabled = false
+        }
+    }
 }
 
 // ===== GUARDAR =====
@@ -245,7 +274,7 @@ btnGuardar.addEventListener('click', async () => {
         const check = await _guardarFiscalCheck(_editingDocId)
         if (check === 'bloqueado' || check === 'cancelado') return
 
-        // Only ask about has_invoice=false if it was previously true
+        // Solo pedir confirmación si has_invoice pasa de true a false sin asiento
         if (!hasInvoice && check === 'libre' && _editingOrigHasInv !== false) {
             if (!confirm('¿Marcar este gasto como "sin factura"? No aparecerá el botón "Anotar".')) return
         }
@@ -254,7 +283,7 @@ btnGuardar.addEventListener('click', async () => {
     btnGuardar.disabled    = true
     btnGuardar.textContent = 'Guardando…'
 
-    let filePath = _editingOrigFile  // preserved in edit mode if no new file
+    let filePath = _editingOrigFile  // se preserva si no se sube archivo nuevo en edición
 
     if (_archivoSeleccionado) {
         const path = `_gastos/${season}/${Date.now()}_${_archivoSeleccionado.name}`
@@ -288,11 +317,21 @@ btnGuardar.addEventListener('click', async () => {
         payload.irpf_amount        = _aiData.irpf_amount        || null
         payload.suggested_category = _aiData.suggested_category || null
         payload.ai_vat_lines       = _aiData.vat_lines?.length  ? _aiData.vat_lines : null
+    } else if (_editingDocId !== null && _archivoSeleccionado) {
+        // Nuevo archivo subido sin releer con IA → limpiar datos de IA del archivo anterior
+        payload.issuer_name        = null
+        payload.issuer_nif         = null
+        payload.invoice_number     = null
+        payload.issue_date         = null
+        payload.irpf_rate          = null
+        payload.irpf_amount        = null
+        payload.suggested_category = null
+        payload.ai_vat_lines       = null
     }
 
     let error
     if (_editingDocId !== null) {
-        payload.file_path = filePath  // may be unchanged or new
+        payload.file_path = filePath  // puede ser el original o la nueva ruta
         ;({ error } = await supabase.from('supplier_documents').update(payload).eq('id', _editingDocId))
     } else {
         payload.provider_id = null
@@ -327,6 +366,7 @@ function resetForm() {
     _editingDocId            = null
     _editingOrigFile         = null
     _editingOrigHasInv       = null
+    _editingSignedUrl        = null
     formTitulo.textContent   = 'Nuevo gasto'
     btnGuardar.disabled      = false
     btnGuardar.textContent   = 'Guardar'
@@ -428,10 +468,10 @@ window.eliminarGasto = async function (docId, filePath, sinArchivo) {
     cargarGastos()
 }
 
-window.editarGasto = function (docId) {
+window.editarGasto = async function (docId) {
     const doc = _docsMap.get(docId)
     if (!doc) return
-    _cargarEnFormulario(doc)
+    await _cargarEnFormulario(doc)
 }
 
 window._anotarGastoRow = (docId) =>
