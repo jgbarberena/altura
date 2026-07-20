@@ -20,7 +20,8 @@ let _aiData               = null
 let _editingDocId         = null
 let _editingOrigFile      = null
 let _editingOrigHasInv    = null
-let _editingSignedUrl     = null  // URL del archivo en storage para releer con IA en modo edición
+let _editingSignedUrl     = null   // URL de storage del archivo existente
+let _editingAiYaExtraido  = false  // true si el doc ya tenía datos extraídos por IA
 let _docsMap              = new Map()
 
 // ===== FORM =====
@@ -38,6 +39,10 @@ const inputArchivo  = document.getElementById('gastoArchivo')
 const lblArchivo    = document.getElementById('gastoArchivoNombre')
 const btnLeerIA     = document.getElementById('btnLeerIA')
 
+// Campos que la IA puede haber rellenado — se marcan como "potencialmente desfasados"
+// cuando se carga un nuevo archivo sobre un doc que ya tenía datos de IA.
+const _camposIA = [inputConcepto, inputFecha, inputImporte]
+
 _seasonsList.forEach(s => {
     const opt = document.createElement('option')
     opt.value = s; opt.textContent = s
@@ -47,6 +52,52 @@ _seasonsList.forEach(s => {
 initPrecioInput(inputImporte)
 inputFecha.value = HOY
 
+// ===== HELPERS DE ESTADO IA =====
+function _setBtnIA(estado) {
+    // estados: 'disabled' | 'listo' | 'ya-extraido' | 'leyendo' | 'leido'
+    switch (estado) {
+        case 'disabled':
+            btnLeerIA.disabled      = true
+            btnLeerIA.textContent   = '🤖 Leer con IA'
+            btnLeerIA.title         = ''
+            btnLeerIA.style.opacity = ''
+            break
+        case 'listo':
+            btnLeerIA.disabled      = false
+            btnLeerIA.textContent   = '🤖 Leer con IA'
+            btnLeerIA.title         = ''
+            btnLeerIA.style.opacity = ''
+            break
+        case 'ya-extraido':
+            btnLeerIA.disabled      = false
+            btnLeerIA.textContent   = '⚠️ Re-leer con IA'
+            btnLeerIA.title         = 'Datos ya extraídos de este documento. Releer tiene coste — solo si el archivo ha cambiado.'
+            btnLeerIA.style.opacity = '0.55'
+            break
+        case 'leyendo':
+            btnLeerIA.disabled      = true
+            btnLeerIA.textContent   = '⏳ Leyendo…'
+            btnLeerIA.title         = ''
+            btnLeerIA.style.opacity = ''
+            break
+        case 'leido':
+            btnLeerIA.disabled      = false
+            btnLeerIA.textContent   = '✅ Leído'
+            btnLeerIA.title         = ''
+            btnLeerIA.style.opacity = ''
+            break
+    }
+}
+
+function _setCamposStale(stale) {
+    _camposIA.forEach(el => {
+        el.style.borderColor      = stale ? '#f59e0b' : ''
+        el.style.backgroundColor  = stale ? '#fffbeb' : ''
+        el.title = stale ? 'Valor del documento anterior — comprueba o relée con IA' : ''
+    })
+}
+
+// ===== FORM HANDLERS =====
 btnNuevo.addEventListener('click', () => {
     if (_editingDocId !== null) {
         resetForm()
@@ -64,16 +115,24 @@ btnNuevo.addEventListener('click', () => {
 
 btnCancelar.addEventListener('click', resetForm)
 
+function _onNuevoArchivo(file) {
+    _archivoSeleccionado = file
+    _editingSignedUrl    = null   // ya no se usa la URL de storage
+    lblArchivo.textContent = file.name
+    // Si el doc tenía IA previa, marcar campos como potencialmente desfasados
+    _setCamposStale(_editingAiYaExtraido)
+    _setBtnIA('listo')
+}
+
 inputArchivo.addEventListener('change', () => {
-    _archivoSeleccionado = inputArchivo.files[0] ?? null
-    if (_archivoSeleccionado) {
-        _editingSignedUrl      = null  // nuevo archivo local reemplaza la URL de storage
-        lblArchivo.textContent = _archivoSeleccionado.name
-        btnLeerIA.disabled     = false
-        btnLeerIA.textContent  = '🤖 Leer con IA'
+    const file = inputArchivo.files[0] ?? null
+    if (file) {
+        _onNuevoArchivo(file)
     } else {
+        _archivoSeleccionado = null
         lblArchivo.textContent = _archivoNombreDoc()
-        btnLeerIA.disabled     = !_editingSignedUrl
+        _setCamposStale(false)
+        _setBtnIA(_editingSignedUrl ? (_editingAiYaExtraido ? 'ya-extraido' : 'listo') : 'disabled')
     }
 })
 
@@ -84,12 +143,7 @@ dzGasto.addEventListener('drop', e => {
     e.preventDefault()
     dzGasto.classList.remove('st-dz--over')
     const file = e.dataTransfer.files[0]
-    if (!file) return
-    _archivoSeleccionado  = file
-    _editingSignedUrl      = null  // nuevo archivo local reemplaza la URL de storage
-    lblArchivo.textContent = file.name
-    btnLeerIA.disabled     = false
-    btnLeerIA.textContent  = '🤖 Leer con IA'
+    if (file) _onNuevoArchivo(file)
 })
 
 function _archivoNombreDoc() {
@@ -103,7 +157,6 @@ btnLeerIA.addEventListener('click', async () => {
     const hasStorageFile = !!_editingSignedUrl
     if (!hasLocalFile && !hasStorageFile) return
 
-    // Determinar extensión según la fuente
     const ext = hasLocalFile
         ? _archivoSeleccionado.name.split('.').pop().toLowerCase()
         : (_editingOrigFile ?? '').split('.').pop().toLowerCase()
@@ -112,8 +165,7 @@ btnLeerIA.addEventListener('click', async () => {
     const isPdf = ext === 'pdf'
     if (!isImg && !isPdf) { mostrarToast('Solo se pueden leer PDFs e imágenes con IA', '#d97706'); return }
 
-    btnLeerIA.disabled    = true
-    btnLeerIA.textContent = '⏳ Leyendo…'
+    _setBtnIA('leyendo')
 
     try {
         let buffer
@@ -168,25 +220,23 @@ btnLeerIA.addEventListener('click', async () => {
         _aiData = d
 
         if (_editingDocId !== null) {
-            // Edit mode: overwrite all fields unconditionally
             if (d.issue_date) inputFecha.value = d.issue_date
             if (d.total)      setPrecioValue(inputImporte, d.total)
             if (d.concept)    inputConcepto.value = d.concept
         } else {
-            // New mode: only fill if empty / still at default
             if (d.issue_date && (!inputFecha.value || inputFecha.value === HOY))
                 inputFecha.value = d.issue_date
             if (d.total   && !getPrecioValue(inputImporte))  setPrecioValue(inputImporte, d.total)
             if (d.concept && !inputConcepto.value.trim())    inputConcepto.value = d.concept
         }
 
-        btnLeerIA.textContent = '✅ Leído'
-        btnLeerIA.disabled    = false
+        // Limpiar marcado de desfase una vez relleído
+        _setCamposStale(false)
+        _setBtnIA('leido')
     } catch (e) {
         console.error('IA gastos:', e)
         mostrarToast('No se pudo extraer automáticamente', '#d97706')
-        btnLeerIA.textContent = '🤖 Leer con IA'
-        btnLeerIA.disabled    = false
+        _setBtnIA(hasLocalFile ? 'listo' : (_editingAiYaExtraido ? 'ya-extraido' : 'listo'))
     }
 })
 
@@ -223,12 +273,13 @@ async function _guardarFiscalCheck(docId, accion = 'editar') {
 
 // ===== CARGAR DOC EN FORMULARIO (modo edición) =====
 async function _cargarEnFormulario(doc) {
-    _editingDocId      = doc.id
-    _editingOrigFile   = doc.file_path
-    _editingOrigHasInv = doc.has_invoice
-    _editingSignedUrl  = null
-    _archivoSeleccionado = null
-    _aiData              = null
+    _editingDocId         = doc.id
+    _editingOrigFile      = doc.file_path
+    _editingOrigHasInv    = doc.has_invoice
+    _editingSignedUrl     = null
+    _editingAiYaExtraido  = !!(doc.issuer_nif || doc.ai_vat_lines?.length)
+    _archivoSeleccionado  = null
+    _aiData               = null
 
     inputConcepto.value = doc.concept ?? ''
     inputFecha.value    = doc.expense_date ?? HOY
@@ -238,8 +289,8 @@ async function _cargarEnFormulario(doc) {
 
     inputArchivo.value    = ''
     lblArchivo.textContent = _archivoNombreDoc()
-    btnLeerIA.disabled    = true
-    btnLeerIA.textContent = '🤖 Leer con IA'
+    _setCamposStale(false)
+    _setBtnIA('disabled')
 
     formTitulo.textContent  = 'Editar gasto'
     btnGuardar.textContent  = 'Actualizar'
@@ -247,13 +298,13 @@ async function _cargarEnFormulario(doc) {
     formGasto.style.display = 'block'
     setTimeout(() => formGasto.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
 
-    // Obtener URL firmada para habilitar el botón IA sobre el archivo existente
+    // Obtener URL firmada para habilitar IA sobre el archivo existente
     const sinArch = !doc.file_path || doc.file_path.endsWith('_sin_archivo')
     if (!sinArch) {
         const { data } = await supabase.storage.from('supplier-invoices').createSignedUrl(doc.file_path, 3600)
         if (data?.signedUrl) {
-            _editingSignedUrl  = data.signedUrl
-            btnLeerIA.disabled = false
+            _editingSignedUrl = data.signedUrl
+            _setBtnIA(_editingAiYaExtraido ? 'ya-extraido' : 'listo')
         }
     }
 }
@@ -274,7 +325,6 @@ btnGuardar.addEventListener('click', async () => {
         const check = await _guardarFiscalCheck(_editingDocId)
         if (check === 'bloqueado' || check === 'cancelado') return
 
-        // Solo pedir confirmación si has_invoice pasa de true a false sin asiento
         if (!hasInvoice && check === 'libre' && _editingOrigHasInv !== false) {
             if (!confirm('¿Marcar este gasto como "sin factura"? No aparecerá el botón "Anotar".')) return
         }
@@ -283,7 +333,7 @@ btnGuardar.addEventListener('click', async () => {
     btnGuardar.disabled    = true
     btnGuardar.textContent = 'Guardando…'
 
-    let filePath = _editingOrigFile  // se preserva si no se sube archivo nuevo en edición
+    let filePath = _editingOrigFile
 
     if (_archivoSeleccionado) {
         const path = `_gastos/${season}/${Date.now()}_${_archivoSeleccionado.name}`
@@ -331,7 +381,7 @@ btnGuardar.addEventListener('click', async () => {
 
     let error
     if (_editingDocId !== null) {
-        payload.file_path = filePath  // puede ser el original o la nueva ruta
+        payload.file_path = filePath
         ;({ error } = await supabase.from('supplier_documents').update(payload).eq('id', _editingDocId))
     } else {
         payload.provider_id = null
@@ -359,14 +409,15 @@ function resetForm() {
     inputHasInv.checked      = true
     inputArchivo.value       = ''
     lblArchivo.textContent   = ''
-    btnLeerIA.disabled       = true
-    btnLeerIA.textContent    = '🤖 Leer con IA'
+    _setCamposStale(false)
+    _setBtnIA('disabled')
     _archivoSeleccionado     = null
     _aiData                  = null
     _editingDocId            = null
     _editingOrigFile         = null
     _editingOrigHasInv       = null
     _editingSignedUrl        = null
+    _editingAiYaExtraido     = false
     formTitulo.textContent   = 'Nuevo gasto'
     btnGuardar.disabled      = false
     btnGuardar.textContent   = 'Guardar'
