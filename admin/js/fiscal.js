@@ -464,7 +464,7 @@ async function cargarAlertas() {
     const regDocIds = (registeredDocs ?? []).map(r => r.document_id).filter(id => id != null)
     let docsQuery = supabase
         .from('supplier_documents')
-        .select('id, provider_id, concept, notes, uploaded_at, file_path')
+        .select('id, provider_id, concept, notes, uploaded_at, file_path, has_invoice')
         .order('uploaded_at', { ascending: false })
 
     if (regDocIds.length > 0) {
@@ -489,7 +489,7 @@ async function cargarAlertas() {
     ])
 
     // Procesar alerta 1: docs sin anotar (filtrar sin_archivo en JS)
-    const allUnregistered = (allPendingDocs ?? []).filter(d => !d.file_path.endsWith('_sin_archivo'))
+    const allUnregistered = (allPendingDocs ?? []).filter(d => d.has_invoice !== false)
     const activeDocs    = allUnregistered.filter(d => !d.notes?.startsWith('*'))
     const dismissedDocs = allUnregistered.filter(d =>  d.notes?.startsWith('*'))
 
@@ -555,9 +555,12 @@ async function cargarAlertas() {
     // ===== RENDERIZAR =====
     const partes = []
 
-    // Alerta 1: documentos sin anotar
+    // Alerta 1: documentos sin anotar (split por presencia de archivo)
     if (activeDocs.length > 0 || dismissedDocs.length > 0) {
-        const filas = activeDocs.map(d => {
+        const docsConArch = activeDocs.filter(d => !d.file_path?.endsWith('_sin_archivo'))
+        const docsSinArch = activeDocs.filter(d =>  d.file_path?.endsWith('_sin_archivo'))
+
+        const _filaDoc = (d, accionesCel) => {
             const prov   = d.provider_id ? (provNamesMap[d.provider_id] ?? d.provider_id) : 'Gasto general'
             const fecha  = d.uploaded_at.split('T')[0]
             const nombre = d.concept || d.notes?.replace(/^\*/, '').trim()
@@ -569,26 +572,41 @@ async function cargarAlertas() {
                 ${provCell}
                 <td style="padding:4px 8px;color:var(--subtle)">${fecha}</td>
                 <td style="padding:4px 8px">${nombre}</td>
-                <td style="padding:4px 8px;white-space:nowrap">
-                    <button class="btn btn-primary" style="font-size:11px;padding:2px 6px;margin-right:4px"
-                        onclick="anotarGasto(${d.id})">Anotar</button>
-                    <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
-                        onclick="descartarAlerta('doc-${d.id}')">Descartar</button>
-                </td>
+                <td style="padding:4px 8px;white-space:nowrap">${accionesCel}</td>
             </tr>`
-        }).join('')
+        }
 
-        const bodyTabla = activeDocs.length > 0
-            ? `<table style="width:100%;border-collapse:collapse;margin-top:8px">
-                <thead><tr style="font-size:11px;color:var(--subtle)">
-                    <th style="text-align:left;padding:4px 8px">Proveedor</th>
-                    <th style="text-align:left;padding:4px 8px">Fecha</th>
-                    <th style="text-align:left;padding:4px 8px">Concepto / archivo</th>
-                    <th style="padding:4px 8px"></th>
-                </tr></thead>
-                <tbody>${filas}</tbody>
-            </table>`
-            : `<p style="font-size:12px;color:var(--subtle);padding:8px 0 4px">Sin documentos pendientes.</p>`
+        const _tabla = filas => `<table style="width:100%;border-collapse:collapse;margin-top:8px">
+            <thead><tr style="font-size:11px;color:var(--subtle)">
+                <th style="text-align:left;padding:4px 8px">Proveedor</th>
+                <th style="text-align:left;padding:4px 8px">Fecha</th>
+                <th style="text-align:left;padding:4px 8px">Concepto / archivo</th>
+                <th style="padding:4px 8px"></th>
+            </tr></thead>
+            <tbody>${filas}</tbody>
+        </table>`
+
+        let bodyTabla = ''
+
+        if (docsConArch.length > 0) {
+            bodyTabla += _tabla(docsConArch.map(d => _filaDoc(d,
+                `<button class="btn btn-primary" style="font-size:11px;padding:2px 6px;margin-right:4px"
+                    onclick="anotarGasto(${d.id})">Anotar</button>
+                 <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
+                    onclick="descartarAlerta('doc-${d.id}')">Descartar</button>`
+            )).join(''))
+        } else if (activeDocs.length === 0) {
+            bodyTabla += `<p style="font-size:12px;color:var(--subtle);padding:8px 0 4px">Sin documentos pendientes.</p>`
+        }
+
+        if (docsSinArch.length > 0) {
+            if (docsConArch.length > 0) bodyTabla += '<hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">'
+            bodyTabla += `<p style="font-size:12px;color:var(--subtle);margin:8px 0 4px">Sin archivo adjunto — añade el documento desde <a href="gastos.html" style="color:var(--accent)">Gastos</a> antes de anotar:</p>`
+            bodyTabla += _tabla(docsSinArch.map(d => _filaDoc(d,
+                `<button class="btn btn-secondary" style="font-size:11px;padding:2px 6px"
+                    onclick="descartarAlerta('doc-${d.id}')">Descartar</button>`
+            )).join(''))
+        }
 
         const recuperarBtn1 = dismissedDocs.length > 0
             ? `<div style="margin-top:8px;text-align:right">

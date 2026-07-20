@@ -6,7 +6,7 @@
 import { supabase }                        from './supabase.js'
 import { crearModal }                      from './modal.js'
 import { mostrarToast }                    from './verificacion.js'
-import { initPrecioInput, getPrecioValue } from './utils.js'
+import { initPrecioInput, getPrecioValue, setPrecioValue, fmt } from './utils.js'
 
 export async function abrirDlgGasto(docOrId, provider, onGuardado) {
     let doc = (docOrId && typeof docOrId === 'object') ? docOrId : null
@@ -45,14 +45,23 @@ async function _abrirModal(doc, provider, onGuardado) {
     if (canPreview) panel.classList.add('modal-panel--doc')
 
     const hoy  = new Date().toISOString().split('T')[0]
-    const pNom = provider?.name ?? ''
-    const pNif = provider?.nif  ?? ''
+
+    // Los campos pre-extraídos por la IA en el alta tienen prioridad sobre los datos del proveedor.
+    const pNom = doc?.issuer_name ?? provider?.name ?? ''
+    const pNif = doc?.issuer_nif  ?? provider?.nif  ?? ''
     const subT = doc
-        ? `${pNom || doc.concept || '—'} · ${(doc.uploaded_at ?? '').split('T')[0]}`
+        ? `${doc.concept || pNom || '—'} · ${(doc.expense_date ?? doc.uploaded_at ?? '').split('T')[0]}`
         : 'Nueva entrada'
 
-    let _tipo     = isImg ? 'simp' : 'full'
-    let _vatLines = [{ base: '', rate: 21, vat: '' }]
+    // Si la IA extrajo un nº de factura o es PDF → modo completo; imagen sin número → simplificada.
+    let _tipo = (doc?.invoice_number || isPdf) ? 'full' : 'simp'
+
+    let _vatLines = doc?.ai_vat_lines?.length
+        ? doc.ai_vat_lines.map(l => ({ base: +(l.base||0), rate: +(l.rate||21), vat: +(l.vat||0) }))
+        : [{ base: '', rate: 21, vat: '' }]
+
+    // El botón "Leer con IA" se desactiva si los datos fiscales ya están pre-extraídos.
+    const _aiYaExtraido = !!(doc?.issuer_nif || doc?.ai_vat_lines?.length)
 
     function _renderVatLines() {
         return _vatLines.map((l, i) => `
@@ -108,7 +117,8 @@ async function _abrirModal(doc, provider, onGuardado) {
                     <button id="dlg-btn-full" class="btn btn-secondary" style="font-size:12px"
                         onclick="_dlgSetTipo('full')">📄 Factura completa</button>
                     ${canPreview
-                        ? `<button id="dlg-ia" class="btn btn-secondary" style="font-size:12px;margin-left:auto">✨ Leer con IA</button>`
+                        ? `<button id="dlg-ia" class="btn btn-secondary" style="font-size:12px;margin-left:auto"
+                             ${_aiYaExtraido ? 'disabled title="Los datos ya se han extraído; revísalos y ajústalos a mano si hace falta."' : ''}>✨ Leer con IA</button>`
                         : ''}
                 </div>
 
@@ -123,11 +133,11 @@ async function _abrirModal(doc, provider, onGuardado) {
                     </div>
                     <div class="form-field" id="dlg-row-invnum" style="display:none">
                         <label>Nº factura</label>
-                        <input type="text" id="dlg-invoice-number" placeholder="F-2026-001">
+                        <input type="text" id="dlg-invoice-number" placeholder="F-2026-001" value="${doc?.invoice_number ?? ''}">
                     </div>
                     <div class="form-field">
                         <label>Fecha</label>
-                        <input type="date" id="dlg-issue-date" value="${hoy}"
+                        <input type="date" id="dlg-issue-date" value="${doc?.issue_date ?? hoy}"
                             oninput="window._dlgCheckFecha(this.value)">
                     </div>
                 </div>
@@ -192,6 +202,7 @@ async function _abrirModal(doc, provider, onGuardado) {
                         <div class="form-field">
                             <label>IRPF %</label>
                             <input type="number" id="dlg-irpf-rate" step="0.1" placeholder="0"
+                                value="${doc?.irpf_rate != null ? doc.irpf_rate : ''}"
                                 oninput="_dlgRecalcFull()">
                         </div>
                         <div class="form-field">
@@ -223,6 +234,19 @@ async function _abrirModal(doc, provider, onGuardado) {
     initPrecioInput(document.getElementById('dlg-total-simp'))
     initPrecioInput(document.getElementById('dlg-total-full'))
     document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
+
+    // Pre-seleccionar categoría sugerida por la IA
+    if (doc?.suggested_category) {
+        const catEl = document.getElementById('dlg-category')
+        if (catEl) catEl.value = doc.suggested_category
+    }
+    // Pre-calcular totales con los datos ya cargados
+    if (_tipo === 'full' && _vatLines.some(l => l.base > 0)) {
+        // _dlgRecalcFull se define más abajo como global; se llama tras la definición
+        setTimeout(() => window._dlgRecalcFull?.(), 0)
+    } else if (_tipo === 'simp' && doc?.amount) {
+        setTimeout(() => { setPrecioValue(document.getElementById('dlg-total-simp'), doc.amount); window._dlgRecalcSimp?.() }, 0)
+    }
 
     // ── Zoom en imagen ────────────────────────────────────────────────────────
     const imgEl = document.getElementById('dlg-img')
@@ -429,7 +453,19 @@ async function _abrirModal(doc, provider, onGuardado) {
         if (!isSimp && !validLines.length) { alert('Añade al menos una línea de IVA'); return }
 
         const season = parseInt(bookedDate.split('-')[0])
-        const btn    = document.getElementById('dlg-guardar')
+
+        // Aviso de descuadre entre importe de negocio y total fiscal
+        if (doc?.amount != null && Math.abs(doc.amount - total) > 0.01) {
+            const ok = confirm(
+                `Descuadre detectado:\n` +
+                `· Negocio (registrado en el alta): ${fmt(doc.amount)}\n` +
+                `· Fiscal (lo que vas a contabilizar): ${fmt(total)}\n\n` +
+                `Se guardará el importe fiscal en el libro. ¿Continuar?`
+            )
+            if (!ok) return
+        }
+
+        const btn = document.getElementById('dlg-guardar')
         btn.disabled = true; btn.textContent = 'Guardando…'
 
         let docId = doc?.id ?? null

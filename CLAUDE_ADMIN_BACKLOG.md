@@ -969,3 +969,16 @@ Implementado dropzone en proveedores.html (tab "Info general" de disponibilidad)
 - Edge Function upload-venue-photo extendida con campo opcional dir (venues por defecto, services para imágenes de servicio). Las imágenes van a /httpdocs/img/services/ → https://experienciasanfermin.com/img/services/
 - Lógica en proveedores.js: _procesarImagenServicio, drag/drop + file input, misma clase CSS st-dropzone
 - Al subir: URL se rellena en inputServicioImageUrl y se guarda automáticamente en services.image_url via guardarDescripcionServicio
+
+### [RESUELTO jul 2026] §7.1 resolverCliente — matching de nombre frágil
+
+Reemplazado el matching por substring (includes) por matching por tokens con umbral de cobertura:
+- Tokeniza ambos nombres: uppercase, sin tildes, solo A-Z0-9, tokens ≥4 chars
+- Score = intersección / min(tokens_dato, tokens_cliente)
+- Match si score ≥ 0.6 (60% de cobertura del nombre más corto)
+- Un solo token significativo basta si aparece en el otro (cubre "ASUN" y similares)
+- resolverCliente devuelve { match, cliente, candidatos[] } — lista completa ordenada por score
+
+_confirmarClienteAmbiguo actualizado para recibir la lista de candidatos y mostrar todos en el modal
+(nombre + teléfono + email de cada uno), con botón "No, es persona nueva". Paula elige directamente
+en lugar de responder sí/no a un único candidato.

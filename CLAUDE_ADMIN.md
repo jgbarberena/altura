@@ -424,7 +424,7 @@ Utilidades compartidas. Exports:
 | `formatVenueLabel(venueId, venueProviderId)` | "PROV — VENUE" si distintos, solo venueId si iguales |
 | `persistirCobrosCliente(supabase, clienteId, todasReservas)` | Recalcula y persiste cobro final en charges. Si el hito ya tiene invoice_number, crea hito de ajuste. |
 | `persistirPagosProveedor(supabase, proveedorId, todasReservas, todaDisponibilidad)` | Recalcula y persiste pago final en payments. Primero busca todos los venues del proveedor para agregar disponibilidad y reservas de todos ellos. |
-| `resolverCliente(datos, todosClientes)` | **Punto de entrada obligatorio antes de generar un client_id nuevo.** `datos: { nombre, email, telefono }`. Devuelve `{ match: 'exacto'\|'ambiguo'\|'ninguno', cliente }`. Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) nombre similar como subcadena de palabras (ambiguo). Evita la creación de duplicados (CLIENTE_2, CLIENTE_3) cuando llegan múltiples solicitudes de la misma persona. |
+| `resolverCliente(datos, todosClientes)` | **Punto de entrada obligatorio antes de generar un client_id nuevo.** `datos: { nombre, email, telefono }`. Devuelve `{ match: 'exacto'\|'ambiguo'\|'ninguno', cliente, candidatos: [] }`. Prioridad: 1) email exacto, 2) teléfono exacto (normaliza prefijo +34), 3) coincidencia por tokens de nombre (tokens ≥4 chars; ambiguo si ≥60% de los tokens del nombre buscado aparecen en el cliente). Cuando hay varios candidatos con la misma cobertura, devuelve todos en `candidatos[]` y `match='ambiguo'`; el formulario muestra un picker modal (`_confirmarClienteAmbiguo`). Evita la creación de duplicados (CLIENTE_2, CLIENTE_3) cuando llegan múltiples solicitudes de la misma persona. |
 | `initPrecioInput(input)` | Aplica comportamiento 2dp-on-blur a un `<input type=number>`. Muestra 2 decimales cuando no está enfocado; al enfocar restaura la precisión completa (guardada en `input.dataset.rawValue`). Idempotente: ignora llamadas repetidas sobre el mismo elemento. Llamar inmediatamente tras obtener la referencia al elemento. |
 | `setPrecioValue(input, value)` | Asigna un valor a un input gestionado por `initPrecioInput`. Guarda la precisión completa en `rawValue` y muestra 2 decimales. Pasar `''`, `null` o `undefined` limpia el campo y borra `rawValue`. Usar en lugar de `input.value = ...` para cualquier asignación programática de precios. |
 | `getPrecioValue(input)` | Lee el valor con precisión completa de un input gestionado por `initPrecioInput`. Si el input está enfocado (usuario tecleando) lee `input.value`; si está desenfocado usa `rawValue`. Devuelve `0` si está vacío. Usar en lugar de `parseFloat(input.value)` en handlers de guardado y en funciones de cálculo llamadas desde contextos donde el input puede estar desenfocado. |
@@ -503,6 +503,16 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 **Bloque 4 — Reservas del cliente:** Tabla de reservas. Checkbox para editar, cancelar o eliminar en lote. Botón "Generar propuesta". Botón "📩 Bienvenida" (ver sistema de bienvenida más abajo).
 
 **Bloque 5 — Cobros al cliente:** Hitos de cobro. Botón de facturación por hito. Hito final (`is_final: true`) recalculado automáticamente vía `persistirCobrosCliente`.
+
+**Guard de tipo fiscal del cliente (`_guardFiscalCliente` / `_anularFacturas`):** se activa cuando Paula cambia `is_business`, `country` o `nif` de un cliente. Estos tres campos determinan el tipo de factura (IRPF aplicable, simplificada o no) y los datos de cabecera del receptor, por lo que cambiarlos invalida las facturas ya emitidas. El guard opera en tres casos:
+
+- **Sin facturas emitidas** — devuelve `'ok'` sin intervención.
+- **Trimestre cerrado** — devuelve `'bloqueado'`: modal informativo (⛔) con los trimestres afectados; el campo no se guarda.
+- **Trimestre abierto** — modal con tabla de cada hito facturado (número de factura, importe) y un botón "Reemitir" por fila. Paula puede reemitir cada factura desde ese mismo modal (abre el panel `factura.js` encima); el evento `facturaEmitida` marca la fila como reemitida al volver. Al cerrar el modal con "Aceptar": los hitos no reemitidos se anulan vía `_anularFacturas`, el campo se guarda.
+
+**`_anularFacturas(charges)`:** para cada hito, borra las líneas de IVA (`issued_invoice_vat_lines`), borra el registro en `issued_invoices`, borra el PDF del bucket `invoices`, y limpia el hito en `charges` (`invoice_number = null`, `invoiced = false`, `invoiced_at = null`, `invoice_path = null`). **Nunca borra la fila `charges` en sí** — el dinero cobrado/pendiente es irreversible; solo se anula el registro fiscal.
+
+**`nif` fuera de `initAutoSave`:** a diferencia de `name`, `company`, `phone`, etc., el campo `nif` no está en el array `camposCliente` / `camposDB` que alimenta `initAutoSave`. `initAutoSave` no tiene mecanismo de veto (escucha `change` y persiste directamente), por lo que `nif` requiere un handler manual independiente que pueda interrumpir el guardado si el guard lo bloquea o cancela.
 
 **Orden de borrado de reservas (`eliminarSeleccionadas`):** al eliminar reservas del cliente activo, el sistema comprueba si quedan reservas con `status !== 'Cancelada'`. Si quedan → `persistirCobrosCliente` recalcula el cobro final. Si no quedan reservas activas → se eliminan todos los charges del cliente: los que no tienen `collected=true` ni `invoice_number` se borran sin preguntar; si hay alguno con historial (cobrado o facturado) se muestra un modal con **Cancelar como botón por defecto** antes de proceder. Tras limpiar charges, se ofrece opcionalmente eliminar también el cliente (en este punto ya no hay FK pendiente).
 
@@ -591,7 +601,7 @@ Gestiona:
 **Wizard de importación de disponibilidad (`#bloque-wizard` / `#dlgWizard`):** aparece automáticamente cuando un proveedor tiene cero filas de `availability` para la temporada activa (ninguna venue tiene datos). Permite copiar la disponibilidad de temporadas anteriores: carga el historial de `availability_panel` para las venues del proveedor, deduplica por `(venue_id, service_code)` tomando siempre los datos de la temporada más reciente, y muestra las filas en una tabla con columnas ordenables. Los `service_code` que no existen aún en la temporada activa muestran `(Servicio nuevo en AAAA)` en gris — se crearán en `services` al confirmar. Al importar: INSERT en `services` para los que faltan (copiando `name`, `description`, `event_type`, `day`, `start_time`, `image_url` de la temporada origen), luego INSERT en `availability` (copiando `total_slots`, `price_per_slot`, `billing_model`, `description`, `access_instructions`, `photos`). Los datos sfcom empiezan en null — `sfcom_listings` es una tabla separada y el listado en sfcom se configura aparte por cada venue/servicio.
 
 ### panel.js
-Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `venues`, `payments`, `charges`, `reservation_requests`, `clients`. Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
+Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `providers`, `venues`, `payments`, `charges`, `reservation_requests`, `clients`, `supplier_documents` (solo `provider_id IS NULL`, solo `amount`, filtrado por temporada). Usa `availability` directamente (no la vista) porque no necesita campos sfcom.
 
 **Bloques (orden en pantalla):**
 1. Alertas críticas: sobrereservas, sfcom nuevos/cancelados, solicitudes pendientes, pagos/cobros vencidos, bienvenidas pendientes.
@@ -603,7 +613,7 @@ Módulo ES6. Lee en paralelo: `reservations`, `availability`, `services`, `provi
 
 Tablas con sort por columna (4 tablas). Cobros y pagos pendientes son clicables: abren formulario.html o proveedores.html con el cliente/proveedor precargado via query params.
 
-**`calcularResumen()`:** calcula los tarjetones del bloque "Resumen de negocio". Separados en confirmadas/pendientes: `kpi-res-confirmadas`, `kpi-res-pendientes`, `kpi-plazas-confirmadas`, `kpi-plazas-pendientes`. Ingresos confirmados (`kpi-ingresos-brutos`) + pendientes (`kpi-ingresos-pendientes`). Coste proveedores = `SUM(payments.amount)` (sin importar estado). `costePendConsumo`: coste marginal adicional si las reservas pendientes confirman, solo para `billing_model = 'consumption'` (capacity ya está pagado). `kpi-coste-pend-row` se muestra solo cuando `costePendConsumo > 0`. Margen = ingresos confirmados − costes; `kpi-margen-pendientes` muestra el margen combinado si todo confirma.
+**`calcularResumen()`:** calcula los tarjetones del bloque "Resumen de negocio". Separados en confirmadas/pendientes: `kpi-res-confirmadas`, `kpi-res-pendientes`, `kpi-plazas-confirmadas`, `kpi-plazas-pendientes`. Ingresos confirmados (`kpi-ingresos-brutos`) + pendientes (`kpi-ingresos-pendientes`). Coste proveedores = `SUM(payments.amount)` (`kpi-costes`). Gastos generales = `SUM(supplier_documents.amount)` donde `provider_id IS NULL` y `season = _temporada` (`kpi-gastos-generales`; los docs con proveedor ya están en `payments`, sin doble conteo). `costePendConsumo`: coste marginal adicional si las reservas pendientes confirman, solo para `billing_model = 'consumption'`. `kpi-coste-pend-row` se muestra solo cuando `costePendConsumo > 0`. Margen = ingresos confirmados − costes − gastosGenerales; `kpi-margen-pendientes` muestra el margen combinado si todo confirma (también resta gastosGenerales, coste fijo ya incurrido).
 
 **`calcularPorVender()`:** calcula el bloque "Por vender". Filtra `disponibilidad` a servicios de tipo balcón (`TIPOS_BALCON`). Para cada fila calcula: `libres = total_slots − slots_activos`, `gastoAsociado` (solo `capacity`: `libres × price_per_slot`), `margen` potencial usando `_precioRef`. KPIs globales: `kpi-plazas-libres`, `kpi-ingreso-potencial`, `kpi-coste-adicional` (solo consumption), `kpi-margen-no-capturado`, con sublabels de precio/margen medio por plaza. Separa en dos secciones: `pv-capacity` (max 5 filas pareto) y `pv-consumption` (max 3 filas pareto).
 
@@ -866,6 +876,27 @@ La sección de borrador también documenta el campo `estado` de cada línea: `'p
 
 Si se actualiza el prompt: revisar que los nombres de campo son coherentes con la estructura del contexto documentada en la sección `disponibilidadParaAsistente` de este documento. El prompt de caching tiene TTL de 5 minutos — solo ahorra tokens dentro de la misma sesión del navegador.
 
+### fiscal.js
+Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestaña Gastos (facturas recibidas), pestaña Emitidas (facturas emitidas), pestaña F69 (modelo fiscal trimestral). Selector de año/trimestre persiste en localStorage.
+
+`cargarTodo()` ejecuta tres queries en paralelo (gastos del trimestre, emitidas del trimestre, cierre fiscal) y alimenta las tres pestañas. Produce tres arrays de módulo:
+- `_gastosData` — todas las facturas recibidas del trimestre (incluidas las de proveedor). Fuente de verdad para F69, exportación Excel, ZIP de documentos y paquete asesor.
+- `_emitidasData` — facturas emitidas del trimestre. Fuente para F69, ZIP de emitidas y paquete asesor.
+
+**`renderGastos(rows)`:** la pestaña Gastos solo muestra `supplier_invoices` con `provider_id IS NULL` (gastos generales sin proveedor). Los gastos con proveedor se consultan en la ficha del proveedor en `proveedores.html`. Esta restricción se aplica reasignando el parámetro local `rows` al inicio de la función; `_gastosData` permanece sin filtrar para que F69, ZIP y paquete asesor sigan incluyendo todos los gastos del trimestre.
+
+**Alertas fiscales (`cargarAlertas`):** cinco tipos de alerta con sistema de dismiss por sentinels (ver §7.6). Las funciones `descartarAlerta(key, extra)` y `recuperarDescartados(tipo)` son globales en este módulo.
+
+**Cierre de trimestre:** al presentar el modelo F69, inserta en `fiscal_closings`. A partir de ese momento los triggers de BD (`trg_supplier_invoices_immutable`, `trg_issued_invoices_immutable`) bloquean cualquier INSERT/UPDATE/DELETE en las tablas fiscales del trimestre cerrado.
+
+**Exportaciones / paquete asesor:** Excel de gastos (SheetJS), ZIP de documentos recibidos (bucket `supplier-invoices`), ZIP de facturas emitidas (bucket `invoices`), paquete asesor (ZIP con ambos ZIPs + Excel + modelo F69 en PDF). Todos operan sobre `_gastosData` / `_emitidasData` completos, sin el filtro de presentación.
+
+### gastos.js
+Módulo ES6. Página `gastos.html`. Gestión operativa del archivo de documentos recibidos (`supplier_documents`) y registro en el libro fiscal (`supplier_invoices`). Permite subir PDFs al bucket `supplier-invoices`, crear y editar registros de gastos, y anotar facturas de proveedor desde el documento. Complementa `proveedores.html` (que anota gastos de proveedor desde la ficha) y `fiscal.html` (que muestra el resultado en el libro fiscal).
+
+### fiscal-config.js
+Exporta constantes y funciones de lógica fiscal compartidas entre `factura.js` y cualquier otro módulo que necesite calcular IVA o IRPF. Ver documentación en `### factura.js` arriba.
+
 ---
 
 ## 5. Catálogo de balcones (`/catalogo/`)
@@ -956,19 +987,7 @@ Add-Content -Path "CLAUDE_ADMIN_BACKLOG.md" -Value "`n---`n`n### [Título] — �
 
 ### 7.1 Bugs — comportamiento incorrecto activo
 
-**`resolverCliente` en `utils.js` hace matching de nombre demasiado permisivo.**
-
-La comparación usa `.includes()` en ambas direcciones. Fix parcial aplicado (jun 2026): umbral mínimo de 5 caracteres. Pendiente: la comparación sigue siendo frágil cuando dos clientes comparten parte del nombre (p.ej. `"GARCIA PEDRO"` vs `"GARCIA MARIA"`). La solución completa requeriría coincidir al menos dos palabras completas o usar distancia de edición. El match por email y teléfono no tiene este problema.
-
----
-
-
-**El envío de bienvenida por WhatsApp pierde los emojis; por correo (mailto) se mantienen.**
-
-En `mostrarOpcionesEnvio` (`utils.js:633`) el botón de WhatsApp abre `https://wa.me/{telefono}?text=...` con `encodeURIComponent(texto)`, que sí codifica los emojis correctamente. El enlace abre primero el navegador y de ahí salta a la app de WhatsApp — en ese salto navegador→app se pierden los emojis del texto. El mailto (línea ~618) no pasa por ese salto y conserva los emojis. Pendiente investigar si es una limitación del propio `wa.me` en el traspaso a la app (`api.whatsapp.com/send` u otro esquema podrían comportarse distinto) o si hay una codificación adicional que se pueda ajustar en nuestro lado.
-
----
-
+Sin bugs activos en este bloque.
 
 ---
 
@@ -998,7 +1017,20 @@ Se decidió no hacerlo hasta auditar el código hardcoded que depende de `servic
 
 ### 7.6 Fiscal — deudas pendientes
 
-Sin deudas pendientes en este bloque.
+**[IMPORTANTE/URGENTE] Auditar y homogeneizar edición/eliminación de asientos fiscales en todo el sistema (jul 2026).**
+
+Implementado en Gastos (jul 2026): editar o eliminar un gasto comprueba si existe un asiento en `supplier_invoices` y en qué trimestre está:
+- Trimestre cerrado (`fiscal_closings.presented_at IS NOT NULL`) → bloqueo total (🔒, sin edición ni borrado).
+- Trimestre abierto con asiento → confirmar; si acepta, se borra el asiento (ON DELETE CASCADE elimina `supplier_invoice_vat_lines`) y se puede reanotar.
+- Sin asiento → edición/borrado libre.
+
+Hay que auditar y aplicar este mismo criterio en todos los demás flujos donde se crean o eliminan asientos fiscales:
+- **Gestión de Reservas (`formulario.js`)**: facturas emitidas (`emitted_invoices`), cobros en `charges`. ¿Puede Paula borrar una factura emitida de un trimestre cerrado desde este panel? ¿Qué pasa si edita el importe de un cobro ya facturado?
+- **Gestión de Proveedores (`proveedores.js`)**: facturas recibidas de proveedores (`supplier_invoices` con `provider_id != null`), pagos en `payments`. Misma pregunta.
+- **Tablas (`tablas.js`)**: ¿permite borrar o editar filas de `emitted_invoices` o `supplier_invoices` sin comprobar el trimestre?
+- **Panel Fiscal (`fiscal.js`)**: las acciones de "registrar" y "eliminar" en el libro ya deberían respetar el cierre, pero verificar que el bloqueo de trimestre cerrado es consistente.
+
+El análisis debe cubrir todas las combinaciones (crear / editar importe / editar datos no-fiscales / eliminar) para cada tipo de entidad, y decidir qué operaciones están permitidas en cada estado. Una vez acordado el criterio completo, implementarlo de forma homogénea.
 
 **Dismiss de alertas fiscales — implementado con sentinels (jul 2026).**
 

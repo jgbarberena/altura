@@ -42,7 +42,8 @@ const [
     { data: venues },
     { data: clientes },
     { data: pagosVencidosTodos },
-    { data: cobrosVencidosTodos }
+    { data: cobrosVencidosTodos },
+    { data: supplierDocs }
 ] = await Promise.all([
     _servicioIds.length > 0
         ? supabase.from('reservations').select('*').in('service_id', _servicioIds)
@@ -56,7 +57,8 @@ const [
     supabase.from('venues').select('id, provider_id'),
     supabase.from('clients').select('id, name'),
     supabase.from('payments').select('id, amount').eq('paid', false).lt('due_date', hoy).gt('amount', 0.01),
-    supabase.from('charges').select('id, amount').eq('collected', false).lt('due_date', hoy).gt('amount', 0.01)
+    supabase.from('charges').select('id, amount').eq('collected', false).lt('due_date', hoy).gt('amount', 0.01),
+    supabase.from('supplier_documents').select('amount').is('provider_id', null).eq('season', _temporada)
 ])
 
 const diasDesdeHoy = d => d ? Math.ceil((new Date(d) - new Date(hoy)) / 86400000) : 999
@@ -823,7 +825,9 @@ function calcularResumen() {
     const ingresos     = confirmadas.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
     const ingresosPend = pendientes.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
     const costes       = payments.reduce((s, p) => s + parseFloat(p.amount), 0)
-    const margen       = ingresos - costes
+    const gastosGenerales = (supplierDocs ?? [])
+        .filter(d => d.amount != null)
+        .reduce((s, d) => s + parseFloat(d.amount), 0)
 
     // Coste adicional si se confirman las pendientes en venues de tipo consumption
     const dispMap = new Map(disponibilidad.map(d => [`${d.venue_id}:${d.service_id}`, d]))
@@ -833,7 +837,8 @@ function calcularResumen() {
         return s + r.slots * parseFloat(d.price_per_slot ?? 0)
     }, 0)
 
-    const margenConPend = ingresos + ingresosPend - costes - costePendConsumo
+    const margen        = ingresos - costes - gastosGenerales
+    const margenConPend = ingresos + ingresosPend - costes - costePendConsumo - gastosGenerales
 
     document.getElementById('kpi-res-confirmadas').textContent     = confirmadas.length
     document.getElementById('kpi-res-pendientes').textContent      = pendientes.length
@@ -842,6 +847,7 @@ function calcularResumen() {
     document.getElementById('kpi-ingresos-brutos').textContent     = fmt(ingresos)
     document.getElementById('kpi-ingresos-pendientes').textContent = fmt(ingresosPend)
     document.getElementById('kpi-costes').textContent              = fmt(costes)
+    document.getElementById('kpi-gastos-generales').textContent    = fmt(gastosGenerales)
 
     const costePendRow = document.getElementById('kpi-coste-pend-row')
     if (costePendConsumo > 0) {
