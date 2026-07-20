@@ -1,12 +1,17 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, exportTable } from './utils.js'
+import { initSidebar, initTemporada, exportTable } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { abrirDlgGasto } from './dlg-gasto.js'
+import { iniciarAnalisisFiscal } from './analisis-fiscal.js'
 
 await requireAuth()
 document.getElementById('btnLogout').addEventListener('click', logout)
 initSidebar()
+
+const { data: _seasonsRaw } = await supabase.from('services').select('season').order('season', { ascending: false })
+const _seasonsList = [...new Set((_seasonsRaw ?? []).map(r => r.season))]
+await initTemporada(_seasonsList)
 
 // ===== TRIMESTRE =====
 const STORE_KEY = 'vsf_trimestre_activo'
@@ -1104,3 +1109,4 @@ function _cargarJSZip() {
 // ===== ARRANQUE =====
 cargarTodo()
 cargarAlertas()
+iniciarAnalisisFiscal()

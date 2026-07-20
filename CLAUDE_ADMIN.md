@@ -910,6 +910,66 @@ Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestaña 
 
 **Exportaciones / paquete asesor:** Excel de gastos (SheetJS), ZIP de documentos recibidos (bucket `supplier-invoices`), ZIP de facturas emitidas (bucket `invoices`), paquete asesor (ZIP con ambos ZIPs + Excel + modelo F69 en PDF). Todos operan sobre `_gastosData` / `_emitidasData` completos, sin el filtro de presentación.
 
+### analisis-fiscal.js
+Módulo ES6. Exporta `iniciarAnalisisFiscal()`, llamado desde `fiscal.js` al arrancar. Renderiza el bloque `#bloque-analisis-fiscal` en `fiscal.html`, fuera del contenedor trimestral existente.
+
+**Por qué está separado del bloque Fiscal:** el bloque Fiscal está gobernado por el selector de trimestre (modelo F69, IVA). Este módulo es anual y responde a la temporada activa del sistema (`getTemporadaActiva()`), no al trimestre. El IRPF no existe por trimestre.
+
+**Controles (recalculan en vivo, no se persisten):**
+Renderizados una sola vez en `_renderControles()`, en la cabecera del bloque. Los recálculos (`_recalcular()`) solo actualizan `#af-total` y `#af-tabla`.
+- Bruto adicional anual (input, default 60.000 €): otros rendimientos del ejercicio. Base previa para el doble cálculo de IRPF.
+- Selector Directa normal / Directa simplificada (−5%): en simplificada, `ajuste = min(beneficio_fiscal × 0.05, 3000)` se resta de la base fiscal antes de calcular el IRPF.
+
+**Ingresos — dos fuentes distintas:**
+- `ingresos_reales` = Σ `reservations.total_amount` (Confirmadas, temporada). Todos los cobros reales, facturados o no.
+- `ingresos_declarados` = Σ `issued_invoice_vat_lines.base_amount` (temporada, `is_void = false`). Solo lo facturado — la base que entra en el IRPF.
+
+**Coste — calculado desde `availability`, NOT de `payments`:**
+- `capacity` → `total_slots × price_per_slot`. El balcón se paga entero, haya o no reservas.
+- `consumption` → `plazas_vendidas × price_per_slot`.
+- `fixed` → `price_per_slot` (importe único, una vez por par venue×servicio) si hay alguna plaza vendida; 0 si no.
+
+**Deducibilidad de costes — prorrateo por proveedor, fuente: libro fiscal:**
+Dos pasadas sobre `availability`:
+1. Primera: `cr` por par `(venue_id|service_id)`, y `crSumProv[provId] = Σ cr` del proveedor.
+2. Segunda: `ratio = min(fiscalDeducProv[provId] / crSumProv[provId], 1)` y `cd = cr × ratio`.
+
+`fiscalDeducProv[provId] = Σ supplier_invoices.total × (deductible_pct / 100)` — directo del libro fiscal, por proveedor y temporada. `deductible_pct` permite deducibilidad parcial (default 100). Ruta venue→proveedor: `venues.provider_id`.
+
+Si `fiscalDeducProv > crSumProv` (más facturado que imputado), el ratio se recorta a 1 — nunca se declara más de lo pagado.
+
+**Gastos generales — dos fuentes distintas:**
+- `gastos_grales_reales` = Σ `supplier_documents.amount WHERE provider_id IS NULL` (bandeja operativa, season=X).
+- `gastos_grales_deducibles` = Σ `supplier_invoices.total × deductible_pct/100 WHERE provider_id IS NULL` (libro fiscal, season=X).
+
+**Dos beneficios:**
+- `beneficio_real = ingresos_reales − coste_real_total − gastos_grales_reales`
+- `beneficio_fiscal = ingresos_declarados − coste_deducible_total − gastos_grales_deducibles`
+
+Identidad útil para entender la diferencia: `bf = br − ing_no_decl + coste_no_ded + gg_no_ded` (ingresos sin declarar reducen la base; costes sin factura la aumentan).
+
+**IRPF Navarra:** `ΔIRPF = irpfNavarra(bruto + max(bf_ajust, 0)) − irpfNavarra(bruto)`. `tipoMarginal(base)` devuelve el tipo marginal en un nivel de renta dado (para la línea "tramos del X% al Y%"). Tarifa 2026 (art. 59 TRLFIRPF, Ley Foral 22/2023). ⚠️ Revisar cada año.
+
+**Alerta de registros pendientes:** query HEAD sobre `supplier_documents WHERE has_invoice=true AND file_path NOT ILIKE '%_sin_archivo'`. Si el recuento supera `supplier_invoices.length`, hay documentos con factura aún sin anotar al libro → aviso ámbar en el bloque de análisis.
+
+**Presentación — estructura:**
+- Cabecera: título + controles en flex-row (flex-wrap en móvil).
+- Aviso ámbar: estimación orientativa; si `tieneAlertas`, añade frase sobre registros pendientes.
+- Bloque principal: flex-row con wrap en móvil.
+  - Izquierda (185px): 4 cajas métricas apiladas: Margen del negocio (% sobre ingresos) / IRPF de San Fermín / Resultado neto real (% sobre ingresos) / IRPF equivalente (% del margen).
+  - Derecha (flex:1, min-width:300px): tabla explicativa con 3 líneas maestras + desplegables `<details>` (cerrados por defecto): Margen real del negocio → desglose (ingresos − costes) / Margen que computa Hacienda → desglose en dos mitades (con factura / sin factura) / IRPF atribuible → cálculo doble (IRPF sin SF, IRPF total, diferencia). Línea "Tipo medio ponderado" (13px) entre el desplegable y el DSEP. Doble separador antes del resultado final para señalar visualmente que `resultado = margen_real − IRPF`, no que desciende de la base imponible.
+- Escenario hipotético: caja gris en anchura completa. Muestra qué pasaría si todo estuviera facturado y declarado (`bf_hyp = beneficio_real`): IRPF recalculado con `irpfNavarra(_bruto + bf_ajust_hyp) − irpf_sin`, resultado neto e IRPF equivalente. No contiene juicio de valor.
+
+**Tabla por venue × event_type:**
+Agrupa todos los servicios del mismo `event_type` para un `venue_id` en una fila. Columnas: Venue / Evento / Plazas / Ingreso / Coste real / Deducible / G.grales (prorrateo proporcional al ingreso) / Margen / Neto (−IRPF prorrateo). Filas con ingreso=0 Y coste=0 excluidas. Sort estable sucesivo; primer clic siempre ascendente. Si sort activo es `venue_id` o `event_type`, muestra filas de subtotal encima de cada grupo.
+
+**Trampas:**
+- El coste sale de `availability`, no de `payments`. `payments` es tesorería, no sabe de plazas ni modelos de facturación.
+- La deducibilidad viene del libro fiscal (`supplier_invoices`), no de `supplier_documents.has_invoice`.
+- En `capacity`, `coste_real` usa `total_slots` aunque ventas sean menores — correcto: el balcón cuesta igual se llene o no.
+- El IRPF se calcula sobre `beneficio_fiscal` (base deducible), el margen sobre `beneficio_real`. Son distintos a propósito.
+- `fiscalDeducProv > crSumProv` es posible (más facturado que imputado): el exceso se ignora silenciosamente.
+
 ### gastos.js
 Módulo ES6. Página `gastos.html`. Gestión operativa de gastos generales del negocio (`supplier_documents` con `provider_id IS NULL`): alta, edición, eliminación y anotación fiscal. Complementa `proveedores.html` (gastos de proveedor) y `fiscal.html` (libro fiscal resultante).
 
@@ -1074,6 +1134,8 @@ Hay que auditar y aplicar este mismo criterio en todos los demás flujos donde s
 - **Panel Fiscal (`fiscal.js`)**: las acciones de "registrar" y "eliminar" en el libro ya deberían respetar el cierre, pero verificar que el bloqueo de trimestre cerrado es consistente.
 
 El análisis debe cubrir todas las combinaciones (crear / editar importe / editar datos no-fiscales / eliminar) para cada tipo de entidad, y decidir qué operaciones están permitidas en cada estado. Una vez acordado el criterio completo, implementarlo de forma homogénea.
+
+**Sort estable sucesivo — solo implementado en `analisis-fiscal.js` (jul 2026).** El resto de tablas del panel con sort (`tablas.js`, `panel.js`) usan `sortArr` de `utils.js`, que crea una copia nueva y reordena desde cero en cada clic. El sort estable sucesivo (aplicar `.sort()` sobre el array ya ordenado) permite el efecto "agrupa por columna B y dentro de cada grupo conserva el orden de la columna A anterior". No trivial de migrar: cambia cómo cada tabla mantiene el estado de ordenación. Deuda identificada, no prioritaria.
 
 **Dismiss de alertas fiscales — implementado con sentinels (jul 2026).**
 
