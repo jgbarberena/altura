@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, initPrecioInput, setPrecioValue, getPrecioValue } from './utils.js'
+import { initSidebar, fmt, fechaCobroDefault, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, exportTable, resolverCliente, abrirRenombrarId, mostrarOpcionesEnvio, parsearNivel, TIPO_SERVICIO_ID, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, initPrecioInput, setPrecioValue, getPrecioValue, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
 import { initFacturacion, abrirPanelFactura, abrirPanelReemision, anularFacturaDeHito, baseDesdeTotalFacturado, totalFacturadoDesdeBase } from './factura.js'
 import { irpfRateParaCliente } from './fiscal-config.js'
 import { initPropuesta, abrirPanelPropuesta } from './propuesta.js'
@@ -355,24 +355,13 @@ async function _guardFiscalCliente() {
                 })
                 .map(r => {
                     const [y, m] = r.accrual_date.split('-').map(Number)
-                    return `${y} T${Math.ceil(m / 3)}`
+                    return `T${Math.ceil(m / 3)} ${y}`
                 })
         )].join(', ')
-        return new Promise(resolve => {
-            const { overlay, panel } = crearModal('modal-guard-fiscal-bloqueado', { narrow: true })
-            panel.innerHTML = `
-                <div>
-                    <div class="modal-header-title">⛔ Cambio bloqueado</div>
-                    <div class="modal-header-desc">
-                        Este cliente tiene facturas anotadas en trimestres ya presentados a Hacienda (${trimestres}).<br><br>
-                        Para corregirlas hace falta una <strong>factura rectificativa</strong>.
-                    </div>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn btn-primary" autofocus>Entendido</button>
-                </div>`
-            panel.querySelector('button').onclick = () => { overlay.close(); resolve('bloqueado') }
-        })
+        mostrarModalTrimCerrado(null, null,
+            `Este cliente tiene facturas en trimestres ya presentados a Hacienda (${trimestres}).<br><br>
+             Para corregirlas hace falta una <strong>factura rectificativa</strong>.`)
+        return 'bloqueado'
     }
 
     // Modal con lista: Reemitir las que quiera, anular las que no reemita
@@ -2078,11 +2067,37 @@ window.toggleCobroCliente = async function(idx) {
 
 window.eliminarCobroCliente = async function(idx) {
     const h = hitosClienteTemp[idx]
+
     if (h.invoice_number) {
-        alert('Este hito ya ha sido facturado y no puede eliminarse.\nSi necesitas corregirlo, contacta con el administrador de la base de datos.')
+        // Verificar asiento fiscal y trimestre antes de permitir el borrado
+        const { data: issued } = await supabase
+            .from('issued_invoices')
+            .select('id, accrual_date, file_path')
+            .eq('charge_id', h.id)
+            .eq('is_void', false)
+            .maybeSingle()
+
+        if (issued) {
+            const trim = await checkTrimCerrado(supabase, issued.accrual_date)
+            if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return }
+            if (!confirm(`Se borrará el cobro de ${fmt(h.amount)}, su factura del libro fiscal (${h.invoice_number}) y el PDF de almacenamiento. ¿Continuar?`)) return
+            if (issued.file_path) await supabase.storage.from('invoices').remove([issued.file_path])
+        } else {
+            if (!confirm(`Se borrará el cobro de ${fmt(h.amount)}${h.invoice_path ? ' y su PDF asociado' : ''}. ¿Continuar?`)) return
+            if (h.invoice_path) await supabase.storage.from('invoices').remove([h.invoice_path])
+        }
+
+        const { error: errDel } = await supabase.from('charges').delete().eq('id', h.id)
+        if (errDel) { alert('Error al eliminar el cobro: ' + errDel.message); return }
+
+        const { data: reservasCli } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref').eq('client_id', clienteActual.id)
+        await persistirCobrosCliente(supabase, clienteActual.id, reservasCli ?? [])
+        cargarReservasCliente(clienteActual.id)
         return
     }
-    // Guardar hito y posición para revertir si falla la persistencia
+
+    // Sin factura — flujo existente con reversión en memoria
     const hitoEliminado = hitosClienteTemp.splice(idx, 1)[0]
     const total    = calcularTotalCobrarCliente(clienteActual.id)
     const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
@@ -2093,7 +2108,6 @@ window.eliminarCobroCliente = async function(idx) {
     try {
         await persistirHitosCliente(clienteActual.id)
     } catch (err) {
-        // Revertir: reinsertar el hito en su posición original
         hitosClienteTemp.splice(idx, 0, hitoEliminado)
         const totalRev    = calcularTotalCobrarCliente(clienteActual.id)
         const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)

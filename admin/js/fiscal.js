@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, initTemporada, exportTable } from './utils.js'
+import { initSidebar, initTemporada, exportTable, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { abrirDlgGasto } from './dlg-gasto.js'
 import { iniciarAnalisisFiscal } from './analisis-fiscal.js'
@@ -135,7 +135,7 @@ async function cargarTodo() {
     _gastosData   = gastos
     _emitidasData = emitidas ?? []
 
-    renderGastos(_gastosData)
+    renderGastos(_gastosData, closedSet)
     renderEmitidas(_emitidasData)
     renderF69(_gastosData, _emitidasData, cierre, year, q)
 }
@@ -145,7 +145,7 @@ function fmt(n)  { return (+(n ?? 0)).toFixed(2).replace('.', ',') + ' €' }
 function fmtN(n) { return (+(n ?? 0)).toFixed(2) }
 
 // ===== TAB GASTOS =====
-function renderGastos(rows) {
+function renderGastos(rows, closedSet = new Set()) {
     // Solo gastos sin proveedor — los de proveedor se ven en su ficha
     rows = rows.filter(r => r.provider_id == null)
 
@@ -170,6 +170,12 @@ function renderGastos(rows) {
         sumBase  += base
         sumIva   += iva
         sumTotal += r.total ?? 0
+        const d = r.booked_date ?? r.issue_date
+        const [ry, rm] = d.split('-').map(Number)
+        const esCerrado = closedSet.has(`${ry}-${Math.ceil(rm / 3)}`)
+        const btnEliminar = esCerrado
+            ? `<span title="Trimestre ya presentado a Hacienda" style="font-size:14px;cursor:default">🔒</span>`
+            : `<button class="btn btn-danger" style="font-size:11px;padding:2px 6px" onclick="eliminarGastoFiscal(${r.id})" title="Eliminar del libro fiscal">🗑</button>`
         return `<tr>
             <td style="white-space:nowrap">${r.issue_date}</td>
             <td style="font-size:12px">${r.invoice_number ?? '—'}</td>
@@ -181,8 +187,7 @@ function renderGastos(rows) {
             <td style="font-size:11px;color:var(--subtle)">${r.category ?? '—'}</td>
             <td style="white-space:nowrap;text-align:right">
                 ${r.document_id != null ? `<a href="#" onclick="verDocFiscal(${r.document_id});return false" style="font-size:13px;margin-right:6px" title="Ver documento">📄</a>` : ''}
-                <button class="btn btn-danger" style="font-size:11px;padding:2px 6px"
-                    onclick="eliminarGastoFiscal(${r.id})" title="Eliminar del libro fiscal">🗑</button>
+                ${btnEliminar}
             </td>
         </tr>`
     }).join('')
@@ -199,6 +204,11 @@ window.verDocFiscal = async function (docId) {
 }
 
 window.eliminarGastoFiscal = async function (id) {
+    const { data: inv } = await supabase.from('supplier_invoices').select('booked_date').eq('id', id).single()
+    if (inv) {
+        const trim = await checkTrimCerrado(supabase, inv.booked_date)
+        if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return }
+    }
     if (!confirm('¿Eliminar esta entrada del libro fiscal?\nEl documento original no se borrará.')) return
     const { error } = await supabase.from('supplier_invoices').delete().eq('id', id)
     if (error) { alert('No se puede eliminar: ' + error.message); return }

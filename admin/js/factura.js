@@ -2,7 +2,7 @@
 // Gestiona la generación, previsualización y emisión de facturas desde los hitos de cobro.
 // Se importa desde formulario.js y necesita acceso al cliente supabase y a los datos globales.
 
-import { mostrarOpcionesEnvio, valorO, esVacio, anioTemporada } from './utils.js'
+import { mostrarOpcionesEnvio, valorO, esVacio, anioTemporada, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
 import { PERFIL_FISCAL, irpfRateParaCliente, esFacturaSimplificada } from './fiscal-config.js'
 
 // ===== CONFIGURACIÓN — editar aquí cuando cambien datos del emisor =====
@@ -15,9 +15,9 @@ const FACTURA_CONFIG = {
     web:              'experienciasanfermin.com',
     serie:            'VSF',    // Prefijo de serie: VSF-NN/AAAA
     email_asunto_tpl: (num, fecha) =>
-        `Factura ${num} — ${fecha} — Vive San Fermín a medida (www.experienciasanfermin.com)`,
+        `Factura ${num} — ${fecha} — Vive San Fermín desde dentro (www.experienciasanfermin.com)`,
     email_cuerpo_tpl: (nombreCliente, numFactura, totalAPagar) =>
-        `Estimado/a ${nombreCliente},\n\nAdjunto encontrará la factura ${numFactura} por importe de ${totalAPagar}.\n\nQuedamos a su disposición para cualquier consulta.\n\nUn saludo,\nPaula Díaz Echalecu\nVive San Fermín a medida\nwww.experienciasanfermin.com`,
+        `Estimado/a ${nombreCliente},\n\nAdjunto encontrará la factura ${numFactura} por importe de ${totalAPagar}.\n\nQuedamos a su disposición para cualquier consulta.\n\nUn saludo,\nPaula Díaz Echalecu\nVive San Fermín desde dentro\nwww.experienciasanfermin.com`,
 }
 
 // URL del logo — ruta relativa desde /admin/
@@ -119,6 +119,14 @@ export async function abrirPanelReemision(hitoId, clienteObj, reservasCliente) {
     _hitoActual    = hito
     _numFacturaSig = hito.invoice_number  // conservar número existente
 
+    const { data: issuedActiva } = await _supabase
+        .from('issued_invoices').select('accrual_date')
+        .eq('charge_id', hitoId).eq('is_void', false).maybeSingle()
+    if (issuedActiva) {
+        const trim = await checkTrimCerrado(_supabase, issuedActiva.accrual_date)
+        if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); _modoReemision = false; return }
+    }
+
     renderPanelFactura()
     abrirPanel()
 
@@ -142,12 +150,15 @@ export async function abrirPanelReemision(hitoId, clienteObj, reservasCliente) {
 export async function anularFacturaDeHito(hitoId) {
     const { data: existente } = await _supabase
         .from('issued_invoices')
-        .select('id')
+        .select('id, accrual_date')
         .eq('charge_id', hitoId)
         .eq('is_void', false)
         .maybeSingle()
 
     if (existente) {
+        const trim = await checkTrimCerrado(_supabase, existente.accrual_date)
+        if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return }
+
         const { error: errVoid } = await _supabase
             .from('issued_invoices')
             .update({ is_void: true })
@@ -264,7 +275,7 @@ function buildFacturaHTML() {
                 <div class="factura-brand">
                     <img class="factura-logo" src="${LOGO_URL}" alt="Logo Vive San Fermín" style="height:52px;width:auto">
                     <div>
-                        <div class="factura-brand-name">Vive San Fermín a medida</div>
+                        <div class="factura-brand-name">Vive San Fermín desde dentro</div>
                         <div class="factura-brand-web">${FACTURA_CONFIG.web}</div>
                     </div>
                 </div>
@@ -367,9 +378,24 @@ window.actualizarNivelDetalle = function() {
         contenedor.style.display = ''
     } else if (nivel === 'resumen') {
         if (titulo) titulo.textContent = 'Resumen de servicios contratados'
-        // Por ahora el resumen no muestra contenido; se implementará cuando se decida el formato
-        contenedor.innerHTML    = ''
-        contenedor.style.display = 'none'
+        const rsv         = _reservas.filter(r => r.status !== 'Cancelada')
+        const numEventos  = new Set(rsv.map(r => r.service_id)).size
+        const plazasTotal = rsv.reduce((s, r) => s + (parseInt(r.slots) || 0), 0)
+        const precioTotal = rsv.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
+        contenedor.innerHTML = `
+            <table class="factura-rsv-table" style="margin-top:8px">
+                <thead><tr>
+                    <th>Nº de eventos</th>
+                    <th style="text-align:center">Plazas totales</th>
+                    <th style="text-align:right">Precio total</th>
+                </tr></thead>
+                <tbody><tr>
+                    <td>${numEventos}</td>
+                    <td style="text-align:center">${plazasTotal}</td>
+                    <td style="text-align:right">${fmt(precioTotal)}</td>
+                </tr></tbody>
+            </table>`
+        contenedor.style.display = ''
     } else {
         // omitir: ocultar título y contenido
         if (titulo) titulo.textContent = ''
@@ -478,6 +504,9 @@ async function _emitir() {
     }
 
     const hoy = new Date().toISOString().split('T')[0]
+    const trimHoy = await checkTrimCerrado(_supabase, hoy)
+    if (trimHoy.cerrado) { mostrarModalTrimCerrado(trimHoy.year, trimHoy.quarter); return }
+
     const pdfResult = await generarPDF({ svcLabels })
 
     let invoicePath = null
@@ -546,7 +575,7 @@ async function _emitir() {
     } else if (existente) {
         const { data, error: errUpd } = await _supabase
             .from('issued_invoices').update(issuedPayload).eq('id', existente.id).select('id').single()
-        if (errUpd) console.error('Error al actualizar en libro de facturas emitidas:', errUpd.message)
+        if (errUpd) { alert('Error al actualizar el registro de factura: ' + errUpd.message); return }
         else issuedRow = data
     } else {
         const { data, error: errIns } = await _supabase
@@ -654,12 +683,12 @@ async function generarPDF({ svcLabels = [] } = {}) {
             doc.addImage(_logoBase64, 'PNG', M, y + (AREA_H - lh) / 2, lw, lh)
             const tx = M + lw + 3
             doc.setFontSize(13); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
-            doc.text('Vive San Fermin a medida', tx, yMid)
+            doc.text('Vive San Fermin desde dentro', tx, yMid)
             doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(ROJO)
             doc.text(FACTURA_CONFIG.web, tx, yMid + 5)
         } else {
             doc.setFontSize(14); doc.setFont('helvetica', 'bold'); setColor(ROJO)
-            doc.text('Vive San Fermin a medida', M, yMid)
+            doc.text('Vive San Fermin desde dentro', M, yMid)
             doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(ROJO)
             doc.text(FACTURA_CONFIG.web, M, yMid + 5)
         }
@@ -762,6 +791,8 @@ async function generarPDF({ svcLabels = [] } = {}) {
     // ── Detalle de reservas (con paginación fila a fila) ──────────────────────
     const nivelDetalle    = document.getElementById('selectNivelDetalle')?.value ?? 'detalle'
     const reservasValidas = _reservas.filter(r => r.status !== 'Cancelada')
+    const totalGlobal     = reservasValidas.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
+
     if (nivelDetalle === 'detalle' && reservasValidas.length > 0) {
         checkPage(20)
         doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
@@ -770,7 +801,6 @@ async function generarPDF({ svcLabels = [] } = {}) {
 
         dibujarCabTablaRsv()
 
-        let totalGlobal = 0
         reservasValidas.forEach((r, i) => {
             // Si no cabe la fila, saltar página y repetir cabecera de tabla
             if (y + 7 > PIE_Y - 4) {
@@ -788,12 +818,10 @@ async function generarPDF({ svcLabels = [] } = {}) {
             doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); setColor(NEGRO)
             const svcLabel = svcLabels[i] || _serviceLabel(r)
             const svcLines = doc.splitTextToSize(svcLabel, CW * 0.55)
-            doc.text(svcLines,                          M + 2,         y + 4)
-            doc.text(String(r.slots),                   M + CW * 0.6,  y + 4, { align: 'center' })
-            doc.text(fmt(parseFloat(r.price_per_slot)), M + CW * 0.78, y + 4, { align: 'right' })
-            const sub = parseFloat(r.total_amount ?? 0)
-            doc.text(fmt(sub),                          W - M - 2,     y + 4, { align: 'right' })
-            totalGlobal += sub
+            doc.text(svcLines,                             M + 2,         y + 4)
+            doc.text(String(r.slots),                      M + CW * 0.6,  y + 4, { align: 'center' })
+            doc.text(fmt(parseFloat(r.price_per_slot)),    M + CW * 0.78, y + 4, { align: 'right' })
+            doc.text(fmt(parseFloat(r.total_amount ?? 0)), W - M - 2,     y + 4, { align: 'right' })
             y += 6
             line(M, y, W - M, y, [200, 200, 200], 0.35)
         })
@@ -807,51 +835,6 @@ async function generarPDF({ svcLabels = [] } = {}) {
         doc.text(fmt(totalGlobal), W - M - 2, y, { align: 'right' })
         y += 8
 
-        // Bloque inferior según tipo
-        if (tipo === 'adelanto') {
-            checkPage(18)
-            rectFill(M, y, 0.8, 14, ROJO)
-            doc.setFontSize(8); doc.setFont('helvetica', 'italic'); setColor(GRIS)
-            const nota = `Pago parcial a cuenta del total de servicios contratados (${fmt(totalGlobal)}). Este anticipo no incluye la prestacion del servicio, que se realizara durante San Fermin ${anioTemporada()} (6-14 de julio).`
-            const notaLines = doc.splitTextToSize(nota, CW - 8)
-            doc.text(notaLines, M + 4, y + 4)
-            y += notaLines.length * 4.5 + 6
-
-        } else if (tipo === 'liquidacion') {
-            const todosCharges = _reservas[0]?._charges ?? []
-            const facturados   = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number)
-
-            checkPage(10 + facturados.length * 6 + 20)
-
-            // Título del bloque
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
-            doc.text('LIQUIDACION Y PAGOS ANTERIORES', M, y)
-            y += 5
-            line(M, y, W - M, y, [200, 200, 200], 0.35)
-            y += 4
-
-            // Total contratado
-            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(GRIS)
-            doc.text('Total servicios contratados', M + 2, y)
-            doc.text(fmt(totalGlobal), W - M - 2, y, { align: 'right' })
-            y += 6
-
-            facturados.forEach(c => {
-                line(M, y - 1, W - M, y - 1, [220, 220, 220], 0.2)
-                doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(GRIS)
-                doc.text(`${valorO(c.comments, 'Prepago')} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})`, M + 2, y + 4)
-                doc.text(`- ${fmt(parseFloat(c.amount))}`, W - M - 2, y + 4, { align: 'right' })
-                y += 6
-            })
-
-            line(M, y, W - M, y, ROJO, 0.4)
-            y += 5
-            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
-            doc.text('Saldo pendiente (este hito)', M + 2, y)
-            doc.text(fmt(base), W - M - 2, y, { align: 'right' })
-            y += 8
-        }
-        // tipo === 'unico': sin bloque adicional, el detalle ya es suficiente
     } else if (nivelDetalle === 'resumen' && reservasValidas.length > 0) {
         // ── Resumen de reservas ──────────────────────────────
         checkPage(20)
@@ -861,27 +844,67 @@ async function generarPDF({ svcLabels = [] } = {}) {
 
         const numEventos  = new Set(reservasValidas.map(r => r.service_id)).size
         const plazasTotal = reservasValidas.reduce((s, r) => s + (parseInt(r.slots) || 0), 0)
-        const precioTotal = reservasValidas.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
 
-        // Cabecera
         const colW = CW / 3
         doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
         line(M, y, W - M, y, ROJO, 0.4)
         y += 5
-        doc.text('Nº de eventos',    M + 2,           y)
-        doc.text('Plazas totales',  M + colW + 2,    y)
-        doc.text('Precio total',   M + colW * 2 + 2, y)
+        doc.text('Nº de eventos',   M + 2,            y)
+        doc.text('Plazas totales',  M + colW + 2,     y)
+        doc.text('Precio total',    M + colW * 2 + 2, y)
         y += 4
         line(M, y, W - M, y, [200, 200, 200], 0.35)
         y += 5
 
-        // Fila de datos
         doc.setFont('helvetica', 'normal')
-        doc.text(String(numEventos),  M + 2,           y)
-        doc.text(String(plazasTotal), M + colW + 2,    y)
-        doc.text(fmt(precioTotal),    M + colW * 2 + 2, y)
+        doc.text(String(numEventos),  M + 2,            y)
+        doc.text(String(plazasTotal), M + colW + 2,     y)
+        doc.text(fmt(totalGlobal),    M + colW * 2 + 2, y)
         y += 6
         line(M, y, W - M, y, ROJO, 0.4)
+        y += 8
+    }
+
+    // Nota de anticipo o liquidación — siempre se muestran, independiente del nivel de detalle
+    if (tipo === 'adelanto') {
+        checkPage(18)
+        rectFill(M, y, 0.8, 14, ROJO)
+        doc.setFontSize(8); doc.setFont('helvetica', 'italic'); setColor(GRIS)
+        const nota = `Pago parcial a cuenta del total de servicios contratados (${fmt(totalGlobal)}). Este anticipo no incluye la prestacion del servicio, que se realizara durante San Fermin ${anioTemporada()} (6-14 de julio).`
+        const notaLines = doc.splitTextToSize(nota, CW - 8)
+        doc.text(notaLines, M + 4, y + 4)
+        y += notaLines.length * 4.5 + 6
+
+    } else if (tipo === 'liquidacion') {
+        const todosCharges = _reservas[0]?._charges ?? []
+        const facturados   = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number)
+
+        checkPage(10 + facturados.length * 6 + 20)
+
+        doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); setColor(ROJO)
+        doc.text('LIQUIDACION Y PAGOS ANTERIORES', M, y)
+        y += 5
+        line(M, y, W - M, y, [200, 200, 200], 0.35)
+        y += 4
+
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(GRIS)
+        doc.text('Total servicios contratados', M + 2, y)
+        doc.text(fmt(totalGlobal), W - M - 2, y, { align: 'right' })
+        y += 6
+
+        facturados.forEach(c => {
+            line(M, y - 1, W - M, y - 1, [220, 220, 220], 0.2)
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(GRIS)
+            doc.text(`${valorO(c.comments, 'Prepago')} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})`, M + 2, y + 4)
+            doc.text(`- ${fmt(parseFloat(c.amount))}`, W - M - 2, y + 4, { align: 'right' })
+            y += 6
+        })
+
+        line(M, y, W - M, y, ROJO, 0.4)
+        y += 5
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
+        doc.text('Saldo pendiente (este hito)', M + 2, y)
+        doc.text(fmt(base), W - M - 2, y, { align: 'right' })
         y += 8
     }
 

@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago, calcularCostoPago } from './utils.js'
+import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago, calcularCostoPago, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
 import { syncStockToSfcom } from './sfcom.js'
 import { ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
@@ -1828,16 +1828,48 @@ async function _eliminarSolicitud(rowId) {
 }
 
 async function _eliminarCobro(rowId, row) {
-    if (row.invoice_number) {
-        await _modalOpciones('⛔ Cobro facturado',
-            `Este cobro está vinculado a la factura <strong>${row.invoice_number}</strong>. No se puede eliminar directamente.`,
-            [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
-        return
-    }
     if (row.comments?.includes('Cobrado vía sfcom')) {
         await _modalOpciones('⛔ Cobro sfcom',
             'Este cobro es un registro de sfcom. Cancela la reserva correspondiente para eliminarlo.',
             [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
+        return
+    }
+
+    if (row.invoice_number) {
+        const { data: issued } = await supabase
+            .from('issued_invoices')
+            .select('id, accrual_date, file_path')
+            .eq('charge_id', rowId).eq('is_void', false).maybeSingle()
+
+        if (issued) {
+            const trim = await checkTrimCerrado(supabase, issued.accrual_date)
+            if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return }
+            const opcion = await _modalOpciones('Eliminar cobro facturado',
+                `Se borrará el cobro de <strong>${fmt(row.amount)}</strong>, su factura del libro fiscal (<strong>${row.invoice_number}</strong>) y el PDF de almacenamiento.<br>⚠️ Esta acción no se puede deshacer.`,
+                [
+                    { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+                    { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+                ])
+            if (!opcion || opcion === 'cancelar') return
+            if (issued.file_path) await supabase.storage.from('invoices').remove([issued.file_path])
+        } else {
+            const opcion = await _modalOpciones('Eliminar cobro',
+                `Se borrará el cobro de <strong>${fmt(row.amount)}</strong>${row.invoice_path ? ' y su PDF asociado' : ''}.`,
+                [
+                    { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
+                    { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
+                ])
+            if (!opcion || opcion === 'cancelar') return
+            if (row.invoice_path) await supabase.storage.from('invoices').remove([row.invoice_path])
+        }
+
+        const { error: errDel } = await supabase.from('charges').delete().eq('id', rowId)
+        if (errDel) { alert(`Error al eliminar: ${errDel.message}`); return }
+
+        const { data: reservasCli } = await supabase.from('reservations')
+            .select('client_id, status, total_amount, origin_ref').eq('client_id', row.client_id)
+        await persistirCobrosCliente(supabase, row.client_id, reservasCli ?? [])
+        await cargarTabla()
         return
     }
 
@@ -1950,13 +1982,32 @@ async function _eliminarProveedor(rowId, row) {
             [{ label: 'Cerrar', value: 'ok', clase: 'btn-secondary' }])
         return
     }
+    const [{ data: supplierInvoices }, { data: supplierDocs }] = await Promise.all([
+        supabase.from('supplier_invoices').select('id').eq('provider_id', rowId),
+        supabase.from('supplier_documents').select('id').eq('provider_id', rowId)
+    ])
+    const nFacturas = supplierInvoices?.length ?? 0
+    const nDocs     = supplierDocs?.length ?? 0
+
+    let msgAviso = ''
+    if (nFacturas || nDocs) {
+        const partes = []
+        if (nFacturas) partes.push(`${nFacturas} asiento(s) en el libro fiscal`)
+        if (nDocs)     partes.push(`${nDocs} documento(s) de gasto`)
+        msgAviso = `<br><br>⚠️ Este proveedor tiene ${partes.join(' y ')}. Al eliminarlo quedarán sin proveedor asignado pero permanecerán en el libro fiscal.`
+    }
+
     const opcion = await _modalOpciones('Eliminar proveedor',
-        `¿Eliminar el proveedor <strong>${rowId}</strong>?`,
+        `¿Eliminar el proveedor <strong>${rowId}</strong>?${msgAviso}`,
         [
             { label: 'Sí, eliminar', value: 'ejecutar', clase: 'btn-danger' },
             { label: 'Cancelar',     value: 'cancelar', clase: 'btn-secondary' }
         ])
     if (!opcion || opcion === 'cancelar') return
+
+    if (nFacturas) await supabase.from('supplier_invoices').update({ provider_id: null }).eq('provider_id', rowId)
+    if (nDocs)     await supabase.from('supplier_documents').update({ provider_id: null }).eq('provider_id', rowId)
+
     const { error } = await supabase.from('providers').delete().eq('id', rowId)
     if (error) { alert(`Error al eliminar: ${error.message}`); return }
     await cargarTabla()

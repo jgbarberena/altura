@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, fechaPagoDefault, initPrecioInput, setPrecioValue, getPrecioValue } from './utils.js'
+import { fmt, initSidebar, normalizarId, buscarConPrioridad, persistirCobrosCliente, persistirPagosProveedor, initAutoSave, renderClientChips, exportTable, buildCatalogUrl, abrirRenombrarId, initTemporada, getTemporadaActiva, confirmarSiTemporadaNoActiva, fechaPagoDefault, initPrecioInput, setPrecioValue, getPrecioValue, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
 import { mostrarToast, ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
 import { abrirDlgGasto } from './dlg-gasto.js'
@@ -2323,9 +2323,18 @@ window.verDocProveedor = async function (path) {
 }
 
 window.eliminarDocProveedor = async function (docId, filePath) {
-    if (!confirm('¿Eliminar este documento? La acción no se puede deshacer.')) return
-    const { data: inv } = await supabase.from('supplier_invoices').select('id').eq('document_id', docId).maybeSingle()
-    if (inv) { alert('Este documento está registrado en el libro fiscal. Elimina la entrada del libro antes de borrarlo.'); return }
+    const { data: inv } = await supabase
+        .from('supplier_invoices').select('id, booked_date').eq('document_id', docId).maybeSingle()
+
+    if (inv) {
+        const trim = await checkTrimCerrado(supabase, inv.booked_date)
+        if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return }
+        if (!confirm('Este documento tiene un asiento en el libro fiscal que también se eliminará. ¿Continuar?')) return
+        await supabase.from('supplier_invoices').delete().eq('id', inv.id)
+    } else {
+        if (!confirm('¿Eliminar este documento? La acción no se puede deshacer.')) return
+    }
+
     await supabase.storage.from('supplier-invoices').remove([filePath])
     const { error } = await supabase.from('supplier_documents').delete().eq('id', docId)
     if (error) { alert('Error al eliminar: ' + error.message); return }

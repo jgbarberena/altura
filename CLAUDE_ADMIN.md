@@ -452,6 +452,8 @@ Utilidades compartidas. Exports:
 | `TIPO_SERVICIO_ID` | Constante: `{ chupinazo: 'CHUPINAZO_6', procesion: 'PROCESION_7', gigantes: 'DESPEDIDA_GIGANTES_14', pobre_de_mi: 'POBRE_DE_MI' }`. Encierro no está: su ID depende del día. |
 | `extraerQualifier(slug)` | Devuelve la primera palabra del slug si es `'vivir'`, `'ver'` o `'entender'`; null en otro caso. Usada para construir el mensaje inicial en `_procesarWebFormsSinProcesar`. |
 | `construirItemBorrador({ service_name, service_id, venue_id, venue_display_name, day, slots, price, catalogo_url })` | Factory tipada para líneas de `proposal_draft`. Garantiza que todos los campos existen (null por defecto) y que `estado` siempre es `'pendiente'`. Usar siempre que se cree una línea de borrador desde cero. |
+| `checkTrimCerrado(supabase, date)` | Consulta `fiscal_closings` (model F69, presented\_at IS NOT NULL) y devuelve `{ cerrado: bool, year?, quarter? }`. Fecha en formato `YYYY-MM-DD`. |
+| `mostrarModalTrimCerrado(year, quarter, desc?)` | Modal 🔒 rojo bloqueante. Sin `desc` usa el texto estándar con T+año; `desc` permite texto personalizado (ej. múltiples trimestres en `_guardFiscalCliente`). |
 
 ### modal.js
 `crearModal(id, { wide, narrow, scroll })` — único punto de creación de modales en el admin.
@@ -526,10 +528,12 @@ Estado de cada línea (`estado` en el objeto `proposal_draft`): `'pendiente'` (d
 **Guard de tipo fiscal del cliente (`_guardFiscalCliente` / `_anularFacturas`):** se activa cuando Paula cambia `is_business`, `country` o `nif` de un cliente. Estos tres campos determinan el tipo de factura (IRPF aplicable, simplificada o no) y los datos de cabecera del receptor, por lo que cambiarlos invalida las facturas ya emitidas. El guard opera en tres casos:
 
 - **Sin facturas emitidas** — devuelve `'ok'` sin intervención.
-- **Trimestre cerrado** — devuelve `'bloqueado'`: modal informativo (⛔) con los trimestres afectados; el campo no se guarda.
+- **Trimestre cerrado** — devuelve `'bloqueado'`: modal 🔒 (`mostrarModalTrimCerrado`) con los trimestres afectados; el campo no se guarda.
 - **Trimestre abierto** — modal con tabla de cada hito facturado (número de factura, importe) y un botón "Reemitir" por fila. Paula puede reemitir cada factura desde ese mismo modal (abre el panel `factura.js` encima); el evento `facturaEmitida` marca la fila como reemitida al volver. Al cerrar el modal con "Aceptar": los hitos no reemitidos se anulan vía `_anularFacturas`, el campo se guarda.
 
 **`_anularFacturas(charges)`:** para cada hito, borra las líneas de IVA (`issued_invoice_vat_lines`), borra el registro en `issued_invoices`, borra el PDF del bucket `invoices`, y limpia el hito en `charges` (`invoice_number = null`, `invoiced = false`, `invoiced_at = null`, `invoice_path = null`). **Nunca borra la fila `charges` en sí** — el dinero cobrado/pendiente es irreversible; solo se anula el registro fiscal.
+
+**`eliminarCobroCliente(idx)` (Bloque 5):** si el cobro tiene `invoice_number`, consulta `issued_invoices` para obtener `accrual_date` y comprueba el trimestre con `checkTrimCerrado`. Trimestre cerrado → modal 🔒. Trimestre abierto → confirmación → borra PDF del bucket `invoices` (campo `issued_invoices.file_path`) → borra el charge (CASCADE elimina `issued_invoices` + `issued_invoice_vat_lines` automáticamente) → `persistirCobrosCliente`. Sin factura → flujo original: splice en memoria + `persistirHitosCliente` con reversión en caso de error.
 
 **`nif` fuera de `initAutoSave`:** a diferencia de `name`, `company`, `phone`, etc., el campo `nif` no está en el array `camposCliente` / `camposDB` que alimenta `initAutoSave`. `initAutoSave` no tiene mecanismo de veto (escucha `change` y persiste directamente), por lo que `nif` requiere un handler manual independiente que pueda interrumpir el guardado si el guard lo bloquea o cancela.
 
@@ -778,6 +782,10 @@ Tabs disponibles: `reservations`, `charges`, `payments`, `reservation_requests`,
 
 **Propuesta PDF:** `_limpiarPropuestaReserva(row)` desvincula el PDF de todas las reservas que comparten la misma propuesta (por `proposal_number` o `proposal_path`). El archivo físico en Storage queda huérfano (aceptado). Se llama en `_guardarPricePerSlot` y en `_guardarSlots`.
 
+**`_eliminarCobro`:** si el cobro tiene `invoice_number`, consulta `issued_invoices` por `charge_id`. Trimestre cerrado → modal 🔒. Trimestre abierto → confirmación → borra PDF + charge (CASCADE elimina `issued_invoices` + vat\_lines) → `persistirCobrosCliente`. Sin factura activa pero con `invoice_path` en el charge → borra archivo + charge. Sin factura en absoluto → confirmación simple + delete.
+
+**`_eliminarProveedor`:** verifica venues (bloqueo) y payments (bloqueo) como antes. Luego consulta `supplier_invoices` y `supplier_documents` vinculados por `provider_id`. Si existen, advierte cuántos asientos/documentos quedarán sin proveedor asignado y pide confirmación. Al confirmar: UPDATE SET `provider_id = NULL` en ambas tablas antes de borrar el proveedor. Los asientos permanecen en el libro fiscal, solo quedan desvinculados.
+
 **Filosofía:** tablas.js es la herramienta de emergencia para corregir estados que no pueden arreglarse desde el panel normal. Se permite editar todo, pero nunca se deja la BD inconsistente sin que el usuario lo elija explícitamente. Toda inconsistencia elegida voluntariamente se autocorrige en el siguiente uso normal del panel (o la detecta la verificación financiera).
 
 ### asistente.js
@@ -902,7 +910,9 @@ Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestaña 
 - `_gastosData` — todas las facturas recibidas del trimestre (incluidas las de proveedor). Fuente de verdad para F69, exportación Excel, ZIP de documentos y paquete asesor.
 - `_emitidasData` — facturas emitidas del trimestre. Fuente para F69, ZIP de emitidas y paquete asesor.
 
-**`renderGastos(rows)`:** la pestaña Gastos solo muestra `supplier_invoices` con `provider_id IS NULL` (gastos generales sin proveedor). Los gastos con proveedor se consultan en la ficha del proveedor en `proveedores.html`. Esta restricción se aplica reasignando el parámetro local `rows` al inicio de la función; `_gastosData` permanece sin filtrar para que F69, ZIP y paquete asesor sigan incluyendo todos los gastos del trimestre.
+**`renderGastos(rows, closedSet)`:** la pestaña Gastos solo muestra `supplier_invoices` con `provider_id IS NULL` (gastos generales sin proveedor). Los gastos con proveedor se consultan en la ficha del proveedor en `proveedores.html`. Esta restricción se aplica reasignando el parámetro local `rows` al inicio de la función; `_gastosData` permanece sin filtrar para que F69, ZIP y paquete asesor sigan incluyendo todos los gastos del trimestre. `closedSet` (Set de strings `"YEAR-QUARTER"`) se usa para determinar si cada fila está en un trimestre cerrado: en ese caso la celda de acciones muestra 🔒 en lugar del botón 🗑. La fecha que se comprueba es `booked_date ?? issue_date`, coherente con el trigger de BD.
+
+**`eliminarGastoFiscal(id)`:** consulta `booked_date` del asiento antes de confirmar. Trimestre cerrado → modal 🔒. Trimestre abierto → `confirm()` + DELETE (CASCADE elimina `supplier_invoice_vat_lines`). El documento vinculado no se borra.
 
 **Alertas fiscales (`cargarAlertas`):** cinco tipos de alerta con sistema de dismiss por sentinels (ver §7.6). Las funciones `descartarAlerta(key, extra)` y `recuperarDescartados(tipo)` son globales en este módulo.
 
@@ -1008,7 +1018,11 @@ Módulo ES6 compartido. Exporta `abrirDlgGasto(docOrId, provider, onGuardado)`. 
 
 **Leer con IA:** se deshabilita si los datos fiscales ya están pre-extraídos en `supplier_documents` (`issuer_nif || ai_vat_lines`). El prompt es idéntico al de `gastos.js` excepto que no incluye `suggested_category` ni `concept` (los datos del libro tienen precedencia sobre el concepto operativo).
 
+**Validación de trimestre al guardar:** al abrir el modal se carga `closedSet` (trimestres cerrados de F69). `_dlgCheckFecha` usa el set para distinguir "fecha antigua" (aviso genérico) de "fecha en trimestre ya presentado" (aviso específico). En el guardado, si `booked_date` cae en un trimestre cerrado, se bloquea con `alert` antes del INSERT — la simplificada computa `booked_date = issue_date`, por lo que también queda bloqueada si la fecha del ticket es de un trimestre cerrado. Solución: cambiar a modo "Factura completa" y ajustar `booked_date` a un trimestre abierto.
+
 **Al guardar**, además de insertar en `supplier_invoices` y `supplier_invoice_vat_lines`, se hace también un `UPDATE supplier_documents` con los datos revisados en el modal (`issuer_name`, `issuer_nif`, `invoice_number`, `issue_date`, `irpf_rate/amount`, `ai_vat_lines`). Esto garantiza que el documento quede siempre enriquecido con la lectura más reciente, tanto para gastos generales como para facturas de proveedor.
+
+**`eliminarDocProveedor(docId, filePath)`:** consulta `supplier_invoices` vinculado al documento (`document_id = docId`). Si existe asiento: trimestre cerrado → modal 🔒; trimestre abierto → confirmación → DELETE del asiento (CASCADE elimina vat\_lines) → borra archivo del bucket `supplier-invoices` → borra el documento. Si no existe asiento: confirmación simple → borra archivo → borra documento. La FK `supplier_invoices.document_id → supplier_documents.id` exige borrar el asiento antes que el documento.
 
 **Enriquecimiento del proveedor** (solo cuando `provider != null`, es decir, desde `proveedores.js`): al guardar, `_actualizarProveedor` compara los datos leídos en la factura con los que tiene el proveedor en BD:
 - NIF: si el sistema no tiene NIF → guardar directamente. Si son distintos → `confirm()` campo a campo.
@@ -1138,20 +1152,24 @@ Se decidió no hacerlo hasta auditar el código hardcoded que depende de `servic
 
 ### 7.6 Fiscal — deudas pendientes
 
-**[IMPORTANTE/URGENTE] Auditar y homogeneizar edición/eliminación de asientos fiscales en todo el sistema (jul 2026).**
+**[RESUELTO jul 2026] Protección homogénea de trimestre cerrado en todo el sistema.**
 
-Implementado en Gastos (jul 2026): editar o eliminar un gasto comprueba si existe un asiento en `supplier_invoices` y en qué trimestre está:
-- Trimestre cerrado (`fiscal_closings.presented_at IS NOT NULL`) → bloqueo total (🔒, sin edición ni borrado).
-- Trimestre abierto con asiento → confirmar; si acepta, se borra el asiento (ON DELETE CASCADE elimina `supplier_invoice_vat_lines`) y se puede reanotar.
-- Sin asiento → edición/borrado libre.
+Funciones compartidas en `utils.js`: `checkTrimCerrado(supabase, date)` (consulta `fiscal_closings`, devuelve `{ cerrado, year, quarter }`) y `mostrarModalTrimCerrado(year, quarter, desc?)` (modal 🔒 rojo bloqueante, texto estándar o personalizado).
 
-Hay que auditar y aplicar este mismo criterio en todos los demás flujos donde se crean o eliminan asientos fiscales:
-- **Gestión de Reservas (`formulario.js`)**: facturas emitidas (`emitted_invoices`), cobros en `charges`. ¿Puede Paula borrar una factura emitida de un trimestre cerrado desde este panel? ¿Qué pasa si edita el importe de un cobro ya facturado?
-- **Gestión de Proveedores (`proveedores.js`)**: facturas recibidas de proveedores (`supplier_invoices` con `provider_id != null`), pagos en `payments`. Misma pregunta.
-- **Tablas (`tablas.js`)**: ¿permite borrar o editar filas de `emitted_invoices` o `supplier_invoices` sin comprobar el trimestre?
-- **Panel Fiscal (`fiscal.js`)**: las acciones de "registrar" y "eliminar" en el libro ya deberían respetar el cierre, pero verificar que el bloqueo de trimestre cerrado es consistente.
+Criterio uniforme aplicado en todos los flujos con asiento fiscal:
+- **Trimestre cerrado** → modal 🔒 bloqueante. "Si es imprescindible, llama al administrador de la BD."
+- **Trimestre abierto con asiento** → confirmación; si acepta, se borra el asiento y la operación continúa.
+- **Sin asiento** → operación libre.
 
-El análisis debe cubrir todas las combinaciones (crear / editar importe / editar datos no-fiscales / eliminar) para cada tipo de entidad, y decidir qué operaciones están permitidas en cada estado. Una vez acordado el criterio completo, implementarlo de forma homogénea.
+Fecha de referencia: `issued_invoices` usa `accrual_date`; `supplier_invoices` usa `booked_date` (que es lo que comprueba el trigger `trg_supplier_invoices_immutable`).
+
+Cobertura:
+- `factura.js`: anular, reemitir y emitir nueva (sanity sobre `hoy`).
+- `formulario.js`: `_guardFiscalCliente` (bloqueo si cliente tiene facturas en trimestre cerrado), `eliminarCobroCliente` (check trimestre → borra PDF + charge con CASCADE).
+- `tablas.js`: `_eliminarCobro` (mismo criterio que `eliminarCobroCliente`), `_eliminarProveedor` (avisa de asientos/documentos vinculados y hace SET provider\_id = NULL — los asientos no se borran).
+- `fiscal.js`: `eliminarGastoFiscal` (check trimestre antes de confirmar), `renderGastos` (🔒 en lugar de 🗑 para trimestre cerrado).
+- `proveedores.js`: `eliminarDocProveedor` (check trimestre del asiento vinculado; si abierto, borra asiento → archivo → documento).
+- `dlg-gasto.js`: bloquea el guardado si `booked_date` es de trimestre cerrado; `_dlgCheckFecha` diferencia "fecha antigua" de "fecha en trimestre ya presentado".
 
 **Sort estable sucesivo — solo implementado en `analisis-fiscal.js` (jul 2026).** El resto de tablas del panel con sort (`tablas.js`, `panel.js`) usan `sortArr` de `utils.js`, que crea una copia nueva y reordena desde cero en cada clic. El sort estable sucesivo (aplicar `.sort()` sobre el array ya ordenado) permite el efecto "agrupa por columna B y dentro de cada grupo conserva el orden de la columna A anterior". No trivial de migrar: cambia cómo cada tabla mantiene el estado de ordenación. Deuda identificada, no prioritaria.
 

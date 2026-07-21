@@ -6,7 +6,7 @@
 import { supabase }                        from './supabase.js'
 import { crearModal }                      from './modal.js'
 import { mostrarToast }                    from './verificacion.js'
-import { initPrecioInput, getPrecioValue, setPrecioValue, fmt } from './utils.js'
+import { initPrecioInput, getPrecioValue, setPrecioValue, fmt, checkTrimCerrado } from './utils.js'
 
 export async function abrirDlgGasto(docOrId, provider, onGuardado) {
     let doc = (docOrId && typeof docOrId === 'object') ? docOrId : null
@@ -28,6 +28,10 @@ export async function abrirDlgGasto(docOrId, provider, onGuardado) {
 }
 
 async function _abrirModal(doc, provider, onGuardado) {
+    const { data: closings } = await supabase.from('fiscal_closings')
+        .select('year, quarter').eq('model', 'F69').not('presented_at', 'is', null)
+    const closedSet = new Set((closings ?? []).map(c => `${c.year}-${c.quarter}`))
+
     const sinArch = !doc || doc.file_path?.endsWith('_sin_archivo')
     const ext     = (doc?.file_path ?? '').split('.').pop().toLowerCase()
     const isImg   = ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
@@ -141,9 +145,7 @@ async function _abrirModal(doc, provider, onGuardado) {
                             oninput="window._dlgCheckFecha(this.value)">
                     </div>
                 </div>
-                <div id="dlg-fecha-aviso" style="display:none;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;padding:6px 10px;margin-top:6px">
-                    ⚠️ La fecha leída es de más de un trimestre atrás — comprueba que sea correcta antes de guardar.
-                </div>
+                <div id="dlg-fecha-aviso" style="display:none;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;padding:6px 10px;margin-top:6px"></div>
 
                 <!-- Sección simplificada -->
                 <div id="dlg-sec-simp" style="margin-top:10px">
@@ -275,6 +277,13 @@ async function _abrirModal(doc, provider, onGuardado) {
     window._dlgCheckFecha = (dateStr) => {
         const aviso = document.getElementById('dlg-fecha-aviso')
         if (!aviso || !dateStr) return
+        const [dy, dm] = dateStr.split('-').map(Number)
+        const dq = Math.ceil(dm / 3)
+        if (closedSet.has(`${dy}-${dq}`)) {
+            aviso.style.display = ''
+            aviso.textContent = `⚠️ Esta fecha es de un trimestre ya presentado a Hacienda. La fecha de registro del libro debe ser de un trimestre abierto.`
+            return
+        }
         const now  = new Date()
         const curY = now.getFullYear()
         const curQ = Math.ceil((now.getMonth() + 1) / 3)
@@ -282,7 +291,12 @@ async function _abrirModal(doc, provider, onGuardado) {
         const thresholdDate = prevQ > 0
             ? `${curY}-${String((prevQ - 1) * 3 + 1).padStart(2, '0')}-01`
             : `${curY - 1}-10-01`
-        aviso.style.display = dateStr < thresholdDate ? '' : 'none'
+        if (dateStr < thresholdDate) {
+            aviso.style.display = ''
+            aviso.textContent = '⚠️ La fecha leída es de más de un trimestre atrás — comprueba que sea correcta antes de guardar.'
+        } else {
+            aviso.style.display = 'none'
+        }
     }
 
     window._dlgRecalcSimp = () => {
@@ -451,6 +465,13 @@ async function _abrirModal(doc, provider, onGuardado) {
 
         const validLines = _vatLines.filter(l => parseFloat(l.base) > 0)
         if (!isSimp && !validLines.length) { alert('Añade al menos una línea de IVA'); return }
+
+        // Validar que booked_date no sea de un trimestre cerrado
+        const [bdy, bdm] = bookedDate.split('-').map(Number)
+        if (closedSet.has(`${bdy}-${Math.ceil(bdm / 3)}`)) {
+            alert(`El trimestre T${Math.ceil(bdm / 3)} ${bdy} ya está cerrado. Cambia la fecha de registro a un trimestre abierto.`)
+            return
+        }
 
         const season = parseInt(bookedDate.split('-')[0])
 

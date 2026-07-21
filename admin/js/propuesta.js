@@ -6,12 +6,12 @@ import { mostrarOpcionesEnvio, valorO, esVacio, anioTemporada } from './utils.js
 
 // ===== CONFIGURACIÓN =====
 const PROPUESTA_CONFIG = {
-    empresa_nombre:   'Vive San Fermín a medida',
+    empresa_nombre:   'Vive San Fermín desde dentro',
     web:              'experienciasanfermin.com',
     serie:            'PRP',
     email_asunto_tpl: () => `Tu propuesta San Fermín ${anioTemporada()} — experienciasanfermin.com`,
     email_cuerpo_tpl: (nombreCliente) =>
-        `Estimado/a ${nombreCliente},\n\nAdjunto encontrará su propuesta personalizada para San Fermín ${anioTemporada()}.\n\nEstamos a su disposición para cualquier consulta o ajuste.\n\nUn saludo,\nPaula Díaz Echalecu\nVive San Fermín a medida\nwww.experienciasanfermin.com`,
+        `Estimado/a ${nombreCliente},\n\nAdjunto encontrará su propuesta personalizada para San Fermín ${anioTemporada()}.\n\nEstamos a su disposición para cualquier consulta o ajuste.\n\nUn saludo,\nPaula Díaz Echalecu\nVive San Fermín desde dentro\nwww.experienciasanfermin.com`,
 }
 
 const LOGO_URL_P     = '../img/logos/sanfermin-logo-red.png'
@@ -525,12 +525,12 @@ async function _generarPDF() {
             doc.addImage(_logoBase64, 'PNG', M, y + (AREA_H - lh) / 2, lw, lh)
             const tx = M + lw + 3
             doc.setFontSize(12); doc.setFont('helvetica', 'bold'); setColor(NEGRO)
-            doc.text('Vive San Fermin a medida', tx, yMid - 1)
+            doc.text('Vive San Fermin desde dentro', tx, yMid - 1)
             doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(ROJO)
             doc.text(PROPUESTA_CONFIG.web, tx, yMid + 5)
         } else {
             doc.setFontSize(13); doc.setFont('helvetica', 'bold'); setColor(ROJO)
-            doc.text('Vive San Fermin a medida', M, yMid)
+            doc.text('Vive San Fermin desde dentro', M, yMid)
             doc.setFontSize(8); doc.setFont('helvetica', 'normal'); setColor(ROJO)
             doc.text(PROPUESTA_CONFIG.web, M, yMid + 5)
         }

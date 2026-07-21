@@ -802,3 +802,39 @@ export function construirItemBorrador({
 } = {}) {
     return { service_name, service_id, venue_id, venue_display_name, day, slots, price, catalogo_url, estado: 'pendiente' }
 }
+
+// ===== PROTECCIÓN FISCAL DE TRIMESTRE CERRADO =====
+
+// Comprueba si una fecha cae en un trimestre ya presentado a Hacienda.
+// Devuelve { cerrado: false } o { cerrado: true, year, quarter }.
+export async function checkTrimCerrado(supabase, date) {
+    const { data: closings } = await supabase
+        .from('fiscal_closings')
+        .select('year, quarter')
+        .eq('model', 'F69')
+        .not('presented_at', 'is', null)
+    const closedSet = new Set((closings ?? []).map(c => `${c.year}-${c.quarter}`))
+    const [y, m] = (date ?? '').split('-').map(Number)
+    if (!y || !m) return { cerrado: false }
+    const q = Math.ceil(m / 3)
+    return closedSet.has(`${y}-${q}`) ? { cerrado: true, year: y, quarter: q } : { cerrado: false }
+}
+
+// Modal unificado de bloqueo por trimestre cerrado. Solo informativo, sin opciones.
+// desc: si se pasa, sustituye al texto por defecto (para casos con múltiples trimestres o texto específico).
+export function mostrarModalTrimCerrado(year, quarter, desc = null) {
+    const { overlay, panel } = crearModal('modal-trim-cerrado', { narrow: true })
+    const cuerpo = desc
+        ?? `El <strong>T${quarter} ${year}</strong> ya ha sido presentado a Hacienda.<br><br>
+            Esta acción no está permitida. Si es imprescindible, llama al administrador de la BD.`
+    panel.innerHTML = `
+        <div style="text-align:center;padding:20px 0 8px">
+            <span style="font-size:48px">🔒</span>
+        </div>
+        <div class="modal-header-title" style="color:var(--danger,#dc2626)">Trimestre ya presentado</div>
+        <div class="modal-header-desc">${cuerpo}</div>
+        <div class="modal-actions">
+            <button id="btn-trim-cerrado-ok" class="btn btn-secondary">Entendido</button>
+        </div>`
+    panel.querySelector('#btn-trim-cerrado-ok').onclick = () => overlay.close()
+}
