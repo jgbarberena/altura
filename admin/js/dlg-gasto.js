@@ -384,24 +384,23 @@ async function _abrirModal(doc, provider, onGuardado) {
                 set('dlg-issue-date',     d.issue_date)
                 window._dlgCheckFecha(d.issue_date)
 
-                if (_tipo === 'simp') {
-                    set('dlg-total-simp', d.total)
-                    if (d.vat_lines?.[0]?.rate != null) {
-                        const sel = document.getElementById('dlg-iva-simple')
-                        const r = String(d.vat_lines[0].rate)
-                        for (const o of sel.options) { if (o.value === r) { sel.value = r; break } }
-                    }
-                    window._dlgRecalcSimp()
-                } else {
-                    if (d.vat_lines?.length) {
-                        _vatLines = d.vat_lines.map(l => ({ base: +(l.base||0), rate: +(l.rate||21), vat: +(l.vat||0) }))
-                        document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
-                        document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
-                    }
-                    set('dlg-irpf-rate', d.irpf_rate || null)
-                    window._dlgRecalcFull()
-                    if (d.total) set('dlg-total-full', d.total)
+                // Rellenar siempre ambas secciones para que cambiar de tipo no pierda datos
+                if (d.vat_lines?.length) {
+                    _vatLines = d.vat_lines.map(l => ({ base: +(l.base||0), rate: +(l.rate||21), vat: +(l.vat||0) }))
+                    document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
+                    document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
                 }
+                set('dlg-irpf-rate', d.irpf_rate || null)
+                window._dlgRecalcFull()
+                if (d.total) set('dlg-total-full', d.total)
+
+                if (d.total) set('dlg-total-simp', d.total)
+                if (d.vat_lines?.[0]?.rate != null) {
+                    const sel = document.getElementById('dlg-iva-simple')
+                    const r = String(d.vat_lines[0].rate)
+                    for (const o of sel.options) { if (o.value === r) { sel.value = r; break } }
+                }
+                window._dlgRecalcSimp()
 
                 btn.textContent = '✅ Datos cargados'; btn.disabled = false
             } catch (e) {
@@ -415,11 +414,12 @@ async function _abrirModal(doc, provider, onGuardado) {
     // ── Guardar ───────────────────────────────────────────────────────────────
     document.getElementById('dlg-guardar').addEventListener('click', async () => {
         const get = id => document.getElementById(id)?.value?.trim() ?? ''
-        const issuerName = get('dlg-issuer-name')
-        const issuerNif  = get('dlg-issuer-nif') || 'N/A'
-        const issueDate  = document.getElementById('dlg-issue-date')?.value
-        const notes      = get('dlg-notes') || null
-        const isSimp     = _tipo === 'simp'
+        const issuerName   = get('dlg-issuer-name')
+        const issuerNifRaw = get('dlg-issuer-nif')          // valor real (puede estar vacío)
+        const issuerNif    = issuerNifRaw || 'N/A'           // fallback para supplier_invoices
+        const issueDate    = document.getElementById('dlg-issue-date')?.value
+        const notes        = get('dlg-notes') || null
+        const isSimp       = _tipo === 'simp'
 
         let invNum, bookedDate, category, dedPct, isCapital, irpfRate, irpfAmount, total
 
@@ -517,8 +517,76 @@ async function _abrirModal(doc, provider, onGuardado) {
             )
         }
 
+        // Enriquecer supplier_documents con los datos revisados del modal
+        if (docId) {
+            await supabase.from('supplier_documents').update({
+                issuer_name:    issuerName || null,
+                issuer_nif:     issuerNifRaw || null,
+                invoice_number: invNum || null,
+                issue_date:     issueDate || null,
+                irpf_rate:      irpfRate  || null,
+                irpf_amount:    irpfAmount || null,
+                ai_vat_lines:   validLines.length
+                    ? validLines.map(l => ({ base: +l.base, rate: +l.rate, vat: +l.vat }))
+                    : null,
+            }).eq('id', docId)
+        }
+
+        // Enriquecer datos del proveedor con lo leído en la factura
+        if (provider?.id) {
+            await _actualizarProveedor(provider, issuerName, issuerNifRaw)
+        }
+
         document.getElementById('dlgGasto')?.close()
         mostrarToast('Factura registrada en el libro fiscal')
         onGuardado?.()
     })
+}
+
+// ── Actualizar proveedor con datos leídos en la factura ──────────────────────
+async function _actualizarProveedor(provider, issuerName, issuerNifRaw) {
+    const updates    = {}
+    const conflictos = []
+
+    // NIF: comparación exacta normalizada
+    const nifLeido   = issuerNifRaw?.trim().toUpperCase()
+    const nifSistema = provider.nif?.trim().toUpperCase()
+    if (nifLeido) {
+        if (!nifSistema) {
+            updates.nif = nifLeido
+        } else if (nifSistema !== nifLeido) {
+            conflictos.push({ campo: 'NIF', sistema: provider.nif, factura: issuerNifRaw })
+        }
+    }
+
+    // Nombre: si el leído contiene al del sistema → el nuevo es más completo, actualizar auto
+    const nomLeido   = issuerName?.trim()
+    const nomSistema = provider.name?.trim()
+    if (nomLeido && nomSistema) {
+        const l = nomLeido.toLowerCase()
+        const s = nomSistema.toLowerCase()
+        if (l !== s) {
+            if (l.includes(s)) {
+                updates.name = nomLeido
+            } else {
+                conflictos.push({ campo: 'Nombre', sistema: provider.name, factura: nomLeido })
+            }
+        }
+    } else if (nomLeido && !nomSistema) {
+        updates.name = nomLeido
+    }
+
+    // Preguntar por cada conflicto
+    for (const { campo, sistema, factura } of conflictos) {
+        const ok = confirm(
+            `${campo} del proveedor en el sistema: "${sistema}"\n` +
+            `${campo} leído en la factura: "${factura}"\n\n` +
+            `¿Actualizar en el sistema?`
+        )
+        if (ok) updates[campo === 'NIF' ? 'nif' : 'name'] = factura
+    }
+
+    if (Object.keys(updates).length) {
+        await supabase.from('providers').update(updates).eq('id', provider.id)
+    }
 }

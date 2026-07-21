@@ -977,6 +977,8 @@ Módulo ES6. Página `gastos.html`. Gestión operativa de gastos generales del n
 
 **Formulario único** para alta y edición (mismo HTML, título y botón cambian). Campos: concepto (req), fecha del gasto (req, default hoy), importe (req), checkbox "tiene factura", selector de temporada (discreto), dropzone de archivo. Al hacer clic en una fila se carga el gasto en el formulario (modo edición).
 
+**Visor de archivo integrado:** cuando hay un archivo disponible (local recién seleccionado o existente en storage), el formulario adopta automáticamente el mismo layout de dos columnas que el modal de anotar (`dlg-gasto-layout`): viewer a la izquierda (imagen o iframe PDF con zoom en imágenes), campos a la derecha. El viewer se oculta al cancelar o cuando no hay archivo. Para archivos locales se usa `URL.createObjectURL`, revocado al cerrar el formulario.
+
 **Leer con IA (`claude-haiku-4-5-20251001`):** extrae `issuer_name`, `issuer_nif`, `invoice_number`, `issue_date`, `vat_lines`, `irpf_rate/amount`, `suggested_category`, `concept` y `total`. Cuatro estados del botón:
 - `disabled` — sin archivo disponible
 - `🤖 Leer con IA` — archivo disponible, no leído aún
@@ -996,6 +998,22 @@ En modo edición con archivo existente, el botón se habilita obteniendo una URL
 **Filas en trimestre cerrado:** `opacity: 0.7`, sin onclick, 🔒 en lugar de 🗑.
 
 **Alerta 1 en `fiscal.js`:** los gastos con `has_invoice !== false` pero sin anotar aparecen en alertas. Se dividen en dos sub-secciones: los que tienen archivo (Anotar + Descartar) y los que usan el sentinel `_sin_archivo` (solo Descartar + enlace a `gastos.html`).
+
+### dlg-gasto.js
+Módulo ES6 compartido. Exporta `abrirDlgGasto(docOrId, provider, onGuardado)`. Importado por `gastos.js` (botón "Anotar" en la tabla) y `proveedores.js` (botón "Anotar factura" en la ficha del proveedor). Abre el modal `dlgGasto` con layout ancho de dos columnas cuando hay archivo previsualizable.
+
+**Layout:** viewer (imagen o iframe PDF) a la izquierda, formulario a la derecha. El viewer solo aparece si hay `signedUrl` y el archivo es imagen o PDF. Zoom con clic en imágenes.
+
+**Selector Simplificada / Completa:** actúa exclusivamente como control de visualización. La lectura IA siempre rellena ambas secciones del DOM (total simplificado, IVA simple, líneas de IVA, IRPF y total completo) independientemente del tipo activo. Cambiar de tipo en cualquier momento conserva todos los datos ya cargados. El selector por defecto se determina por el documento: si tiene `invoice_number` o extensión PDF → completa; imagen sin número → simplificada.
+
+**Leer con IA:** se deshabilita si los datos fiscales ya están pre-extraídos en `supplier_documents` (`issuer_nif || ai_vat_lines`). El prompt es idéntico al de `gastos.js` excepto que no incluye `suggested_category` ni `concept` (los datos del libro tienen precedencia sobre el concepto operativo).
+
+**Al guardar**, además de insertar en `supplier_invoices` y `supplier_invoice_vat_lines`, se hace también un `UPDATE supplier_documents` con los datos revisados en el modal (`issuer_name`, `issuer_nif`, `invoice_number`, `issue_date`, `irpf_rate/amount`, `ai_vat_lines`). Esto garantiza que el documento quede siempre enriquecido con la lectura más reciente, tanto para gastos generales como para facturas de proveedor.
+
+**Enriquecimiento del proveedor** (solo cuando `provider != null`, es decir, desde `proveedores.js`): al guardar, `_actualizarProveedor` compara los datos leídos en la factura con los que tiene el proveedor en BD:
+- NIF: si el sistema no tiene NIF → guardar directamente. Si son distintos → `confirm()` campo a campo.
+- Nombre: si el leído contiene al del sistema como subcadena (case-insensitive) → el nuevo es más completo, actualizar automáticamente. Si son distintos → `confirm()`.
+- Solo se actualizan `name` y `nif` en `providers`. La dirección y otros campos no se tocan desde aquí.
 
 ### fiscal-config.js
 Exporta constantes y funciones de lógica fiscal compartidas entre `factura.js` y cualquier otro módulo que necesite calcular IVA o IRPF. Ver documentación en `### factura.js` arriba.

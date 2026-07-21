@@ -23,10 +23,13 @@ let _editingOrigHasInv    = null
 let _editingSignedUrl     = null   // URL de storage del archivo existente
 let _editingAiYaExtraido  = false  // true si el doc ya tenía datos extraídos por IA
 let _docsMap              = new Map()
+let _viewerObjectUrl      = null   // object URL del archivo local en preview
 
 // ===== FORM =====
 const btnNuevo      = document.getElementById('btnNuevoGasto')
 const formGasto     = document.getElementById('form-nuevo-gasto')
+const gastoLayout   = document.getElementById('form-gasto-layout')
+const gastoViewer   = document.getElementById('gasto-viewer')
 const formTitulo    = document.getElementById('gastoFormTitulo')
 const selectSeason  = document.getElementById('gastoSeason')
 const btnGuardar    = document.getElementById('btnGuardarGasto')
@@ -97,6 +100,35 @@ function _setCamposStale(stale) {
     })
 }
 
+// ===== VISOR DE ARCHIVO =====
+function _mostrarViewer(url, ext) {
+    const isImg = ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
+    const media = isImg
+        ? `<img src="${url}" class="dlg-img" id="gasto-viewer-media" alt="documento" style="cursor:zoom-in">`
+        : `<iframe src="${url}" class="dlg-img" title="documento" style="height:100%"></iframe>`
+    gastoViewer.innerHTML =
+        media +
+        `<a href="${url}" target="_blank"
+           style="display:block;text-align:right;font-size:11px;color:var(--subtle);padding:3px 8px;border-top:1px solid var(--border);flex-shrink:0">⤢ Abrir en pestaña</a>`
+    gastoViewer.style.display = ''
+    gastoLayout.classList.add('dlg-gasto-layout')
+    if (isImg) {
+        const imgEl = document.getElementById('gasto-viewer-media')
+        imgEl?.addEventListener('click', () => {
+            imgEl._z = !imgEl._z
+            imgEl.style.objectFit = imgEl._z ? 'none' : 'contain'
+            imgEl.style.cursor    = imgEl._z ? 'zoom-out' : 'zoom-in'
+        })
+    }
+}
+
+function _ocultarViewer() {
+    gastoViewer.innerHTML = ''
+    gastoViewer.style.display = 'none'
+    gastoLayout.classList.remove('dlg-gasto-layout')
+    if (_viewerObjectUrl) { URL.revokeObjectURL(_viewerObjectUrl); _viewerObjectUrl = null }
+}
+
 // ===== FORM HANDLERS =====
 btnNuevo.addEventListener('click', () => {
     if (_editingDocId !== null) {
@@ -119,9 +151,17 @@ function _onNuevoArchivo(file) {
     _archivoSeleccionado = file
     _editingSignedUrl    = null   // ya no se usa la URL de storage
     lblArchivo.textContent = file.name
-    // Si el doc tenía IA previa, marcar campos como potencialmente desfasados
     _setCamposStale(_editingAiYaExtraido)
     _setBtnIA('listo')
+    // Preview del archivo recién seleccionado
+    if (_viewerObjectUrl) URL.revokeObjectURL(_viewerObjectUrl)
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(ext)) {
+        _viewerObjectUrl = URL.createObjectURL(file)
+        _mostrarViewer(_viewerObjectUrl, ext)
+    } else {
+        _ocultarViewer()
+    }
 }
 
 inputArchivo.addEventListener('change', () => {
@@ -133,6 +173,15 @@ inputArchivo.addEventListener('change', () => {
         lblArchivo.textContent = _archivoNombreDoc()
         _setCamposStale(false)
         _setBtnIA(_editingSignedUrl ? (_editingAiYaExtraido ? 'ya-extraido' : 'listo') : 'disabled')
+        // Si hay archivo en storage, mantener su preview; si no, ocultar
+        if (_editingSignedUrl) {
+            const ext = (_editingOrigFile ?? '').split('.').pop().toLowerCase()
+            if (['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(ext)) {
+                _mostrarViewer(_editingSignedUrl, ext)
+            }
+        } else {
+            _ocultarViewer()
+        }
     }
 })
 
@@ -298,13 +347,17 @@ async function _cargarEnFormulario(doc) {
     formGasto.style.display = 'block'
     setTimeout(() => formGasto.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
 
-    // Obtener URL firmada para habilitar IA sobre el archivo existente
+    // Obtener URL firmada para habilitar IA y preview del archivo existente
     const sinArch = !doc.file_path || doc.file_path.endsWith('_sin_archivo')
     if (!sinArch) {
         const { data } = await supabase.storage.from('supplier-invoices').createSignedUrl(doc.file_path, 3600)
         if (data?.signedUrl) {
             _editingSignedUrl = data.signedUrl
             _setBtnIA(_editingAiYaExtraido ? 'ya-extraido' : 'listo')
+            const ext = doc.file_path.split('.').pop().toLowerCase()
+            if (['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(ext)) {
+                _mostrarViewer(data.signedUrl, ext)
+            }
         }
     }
 }
@@ -421,6 +474,7 @@ function resetForm() {
     formTitulo.textContent   = 'Nuevo gasto'
     btnGuardar.disabled      = false
     btnGuardar.textContent   = 'Guardar'
+    _ocultarViewer()
 }
 
 // ===== CARGA Y RENDER =====
