@@ -6,7 +6,7 @@
 import { supabase }                        from './supabase.js'
 import { crearModal }                      from './modal.js'
 import { mostrarToast }                    from './verificacion.js'
-import { initPrecioInput, getPrecioValue, setPrecioValue, fmt, checkTrimCerrado } from './utils.js'
+import { initPrecioInput, getPrecioValue, setPrecioValue, fmt, checkTrimCerrado, validarNif } from './utils.js'
 
 export async function abrirDlgGasto(docOrId, provider, onGuardado) {
     let doc = (docOrId && typeof docOrId === 'object') ? docOrId : null
@@ -66,6 +66,9 @@ async function _abrirModal(doc, provider, onGuardado) {
 
     // El botón "Leer con IA" se desactiva si los datos fiscales ya están pre-extraídos.
     const _aiYaExtraido = !!(doc?.issuer_nif || doc?.ai_vat_lines?.length)
+
+    const _retentionDefault = doc?.irpf_rate === 15 ? 'profesional'
+        : doc?.irpf_rate === 19 ? 'arrendamiento' : 'ninguna'
 
     function _renderVatLines() {
         return _vatLines.map((l, i) => `
@@ -213,10 +216,19 @@ async function _abrirModal(doc, provider, onGuardado) {
                                 style="background:var(--bg-subtle,#f3f4f6)" readonly>
                         </div>
                         <div class="form-field">
+                            <label>Tipo retención</label>
+                            <select id="dlg-retention-type">
+                                <option value="ninguna" ${_retentionDefault === 'ninguna'       ? 'selected' : ''}>Sin retención</option>
+                                <option value="profesional"   ${_retentionDefault === 'profesional'   ? 'selected' : ''}>15% — Profesional</option>
+                                <option value="arrendamiento" ${_retentionDefault === 'arrendamiento' ? 'selected' : ''}>19% — Arrendamiento</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
                             <label>Total a pagar (€)</label>
                             <input type="number" id="dlg-total-full" step="0.01" placeholder="0.00">
                         </div>
                     </div>
+                    <div id="dlg-ia-warnings" style="display:none;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;padding:6px 10px;margin-top:8px"></div>
                 </div>
 
                 <div class="form-field" style="margin-top:12px">
@@ -377,10 +389,15 @@ async function _abrirModal(doc, provider, onGuardado) {
                                     'IMPORTANTE: issuer_name e issuer_nif son del EMISOR (quien vende/presta el servicio), ' +
                                     'NO del destinatario ni del cliente. ' +
                                     'Si aparece "Paula Díaz" o NIF "72694758S", ese es el DESTINATARIO — ignóralo para issuer. ' +
+                                    'retention_type: "profesional" si irpf_rate=15, "arrendamiento" si irpf_rate=19, "ninguna" si no hay retención. ' +
+                                    'Verifica coherencia: cada vat_line.vat debe ser base×rate/100 (tolerancia 0,02 €); ' +
+                                    'total debe ser Σbase + Σvat − irpf_amount (tolerancia 0,02 €); ' +
+                                    'irpf_amount debe ser Σbase × irpf_rate/100 (tolerancia 0,02 €). ' +
+                                    'Si detectas algún descuadre descríbelo en warnings. Si todo cuadra, warnings queda vacío. ' +
                                     'Responde SOLO JSON sin texto adicional:\n' +
                                     '{"issuer_name":"","issuer_nif":"","invoice_number":"",' +
                                     '"issue_date":"YYYY-MM-DD","vat_lines":[{"base":0,"rate":21,"vat":0}],' +
-                                    '"irpf_rate":0,"irpf_amount":0,"total":0}' }
+                                    '"irpf_rate":0,"irpf_amount":0,"total":0,"retention_type":"ninguna","warnings":""}' }
                             ]
                         }]
                     }
@@ -408,6 +425,20 @@ async function _abrirModal(doc, provider, onGuardado) {
                 window._dlgRecalcFull()
                 if (d.total) set('dlg-total-full', d.total)
 
+                if (d.retention_type) {
+                    const retEl = document.getElementById('dlg-retention-type')
+                    if (retEl) retEl.value = d.retention_type
+                }
+                const warnEl = document.getElementById('dlg-ia-warnings')
+                if (warnEl) {
+                    if (d.warnings) {
+                        warnEl.style.display = ''
+                        warnEl.textContent   = '⚠️ IA detectó un descuadre: ' + d.warnings
+                    } else {
+                        warnEl.style.display = 'none'
+                    }
+                }
+
                 if (d.total) set('dlg-total-simp', d.total)
                 if (d.vat_lines?.[0]?.rate != null) {
                     const sel = document.getElementById('dlg-iva-simple')
@@ -429,33 +460,38 @@ async function _abrirModal(doc, provider, onGuardado) {
     document.getElementById('dlg-guardar').addEventListener('click', async () => {
         const get = id => document.getElementById(id)?.value?.trim() ?? ''
         const issuerName   = get('dlg-issuer-name')
-        const issuerNifRaw = get('dlg-issuer-nif')          // valor real (puede estar vacío)
-        const issuerNif    = issuerNifRaw || 'N/A'           // fallback para supplier_invoices
+        const issuerNifRaw  = get('dlg-issuer-nif')
+        const issuerNifNorm = validarNif(issuerNifRaw).normalizado
+        const issuerNif     = issuerNifNorm || 'N/A'
         const issueDate    = document.getElementById('dlg-issue-date')?.value
         const notes        = get('dlg-notes') || null
         const isSimp       = _tipo === 'simp'
 
-        let invNum, bookedDate, category, dedPct, isCapital, irpfRate, irpfAmount, total
+        let invNum, bookedDate, category, dedPct, isCapital, irpfRate, irpfAmount, retentionType, total
 
         if (isSimp) {
             window._dlgRecalcSimp()
-            total      = getPrecioValue(document.getElementById('dlg-total-simp'))
-            invNum     = get('dlg-invoice-number') || `T-${Date.now()}`
-            bookedDate = issueDate
-            category   = 'otros'
-            dedPct     = 100
-            isCapital  = false
-            irpfRate   = 0
-            irpfAmount = 0
+            total         = getPrecioValue(document.getElementById('dlg-total-simp'))
+            invNum        = get('dlg-invoice-number') || `T-${Date.now()}`
+            bookedDate    = issueDate
+            category      = 'otros'
+            dedPct        = 100
+            isCapital     = false
+            irpfRate      = 0
+            irpfAmount    = 0
+            retentionType = 'ninguna'
         } else {
-            invNum     = get('dlg-invoice-number')
-            bookedDate = document.getElementById('dlg-booked-date')?.value || issueDate
-            category   = document.getElementById('dlg-category')?.value ?? 'otros'
-            dedPct     = parseFloat(document.getElementById('dlg-deductible')?.value) ?? 100
-            isCapital  = document.getElementById('dlg-capital')?.checked ?? false
-            irpfRate   = parseFloat(document.getElementById('dlg-irpf-rate')?.value) || 0
-            irpfAmount = parseFloat(document.getElementById('dlg-irpf-amount')?.value) || 0
-            total      = getPrecioValue(document.getElementById('dlg-total-full'))
+            invNum        = get('dlg-invoice-number')
+            bookedDate    = document.getElementById('dlg-booked-date')?.value || issueDate
+            category      = document.getElementById('dlg-category')?.value ?? 'otros'
+            dedPct        = parseFloat(document.getElementById('dlg-deductible')?.value) ?? 100
+            isCapital     = document.getElementById('dlg-capital')?.checked ?? false
+            irpfRate      = parseFloat(document.getElementById('dlg-irpf-rate')?.value) || 0
+            irpfAmount    = parseFloat(document.getElementById('dlg-irpf-amount')?.value) || 0
+            retentionType = irpfAmount > 0
+                ? (document.getElementById('dlg-retention-type')?.value ?? 'ninguna')
+                : 'ninguna'
+            total         = getPrecioValue(document.getElementById('dlg-total-full'))
         }
 
         if (!issuerName)              { alert('Falta el nombre del emisor'); return }
@@ -465,6 +501,22 @@ async function _abrirModal(doc, provider, onGuardado) {
 
         const validLines = _vatLines.filter(l => parseFloat(l.base) > 0)
         if (!isSimp && !validLines.length) { alert('Añade al menos una línea de IVA'); return }
+
+        // Validar aritmética: Σbase + ΣIVA − IRPF = total (tolerancia 0,02 €)
+        if (!isSimp && validLines.length) {
+            const sumBase    = validLines.reduce((s, l) => s + (parseFloat(l.base) || 0), 0)
+            const sumVat     = validLines.reduce((s, l) => s + (parseFloat(l.vat)  || 0), 0)
+            const calculado  = Math.round((sumBase + sumVat - irpfAmount) * 100) / 100
+            if (Math.abs(calculado - total) > 0.02) {
+                alert(
+                    `Descuadre aritmético:\n` +
+                    `· Calculado: ${calculado.toFixed(2).replace('.', ',')} € (Σbase + ΣIVA − IRPF)\n` +
+                    `· Total introducido: ${total.toFixed(2).replace('.', ',')} €\n\n` +
+                    `Corrige el total o las líneas de IVA antes de guardar.`
+                )
+                return
+            }
+        }
 
         // Validar que booked_date no sea de un trimestre cerrado
         const [bdy, bdm] = bookedDate.split('-').map(Number)
@@ -517,8 +569,9 @@ async function _abrirModal(doc, provider, onGuardado) {
                 category,
                 deductible_pct:  dedPct,
                 is_capital_good: isCapital,
-                irpf_rate:       irpfRate  || null,
-                irpf_amount:     irpfAmount || null,
+                irpf_rate:       irpfRate      || null,
+                irpf_amount:     irpfAmount    || null,
+                retention_type:  retentionType,
                 total,
                 season,
                 notes,
@@ -542,7 +595,7 @@ async function _abrirModal(doc, provider, onGuardado) {
         if (docId) {
             await supabase.from('supplier_documents').update({
                 issuer_name:    issuerName || null,
-                issuer_nif:     issuerNifRaw || null,
+                issuer_nif:     issuerNifNorm || null,
                 invoice_number: invNum || null,
                 issue_date:     issueDate || null,
                 irpf_rate:      irpfRate  || null,
@@ -555,7 +608,7 @@ async function _abrirModal(doc, provider, onGuardado) {
 
         // Enriquecer datos del proveedor con lo leído en la factura
         if (provider?.id) {
-            await _actualizarProveedor(provider, issuerName, issuerNifRaw)
+            await _actualizarProveedor(provider, issuerName, issuerNifNorm)
         }
 
         document.getElementById('dlgGasto')?.close()
@@ -565,18 +618,18 @@ async function _abrirModal(doc, provider, onGuardado) {
 }
 
 // ── Actualizar proveedor con datos leídos en la factura ──────────────────────
-async function _actualizarProveedor(provider, issuerName, issuerNifRaw) {
+async function _actualizarProveedor(provider, issuerName, issuerNifNorm) {
     const updates    = {}
     const conflictos = []
 
-    // NIF: comparación exacta normalizada
-    const nifLeido   = issuerNifRaw?.trim().toUpperCase()
-    const nifSistema = provider.nif?.trim().toUpperCase()
+    // NIF: comparación con ambos lados normalizados (sin puntos, guiones, espacios)
+    const nifLeido   = issuerNifNorm
+    const nifSistema = validarNif(provider.nif).normalizado
     if (nifLeido) {
         if (!nifSistema) {
             updates.nif = nifLeido
         } else if (nifSistema !== nifLeido) {
-            conflictos.push({ campo: 'NIF', sistema: provider.nif, factura: issuerNifRaw })
+            conflictos.push({ campo: 'NIF', sistema: provider.nif, factura: issuerNifNorm })
         }
     }
 

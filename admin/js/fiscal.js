@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { initSidebar, initTemporada, exportTable, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
+import { initSidebar, initTemporada, exportTable, checkTrimCerrado, mostrarModalTrimCerrado, validarNif } from './utils.js'
 import { mostrarToast } from './verificacion.js'
 import { abrirDlgGasto } from './dlg-gasto.js'
 import { iniciarAnalisisFiscal } from './analisis-fiscal.js'
@@ -60,7 +60,7 @@ function quarterDates(year, q) {
 
 // ===== TABS =====
 const tabBtns = document.querySelectorAll('.tab-btn')
-const TAB_IDS = { gastos: 'tab-gastos', emitidas: 'tab-emitidas', f69: 'tab-f69' }
+const TAB_IDS = { gastos: 'tab-gastos', emitidas: 'tab-emitidas', f69: 'tab-f69', '715': 'tab-715', '190': 'tab-190' }
 
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -83,8 +83,9 @@ window.irATrimestre = function (year, q) {
 }
 
 // ===== ESTADO =====
-let _gastosData   = []
-let _emitidasData = []
+let _gastosData        = []
+let _emitidasData      = []
+let _gastosAnualesData = []
 
 // ===== CARGA PRINCIPAL =====
 async function cargarTodo() {
@@ -97,6 +98,8 @@ async function cargarTodo() {
         { data: emitidas    },
         { data: cierre      },
         { data: allClosings },
+        { data: cierre715   },
+        { data: cierre190   },
     ] = await Promise.all([
         supabase.from('supplier_invoices')
             .select('*, supplier_invoice_vat_lines(*)'),
@@ -114,6 +117,18 @@ async function cargarTodo() {
         supabase.from('fiscal_closings')
             .select('year, quarter, presented_at')
             .eq('model', 'F69'),
+        supabase.from('fiscal_closings')
+            .select('*')
+            .eq('model', '715')
+            .eq('year', year)
+            .eq('quarter', q)
+            .maybeSingle(),
+        supabase.from('fiscal_closings')
+            .select('*')
+            .eq('model', '190')
+            .eq('year', year)
+            .eq('quarter', 0)
+            .maybeSingle(),
     ])
 
     // Trimestres ya presentados (cerrados)
@@ -132,12 +147,20 @@ async function cargarTodo() {
         .filter(inv => { const d = _fechaEfectiva(inv); return d >= start && d <= end })
         .sort((a, b) => _fechaEfectiva(a).localeCompare(_fechaEfectiva(b)))
 
-    _gastosData   = gastos
-    _emitidasData = emitidas ?? []
+    const gastosAnuales = (allGastos ?? []).filter(inv => {
+        const d = _fechaEfectiva(inv)
+        return d >= `${year}-01-01` && d <= `${year}-12-31`
+    })
+
+    _gastosData        = gastos
+    _emitidasData      = emitidas ?? []
+    _gastosAnualesData = gastosAnuales
 
     renderGastos(_gastosData, closedSet)
     renderEmitidas(_emitidasData)
     renderF69(_gastosData, _emitidasData, cierre, year, q)
+    render715(_gastosData, cierre715, year, q)
+    render190(gastosAnuales, cierre190, year)
 }
 
 // ===== FORMATO =====
@@ -176,11 +199,16 @@ function renderGastos(rows, closedSet = new Set()) {
         const btnEliminar = esCerrado
             ? `<span title="Trimestre ya presentado a Hacienda" style="font-size:14px;cursor:default">🔒</span>`
             : `<button class="btn btn-danger" style="font-size:11px;padding:2px 6px" onclick="eliminarGastoFiscal(${r.id})" title="Eliminar del libro fiscal">🗑</button>`
+        const nifInvalido = !validarNif(r.issuer_nif).valido && (r.irpf_amount ?? 0) > 0
+        const nifCss = nifInvalido
+            ? 'font-size:11px;color:#92400e;background:#fffbeb;border-radius:3px;padding:1px 4px'
+            : 'font-size:11px;color:var(--subtle)'
+        const nifLabel = (r.issuer_nif ?? '—') + (nifInvalido ? ' ⚠' : '')
         return `<tr>
             <td style="white-space:nowrap">${r.issue_date}</td>
             <td style="font-size:12px">${r.invoice_number ?? '—'}</td>
             <td>${r.issuer_name ?? '—'}</td>
-            <td style="font-size:11px;color:var(--subtle)">${r.issuer_nif ?? '—'}</td>
+            <td style="${nifCss}" title="${nifInvalido ? 'NIF inválido — pendiente para el Modelo 190' : ''}">${nifLabel}</td>
             <td style="text-align:right">${fmt(base)}</td>
             <td style="text-align:right">${fmt(iva)}</td>
             <td style="text-align:right;font-weight:600">${fmt(r.total)}</td>
@@ -423,6 +451,221 @@ function renderF69(gastos, emitidas, cierre, year, q) {
     }
 }
 
+// ===== TAB MODELO 715 =====
+
+function _agrupar190(gastos) {
+    const retenidos = gastos.filter(inv => inv.retention_type && inv.retention_type !== 'ninguna')
+    const map = new Map()
+    for (const inv of retenidos) {
+        const { normalizado: nifNorm, valido: nifValido } = validarNif(inv.issuer_nif)
+        const key = `${nifNorm || inv.issuer_name}||${inv.retention_type}`
+        if (!map.has(key)) {
+            map.set(key, {
+                nif:       inv.issuer_nif,
+                nombre:    inv.issuer_name,
+                clave:     inv.retention_type,
+                nifValido,
+                sumBase:   0,
+                sumIrpf:   0,
+            })
+        }
+        const p = map.get(key)
+        p.sumBase += (inv.supplier_invoice_vat_lines ?? []).reduce((s, l) => s + (l.base_amount ?? 0), 0)
+        p.sumIrpf += inv.irpf_amount ?? 0
+    }
+    return [...map.values()].sort((a, b) => a.clave.localeCompare(b.clave) || (a.nombre ?? '').localeCompare(b.nombre ?? ''))
+}
+
+function render715(gastos, cierre715, year, q) {
+    const el = document.getElementById('tab-715-content')
+    if (!el) return
+
+    const CLAVE_LABEL = {
+        profesional:   'G — Profesional (15%)',
+        arrendamiento: 'F — Arrendamiento (19%)',
+    }
+    const cerrado    = !!cierre715?.presented_at
+    const retenidos  = gastos.filter(inv => inv.retention_type && inv.retention_type !== 'ninguna')
+
+    if (!retenidos.length) {
+        el.innerHTML = `<p style="color:var(--subtle);font-size:13px;text-align:center;padding:24px 0">Sin retenciones soportadas en T${q} ${year}.</p>`
+        return
+    }
+
+    const grupos = {}
+    for (const inv of retenidos) {
+        const key = inv.retention_type
+        if (!grupos[key]) grupos[key] = { perceptores: new Set(), sumBase: 0, sumIrpf: 0 }
+        const g = grupos[key]
+        const { normalizado, valido } = validarNif(inv.issuer_nif)
+        g.perceptores.add(valido ? normalizado : `__nombre__${inv.issuer_name}`)
+        g.sumBase += (inv.supplier_invoice_vat_lines ?? []).reduce((s, l) => s + (l.base_amount ?? 0), 0)
+        g.sumIrpf += inv.irpf_amount ?? 0
+    }
+
+    let rows = '', totalPerc = 0, totalBase = 0, totalIrpf = 0
+    for (const [key, label] of Object.entries(CLAVE_LABEL)) {
+        const g = grupos[key]
+        if (!g) continue
+        rows += `<tr>
+            <td style="font-size:13px">${label}</td>
+            <td style="text-align:right">${g.perceptores.size}</td>
+            <td style="text-align:right">${fmt(g.sumBase)}</td>
+            <td style="text-align:right;font-weight:600">${fmt(g.sumIrpf)}</td>
+        </tr>`
+        totalPerc += g.perceptores.size
+        totalBase += g.sumBase
+        totalIrpf += g.sumIrpf
+    }
+
+    el.innerHTML = `
+        <div style="margin-bottom:16px">
+            <table style="width:100%">
+                <thead><tr>
+                    <th style="text-align:left">Clave</th>
+                    <th style="text-align:right">Perceptores</th>
+                    <th style="text-align:right">Base</th>
+                    <th style="text-align:right">Retención ingresada</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr style="border-top:1px solid var(--border);font-weight:600">
+                    <td>Total ${year} T${q}</td>
+                    <td style="text-align:right">${totalPerc}</td>
+                    <td style="text-align:right">${fmt(totalBase)}</td>
+                    <td style="text-align:right">${fmt(totalIrpf)}</td>
+                </tr></tfoot>
+            </table>
+        </div>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <strong style="font-size:13px">Estado del trimestre</strong>
+                    <div style="font-size:12px;color:var(--subtle);margin-top:4px">
+                        ${cerrado
+                            ? `✅ Presentado el ${cierre715.presented_at}`
+                            : '⏳ Pendiente de presentación'}
+                    </div>
+                </div>
+                <button class="btn ${cerrado ? 'btn-secondary' : 'btn-primary'}" id="btn715Presentado"
+                    style="font-size:12px" ${cerrado ? 'disabled' : ''}>
+                    ${cerrado ? '✅ Ya presentado' : 'Marcar como presentado'}
+                </button>
+            </div>
+        </div>`
+
+    if (!cerrado) {
+        document.getElementById('btn715Presentado').addEventListener('click', async () => {
+            if (!confirm(`¿Marcar M-715 ${year} T${q} como presentado?`)) return
+            const { error } = await supabase.from('fiscal_closings').upsert({
+                model: '715', year, quarter: q,
+                presented_at: new Date().toISOString().split('T')[0],
+            }, { onConflict: 'model,year,quarter' })
+            if (error) { alert('Error: ' + error.message); return }
+            mostrarToast('M-715 marcado como presentado')
+            cargarTodo()
+        })
+    }
+}
+
+// ===== TAB MODELO 190 =====
+
+function render190(gastosAnuales, cierre190, year) {
+    const el = document.getElementById('tab-190-content')
+    if (!el) return
+
+    const CLAVE_LABEL = {
+        profesional:   'G — Prof. 15%',
+        arrendamiento: 'F — Arren. 19%',
+    }
+    const cerrado     = !!cierre190?.presented_at
+    const perceptores = _agrupar190(gastosAnuales)
+
+    if (!perceptores.length) {
+        el.innerHTML = `<p style="color:var(--subtle);font-size:13px;text-align:center;padding:24px 0">Sin retenciones soportadas en ${year}.</p>`
+        return
+    }
+
+    const nifInvalidos = perceptores.filter(p => !p.nifValido).length
+
+    const rows = perceptores.map(p => {
+        const nifCss = !p.nifValido
+            ? 'font-family:monospace;color:#92400e;background:#fffbeb;border-radius:3px;padding:1px 4px'
+            : 'font-family:monospace;color:var(--subtle)'
+        return `<tr style="font-size:13px">
+            <td style="${nifCss}" title="${!p.nifValido ? 'NIF inválido' : ''}">${p.nif ?? '—'}${!p.nifValido ? ' ⚠' : ''}</td>
+            <td>${p.nombre ?? '—'}</td>
+            <td style="font-size:12px;color:var(--subtle)">${CLAVE_LABEL[p.clave] ?? p.clave}</td>
+            <td style="text-align:right">${fmt(p.sumBase)}</td>
+            <td style="text-align:right;font-weight:600">${fmt(p.sumIrpf)}</td>
+        </tr>`
+    }).join('')
+
+    const totalBase = perceptores.reduce((s, p) => s + p.sumBase, 0)
+    const totalIrpf = perceptores.reduce((s, p) => s + p.sumIrpf, 0)
+
+    el.innerHTML = `
+        <div style="font-size:12px;color:var(--subtle);margin-bottom:8px">Año ${year} completo — una fila por perceptor y clave</div>
+
+        ${nifInvalidos > 0 ? `
+        <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;padding:8px 12px;margin-bottom:12px">
+            ⚠️ ${nifInvalidos} perceptor${nifInvalidos > 1 ? 'es' : ''} con NIF inválido — corrige antes de presentar el modelo
+        </div>` : ''}
+
+        <div style="margin-bottom:16px">
+            <table style="width:100%">
+                <thead><tr>
+                    <th style="text-align:left">NIF</th>
+                    <th style="text-align:left">Nombre</th>
+                    <th style="text-align:left">Clave</th>
+                    <th style="text-align:right">Base</th>
+                    <th style="text-align:right">Retención</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr style="border-top:1px solid var(--border);font-weight:600">
+                    <td colspan="3">Total ${year}</td>
+                    <td style="text-align:right">${fmt(totalBase)}</td>
+                    <td style="text-align:right">${fmt(totalIrpf)}</td>
+                </tr></tfoot>
+            </table>
+        </div>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <strong style="font-size:13px">Estado del modelo</strong>
+                    <div style="font-size:12px;color:var(--subtle);margin-top:4px">
+                        ${cerrado
+                            ? `✅ Presentado el ${cierre190.presented_at}`
+                            : '⏳ Pendiente de presentación (enero del año siguiente)'}
+                    </div>
+                </div>
+                <button class="btn ${cerrado ? 'btn-secondary' : 'btn-primary'}" id="btn190Presentado"
+                    style="font-size:12px" ${cerrado ? 'disabled' : ''}>
+                    ${cerrado ? '✅ Ya presentado' : 'Marcar como presentado'}
+                </button>
+            </div>
+        </div>`
+
+    if (!cerrado) {
+        document.getElementById('btn190Presentado').addEventListener('click', async () => {
+            if (nifInvalidos > 0) {
+                const ok = confirm(`⚠️ Hay ${nifInvalidos} perceptor${nifInvalidos > 1 ? 'es' : ''} con NIF inválido.\n\n¿Marcar el Modelo 190 de ${year} como presentado de todas formas?`)
+                if (!ok) return
+            } else {
+                if (!confirm(`¿Marcar Modelo 190 de ${year} como presentado?`)) return
+            }
+            const { error } = await supabase.from('fiscal_closings').upsert({
+                model: '190', year, quarter: 0,
+                presented_at: new Date().toISOString().split('T')[0],
+            }, { onConflict: 'model,year,quarter' })
+            if (error) { alert('Error: ' + error.message); return }
+            mostrarToast('Modelo 190 marcado como presentado')
+            cargarTodo()
+        })
+    }
+}
+
 // ===== HELPER ALERTAS =====
 function _alerta(tipo, nivel, titulo, bodyHtml) {
     const bg     = nivel === 'error' ? '#fef2f2' : '#fffbeb'
@@ -459,6 +702,7 @@ async function cargarAlertas() {
         { data: gastosYQ },
         { data: emitidasYQ },
         { data: allClosings },
+        { data: invConRetencion },
     ] = await Promise.all([
         supabase.from('supplier_invoices').select('document_id'),
         supabase.from('providers').select('id, name, comments').eq('invoice', true),
@@ -473,6 +717,10 @@ async function cargarAlertas() {
         supabase.from('supplier_invoices').select('booked_date'),
         supabase.from('issued_invoices').select('accrual_date'),
         supabase.from('fiscal_closings').select('year, quarter, presented_at').eq('model', 'F69'),
+        supabase.from('supplier_invoices')
+            .select('id, issuer_name, issuer_nif')
+            .not('irpf_amount', 'is', null)
+            .gt('irpf_amount', 0),
     ])
 
     // Fase 2: docs pendientes (depende de registeredDocs)
@@ -770,6 +1018,27 @@ async function cargarAlertas() {
         ))
     }
 
+    // Alerta 6: NIFs de emisor con retención inválidos (para el Modelo 190)
+    const nifInvalidos = (invConRetencion ?? []).filter(r => !validarNif(r.issuer_nif).valido)
+    if (nifInvalidos.length > 0) {
+        const filas = nifInvalidos.map(r => `<tr style="font-size:12px">
+            <td style="padding:4px 8px">${r.issuer_name ?? '—'}</td>
+            <td style="padding:4px 8px;font-family:monospace;color:#92400e">${r.issuer_nif ?? '—'}</td>
+        </tr>`).join('')
+        partes.push(_alerta(
+            'nif-invalidos-190', 'warning',
+            `${nifInvalidos.length} NIF${nifInvalidos.length > 1 ? 's' : ''} de emisor con retención inválido${nifInvalidos.length > 1 ? 's' : ''} — pendiente${nifInvalidos.length > 1 ? 's' : ''} para el Modelo 190`,
+            `<p style="font-size:12px;color:var(--subtle);margin:8px 0 6px">El Modelo 190 requiere NIF válido para cada perceptor de retención. Elimina la entrada del libro fiscal y vuelve a registrarla con el NIF correcto.</p>
+            <table style="width:100%;border-collapse:collapse;margin-top:4px">
+                <thead><tr style="font-size:11px;color:var(--subtle)">
+                    <th style="text-align:left;padding:4px 8px">Emisor</th>
+                    <th style="text-align:left;padding:4px 8px">NIF almacenado</th>
+                </tr></thead>
+                <tbody>${filas}</tbody>
+            </table>`
+        ))
+    }
+
     el.innerHTML = partes.join('')
 }
 
@@ -1035,6 +1304,25 @@ async function exportarPaqueteAsesor() {
             ...rows,
         ])
         XLSX.utils.book_append_sheet(wb, ws, 'Emitidas')
+    }
+
+    // Hoja 190 — perceptores con retención del año completo
+    const perceptores190 = _agrupar190(_gastosAnualesData)
+    if (perceptores190.length > 0) {
+        const CLAVE_LABEL = { profesional: 'G — Prof. 15%', arrendamiento: 'F — Arren. 19%' }
+        const rows190 = perceptores190.map(p => [
+            p.nif ?? '',
+            p.nombre ?? '',
+            CLAVE_LABEL[p.clave] ?? p.clave,
+            +fmtN(p.sumBase),
+            +fmtN(p.sumIrpf),
+            p.nifValido ? '' : 'NIF INVÁLIDO',
+        ])
+        const ws190 = XLSX.utils.aoa_to_sheet([
+            ['NIF', 'Nombre', 'Clave', 'Base', 'Retención', 'Aviso'],
+            ...rows190,
+        ])
+        XLSX.utils.book_append_sheet(wb, ws190, `190-${year}`)
     }
 
     const xlsxBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })

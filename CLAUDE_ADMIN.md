@@ -211,6 +211,7 @@ Los campos IA se rellenan al pulsar "Leer con IA" en `gastos.js` o `proveedores.
 | is_capital_good | boolean NOT NULL, default false |
 | irpf_rate | numeric |
 | irpf_amount | numeric |
+| retention_type | text NOT NULL DEFAULT `'ninguna'` — CHECK IN ('ninguna','profesional','arrendamiento'). `profesional` = 15% (actividades profesionales, clave G del M-190), `arrendamiento` = 19% (arrendamiento de inmuebles, clave F del M-190). Se infiere automáticamente de `irpf_rate` al guardar; la IA lo sugiere. **Nunca sumar profesional y arrendamiento en un único total** — el M-715 y M-190 los desgloszan por clave. |
 | total | numeric NOT NULL |
 | season | integer NOT NULL |
 | notes | text |
@@ -263,7 +264,7 @@ Los campos IA se rellenan al pulsar "Leer con IA" en `gastos.js` o `proveedores.
 | id | bigint PK, IDENTITY |
 | model | text NOT NULL, default `'F69'` |
 | year | integer NOT NULL |
-| quarter | integer NOT NULL — CHECK BETWEEN 1 AND 4 |
+| quarter | integer NOT NULL — CHECK `>= 0 AND <= 4`. Trimestres 1–4 para F69 y M-715. `quarter = 0` para el M-190 (anual). |
 | presented_at | **date** (no timestamptz) — NULL = pendiente; fecha real = presentado |
 | result_amount | numeric |
 | vat_to_compensate_next | numeric |
@@ -273,6 +274,25 @@ Los campos IA se rellenan al pulsar "Leer con IA" en `gastos.js` o `proveedores.
 **Protección de trimestres cerrados:** los triggers `trg_supplier_invoices_immutable` y `trg_issued_invoices_immutable` bloquean INSERT/UPDATE/DELETE en `supplier_invoices` e `issued_invoices` cuando el trimestre de `booked_date`/`accrual_date` tiene `presented_at IS NOT NULL` en `fiscal_closings`. Los triggers de las líneas de IVA heredan la misma protección. La función `fiscal_period_is_closed(date)` es la fuente común.
 
 **Función `providers.nif`:** columna `text` añadida en Fase 11 (prerelleno de comodidad, no requisito fiscal).
+
+---
+
+**Retenciones soportadas (M-715 y M-190)** — añadido jul 2026
+
+Cuando Paula recibe facturas con retención (arrendadores de balcones al 19%, servicios profesionales al 15%), ella ingresa esa retención en Hacienda. Dos obligaciones nuevas:
+
+- **M-715 trimestral** (mismos plazos que el F69, mismo criterio de trimestre `_fechaEfectiva`): base y retención desglosadas por clave. Candado propio en `fiscal_closings` con `model='715'`.
+- **M-190 anual** (enero del año siguiente): un registro por perceptor × clave, año natural completo. Candado en `fiscal_closings` con `model='190', quarter=0`.
+
+**Trampas importantes:**
+- **Nunca sumar las dos claves**: 15% (clave G, profesional) y 19% (clave F, arrendamiento) son claves distintas en el modelo — el M-715 y M-190 las muestran por separado.
+- **Validación aritmética**: al contabilizar una factura con retención, el JS bloquea si `Σbase + ΣIVA − irpf_amount ≠ total` (tolerancia 0,02 €). El F69 no cambia.
+- **NIF del emisor no bloquea la contabilización**: un NIF inválido se normaliza (quita puntos/guiones/espacios) y se almacena, pero aparece en ámbar en la tabla fiscal y en una alerta en Fiscal. El M-190 requiere NIF válido — hay que corregirlo antes de presentar (eliminar la entrada y volver a registrar).
+- **`validarNif(raw)`** en `utils.js`: normaliza y valida checksum para NIF, NIE y CIF españoles. Devuelve `{ normalizado, valido }`.
+
+**`retention_type`** se infiere automáticamente al guardar: si `irpf_amount > 0` se lee del selector del modal (pre-seleccionado por la IA o por `irpf_rate`). Si no hay retención o es modo simplificada, se fuerza a `'ninguna'`. La IA también sugiere el tipo y detecta descuadres en un campo `warnings` que aparece en ámbar en el modal (informativo — el JS es la barrera bloqueante).
+
+---
 
 **`reservation_requests`** — Solicitudes recibidas
 | Campo | Notas |

@@ -838,3 +838,48 @@ export function mostrarModalTrimCerrado(year, quarter, desc = null) {
         </div>`
     panel.querySelector('#btn-trim-cerrado-ok').onclick = () => overlay.close()
 }
+
+// Normaliza y valida un NIF/CIF/NIE español.
+// Siempre devuelve { normalizado, valido }.
+// normalizado: sin puntos, espacios ni guiones, en mayúsculas.
+// valido: true solo si el formato y la letra/dígito de control son correctos.
+export function validarNif(raw) {
+    const normalizado = (raw ?? '').replace(/[.\s-]/g, '').toUpperCase()
+    if (!normalizado) return { normalizado, valido: false }
+
+    const LETRAS_NIF = 'TRWAGMYFPDXBNJZSQVHLCKE'
+
+    // NIF: 8 dígitos + letra de control
+    if (/^[0-9]{8}[A-Z]$/.test(normalizado)) {
+        const valido = normalizado[8] === LETRAS_NIF[parseInt(normalizado.slice(0, 8)) % 23]
+        return { normalizado, valido }
+    }
+
+    // NIE: X/Y/Z + 7 dígitos + letra de control
+    if (/^[XYZ][0-9]{7}[A-Z]$/.test(normalizado)) {
+        const num = normalizado.replace('X', '0').replace('Y', '1').replace('Z', '2')
+        const valido = normalizado[8] === LETRAS_NIF[parseInt(num.slice(0, 8)) % 23]
+        return { normalizado, valido }
+    }
+
+    // CIF: letra de organización + 7 dígitos + carácter de control
+    if (/^[ABCDEFGHJNPQRSUVW][0-9]{7}[0-9A-J]$/.test(normalizado)) {
+        const LETRAS_CIF = 'JABCDEFGHI'
+        let sum = 0
+        for (let i = 1; i <= 7; i++) {
+            const d = parseInt(normalizado[i])
+            if (i % 2 === 1) { let v = d * 2; if (v >= 10) v -= 9; sum += v }
+            else sum += d
+        }
+        const cd   = (10 - (sum % 10)) % 10
+        const last = normalizado[8]
+        const org  = normalizado[0]
+        let valido
+        if ('KPQS'.includes(org))      valido = last === LETRAS_CIF[cd]
+        else if ('ABEH'.includes(org)) valido = last === String(cd)
+        else                           valido = last === LETRAS_CIF[cd] || last === String(cd)
+        return { normalizado, valido }
+    }
+
+    return { normalizado, valido: false }
+}

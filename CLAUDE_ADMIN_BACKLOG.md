@@ -982,3 +982,13 @@ Reemplazado el matching por substring (includes) por matching por tokens con umb
 _confirmarClienteAmbiguo actualizado para recibir la lista de candidatos y mostrar todos en el modal
 (nombre + teléfono + email de cada uno), con botón "No, es persona nueva". Paula elige directamente
 en lugar de responder sí/no a un único candidato.
+
+### [RESUELTO jul 2026] Deuda 7.6 — Proteccion homogenea de trimestre cerrado en todo el sistema fiscal
+
+Auditada y homogeneizada la proteccion de trimestre cerrado en todos los flujos que crean o eliminan asientos fiscales (issued_invoices, supplier_invoices).
+
+Funciones compartidas en utils.js: checkTrimCerrado(supabase, date) y mostrarModalTrimCerrado(year, quarter, desc?). Criterio: cerrado -> modal bloqueante; abierto con asiento -> confirmacion + borrado del asiento; sin asiento -> libre.
+
+Cobertura: factura.js (anular, reemitir, emitir nueva), formulario.js (_guardFiscalCliente, eliminarCobroCliente), tablas.js (_eliminarCobro, _eliminarProveedor con SET provider_id = NULL), fiscal.js (eliminarGastoFiscal, renderGastos con icono bloqueo), proveedores.js (eliminarDocProveedor), dlg-gasto.js (validacion booked_date al guardar).
+
+Commit: f7a915f.
