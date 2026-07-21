@@ -169,9 +169,6 @@ function fmtN(n) { return (+(n ?? 0)).toFixed(2) }
 
 // ===== TAB GASTOS =====
 function renderGastos(rows, closedSet = new Set()) {
-    // Solo gastos sin proveedor — los de proveedor se ven en su ficha
-    rows = rows.filter(r => r.provider_id == null)
-
     const tbody   = document.getElementById('tbody-gastos-fiscal')
     const vacio   = document.getElementById('gastos-fiscal-vacio')
     const totales = document.getElementById('gastos-fiscal-totales')
@@ -185,13 +182,15 @@ function renderGastos(rows, closedSet = new Set()) {
     vacio.style.display   = 'none'
     totales.style.display = 'block'
 
-    let sumBase = 0, sumIva = 0, sumTotal = 0
+    let sumBase = 0, sumIva = 0, sumIrpf = 0, sumTotal = 0
     tbody.innerHTML = rows.map(r => {
         const lines = r.supplier_invoice_vat_lines ?? []
         const base  = lines.reduce((s, l) => s + (l.base_amount ?? 0), 0)
         const iva   = lines.reduce((s, l) => s + (l.vat_amount  ?? 0), 0)
+        const irpf  = r.irpf_amount ?? 0
         sumBase  += base
         sumIva   += iva
+        sumIrpf  += irpf
         sumTotal += r.total ?? 0
         const d = r.booked_date ?? r.issue_date
         const [ry, rm] = d.split('-').map(Number)
@@ -199,11 +198,14 @@ function renderGastos(rows, closedSet = new Set()) {
         const btnEliminar = esCerrado
             ? `<span title="Trimestre ya presentado a Hacienda" style="font-size:14px;cursor:default">🔒</span>`
             : `<button class="btn btn-danger" style="font-size:11px;padding:2px 6px" onclick="eliminarGastoFiscal(${r.id})" title="Eliminar del libro fiscal">🗑</button>`
-        const nifInvalido = !validarNif(r.issuer_nif).valido && (r.irpf_amount ?? 0) > 0
+        const nifInvalido = !validarNif(r.issuer_nif).valido && irpf > 0
         const nifCss = nifInvalido
             ? 'font-size:11px;color:#92400e;background:#fffbeb;border-radius:3px;padding:1px 4px'
             : 'font-size:11px;color:var(--subtle)'
-        const nifLabel = (r.issuer_nif ?? '—') + (nifInvalido ? ' ⚠' : '')
+        const nifLabel   = (r.issuer_nif ?? '—') + (nifInvalido ? ' ⚠' : '')
+        const catLabel   = r.provider_id
+            ? `<span style="font-size:11px;color:var(--subtle);font-family:monospace">${r.provider_id}</span>`
+            : `<span style="font-size:11px;color:var(--subtle)">${r.category ?? '—'}</span>`
         return `<tr>
             <td style="white-space:nowrap">${r.issue_date}</td>
             <td style="font-size:12px">${r.invoice_number ?? '—'}</td>
@@ -211,8 +213,9 @@ function renderGastos(rows, closedSet = new Set()) {
             <td style="${nifCss}" title="${nifInvalido ? 'NIF inválido — pendiente para el Modelo 190' : ''}">${nifLabel}</td>
             <td style="text-align:right">${fmt(base)}</td>
             <td style="text-align:right">${fmt(iva)}</td>
+            <td style="text-align:right;color:var(--accent)">${irpf > 0 ? fmt(irpf) : '—'}</td>
             <td style="text-align:right;font-weight:600">${fmt(r.total)}</td>
-            <td style="font-size:11px;color:var(--subtle)">${r.category ?? '—'}</td>
+            <td>${catLabel}</td>
             <td style="white-space:nowrap;text-align:right">
                 ${r.document_id != null ? `<a href="#" onclick="verDocFiscal(${r.document_id});return false" style="font-size:13px;margin-right:6px" title="Ver documento">📄</a>` : ''}
                 ${btnEliminar}
@@ -220,7 +223,10 @@ function renderGastos(rows, closedSet = new Set()) {
         </tr>`
     }).join('')
 
-    totales.innerHTML = `Base: <strong>${fmt(sumBase)}</strong> &nbsp;·&nbsp; IVA: <strong>${fmt(sumIva)}</strong> &nbsp;·&nbsp; Total: <strong>${fmt(sumTotal)}</strong>`
+    const irpfPart = sumIrpf > 0
+        ? ` &nbsp;·&nbsp; IRPF: <strong>${fmt(sumIrpf)}</strong>`
+        : ''
+    totales.innerHTML = `Base: <strong>${fmt(sumBase)}</strong> &nbsp;·&nbsp; IVA: <strong>${fmt(sumIva)}</strong>${irpfPart} &nbsp;·&nbsp; Total: <strong>${fmt(sumTotal)}</strong>`
 }
 
 window.verDocFiscal = async function (docId) {
@@ -1280,11 +1286,13 @@ async function exportarPaqueteAsesor() {
             const lines = r.supplier_invoice_vat_lines ?? []
             const base  = lines.reduce((s, l) => s + (l.base_amount ?? 0), 0)
             const iva   = lines.reduce((s, l) => s + (l.vat_amount  ?? 0), 0)
+            const irpf  = r.irpf_amount ?? 0
+            const catLabel = r.provider_id ? r.provider_id : (r.category ?? '')
             return [r.issue_date, r.invoice_number ?? '', r.issuer_name ?? '', r.issuer_nif ?? '',
-                    +fmtN(base), +fmtN(iva), +fmtN(r.total), r.category ?? '', r.notes ?? '']
+                    +fmtN(base), +fmtN(iva), +fmtN(irpf), +fmtN(r.total), catLabel, r.notes ?? '']
         })
         const ws = XLSX.utils.aoa_to_sheet([
-            ['Fecha factura', 'Nº factura', 'Emisor', 'NIF', 'Base', 'IVA', 'Total', 'Categoría', 'Notas'],
+            ['Fecha factura', 'Nº factura', 'Emisor', 'NIF', 'Base', 'IVA', 'IRPF', 'Total', 'Categoría / Proveedor', 'Notas'],
             ...rows,
         ])
         XLSX.utils.book_append_sheet(wb, ws, 'Gastos')
