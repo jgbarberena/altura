@@ -1329,7 +1329,7 @@ async function exportarPaqueteAsesor() {
         const hoy = new Date().toLocaleDateString('es-ES')
         const ws190 = XLSX.utils.aoa_to_sheet([
             [`Modelo 190 — ${year} (BORRADOR, datos hasta ${hoy})`],
-            ['Solo refleja actividad registrada en el sistema. Puede haber perceptores o bases adicionales fuera de estos datos.'],
+            ['Datos reflejados en este archivo. Puede haber perceptores o bases adicionales no incluidos.'],
             [],
             ['NIF', 'Nombre', 'Clave', 'Base', 'Retención', 'Aviso'],
             ...rows190,
@@ -1370,7 +1370,7 @@ async function exportarPaqueteAsesor() {
         const resultado    = totalDevIva - totalSopDed
         const rowsF69 = [
             [`F69 — ${year} T${q} (BORRADOR)`],
-            ['Solo refleja datos registrados en el sistema. Revisar antes de presentar.'],
+            ['Datos reflejados en este archivo.'],
             [],
             ['IVA DEVENGADO (emitidas)'],
             ['Tipo IVA', 'Base', 'Cuota devengada'],
@@ -1407,7 +1407,7 @@ async function exportarPaqueteAsesor() {
             let totalPerc = 0, totalBase = 0, totalIrpf = 0
             const rows715 = [
                 [`M-715 — ${year} T${q} (BORRADOR)`],
-                ['Solo refleja datos registrados en el sistema. Revisar antes de presentar.'],
+                ['Datos reflejados en este archivo.'],
                 [],
                 ['Clave', 'Perceptores', 'Base imponible', 'Retención ingresada'],
             ]
