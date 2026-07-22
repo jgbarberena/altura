@@ -924,13 +924,14 @@ La sección de borrador también documenta el campo `estado` de cada línea: `'p
 Si se actualiza el prompt: revisar que los nombres de campo son coherentes con la estructura del contexto documentada en la sección `disponibilidadParaAsistente` de este documento. El prompt de caching tiene TTL de 5 minutos — solo ahorra tokens dentro de la misma sesión del navegador.
 
 ### fiscal.js
-Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestaña Gastos (facturas recibidas), pestaña Emitidas (facturas emitidas), pestaña F69 (modelo fiscal trimestral). Selector de año/trimestre persiste en localStorage.
+Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestañas Gastos (facturas recibidas), Emitidas (facturas emitidas), F69 (modelo IVA trimestral), M-715 (retenciones trimestrales) y M-190 (retenciones anuales). Selector de año/trimestre persiste en localStorage.
 
-`cargarTodo()` ejecuta tres queries en paralelo (gastos del trimestre, emitidas del trimestre, cierre fiscal) y alimenta las tres pestañas. Produce tres arrays de módulo:
-- `_gastosData` — todas las facturas recibidas del trimestre (incluidas las de proveedor). Fuente de verdad para F69, exportación Excel, ZIP de documentos y paquete asesor.
-- `_emitidasData` — facturas emitidas del trimestre. Fuente para F69, ZIP de emitidas y paquete asesor.
+`cargarTodo()` ejecuta queries en paralelo y alimenta todas las pestañas. Arrays de módulo:
+- `_gastosData` — todas las `supplier_invoices` del trimestre (incluidas las vinculadas a proveedor). Fuente para F69, M-715, exportación Excel, ZIP y paquete asesor.
+- `_emitidasData` — facturas emitidas del trimestre. Fuente para F69, ZIP y paquete asesor.
+- `_gastosAnualesData` — todas las `supplier_invoices` con retención del año natural completo. Fuente exclusiva para M-190 y la hoja `190-{year}` del Excel.
 
-**`renderGastos(rows, closedSet)`:** la pestaña Gastos solo muestra `supplier_invoices` con `provider_id IS NULL` (gastos generales sin proveedor). Los gastos con proveedor se consultan en la ficha del proveedor en `proveedores.html`. Esta restricción se aplica reasignando el parámetro local `rows` al inicio de la función; `_gastosData` permanece sin filtrar para que F69, ZIP y paquete asesor sigan incluyendo todos los gastos del trimestre. `closedSet` (Set de strings `"YEAR-QUARTER"`) se usa para determinar si cada fila está en un trimestre cerrado: en ese caso la celda de acciones muestra 🔒 en lugar del botón 🗑. La fecha que se comprueba es `booked_date ?? issue_date`, coherente con el trigger de BD.
+**`renderGastos(rows, closedSet)`:** muestra **todas** las `supplier_invoices` del trimestre sin filtrar por `provider_id`. Las facturas vinculadas a proveedor muestran el `provider_id` en la columna "Categoría / Proveedor" (en monoespaciado); las no vinculadas muestran la categoría libre. Columna IRPF en ámbar (`--accent-warn`) si > 0, `—` si cero. Fila de totales incluye IRPF cuando hay retenciones, para contrastar con F69 y M-715. `closedSet` (Set de strings `"YEAR-QUARTER"`) determina si cada fila está en trimestre cerrado: en ese caso la celda de acciones muestra 🔒 en lugar de 🗑. La fecha comprobada es `booked_date ?? issue_date`, coherente con el trigger de BD.
 
 **`eliminarGastoFiscal(id)`:** consulta `booked_date` del asiento antes de confirmar. Trimestre cerrado → modal 🔒. Trimestre abierto → `confirm()` + DELETE (CASCADE elimina `supplier_invoice_vat_lines`). El documento vinculado no se borra.
 
@@ -938,7 +939,7 @@ Módulo ES6. Página `fiscal.html`. Libro fiscal del trimestre activo: pestaña 
 
 **Cierre de trimestre:** al presentar el modelo F69, inserta en `fiscal_closings`. A partir de ese momento los triggers de BD (`trg_supplier_invoices_immutable`, `trg_issued_invoices_immutable`) bloquean cualquier INSERT/UPDATE/DELETE en las tablas fiscales del trimestre cerrado.
 
-**Exportaciones / paquete asesor:** Excel de gastos (SheetJS), ZIP de documentos recibidos (bucket `supplier-invoices`), ZIP de facturas emitidas (bucket `invoices`), paquete asesor (ZIP con ambos ZIPs + Excel + modelo F69 en PDF). Todos operan sobre `_gastosData` / `_emitidasData` completos, sin el filtro de presentación.
+**Exportaciones / paquete asesor:** El ZIP del paquete asesor contiene documentos recibidos (bucket `supplier-invoices`), facturas emitidas (bucket `invoices`) y un Excel (SheetJS) con hasta 5 hojas: `Gastos` (todas las facturas recibidas del trimestre con columna IRPF), `Emitidas`, `F69-T{q} (borrador)` (IVA devengado/soportado por tipo + resultado), `M715-T{q} (borrador)` (retenciones por clave, solo si hay), `190-{year} (borrador)` (perceptores del año completo, fuente `_gastosAnualesData`). Las hojas de borrador incluyen una fila de aviso recordando que los datos son los reflejados en el archivo.
 
 ### analisis-fiscal.js
 Módulo ES6. Exporta `iniciarAnalisisFiscal()`, llamado desde `fiscal.js` al arrancar. Renderiza el bloque `#bloque-analisis-fiscal` en `fiscal.html`, fuera del contenedor trimestral existente.
