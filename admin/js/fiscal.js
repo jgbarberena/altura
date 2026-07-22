@@ -1326,11 +1326,15 @@ async function exportarPaqueteAsesor() {
             +fmtN(p.sumIrpf),
             p.nifValido ? '' : 'NIF INVÁLIDO',
         ])
+        const hoy = new Date().toLocaleDateString('es-ES')
         const ws190 = XLSX.utils.aoa_to_sheet([
+            [`Modelo 190 — ${year} (BORRADOR, datos hasta ${hoy})`],
+            ['Solo refleja actividad registrada en el sistema. Puede haber perceptores o bases adicionales fuera de estos datos.'],
+            [],
             ['NIF', 'Nombre', 'Clave', 'Base', 'Retención', 'Aviso'],
             ...rows190,
         ])
-        XLSX.utils.book_append_sheet(wb, ws190, `190-${year}`)
+        XLSX.utils.book_append_sheet(wb, ws190, `190-${year} (borrador)`)
     }
 
     // Hoja F69 — resumen IVA devengado/soportado del trimestre
@@ -1365,7 +1369,8 @@ async function exportarPaqueteAsesor() {
         const totalSopDed  = [...sopMap.values()].reduce((s, v) => s + v.vatDed, 0) + sopCapIva
         const resultado    = totalDevIva - totalSopDed
         const rowsF69 = [
-            [`F69 — ${year} T${q}`],
+            [`F69 — ${year} T${q} (BORRADOR)`],
+            ['Solo refleja datos registrados en el sistema. Revisar antes de presentar.'],
             [],
             ['IVA DEVENGADO (emitidas)'],
             ['Tipo IVA', 'Base', 'Cuota devengada'],
@@ -1381,7 +1386,7 @@ async function exportarPaqueteAsesor() {
             ['RESULTADO', +fmtN(resultado), resultado > 0 ? 'A ingresar' : resultado < 0 ? 'A compensar' : 'Cuadrado'],
         ]
         const wsF69 = XLSX.utils.aoa_to_sheet(rowsF69)
-        XLSX.utils.book_append_sheet(wb, wsF69, `F69-T${q}`)
+        XLSX.utils.book_append_sheet(wb, wsF69, `F69-T${q} (borrador)`)
     }
 
     // Hoja M-715 — retenciones soportadas del trimestre (solo si hay)
@@ -1401,7 +1406,8 @@ async function exportarPaqueteAsesor() {
             }
             let totalPerc = 0, totalBase = 0, totalIrpf = 0
             const rows715 = [
-                [`M-715 — ${year} T${q}`],
+                [`M-715 — ${year} T${q} (BORRADOR)`],
+                ['Solo refleja datos registrados en el sistema. Revisar antes de presentar.'],
                 [],
                 ['Clave', 'Perceptores', 'Base imponible', 'Retención ingresada'],
             ]
@@ -1415,7 +1421,7 @@ async function exportarPaqueteAsesor() {
             }
             rows715.push([`TOTAL T${q} ${year}`, totalPerc, +fmtN(totalBase), +fmtN(totalIrpf)])
             const ws715 = XLSX.utils.aoa_to_sheet(rows715)
-            XLSX.utils.book_append_sheet(wb, ws715, `M715-T${q}`)
+            XLSX.utils.book_append_sheet(wb, ws715, `M715-T${q} (borrador)`)
         }
     }
 
