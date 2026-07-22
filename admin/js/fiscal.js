@@ -213,7 +213,7 @@ function renderGastos(rows, closedSet = new Set()) {
             <td style="${nifCss}" title="${nifInvalido ? 'NIF inválido — pendiente para el Modelo 190' : ''}">${nifLabel}</td>
             <td style="text-align:right">${fmt(base)}</td>
             <td style="text-align:right">${fmt(iva)}</td>
-            <td style="text-align:right;color:var(--accent)">${irpf > 0 ? fmt(irpf) : '—'}</td>
+            <td style="text-align:right;color:var(--accent-warn)">${irpf > 0 ? fmt(irpf) : '—'}</td>
             <td style="text-align:right;font-weight:600">${fmt(r.total)}</td>
             <td>${catLabel}</td>
             <td style="white-space:nowrap;text-align:right">
@@ -281,7 +281,7 @@ function renderEmitidas(rows) {
             <td style="font-size:11px;color:var(--subtle)">${r.client_nif ?? '—'}</td>
             <td style="text-align:right">${fmt(base)}</td>
             <td style="text-align:right">${fmt(iva)}</td>
-            <td style="text-align:right;color:var(--accent)">${fmt(r.irpf_amount)}</td>
+            <td style="text-align:right;color:var(--accent-warn)">${fmt(r.irpf_amount)}</td>
             <td style="text-align:right;font-weight:600">${fmt(r.total)}</td>
             <td style="font-size:11px;color:var(--subtle)">${r.invoice_type ?? '—'}</td>
             <td>
@@ -1331,6 +1331,92 @@ async function exportarPaqueteAsesor() {
             ...rows190,
         ])
         XLSX.utils.book_append_sheet(wb, ws190, `190-${year}`)
+    }
+
+    // Hoja F69 — resumen IVA devengado/soportado del trimestre
+    {
+        const devMap = new Map()
+        for (const inv of _emitidasData) {
+            for (const line of (inv.issued_invoice_vat_lines ?? [])) {
+                const prev = devMap.get(line.vat_rate) ?? { base: 0, vat: 0 }
+                devMap.set(line.vat_rate, { base: prev.base + (line.base_amount ?? 0), vat: prev.vat + (line.vat_amount ?? 0) })
+            }
+        }
+        const sopMap = new Map()
+        let sopCapBase = 0, sopCapIva = 0
+        for (const inv of _gastosData) {
+            const pct = (inv.deductible_pct ?? 100) / 100
+            for (const line of (inv.supplier_invoice_vat_lines ?? [])) {
+                if (inv.is_capital_good) {
+                    sopCapBase += (line.base_amount ?? 0)
+                    sopCapIva  += (line.vat_amount  ?? 0) * pct
+                } else {
+                    const prev = sopMap.get(line.vat_rate) ?? { base: 0, vatBruto: 0, vatDed: 0 }
+                    sopMap.set(line.vat_rate, {
+                        base:     prev.base     + (line.base_amount ?? 0),
+                        vatBruto: prev.vatBruto + (line.vat_amount  ?? 0),
+                        vatDed:   prev.vatDed   + (line.vat_amount  ?? 0) * pct,
+                    })
+                }
+            }
+        }
+        const totalDevBase = [...devMap.values()].reduce((s, v) => s + v.base, 0)
+        const totalDevIva  = [...devMap.values()].reduce((s, v) => s + v.vat,  0)
+        const totalSopDed  = [...sopMap.values()].reduce((s, v) => s + v.vatDed, 0) + sopCapIva
+        const resultado    = totalDevIva - totalSopDed
+        const rowsF69 = [
+            [`F69 — ${year} T${q}`],
+            [],
+            ['IVA DEVENGADO (emitidas)'],
+            ['Tipo IVA', 'Base', 'Cuota devengada'],
+            ...[...devMap.entries()].sort((a, b) => a[0] - b[0]).map(([rate, d]) => [`${rate}%`, +fmtN(d.base), +fmtN(d.vat)]),
+            ['TOTAL', +fmtN(totalDevBase), +fmtN(totalDevIva)],
+            [],
+            ['IVA SOPORTADO (recibidas)'],
+            ['Tipo IVA', 'Base', 'Cuota bruta', 'Cuota deducible'],
+            ...[...sopMap.entries()].sort((a, b) => a[0] - b[0]).map(([rate, s]) => [`${rate}%`, +fmtN(s.base), +fmtN(s.vatBruto), +fmtN(s.vatDed)]),
+            ...(sopCapBase > 0 ? [['B. Inversión', +fmtN(sopCapBase), +fmtN(sopCapIva), +fmtN(sopCapIva)]] : []),
+            ['TOTAL', '', '', +fmtN(totalSopDed)],
+            [],
+            ['RESULTADO', +fmtN(resultado), resultado > 0 ? 'A ingresar' : resultado < 0 ? 'A compensar' : 'Cuadrado'],
+        ]
+        const wsF69 = XLSX.utils.aoa_to_sheet(rowsF69)
+        XLSX.utils.book_append_sheet(wb, wsF69, `F69-T${q}`)
+    }
+
+    // Hoja M-715 — retenciones soportadas del trimestre (solo si hay)
+    {
+        const CLAVE_LABEL_XL = { profesional: 'G — Profesional (15%)', arrendamiento: 'F — Arrendamiento (19%)' }
+        const retenidos715 = _gastosData.filter(inv => inv.retention_type && inv.retention_type !== 'ninguna')
+        if (retenidos715.length > 0) {
+            const grupos = {}
+            for (const inv of retenidos715) {
+                const key = inv.retention_type
+                if (!grupos[key]) grupos[key] = { perceptores: new Set(), sumBase: 0, sumIrpf: 0 }
+                const g = grupos[key]
+                const { normalizado, valido } = validarNif(inv.issuer_nif)
+                g.perceptores.add(valido ? normalizado : `__nombre__${inv.issuer_name}`)
+                g.sumBase += (inv.supplier_invoice_vat_lines ?? []).reduce((s, l) => s + (l.base_amount ?? 0), 0)
+                g.sumIrpf += inv.irpf_amount ?? 0
+            }
+            let totalPerc = 0, totalBase = 0, totalIrpf = 0
+            const rows715 = [
+                [`M-715 — ${year} T${q}`],
+                [],
+                ['Clave', 'Perceptores', 'Base imponible', 'Retención ingresada'],
+            ]
+            for (const [key, label] of Object.entries(CLAVE_LABEL_XL)) {
+                const g = grupos[key]
+                if (!g) continue
+                rows715.push([label, g.perceptores.size, +fmtN(g.sumBase), +fmtN(g.sumIrpf)])
+                totalPerc += g.perceptores.size
+                totalBase += g.sumBase
+                totalIrpf += g.sumIrpf
+            }
+            rows715.push([`TOTAL T${q} ${year}`, totalPerc, +fmtN(totalBase), +fmtN(totalIrpf)])
+            const ws715 = XLSX.utils.aoa_to_sheet(rows715)
+            XLSX.utils.book_append_sheet(wb, ws715, `M715-T${q}`)
+        }
     }
 
     const xlsxBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
