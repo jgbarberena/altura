@@ -389,6 +389,7 @@ async function _abrirModal(doc, provider, onGuardado) {
                                     'IMPORTANTE: issuer_name e issuer_nif son del EMISOR (quien vende/presta el servicio), ' +
                                     'NO del destinatario ni del cliente. ' +
                                     'Si aparece "Paula Díaz" o NIF "72694758S", ese es el DESTINATARIO — ignóralo para issuer. ' +
+                                    'vat_lines contiene SOLO líneas de IVA (cuota siempre positiva). La retención IRPF NUNCA va en vat_lines — va únicamente en irpf_rate e irpf_amount. ' +
                                     'retention_type: "profesional" si irpf_rate=15, "arrendamiento" si irpf_rate=19, "ninguna" si no hay retención. ' +
                                     'Verifica coherencia: cada vat_line.vat debe ser base×rate/100 (tolerancia 0,02 €); ' +
                                     'total debe ser Σbase + Σvat − irpf_amount (tolerancia 0,02 €); ' +
@@ -417,13 +418,14 @@ async function _abrirModal(doc, provider, onGuardado) {
 
                 // Rellenar siempre ambas secciones para que cambiar de tipo no pierda datos
                 if (d.vat_lines?.length) {
-                    _vatLines = d.vat_lines.map(l => ({ base: +(l.base||0), rate: +(l.rate||21), vat: +(l.vat||0) }))
+                    _vatLines = d.vat_lines
+                        .filter(l => +(l.vat||0) >= 0)
+                        .map(l => ({ base: +(l.base||0), rate: +(l.rate||21), vat: +(l.vat||0) }))
                     document.getElementById('dlg-vat-lines').innerHTML = _renderVatLines()
                     document.querySelectorAll('#dlg-vat-lines .vat-base').forEach(initPrecioInput)
                 }
                 set('dlg-irpf-rate', d.irpf_rate || null)
                 window._dlgRecalcFull()
-                if (d.total) set('dlg-total-full', d.total)
 
                 if (d.retention_type) {
                     const retEl = document.getElementById('dlg-retention-type')
@@ -512,7 +514,7 @@ async function _abrirModal(doc, provider, onGuardado) {
                     `Descuadre aritmético:\n` +
                     `· Calculado: ${calculado.toFixed(2).replace('.', ',')} € (Σbase + ΣIVA − IRPF)\n` +
                     `· Total introducido: ${total.toFixed(2).replace('.', ',')} €\n\n` +
-                    `Corrige el total o las líneas de IVA antes de guardar.`
+                    `Comprueba: líneas de IVA (solo cuotas positivas, sin retención), % IRPF y total.`
                 )
                 return
             }
