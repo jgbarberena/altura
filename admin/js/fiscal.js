@@ -276,7 +276,7 @@ function renderEmitidas(rows) {
         sumIva   += iva
         sumIrpf  += r.irpf_amount ?? 0
         sumTotal += r.total ?? 0
-        const warnSimpl = r.invoice_type === 'simplificada' && !r.client_nif && base >= 400
+        const warnSimpl = r.is_simplified && !r.client_nif && base >= 400
         if (warnSimpl) nifWarnCount++
         return `<tr>
             <td style="white-space:nowrap">${r.accrual_date}</td>
