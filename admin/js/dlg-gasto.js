@@ -385,11 +385,13 @@ async function _abrirModal(doc, provider, onGuardado) {
                             content: [
                                 { type: cType, source: { type: 'base64', media_type: mediaType, data: b64 } },
                                 { type: 'text', text:
-                                    'Extrae los datos fiscales de esta factura. ' +
-                                    'IMPORTANTE: issuer_name e issuer_nif son del EMISOR (quien vende/presta el servicio), ' +
-                                    'NO del destinatario ni del cliente. ' +
+                                    'Eres un extractor de datos fiscales de facturas españolas. Lee la imagen completa con atención y extrae todos los campos. ' +
+                                    'CAMPOS OBLIGATORIOS — búscalos aunque estén en cabecera, pie o lateral:\n' +
+                                    '· invoice_number: número de factura (busca "Factura nº", "Nº", "Ref.", "F-", "FA-" o similar). ' +
+                                    '· issue_date: fecha de la factura en formato YYYY-MM-DD (busca "Fecha", "Fecha de emisión", "Fecha factura" o similar). ' +
+                                    '· issuer_name e issuer_nif: datos del EMISOR (quien factura), NO del destinatario ni del cliente. ' +
                                     'Si aparece "Paula Díaz" o NIF "72694758S", ese es el DESTINATARIO — ignóralo para issuer. ' +
-                                    'vat_lines contiene SOLO líneas de IVA (cuota siempre positiva). La retención IRPF NUNCA va en vat_lines — va únicamente en irpf_rate e irpf_amount. ' +
+                                    'vat_lines: SOLO líneas de IVA (cuota siempre positiva). La retención IRPF NUNCA va en vat_lines — va únicamente en irpf_rate e irpf_amount. ' +
                                     'retention_type: "profesional" si irpf_rate=15, "arrendamiento" si irpf_rate=19, "ninguna" si no hay retención. ' +
                                     'Verifica coherencia: cada vat_line.vat debe ser base×rate/100 (tolerancia 0,02 €); ' +
                                     'total debe ser Σbase + Σvat − irpf_amount (tolerancia 0,02 €); ' +
