@@ -830,7 +830,7 @@ async function cargarAlertas() {
         .filter(yq => {
             if (closedSet.has(yq)) return false
             const [y, q] = yq.split('-').map(Number)
-            return y < curYear || (y === curYear && q < curQ)
+            return y >= curYear - 1 && (y < curYear || (y === curYear && q < curQ))
         })
         .map(yq => { const [y, q] = yq.split('-').map(Number); return { year: y, q } })
         .sort((a, b) => a.year - b.year || a.q - b.q)
