@@ -328,8 +328,8 @@ async function _abrirModal(doc, provider, onGuardado) {
         const total      = Math.round((sumBase + sumVat - irpfAmount) * 100) / 100
         const irpfEl     = document.getElementById('dlg-irpf-amount')
         const totalEl    = document.getElementById('dlg-total-full')
-        if (irpfEl)  irpfEl.value  = irpfAmount || ''
-        if (totalEl) totalEl.value = total || ''
+        if (irpfEl)  irpfEl.value = irpfAmount || ''
+        if (totalEl) setPrecioValue(totalEl, total || '')
     }
 
     window._dlgVatCh = (idx, field, val) => {
