@@ -255,17 +255,19 @@ function renderEmitidas(rows) {
     const tbody   = document.getElementById('tbody-emitidas')
     const vacio   = document.getElementById('emitidas-vacio')
     const totales = document.getElementById('emitidas-totales')
+    const warnNif = document.getElementById('emitidas-warn-nif')
 
     if (!rows.length) {
         tbody.innerHTML       = ''
         vacio.style.display   = 'block'
         totales.style.display = 'none'
+        if (warnNif) warnNif.style.display = 'none'
         return
     }
     vacio.style.display   = 'none'
     totales.style.display = 'block'
 
-    let sumBase = 0, sumIva = 0, sumIrpf = 0, sumTotal = 0
+    let sumBase = 0, sumIva = 0, sumIrpf = 0, sumTotal = 0, nifWarnCount = 0
     tbody.innerHTML = rows.map(r => {
         const lines = r.issued_invoice_vat_lines ?? []
         const base  = lines.reduce((s, l) => s + (l.base_amount ?? 0), 0)
@@ -274,12 +276,15 @@ function renderEmitidas(rows) {
         sumIva   += iva
         sumIrpf  += r.irpf_amount ?? 0
         sumTotal += r.total ?? 0
+        const warnSimpl = r.invoice_type === 'simplificada' && !r.client_nif && base >= 400
+        if (warnSimpl) nifWarnCount++
         return `<tr>
             <td style="white-space:nowrap">${r.accrual_date}</td>
             <td style="font-size:12px">${r.invoice_number ?? '—'}</td>
             <td>${r.client_name ?? '—'}</td>
-            <td style="font-size:11px;color:var(--subtle)">${r.client_nif ?? '—'}</td>
-            <td style="text-align:right">${fmt(base)}</td>
+            <td style="font-size:11px;${warnSimpl ? 'color:var(--accent-warn);font-weight:600' : 'color:var(--subtle)'}"
+                title="${warnSimpl ? 'Simplificada ≥400€ sin NIF — el receptor puede pedir factura completa' : ''}">${r.client_nif ?? '—'}</td>
+            <td style="text-align:right;${warnSimpl ? 'color:var(--accent-warn);font-weight:600' : ''}">${fmt(base)}</td>
             <td style="text-align:right">${fmt(iva)}</td>
             <td style="text-align:right;color:var(--accent-warn)">${fmt(r.irpf_amount)}</td>
             <td style="text-align:right;font-weight:600">${fmt(r.total)}</td>
@@ -293,6 +298,15 @@ function renderEmitidas(rows) {
     }).join('')
 
     totales.innerHTML = `Base: <strong>${fmt(sumBase)}</strong> &nbsp;·&nbsp; IVA: <strong>${fmt(sumIva)}</strong> &nbsp;·&nbsp; IRPF: <strong>${fmt(sumIrpf)}</strong> &nbsp;·&nbsp; Total: <strong>${fmt(sumTotal)}</strong>`
+
+    if (warnNif) {
+        if (nifWarnCount > 0) {
+            warnNif.style.display = ''
+            warnNif.textContent = `⚠️ ${nifWarnCount} factura${nifWarnCount > 1 ? 's' : ''} simplificada${nifWarnCount > 1 ? 's' : ''} con base ≥400€ sin NIF del cliente — el receptor puede solicitar factura completa.`
+        } else {
+            warnNif.style.display = 'none'
+        }
+    }
 }
 
 window.verFacturaEmitida = async function (filePath) {

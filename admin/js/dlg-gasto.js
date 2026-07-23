@@ -312,6 +312,7 @@ async function _abrirModal(doc, provider, onGuardado) {
     }
 
     window._dlgRecalcSimp = () => {
+        if (_tipo !== 'simp') return
         const total   = parseFloat(document.getElementById('dlg-total-simp')?.value) || 0
         const ivaRate = parseFloat(document.getElementById('dlg-iva-simple')?.value) || 0
         if (total > 0) {

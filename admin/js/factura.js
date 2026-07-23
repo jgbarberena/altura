@@ -245,6 +245,9 @@ function renderPanelFactura() {
     if (camposFaltantes.length > 0) {
         alerta.style.display = 'block'
         alerta.textContent   = `⚠️ Faltan datos editables: ${camposFaltantes.join(', ')}. Puedes completarlos directamente en la factura.`
+    } else if (simplified && base >= 400 && esVacio(_cliente.nif)) {
+        alerta.style.display = 'block'
+        alerta.textContent   = `ⓘ Simplificada con base ≥400€ sin NIF del cliente — el receptor puede solicitar factura completa.`
     } else {
         alerta.style.display = 'none'
     }
