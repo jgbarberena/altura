@@ -167,21 +167,30 @@ function renderReservas() {
     const sfcom = reservas.filter(r => r.origin_ref?.startsWith('WEB'))
 
     if (!sfcom.length) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--subtle)">No hay reservas sfcom registradas</td></tr>'
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--subtle)">No hay reservas sfcom registradas</td></tr>'
         return
     }
 
-    tbody.innerHTML = sfcom.map(r => {
+    let totSlots = 0, totNeto = 0, totComision = 0, totTotal = 0
+
+    const filas = sfcom.map(r => {
         const svc  = servicios[r.service_id]
         const cli  = clientes[r.client_id]
         const avail = todosLosDatos.disponibilidad.find(d => d.venue_id === r.venue_id && d.service_id === r.service_id)
-        const totalNeto  = parseFloat(r.total_amount) || (r.slots * parseFloat(r.price_per_slot))
-        const estadoClass = r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'
-        const eventoLabel = svc?.event_type
+        const totalNeto    = parseFloat(r.total_amount) || (r.slots * parseFloat(r.price_per_slot))
+        const comision15   = totalNeto * 0.15
+        const totalReserva = totalNeto + comision15
+        const estadoClass  = r.status === 'Confirmada' ? 'ok' : r.status === 'Cancelada' ? 'error' : 'warn'
+        const eventoLabel  = svc?.event_type
             ? svc.event_type.charAt(0).toUpperCase() + svc.event_type.slice(1).replace(/_/g, ' ')
             : svc?.service_code ?? '—'
-        const diaLabel = svc?.day ?? '—'
+        const diaLabel    = svc?.day ?? '—'
         const sfcomNombre = avail?.sfcom_service_name || '—'
+
+        totSlots    += r.slots ?? 0
+        totNeto     += totalNeto
+        totComision += comision15
+        totTotal    += totalReserva
 
         return `<tr>
             <td><code>${r.origin_ref}</code></td>
@@ -192,10 +201,24 @@ function renderReservas() {
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(r.price_per_slot)}</td>
             <td style="text-align:right;font-weight:600">${fmt(totalNeto)}</td>
+            <td style="text-align:right">${fmt(comision15)}</td>
+            <td style="text-align:right;font-weight:600">${fmt(totalReserva)}</td>
             <td><code>${r.venue_id ?? '—'}</code></td>
             <td class="${estadoClass}">${r.status}</td>
         </tr>`
     }).join('')
+
+    const filaTotal = `<tr style="border-top:2px solid var(--border);font-weight:700">
+        <td colspan="5" style="text-align:right;padding-right:8px">TOTAL</td>
+        <td style="text-align:center">${totSlots}</td>
+        <td></td>
+        <td style="text-align:right">${fmt(totNeto)}</td>
+        <td style="text-align:right">${fmt(totComision)}</td>
+        <td style="text-align:right">${fmt(totTotal)}</td>
+        <td colspan="2"></td>
+    </tr>`
+
+    tbody.innerHTML = filas + filaTotal
 }
 
 // ─── Listings sfcom ───────────────────────────────────────────────────────────
@@ -352,16 +375,28 @@ document.getElementById('btnExportListings')?.addEventListener('click', () => {
 
 document.getElementById('btnExportReservasSfcom')?.addEventListener('click', () => {
     const sfcom = todosLosDatos.reservas.filter(r => r.origin_ref?.startsWith('WEB'))
-    exportTable(sfcom, [
-        { key: 'origin_ref', label: 'Referencia sfcom' },
-        { key: 'id',              label: 'ID reserva' },
-        { key: 'client_id',       label: 'Cliente' },
-        { key: 'service_id', label: 'Servicio', fmt: v => todosLosDatos.servicios[v]?.service_code ?? String(v) },
-        { key: 'venue_id',        label: 'Venue' },
-        { key: 'slots',           label: 'Plazas' },
-        { key: 'price_per_slot',  label: 'Precio neto/plaza', fmt: v => fmt(v) },
-        { key: 'total_amount',    label: 'Total neto',        fmt: v => fmt(v) },
-        { key: 'status',          label: 'Estado' },
+    const rows = sfcom.map(r => {
+        const totalNeto    = parseFloat(r.total_amount) || (r.slots * parseFloat(r.price_per_slot))
+        const comision15   = totalNeto * 0.15
+        return { ...r, _totalNeto: totalNeto, _comision15: comision15, _totalReserva: totalNeto + comision15 }
+    })
+    const totSlots  = rows.reduce((s, r) => s + (r.slots ?? 0), 0)
+    const totNeto   = rows.reduce((s, r) => s + r._totalNeto, 0)
+    const totCom    = rows.reduce((s, r) => s + r._comision15, 0)
+    const totTotal  = rows.reduce((s, r) => s + r._totalReserva, 0)
+    const filaTotal = { origin_ref: 'TOTAL', id: '', client_id: '', service_id: '', venue_id: '', slots: totSlots, price_per_slot: '', _totalNeto: totNeto, _comision15: totCom, _totalReserva: totTotal, status: '', _isTotalRow: true }
+    exportTable([...rows, filaTotal], [
+        { key: 'origin_ref',    label: 'Referencia sfcom' },
+        { key: 'id',            label: 'ID reserva' },
+        { key: 'client_id',     label: 'Cliente' },
+        { key: 'service_id',    label: 'Servicio', fmt: (v, r) => r._isTotalRow ? '' : (todosLosDatos.servicios[v]?.service_code ?? String(v)) },
+        { key: 'venue_id',      label: 'Venue' },
+        { key: 'slots',         label: 'Plazas' },
+        { key: 'price_per_slot', label: 'Precio neto/plaza', fmt: (v, r) => r._isTotalRow ? '' : fmt(v) },
+        { key: '_totalNeto',    label: 'Total neto',   fmt: v => fmt(v) },
+        { key: '_comision15',   label: 'Com. 15%',     fmt: v => fmt(v) },
+        { key: '_totalReserva', label: 'Total reserva', fmt: v => fmt(v) },
+        { key: 'status',        label: 'Estado' },
     ], 'reservas_sfcom.xlsx')
 })
 
