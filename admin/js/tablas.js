@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { requireAuth, logout } from './auth.js'
-import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago, calcularCostoPago, checkTrimCerrado, mostrarModalTrimCerrado } from './utils.js'
+import { fmt, initSidebar, exportTable, abrirRenombrarId, persistirCobrosCliente, persistirPagosProveedor, getTemporadaActiva, calcularSaldoCobro, calcularSaldoPago, calcularCostoPago, checkTrimCerrado, mostrarModalTrimCerrado, eliminarSupplierDoc } from './utils.js'
 import { syncStockToSfcom } from './sfcom.js'
 import { ejecutarVerificacion } from './verificacion.js'
 import { crearModal } from './modal.js'
@@ -762,9 +762,17 @@ async function _listarBucket(bucket) {
             archivos.push({ name: item.name, path: item.name, size: item.metadata?.size, updated_at: item.updated_at })
         } else {
             const { data: sub } = await supabase.storage.from(bucket).list(item.name, { limit: 200, sortBy: { column: 'name', order: 'asc' } })
-            if (sub) sub.filter(s => s.id).forEach(s =>
-                archivos.push({ name: s.name, path: `${item.name}/${s.name}`, size: s.metadata?.size, updated_at: s.updated_at })
-            )
+            if (!sub) continue
+            for (const s of sub) {
+                if (s.id) {
+                    archivos.push({ name: s.name, path: `${item.name}/${s.name}`, size: s.metadata?.size, updated_at: s.updated_at })
+                } else {
+                    const { data: sub2 } = await supabase.storage.from(bucket).list(`${item.name}/${s.name}`, { limit: 200, sortBy: { column: 'name', order: 'asc' } })
+                    if (sub2) sub2.filter(s2 => s2.id).forEach(s2 =>
+                        archivos.push({ name: s2.name, path: `${item.name}/${s.name}/${s2.name}`, size: s2.metadata?.size, updated_at: s2.updated_at })
+                    )
+                }
+            }
         }
     }
     return archivos
@@ -2093,9 +2101,10 @@ async function _mostrarStorage() {
     const wrapper = document.getElementById('tabla-wrapper')
     wrapper.innerHTML = `
         <div id="storage-ui">
-            <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-                <button id="st-tab-proposals" data-sec="proposals" class="st-tab-btn${_storageSeccion === 'proposals' ? ' st-tab-btn--active' : ''}">📄 Propuestas</button>
-                <button id="st-tab-invoices"  data-sec="invoices"  class="st-tab-btn${_storageSeccion === 'invoices'  ? ' st-tab-btn--active' : ''}">🧾 Facturas</button>
+            <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+                <button id="st-tab-proposals"        data-sec="proposals"        class="st-tab-btn${_storageSeccion === 'proposals'        ? ' st-tab-btn--active' : ''}">📄 Propuestas</button>
+                <button id="st-tab-invoices"         data-sec="invoices"         class="st-tab-btn${_storageSeccion === 'invoices'         ? ' st-tab-btn--active' : ''}">🧾 Facturas emitidas</button>
+                <button id="st-tab-supplier-invoices" data-sec="supplier-invoices" class="st-tab-btn${_storageSeccion === 'supplier-invoices' ? ' st-tab-btn--active' : ''}">🗂 Facturas recibidas</button>
             </div>
             <div id="st-dropzone" class="st-dropzone">
                 <span style="color:var(--subtle);font-size:13px">⬆ Arrastra archivos aquí o <label for="st-file-input" style="cursor:pointer;color:var(--accent);text-decoration:underline">selecciona</label></span>
@@ -2130,6 +2139,36 @@ async function _cargarStorageSeccion() {
     content.innerHTML = '<p style="color:var(--subtle);font-size:13px">Cargando...</p>'
 
     const bucket = _storageSeccion
+
+    if (bucket === 'supplier-invoices') {
+        const [archivos, { data: docs }, { data: invs }, { data: closings }] = await Promise.all([
+            _listarBucket(bucket),
+            supabase.from('supplier_documents').select('id, provider_id, concept, has_invoice, notes, file_path').not('file_path', 'is', null),
+            supabase.from('supplier_invoices').select('id, document_id, invoice_number, booked_date'),
+            supabase.from('fiscal_closings').select('year, quarter').eq('model', 'F69').not('presented_at', 'is', null)
+        ])
+        const closedSet = new Set((closings ?? []).map(c => `${c.year}-${c.quarter}`))
+        const invByDoc  = new Map((invs ?? []).map(inv => [inv.document_id, inv]))
+        const pathMap   = new Map()
+        for (const doc of docs ?? []) {
+            if (!doc.file_path) continue
+            const inv    = invByDoc.get(doc.id) ?? null
+            let isClosed = false
+            if (inv?.booked_date) {
+                const [y, m] = inv.booked_date.split('-').map(Number)
+                isClosed = closedSet.has(`${y}-${Math.ceil(m / 3)}`)
+            }
+            pathMap.set(doc.file_path, {
+                docId: doc.id, providerId: doc.provider_id, concept: doc.concept,
+                hasInvoice: doc.has_invoice, notes: doc.notes,
+                invoiceId: inv?.id ?? null, invoiceNumber: inv?.invoice_number ?? null,
+                bookedDate: inv?.booked_date ?? null, isClosed
+            })
+        }
+        _renderStorageSeccion(archivos, pathMap)
+        return
+    }
+
     const [archivos, { data: dbRows }] = await Promise.all([
         _listarBucket(bucket),
         bucket === 'proposals'
@@ -2171,7 +2210,7 @@ function _renderStorageSeccion(archivos, pathMap) {
         let vinculadoHtml
         if (esHuerfano) {
             vinculadoHtml = `<span style="color:var(--accent-warn);font-size:11px">Huérfano</span>`
-            if (bucket === 'invoices') {
+            if (bucket === 'invoices' || bucket === 'supplier-invoices') {
                 vinculadoHtml += ` <button class="st-btn-vincular" data-path="${_esc(f.path)}" data-name="${_esc(f.name)}"
                     style="font-size:11px;padding:2px 8px;margin-left:4px;background:none;border:1px solid var(--border);border-radius:3px;cursor:pointer;font-family:inherit">Vincular</button>`
             }
@@ -2179,13 +2218,30 @@ function _renderStorageSeccion(archivos, pathMap) {
             vinculadoHtml = linked.map(r =>
                 `<span style="font-size:11px">${r.id}${r.proposal_number ? ` (${r.proposal_number})` : ''}</span>`
             ).join(', ')
-        } else {
+        } else if (bucket === 'invoices') {
             const c  = linked[0]
             const f2 = c.due_date ? new Date(c.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'
             vinculadoHtml = `<span style="font-size:11px">${c.client_id} · ${fmt(c.amount)} · ${f2} · ${c.is_final ? 'Final' : 'Adelanto'}</span>`
             vinculadoHtml += ` <button class="st-btn-vincular" data-path="${_esc(f.path)}" data-name="${_esc(f.name)}"
                 style="font-size:11px;padding:2px 6px;margin-left:4px;background:none;border:1px solid var(--border);border-radius:3px;cursor:pointer;font-family:inherit" title="Cambiar vinculación">✏️</button>`
+        } else {
+            // supplier-invoices
+            const d = linked
+            const provStr = d.providerId ? ` · <strong>${_esc(d.providerId)}</strong>` : ''
+            const estadoStr = d.invoiceNumber
+                ? `<span style="color:var(--accent-ok);font-size:11px">✅ ${_esc(d.invoiceNumber)}</span>`
+                : d.hasInvoice === false
+                    ? `<span style="color:var(--subtle);font-size:11px">Sin factura</span>`
+                    : `<span style="color:var(--accent-warn);font-size:11px">Pendiente de anotar</span>`
+            vinculadoHtml = `<span style="font-size:11px">${_esc(d.concept ?? '—')}${provStr}</span> ${estadoStr}`
+            if (d.isClosed) vinculadoHtml += ` <span style="font-size:11px;color:var(--subtle)">· ${d.bookedDate?.slice(0, 7) ?? ''}</span>`
         }
+
+        const trimCerrado = bucket === 'supplier-invoices' && !esHuerfano && linked?.isClosed
+        const btnEliminar = trimCerrado
+            ? `<span title="Trimestre presentado" style="font-size:14px;padding:1px 3px;display:inline-block;line-height:1.4">🔒</span>`
+            : `<button class="st-btn-delete" data-path="${_esc(f.path)}"
+                style="background:none;border:1px solid var(--accent);border-radius:3px;cursor:pointer;font-size:11px;padding:1px 4px;color:var(--accent);line-height:1.4;margin-left:2px" title="Eliminar">🗑</button>`
 
         const rowStyle = esHuerfano ? ' style="color:var(--accent-warn)"' : ''
         return `<tr${rowStyle}>
@@ -2196,8 +2252,7 @@ function _renderStorageSeccion(archivos, pathMap) {
             <td style="text-align:center;white-space:nowrap;padding:0 4px">
                 <button class="st-btn-download" data-path="${_esc(f.path)}"
                     style="background:none;border:none;cursor:pointer;font-size:14px;padding:1px 3px" title="Descargar">📥</button>
-                <button class="st-btn-delete" data-path="${_esc(f.path)}"
-                    style="background:none;border:1px solid var(--accent);border-radius:3px;cursor:pointer;font-size:11px;padding:1px 4px;color:var(--accent);line-height:1.4;margin-left:2px" title="Eliminar">🗑</button>
+                ${btnEliminar}
             </td>
         </tr>`
     }).join('')
@@ -2215,7 +2270,7 @@ function _renderStorageSeccion(archivos, pathMap) {
                     <th>Nombre</th>
                     <th>Tamaño</th>
                     <th>Fecha</th>
-                    <th>${bucket === 'proposals' ? 'Reservas' : 'Cobro'}</th>
+                    <th>${bucket === 'proposals' ? 'Reservas' : bucket === 'invoices' ? 'Cobro' : 'Documento / Proveedor'}</th>
                     <th style="width:70px"></th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
@@ -2231,11 +2286,23 @@ function _renderStorageSeccion(archivos, pathMap) {
     })
 
     content.querySelectorAll('.st-btn-delete').forEach(btn => {
-        btn.addEventListener('click', () => _eliminarArchivoStorage(btn.dataset.path, pathMap.get(btn.dataset.path) ?? null))
+        btn.addEventListener('click', () => {
+            if (_storageSeccion === 'supplier-invoices') {
+                _eliminarArchivoRecibida(btn.dataset.path, pathMap.get(btn.dataset.path) ?? null)
+            } else {
+                _eliminarArchivoStorage(btn.dataset.path, pathMap.get(btn.dataset.path) ?? null)
+            }
+        })
     })
 
     content.querySelectorAll('.st-btn-vincular').forEach(btn => {
-        btn.addEventListener('click', () => _abrirVincularFactura(btn.dataset.path, btn.dataset.name))
+        btn.addEventListener('click', () => {
+            if (_storageSeccion === 'supplier-invoices') {
+                _abrirVincularRecibida(btn.dataset.path, btn.dataset.name)
+            } else {
+                _abrirVincularFactura(btn.dataset.path, btn.dataset.name)
+            }
+        })
     })
 
     document.getElementById('st-btn-huerfanos')?.addEventListener('click', () => {
@@ -2247,7 +2314,11 @@ async function _subirArchivos(files) {
     const bucket  = _storageSeccion
     const errores = []
     for (const file of files) {
-        const { error } = await supabase.storage.from(bucket).upload(file.name, file, { upsert: false })
+        // supplier-invoices: prefijo _upload/ para evitar colisiones con carpetas de proveedor/gastos
+        const path = bucket === 'supplier-invoices'
+            ? `_upload/${Date.now()}_${file.name}`
+            : file.name
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false })
         if (error) errores.push(`${file.name}: ${error.message}`)
     }
     const inp = document.getElementById('st-file-input')
@@ -2305,6 +2376,143 @@ async function _eliminarHuerfanos(paths) {
     const { error } = await supabase.storage.from(bucket).remove(paths)
     if (error) { alert(`Error al eliminar: ${error.message}`); return }
     await _cargarStorageSeccion()
+}
+
+async function _eliminarArchivoRecibida(path, linked) {
+    const nombre = path.split('/').pop()
+
+    if (!linked) {
+        const opcion = await _modalOpciones(
+            'Eliminar archivo huérfano',
+            `¿Eliminar <strong>${_esc(nombre)}</strong>?<br>No hay ningún registro en BD vinculado a este archivo.`,
+            [
+                { label: 'Sí, eliminar', value: 'ok',    clase: 'btn-danger' },
+                { label: 'Cancelar',     value: 'cancel', clase: 'btn-secondary' }
+            ]
+        )
+        if (!opcion || opcion === 'cancel') return
+        await supabase.storage.from('supplier-invoices').remove([path])
+        await _cargarStorageSeccion()
+        return
+    }
+
+    const fiscalDesc = linked.invoiceId
+        ? `<br>⚠️ Tiene un asiento en el libro fiscal${linked.invoiceNumber ? ` (<strong>${_esc(linked.invoiceNumber)}</strong>)` : ''} que también se eliminará.`
+        : ''
+
+    const opcion = await _modalOpciones(
+        'Eliminar archivo de proveedor',
+        `<strong>${_esc(nombre)}</strong>${fiscalDesc}<br>¿Qué quieres eliminar?`,
+        [
+            { label: 'Archivo y gasto completo', value: 'todo',   clase: 'btn-danger' },
+            { label: 'Solo el archivo',          value: 'solo',   clase: 'btn-secondary' },
+            { label: 'Cancelar',                 value: 'cancel', clase: 'btn-secondary' }
+        ]
+    )
+    if (!opcion || opcion === 'cancel') return
+
+    // El asiento fiscal siempre se elimina con el archivo
+    if (linked.invoiceId) {
+        await supabase.from('supplier_invoices').delete().eq('id', linked.invoiceId)
+    }
+    await supabase.storage.from('supplier-invoices').remove([path])
+
+    if (opcion === 'todo') {
+        const { error } = await supabase.from('supplier_documents').delete().eq('id', linked.docId)
+        if (error) { alert(`Error al eliminar el gasto: ${error.message}`); await _cargarStorageSeccion(); return }
+    } else {
+        await supabase.from('supplier_documents').update({ file_path: null }).eq('id', linked.docId)
+    }
+
+    await _cargarStorageSeccion()
+}
+
+async function _abrirVincularRecibida(path, filename) {
+    const [{ data: providers }, { data: gastos }] = await Promise.all([
+        supabase.from('providers').select('id, name').order('id'),
+        supabase.from('supplier_documents')
+            .select('id, concept, expense_date, file_path')
+            .is('provider_id', null)
+            .order('expense_date', { ascending: false })
+    ])
+
+    const { overlay, panel } = crearModal('modal-vincular-recibida', { wide: true })
+    let modo = 'proveedor'
+
+    const provOpts = (providers ?? []).map(p =>
+        `<option value="${_esc(p.id)}">${_esc(p.id)}${p.name ? ' — ' + _esc(p.name) : ''}</option>`
+    ).join('')
+
+    const gastosOpts = (gastos ?? []).map(g => {
+        const fecha  = g.expense_date ? new Date(g.expense_date + 'T00:00:00').toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—'
+        const yaArch = g.file_path && !g.file_path.endsWith('_sin_archivo') ? ' ⚠️ ya tiene archivo' : ''
+        return `<option value="${g.id}">${_esc(g.concept ?? '—')} · ${fecha}${yaArch}</option>`
+    }).join('')
+
+    panel.innerHTML = `
+        <div class="modal-header-title">Vincular archivo</div>
+        <p style="font-size:12px;color:var(--subtle);margin:6px 0 16px">${_esc(filename)}</p>
+
+        <div style="display:flex;gap:16px;margin-bottom:16px">
+            <label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
+                <input type="radio" name="vr-modo" value="proveedor" checked> Proveedor
+            </label>
+            <label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
+                <input type="radio" name="vr-modo" value="gasto"> Gasto general existente
+            </label>
+        </div>
+
+        <div id="vr-sec-proveedor">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Proveedor</label>
+            <select id="vr-proveedor" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit">
+                <option value="">— Seleccionar proveedor —</option>
+                ${provOpts}
+            </select>
+            <p style="font-size:11px;color:var(--subtle);margin-top:4px">Crea un documento en el proveedor seleccionado. Puedes completar los detalles desde Proveedores.</p>
+        </div>
+
+        <div id="vr-sec-gasto" style="display:none">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Gasto general</label>
+            <select id="vr-gasto" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit">
+                <option value="">— Seleccionar gasto —</option>
+                ${gastosOpts}
+            </select>
+            <p style="font-size:11px;color:var(--subtle);margin-top:4px">Asigna este archivo a un gasto general ya existente.</p>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+            <button class="btn btn-secondary" id="vr-cancel">Cancelar</button>
+            <button class="btn btn-primary"   id="vr-ok">Vincular</button>
+        </div>`
+
+    panel.querySelectorAll('input[name="vr-modo"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            modo = radio.value
+            panel.querySelector('#vr-sec-proveedor').style.display = modo === 'proveedor' ? '' : 'none'
+            panel.querySelector('#vr-sec-gasto').style.display     = modo === 'gasto'     ? '' : 'none'
+        })
+    })
+
+    panel.querySelector('#vr-cancel').addEventListener('click', () => overlay.close())
+
+    panel.querySelector('#vr-ok').addEventListener('click', async () => {
+        const season = getTemporadaActiva()
+        if (modo === 'proveedor') {
+            const providerId = panel.querySelector('#vr-proveedor').value
+            if (!providerId) { alert('Selecciona un proveedor.'); return }
+            const { error } = await supabase.from('supplier_documents').insert({ provider_id: providerId, file_path: path, season })
+            if (error) { alert(`Error: ${error.message}`); return }
+        } else {
+            const gastoId = parseInt(panel.querySelector('#vr-gasto').value)
+            if (!gastoId) { alert('Selecciona un gasto.'); return }
+            const { error } = await supabase.from('supplier_documents').update({ file_path: path }).eq('id', gastoId)
+            if (error) { alert(`Error: ${error.message}`); return }
+        }
+        overlay.close()
+        await _cargarStorageSeccion()
+    })
+
+    overlay.showModal()
 }
 
 async function _abrirVincularFactura(path, filename) {

@@ -883,3 +883,24 @@ export function validarNif(raw) {
 
     return { normalizado, valido: false }
 }
+
+// Eliminación de un documento de proveedor: check fiscal, borrado de asiento, storage y registro.
+// Returns 'ok' | 'cancelado' | 'bloqueado-trim' | 'error'
+export async function eliminarSupplierDoc(supabase, docId, filePath) {
+    const { data: inv } = await supabase
+        .from('supplier_invoices').select('id, booked_date').eq('document_id', docId).maybeSingle()
+
+    if (inv) {
+        const trim = await checkTrimCerrado(supabase, inv.booked_date)
+        if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return 'bloqueado-trim' }
+        if (!confirm('Este documento tiene un asiento en el libro fiscal que también se eliminará. ¿Continuar?')) return 'cancelado'
+        await supabase.from('supplier_invoices').delete().eq('id', inv.id)
+    } else {
+        if (!confirm('¿Eliminar este documento? La acción no se puede deshacer.')) return 'cancelado'
+    }
+
+    if (filePath) await supabase.storage.from('supplier-invoices').remove([filePath])
+    const { error } = await supabase.from('supplier_documents').delete().eq('id', docId)
+    if (error) { alert('Error al eliminar: ' + error.message); return 'error' }
+    return 'ok'
+}

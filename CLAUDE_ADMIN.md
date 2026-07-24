@@ -1222,28 +1222,28 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ---
 
-### 7.7 Mejoras de UX — pendiente de decisión
+### 7.7 Mejoras de UX — ✅ RESUELTO jul 2026
 
 **Facturas recibidas en Tablas → Archivos.**
 
-Actualmente la sección Archivos de `tablas.html` / `tablas.js` tiene dos tabs:
+La sección Archivos de `tablas.html` / `tablas.js` tiene tres tabs:
 - 📄 Propuestas — bucket `proposals`, vinculadas a `reservations.proposal_path`
-- 🧾 Facturas — bucket `invoices`, vinculadas a `issued_invoices.file_path`
+- 🧾 Facturas emitidas — bucket `invoices`, vinculadas a `charges.invoice_path`
+- 🗂 Facturas recibidas — bucket `supplier-invoices`, vinculadas a `supplier_documents.file_path`
 
-Pendiente: añadir una tercera tab **🗂 Facturas recibidas** para el bucket `supplier-invoices`, vinculado a `supplier_documents.file_path`. La tab "Facturas" existente pasaría a llamarse "Facturas emitidas".
+**Decisiones tomadas e implementadas:**
+- Se muestran **todos** los archivos del bucket (albaranes `has_invoice=false` incluidos; documentos con `*` en notes sin indicador diferenciado).
+- Asientos en trimestre cerrado → 🔒 sin botón eliminar.
+- Asientos en trimestre abierto → botón 🗑 → modal con opciones "Archivo y gasto completo" / "Solo el archivo". El asiento fiscal se elimina siempre con el archivo; el `supplier_documents` es opcional. "Solo el archivo" pone `file_path = null`.
+- Archivos sin `supplier_documents` (huérfanos de storage) → modal de confirmación simple → eliminar solo storage.
+- Huérfanos identificados visualmente y botón "🗑 Eliminar X huérfanas" igual que en las otras tabs.
+- Botón **Vincular** para huérfanos → modal con dos modos: (1) seleccionar proveedor → INSERT `supplier_documents` mínimo (`provider_id + file_path + season`); (2) seleccionar gasto general existente (`provider_id IS NULL`) → UPDATE `file_path`.
+- Los no-huérfanos no tienen ✏️ de reasignación; se editan desde las vistas Proveedores/Gastos.
+- Dropzone presente: sube al prefijo `_upload/` del bucket, queda como huérfano hasta ser vinculado.
+- `eliminarDocProveedor` en `proveedores.js` refactorizado para usar `eliminarSupplierDoc` de `utils.js`.
+- `_listarBucket` en `tablas.js` ampliado a 3 niveles de carpeta (cubre `_gastos/season/filename`).
 
-Los archivos del bucket `supplier-invoices` están referenciados en `supplier_documents`, que a su vez puede tener un asiento en `supplier_invoices` (FK `document_id`, UNIQUE). La relación es: archivo en storage → `supplier_documents` → (opcional) `supplier_invoices` → `supplier_invoice_vat_lines`.
-
-**Requiere diseño previo antes de implementar.** Las acciones posibles sobre cada archivo tienen una casuística no trivial que hay que especificar explícitamente:
-
-- Archivo vinculado a un asiento en **trimestre cerrado** → solo lectura completa (los triggers de BD ya bloquean INSERT/UPDATE/DELETE, pero la UI debe reflejarlo con 🔒 y sin botones de acción).
-- Archivo vinculado a un asiento en **trimestre abierto** → mostrar botón "Eliminar" que: advierte del asiento fiscal vinculado, confirma, borra `supplier_invoices` (cascade a vat_lines), borra el archivo del storage y borra `supplier_documents`.
-- Archivo sin asiento vinculado (huérfano, `supplier_documents` sin `supplier_invoice`) → eliminar libremente (solo storage + `supplier_documents`).
-- Archivos con `has_invoice = false` (albaranes, recibos sin factura) → ¿mostrarlos? ¿con indicador visual diferente?
-- Estado de pago del proveedor vinculado (`payments.paid`) → ¿influye en alguna acción? Decidir si se muestra o no.
-- Documentos descartados de alertas (prefijo `*` en `supplier_documents.notes`) → ¿mostrarlos? ¿con indicador?
-
-Decidir también si las acciones de esta sección deben replicar el flujo de `eliminarDocProveedor` en `proveedores.js` o abstraerlo a una función compartida en `utils.js`.
+**Columna "Documento / Proveedor":** muestra concepto, proveedor en negrita si existe, y el estado del asiento (✅ nº factura / "Sin factura" / "Pendiente de anotar"). Si es de trimestre cerrado añade el año-mes del `booked_date`.
 
 ---
 
