@@ -749,6 +749,8 @@ Módulo ES6. Panel de gestión sfcom con KPIs, solicitudes pendientes, reservas 
 
 KPIs incluyen: total neto de ventas sfcom, coste de proveedores, y margen neto (cruza cada reserva sfcom activa con disponibilidad para calcular coste unitario según billing_model).
 
+**Tabla "Reservas registradas vía sfcom":** 12 columnas — Referencia sfcom, Cliente, Evento, Día, Nombre sfcom, Plazas, Precio neto/plaza, Total neto, Com. 15% (`total_neto × 0.15`), Total reserva (`total_neto × 1.15`), Venue, Estado. Incluye fila de totales al pie (suma de plazas, total neto, comisión y total reserva). El botón "⬇ Excel" exporta las mismas columnas con una fila final `TOTAL`.
+
 ### factura.js
 Módulo ES6, importado por formulario.js. `initFacturacion(supabase)`.
 
