@@ -161,6 +161,7 @@ async function cargarTodo() {
     renderF69(_gastosData, _emitidasData, cierre, year, q)
     render715(_gastosData, cierre715, year, q)
     render190(gastosAnuales, cierre190, year)
+    renderCierreBtn(cierre, cierre715, year, q)
 }
 
 // ===== FORMATO =====
@@ -276,7 +277,7 @@ function renderEmitidas(rows) {
         sumIva   += iva
         sumIrpf  += r.irpf_amount ?? 0
         sumTotal += r.total ?? 0
-        const warnSimpl = r.is_simplified && !r.client_nif && base >= 400
+        const warnSimpl = !r.client_nif && base >= 400
         if (warnSimpl) nifWarnCount++
         return `<tr>
             <td style="white-space:nowrap">${r.accrual_date}</td>
@@ -436,39 +437,12 @@ function renderF69(gastos, emitidas, cierre, year, q) {
             </div>
         </div>
 
-        <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-                <div>
-                    <strong style="font-size:13px">Estado del trimestre</strong>
-                    <div style="font-size:12px;color:var(--subtle);margin-top:4px">
-                        ${cerrado
-                            ? `✅ Presentado el ${cierre.presented_at}`
-                            : '⏳ Pendiente de presentación'
-                        }
-                    </div>
-                </div>
-                <button class="btn ${cerrado ? 'btn-secondary' : 'btn-primary'}" id="btnMarcarPresentado"
-                    style="font-size:12px" ${cerrado ? 'disabled' : ''}>
-                    ${cerrado ? '✅ Ya presentado' : 'Marcar como presentado'}
-                </button>
-            </div>
+        <div style="font-size:12px;color:var(--subtle);padding-top:12px;margin-top:4px;border-top:1px solid var(--border)">
+            ${cerrado
+                ? `✅ F69 presentado el ${cierre.presented_at}`
+                : '⏳ F69 pendiente — usa el botón «Cerrar trimestre» de la cabecera'}
         </div>
     `
-
-    if (!cerrado) {
-        document.getElementById('btnMarcarPresentado').addEventListener('click', async () => {
-            if (!confirm(`¿Marcar ${year} T${q} como presentado?\nUna vez presentado no se podrán modificar ni eliminar las entradas del trimestre.`)) return
-            const { error } = await supabase.from('fiscal_closings').upsert({
-                model:        'F69',
-                year:         year,
-                quarter:      q,
-                presented_at: new Date().toISOString().split('T')[0],
-            }, { onConflict: 'model,year,quarter' })
-            if (error) { alert('Error: ' + error.message); return }
-            mostrarToast('Trimestre marcado como presentado')
-            cargarTodo()
-        })
-    }
 }
 
 // ===== TAB MODELO 715 =====
@@ -557,34 +531,57 @@ function render715(gastos, cierre715, year, q) {
             </table>
         </div>
 
-        <div style="border:1px solid var(--border);border-radius:8px;padding:16px">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-                <div>
-                    <strong style="font-size:13px">Estado del trimestre</strong>
-                    <div style="font-size:12px;color:var(--subtle);margin-top:4px">
-                        ${cerrado
-                            ? `✅ Presentado el ${cierre715.presented_at}`
-                            : '⏳ Pendiente de presentación'}
-                    </div>
-                </div>
-                <button class="btn ${cerrado ? 'btn-secondary' : 'btn-primary'}" id="btn715Presentado"
-                    style="font-size:12px" ${cerrado ? 'disabled' : ''}>
-                    ${cerrado ? '✅ Ya presentado' : 'Marcar como presentado'}
-                </button>
-            </div>
+        <div style="font-size:12px;color:var(--subtle);padding-top:12px;margin-top:8px;border-top:1px solid var(--border)">
+            ${cerrado
+                ? `✅ M-715 presentado el ${cierre715.presented_at}`
+                : '⏳ M-715 pendiente — usa el botón «Cerrar trimestre» de la cabecera'}
         </div>`
+}
 
-    if (!cerrado) {
-        document.getElementById('btn715Presentado').addEventListener('click', async () => {
-            if (!confirm(`¿Marcar M-715 ${year} T${q} como presentado?`)) return
-            const { error } = await supabase.from('fiscal_closings').upsert({
-                model: '715', year, quarter: q,
-                presented_at: new Date().toISOString().split('T')[0],
-            }, { onConflict: 'model,year,quarter' })
-            if (error) { alert('Error: ' + error.message); return }
-            mostrarToast('M-715 marcado como presentado')
-            cargarTodo()
-        })
+// ===== CERRAR TRIMESTRE =====
+function renderCierreBtn(cierre, cierre715, year, q) {
+    const btn = document.getElementById('btnCerrarTrimestre')
+    if (!btn) return
+
+    const f69Cerrado  = !!cierre?.presented_at
+    const m715Cerrado = !!cierre715?.presented_at
+    const hayRet      = _gastosData.some(inv => inv.retention_type && inv.retention_type !== 'ninguna')
+    const todoCerrado = f69Cerrado && (!hayRet || m715Cerrado)
+
+    if (todoCerrado) {
+        btn.disabled    = true
+        btn.className   = 'btn btn-secondary'
+        btn.textContent = `✅ T${q} ${year} cerrado`
+        btn.onclick     = null
+        return
+    }
+
+    btn.disabled    = false
+    btn.className   = 'btn btn-primary'
+    btn.textContent = `🔒 Cerrar T${q} ${year}`
+    btn.onclick = async () => {
+        if (!confirm(`¿Marcar T${q} ${year} como presentado?\nUna vez cerrado no se podrán modificar las entradas del trimestre.`)) return
+        const hoy = new Date().toISOString().split('T')[0]
+        const ops = [
+            supabase.from('fiscal_closings').upsert(
+                { model: 'F69', year, quarter: q, presented_at: hoy },
+                { onConflict: 'model,year,quarter' }
+            ),
+        ]
+        if (hayRet) {
+            ops.push(
+                supabase.from('fiscal_closings').upsert(
+                    { model: '715', year, quarter: q, presented_at: hoy },
+                    { onConflict: 'model,year,quarter' }
+                )
+            )
+        }
+        const results = await Promise.all(ops)
+        const err = results.find(r => r.error)
+        if (err) { alert('Error: ' + err.error.message); return }
+        mostrarToast('Trimestre cerrado')
+        cargarTodo()
+        cargarAlertas()
     }
 }
 
@@ -723,6 +720,7 @@ async function cargarAlertas() {
         { data: emitidasYQ },
         { data: allClosings },
         { data: invConRetencion },
+        { data: emitSinNif },
     ] = await Promise.all([
         supabase.from('supplier_invoices').select('document_id'),
         supabase.from('providers').select('id, name, comments').eq('invoice', true),
@@ -741,6 +739,10 @@ async function cargarAlertas() {
             .select('id, issuer_name, issuer_nif')
             .not('irpf_amount', 'is', null)
             .gt('irpf_amount', 0),
+        supabase.from('issued_invoices')
+            .select('id, invoice_number, client_name, accrual_date, issued_invoice_vat_lines(base_amount)')
+            .is('client_nif', null)
+            .order('accrual_date', { ascending: false }),
     ])
 
     // Fase 2: docs pendientes (depende de registeredDocs)
@@ -1053,6 +1055,37 @@ async function cargarAlertas() {
                 <thead><tr style="font-size:11px;color:var(--subtle)">
                     <th style="text-align:left;padding:4px 8px">Emisor</th>
                     <th style="text-align:left;padding:4px 8px">NIF almacenado</th>
+                </tr></thead>
+                <tbody>${filas}</tbody>
+            </table>`
+        ))
+    }
+
+    // Alerta 7: emitidas sin NIF con base ≥400€
+    const emitSinNifAlerta = (emitSinNif ?? []).filter(r => {
+        const base = (r.issued_invoice_vat_lines ?? []).reduce((s, l) => s + (l.base_amount ?? 0), 0)
+        return base >= 400
+    })
+    if (emitSinNifAlerta.length > 0) {
+        const filas = emitSinNifAlerta.map(r => {
+            const base = (r.issued_invoice_vat_lines ?? []).reduce((s, l) => s + (l.base_amount ?? 0), 0)
+            return `<tr style="font-size:12px">
+                <td style="padding:4px 8px;font-size:11px">${r.invoice_number ?? '—'}</td>
+                <td style="padding:4px 8px">${r.client_name ?? '—'}</td>
+                <td style="padding:4px 8px;color:var(--subtle)">${r.accrual_date}</td>
+                <td style="padding:4px 8px;text-align:right">${fmt(base)}</td>
+            </tr>`
+        }).join('')
+        partes.push(_alerta(
+            'emitidas-sin-nif', 'warning',
+            `${emitSinNifAlerta.length} factura${emitSinNifAlerta.length > 1 ? 's' : ''} con base ≥400€ sin NIF del cliente`,
+            `<p style="font-size:12px;color:var(--subtle);margin:8px 0 6px">El receptor puede solicitar factura completa con NIF.</p>
+            <table style="width:100%;border-collapse:collapse;margin-top:4px">
+                <thead><tr style="font-size:11px;color:var(--subtle)">
+                    <th style="text-align:left;padding:4px 8px">Nº factura</th>
+                    <th style="text-align:left;padding:4px 8px">Cliente</th>
+                    <th style="text-align:left;padding:4px 8px">Devengo</th>
+                    <th style="text-align:right;padding:4px 8px">Base</th>
                 </tr></thead>
                 <tbody>${filas}</tbody>
             </table>`
