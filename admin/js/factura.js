@@ -146,7 +146,7 @@ export async function abrirPanelReemision(hitoId, clienteObj, reservasCliente) {
     })
 }
 
-// Anular sin re-emitir: marca is_void en issued_invoices y limpia el charge
+// Anular sin re-emitir: elimina el asiento fiscal y limpia el charge. El PDF queda huérfano (intencional).
 export async function anularFacturaDeHito(hitoId) {
     const { data: existente } = await _supabase
         .from('issued_invoices')
@@ -159,11 +159,9 @@ export async function anularFacturaDeHito(hitoId) {
         const trim = await checkTrimCerrado(_supabase, existente.accrual_date)
         if (trim.cerrado) { mostrarModalTrimCerrado(trim.year, trim.quarter); return }
 
-        const { error: errVoid } = await _supabase
-            .from('issued_invoices')
-            .update({ is_void: true })
-            .eq('id', existente.id)
-        if (errVoid) { alert('Error al anular la factura: ' + errVoid.message); return }
+        await _supabase.from('issued_invoice_vat_lines').delete().eq('invoice_id', existente.id)
+        const { error: errDel } = await _supabase.from('issued_invoices').delete().eq('id', existente.id)
+        if (errDel) { alert('Error al eliminar el asiento fiscal: ' + errDel.message); return }
     }
 
     const { error: errCharge } = await _supabase

@@ -2293,8 +2293,7 @@ window.anularHito = async function(hitoId, invoiceNumber) {
         <div>
             <div class="modal-header-title">⚠️ Anular factura</div>
             <div class="modal-header-desc">
-                Se anulará <strong>${invoiceNumber}</strong> en el registro y el hito quedará
-                sin facturar.<br><br>
+                Se anulará <strong>${invoiceNumber}</strong>, se eliminará su asiento del libro fiscal y el hito quedará sin facturar. El PDF no se borrará.<br><br>
                 <strong>Esta acción no notifica al cliente.</strong>
                 Si ya se envió la factura, deberás gestionarlo manualmente.
             </div>
