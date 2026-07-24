@@ -527,8 +527,8 @@ async function cargarGastos() {
         } else if (d.has_invoice === false) {
             estadoCell = `<span style="color:var(--subtle);font-size:12px">Sin factura</span>`
         } else {
-            estadoCell = isClosed
-                ? `<span style="color:var(--subtle);font-size:12px">Sin anotar</span>`
+            estadoCell = isClosed || sinArchivo
+                ? `<span style="color:var(--subtle);font-size:12px">${sinArchivo ? 'Sin archivo' : 'Sin anotar'}</span>`
                 : `<button class="btn btn-primary" style="font-size:11px;padding:3px 8px"
                        onclick="event.stopPropagation();_anotarGastoRow(${d.id})">Anotar</button>`
         }
