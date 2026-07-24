@@ -1080,7 +1080,18 @@ async function cargarAlertas() {
         ))
     }
 
+    const abiertos = new Set(
+        [...el.querySelectorAll('[id^="ab-"]')]
+            .filter(b => b.style.display !== 'none')
+            .map(b => b.id)
+    )
+
     el.innerHTML = partes.join('')
+
+    abiertos.forEach(id => {
+        const b = document.getElementById(id)
+        if (b) b.style.display = 'block'
+    })
 }
 
 window.descartarAlerta = async function (key, extra) {

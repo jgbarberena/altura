@@ -1224,7 +1224,26 @@ No hacer hasta que el tamaño sea un problema práctico. Si se decide, empezar p
 
 ### 7.7 Mejoras de UX — pendiente de decisión
 
-Sin deudas pendientes en este bloque.
+**Facturas recibidas en Tablas → Archivos.**
+
+Actualmente la sección Archivos de `tablas.html` / `tablas.js` tiene dos tabs:
+- 📄 Propuestas — bucket `proposals`, vinculadas a `reservations.proposal_path`
+- 🧾 Facturas — bucket `invoices`, vinculadas a `issued_invoices.file_path`
+
+Pendiente: añadir una tercera tab **🗂 Facturas recibidas** para el bucket `supplier-invoices`, vinculado a `supplier_documents.file_path`. La tab "Facturas" existente pasaría a llamarse "Facturas emitidas".
+
+Los archivos del bucket `supplier-invoices` están referenciados en `supplier_documents`, que a su vez puede tener un asiento en `supplier_invoices` (FK `document_id`, UNIQUE). La relación es: archivo en storage → `supplier_documents` → (opcional) `supplier_invoices` → `supplier_invoice_vat_lines`.
+
+**Requiere diseño previo antes de implementar.** Las acciones posibles sobre cada archivo tienen una casuística no trivial que hay que especificar explícitamente:
+
+- Archivo vinculado a un asiento en **trimestre cerrado** → solo lectura completa (los triggers de BD ya bloquean INSERT/UPDATE/DELETE, pero la UI debe reflejarlo con 🔒 y sin botones de acción).
+- Archivo vinculado a un asiento en **trimestre abierto** → mostrar botón "Eliminar" que: advierte del asiento fiscal vinculado, confirma, borra `supplier_invoices` (cascade a vat_lines), borra el archivo del storage y borra `supplier_documents`.
+- Archivo sin asiento vinculado (huérfano, `supplier_documents` sin `supplier_invoice`) → eliminar libremente (solo storage + `supplier_documents`).
+- Archivos con `has_invoice = false` (albaranes, recibos sin factura) → ¿mostrarlos? ¿con indicador visual diferente?
+- Estado de pago del proveedor vinculado (`payments.paid`) → ¿influye en alguna acción? Decidir si se muestra o no.
+- Documentos descartados de alertas (prefijo `*` en `supplier_documents.notes`) → ¿mostrarlos? ¿con indicador?
+
+Decidir también si las acciones de esta sección deben replicar el flujo de `eliminarDocProveedor` en `proveedores.js` o abstraerlo a una función compartida en `utils.js`.
 
 ---
 
