@@ -336,7 +336,7 @@ function buildFacturaHTML() {
                     <div class="factura-section-label" id="titulo-detalle-servicios" style="margin:0">Detalle de servicios contratados</div>
                 </div>
                 <div id="contenedor-detalle-servicios">${buildTablaReservas()}</div>
-                ${tipo === 'adelanto' ? buildNota() : tipo === 'liquidacion' ? buildLiquidacion() : ''}
+                ${tipo === 'adelanto' ? buildNota() : tipo === 'liquidacion' ? buildLiquidacion() : buildAjustesUnico()}
             </div>
 
             <div class="factura-totales">
@@ -455,14 +455,20 @@ function buildNota() {
     </div>`
 }
 
-// Bloque liquidación: solo cuando hay adelantos previos facturados
+// Bloque liquidación: cuando hay adelantos previos facturados (y opcionalmente ajustes)
 function buildLiquidacion() {
-    const totalGlobal  = _reservas
+    const totalGlobal    = _reservas
         .filter(r => r.status !== 'Cancelada')
         .reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
-    const todosCharges = _reservas[0]?._charges ?? []
-    const facturados   = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number)
-    const filasF       = facturados.map(c => `
+    const todosCharges   = _reservas[0]?._charges ?? []
+    const ajustesCharges = todosCharges.filter(c => c.charge_type === 'ajuste')
+    const facturados     = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number)
+    const filasAj        = ajustesCharges.map(c => `
+        <div class="factura-liq-row">
+            <span class="factura-liq-label">${valorO(c.comments, 'Ajuste')}</span>
+            <span>+ ${fmt(parseFloat(c.amount))}</span>
+        </div>`).join('')
+    const filasF         = facturados.map(c => `
         <div class="factura-liq-row">
             <span class="factura-liq-label">
                 ${valorO(c.comments, 'Prepago')} (${c.invoice_number} · ${formatFecha(c.invoiced_at)})
@@ -476,9 +482,38 @@ function buildLiquidacion() {
             <span class="factura-liq-label">Total servicios contratados</span>
             <span>${fmt(totalGlobal)}</span>
         </div>
+        ${filasAj}
         ${filasF}
         <div class="factura-liq-row">
             <span><strong>Saldo pendiente (este hito)</strong></span>
+            <span><strong>${fmt(parseFloat(_hitoActual.amount))}</strong></span>
+        </div>
+    </div>`
+}
+
+// Bloque ajustes para facturas únicas (sin adelantos previos) que tienen ajuste charges
+function buildAjustesUnico() {
+    const todosCharges   = _reservas[0]?._charges ?? []
+    const ajustesCharges = todosCharges.filter(c => c.charge_type === 'ajuste')
+    if (ajustesCharges.length === 0) return ''
+    const totalGlobal = _reservas
+        .filter(r => r.status !== 'Cancelada')
+        .reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
+    const filasAj = ajustesCharges.map(c => `
+        <div class="factura-liq-row">
+            <span class="factura-liq-label">${valorO(c.comments, 'Ajuste')}</span>
+            <span>+ ${fmt(parseFloat(c.amount))}</span>
+        </div>`).join('')
+    return `
+    <div class="factura-section-label" style="margin-top:14px">Ajustes</div>
+    <div class="factura-liq">
+        <div class="factura-liq-row">
+            <span class="factura-liq-label">Total servicios contratados</span>
+            <span>${fmt(totalGlobal)}</span>
+        </div>
+        ${filasAj}
+        <div class="factura-liq-row">
+            <span><strong>Total facturado</strong></span>
             <span><strong>${fmt(parseFloat(_hitoActual.amount))}</strong></span>
         </div>
     </div>`

@@ -244,6 +244,23 @@
                 </div>
                 <div class="btn-row">
                     <button class="btn btn-secondary" id="btnNuevoCobroCliente">+ Añadir hito de cobro</button>
+                    <button class="btn btn-secondary" id="btnNuevoAjusteCliente">+ Añadir ajuste</button>
+                </div>
+                <div id="form-nuevo-ajuste-cliente" class="form-subseccion" style="display:none">
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label>Concepto del ajuste</label>
+                            <input type="text" id="ajusteConcepto" placeholder="Ej: Comisión acordada">
+                        </div>
+                        <div class="form-field">
+                            <label>Importe (€)</label>
+                            <input type="number" id="ajusteImporte" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="btn-row">
+                        <button class="btn btn-primary" id="btnGuardarNuevoAjuste">Guardar ajuste</button>
+                        <button class="btn btn-secondary" id="btnCancelarNuevoAjuste">Cancelar</button>
+                    </div>
                 </div>
                 <div id="form-nuevo-cobro-cliente" class="form-subseccion" style="display:none">
                     <div class="form-grid">

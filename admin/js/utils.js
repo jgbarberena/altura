@@ -286,9 +286,10 @@ export function calcularSaldoCobro(clienteId, reservas, charges) {
                   .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
         : reservas.filter(r => r.client_id === clienteId && r.status !== 'Cancelada')
                   .reduce((s, r) => s + parseFloat(r.total_amount || 0), 0)
-    const hitoFinal = charges.find(c => c.is_final) ?? null
-    const prepagos  = charges.filter(c => !c.is_final).reduce((s, c) => s + parseFloat(c.amount || 0), 0)
-    return { total, prepagos, cuantiaCorrecta: total - prepagos, hitoFinal }
+    const hitoFinal = charges.find(c => c.charge_type === 'final') ?? null
+    const prepagos  = charges.filter(c => c.charge_type === 'prepago').reduce((s, c) => s + parseFloat(c.amount || 0), 0)
+    const ajustes   = charges.filter(c => c.charge_type === 'ajuste').reduce((s, c) => s + parseFloat(c.amount || 0), 0)
+    return { total, prepagos, ajustes, cuantiaCorrecta: total + ajustes - prepagos, hitoFinal }
 }
 
 // Calcula el coste total de un proveedor según billing_model. Función pura, sin queries.
@@ -313,9 +314,10 @@ export function calcularCostoPago(venueIds, reservas, disponibilidad) {
 // Calcula el saldo de pagos de un proveedor: coste total − prepagos. Función pura, sin queries.
 export function calcularSaldoPago(venueIds, reservas, disponibilidad, payments) {
     const costTotal = calcularCostoPago(venueIds, reservas, disponibilidad)
-    const hitoFinal = payments.find(p => p.is_final) ?? null
-    const prepagos  = payments.filter(p => !p.is_final).reduce((s, p) => s + parseFloat(p.amount || 0), 0)
-    return { costTotal, prepagos, cuantiaCorrecta: costTotal - prepagos, hitoFinal }
+    const hitoFinal = payments.find(p => p.payment_type === 'final') ?? null
+    const prepagos  = payments.filter(p => p.payment_type === 'prepago').reduce((s, p) => s + parseFloat(p.amount || 0), 0)
+    const ajustes   = payments.filter(p => p.payment_type === 'ajuste').reduce((s, p) => s + parseFloat(p.amount || 0), 0)
+    return { costTotal, prepagos, ajustes, cuantiaCorrecta: costTotal + ajustes - prepagos, hitoFinal }
 }
 
 // Recalcula y persiste en Supabase el cobro final de un cliente
@@ -346,7 +348,7 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
     if (!hitoFinal) {
         const { error } = await supabase.from('charges').insert({
             client_id: clienteId, amount: cobroFinal, due_date: fechaCobroDefault(),
-            collected: false, collected_date: null, comments: 'Cobro final', is_final: true,
+            collected: false, collected_date: null, comments: 'Cobro final', charge_type: 'final',
             season: getTemporadaActiva()
         })
         if (error) { console.error('persistirCobrosCliente: error creando cobro final:', error); return }
@@ -356,7 +358,7 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
         if (bloqueado) {
             const diferencia = cobroFinal - parseFloat(hitoFinal.amount)
             const { error: e1 } = await supabase.from('charges')
-                .update({ is_final: false }).eq('id', hitoFinal.id)
+                .update({ charge_type: 'prepago' }).eq('id', hitoFinal.id)
             if (e1) { console.error('persistirCobrosCliente: error degradando hito bloqueado:', e1); return }
             const comentario = hitoFinal.invoice_number
                 ? 'Ajuste s/ factura ' + hitoFinal.invoice_number
@@ -364,7 +366,7 @@ export async function persistirCobrosCliente(supabase, clienteId, todasReservas)
             const { error: e2 } = await supabase.from('charges').insert({
                 client_id: clienteId, amount: diferencia, due_date: fechaCobroDefault(),
                 collected: false, collected_date: null,
-                comments: comentario, is_final: true,
+                comments: comentario, charge_type: 'final',
                 season: getTemporadaActiva()
             })
             if (e2) { console.error('persistirCobrosCliente: error creando ajuste:', e2); return }
@@ -407,7 +409,7 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
     if (!hitoFinal) {
         const { error } = await supabase.from('payments').insert({
             provider_id: proveedorId, amount: pagoFinal,
-            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final', is_final: true,
+            due_date: fechaPagoDefault(), paid: false, comments: 'Pago final', payment_type: 'final',
             season: getTemporadaActiva()
         })
         if (error) { console.error('persistirPagosProveedor: error creando pago final:', error); return }
@@ -431,13 +433,13 @@ export async function persistirPagosProveedor(supabase, proveedorId, todasReserv
                 panel.querySelector('#btn-pago-neg-ok').onclick = () => overlay.close()
             }
             const { error: e1 } = await supabase.from('payments')
-                .update({ is_final: false }).eq('id', hitoFinal.id)
+                .update({ payment_type: 'prepago' }).eq('id', hitoFinal.id)
             if (e1) { console.error('persistirPagosProveedor: error degradando hito pagado:', e1); return }
             if (Math.abs(Math.round(nuevoSaldo * 100)) >= 1) {
                 const { error: e2 } = await supabase.from('payments').insert({
                     provider_id: proveedorId, amount: nuevoSaldo,
                     due_date: fechaPagoDefault(), paid: false, paid_date: null,
-                    comments: 'Pago final', is_final: true,
+                    comments: 'Pago final', payment_type: 'final',
                     season: getTemporadaActiva()
                 })
                 if (e2) { console.error('persistirPagosProveedor: error creando nuevo pago final:', e2); return }

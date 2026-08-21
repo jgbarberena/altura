@@ -1681,7 +1681,7 @@ btnAnadir.addEventListener('click', () => confirmarSiTemporadaNoActiva('la reser
                 collected:      true,
                 collected_date: hoy,
                 comments:       `${solicitudOriginRef} Cobrado vía sfcom`,
-                is_final:       false,
+                charge_type:    'prepago',
                 season:         _temporada
             })
             if (errChargeSfcom) console.error('Error al crear cargo sfcom:', errChargeSfcom.message)
@@ -1860,7 +1860,7 @@ async function persistirHitosCliente(clienteId) {
             collected:      h.collected ?? false,
             collected_date: h.collected_date ?? null,
             comments:       h.comments ?? null,
-            is_final:       h.is_final ?? false,
+            charge_type:    h.esAjuste ? 'ajuste' : (h.esFinal ? 'final' : 'prepago'),
             season:         getTemporadaActiva()
         }
 
@@ -1902,20 +1902,21 @@ async function cargarCobrosCliente(clienteId, reservas) {
     const { data: charges } = await supabase
         .from('charges').select('*').eq('client_id', clienteId).eq('season', getTemporadaActiva()).order('due_date')
 
-    // esFinal viene de is_final en la BBDD (fuente de verdad)
-    hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.is_final ?? false }))
+    hitosClienteTemp = (charges ?? []).map(h => ({ ...h, esFinal: h.charge_type === 'final', esAjuste: h.charge_type === 'ajuste' }))
 
     const total      = calcularTotalCobrarCliente(clienteId)
-    const prepagos   = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
-    const cobroFinal = total - prepagos
+    const prepagos   = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const ajustes    = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const cobroFinal = total + ajustes - prepagos
 
     if (!hitosClienteTemp.find(h => h.esFinal)) {
         if (cobroFinal >= 0.01) {
             // No existe en BBDD — crear y persistir inmediatamente
             hitosClienteTemp.push({
-                esFinal:   true,
-                is_final:  true,
-                comments:  'Cobro final',
+                esFinal:     true,
+                esAjuste:    false,
+                charge_type: 'final',
+                comments:    'Cobro final',
                 client_id: clienteId,
                 amount:    cobroFinal,
                 due_date:  fechaCobroDefault(),
@@ -1951,7 +1952,9 @@ function renderCobrosCliente() {
     const tbody = document.getElementById('tbody-cobros-cliente')
     tbody.innerHTML = hitosClienteTemp.map((h, i) => {
         const yaFacturado = !!h.invoice_number
-        const btnFacturar = !yaFacturado && h.id
+        const btnFacturar = h.esAjuste
+            ? ''
+            : !yaFacturado && h.id
             ? `<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px"
                    onclick="facturarHito('${h.id}')">📄 Facturar</button>`
             : yaFacturado
@@ -1969,7 +1972,7 @@ function renderCobrosCliente() {
                 : ''
 
         return `<tr>
-            <td>${h.comments}</td>
+            <td>${h.comments}${h.esAjuste ? ' <span style="font-size:10px;background:var(--accent-warn);color:#fff;border-radius:3px;padding:1px 4px;margin-left:4px">AJUSTE</span>' : ''}</td>
             <td>${fmt(h.amount)}${h.esFinal ? ' <span style="font-size:11px;color:var(--subtle)">(calculado)</span>' : ''}</td>
             <td>${fmt(totalFacturadoDesdeBase(h.amount, irpfRateParaCliente(clienteActual)))}</td>
             <td>${h.esFinal
@@ -2049,7 +2052,7 @@ window.toggleCobroCliente = async function(idx) {
     }
 
     const total    = calcularTotalCobrarCliente(clienteActual.id)
-    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
     actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
     renderCobrosCliente()
 
@@ -2100,20 +2103,22 @@ window.eliminarCobroCliente = async function(idx) {
     // Sin factura — flujo existente con reversión en memoria
     const hitoEliminado = hitosClienteTemp.splice(idx, 1)[0]
     const total    = calcularTotalCobrarCliente(clienteActual.id)
-    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const ajustesD = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
     const idxFinal = hitosClienteTemp.findIndex(h => h.esFinal)
-    if (idxFinal >= 0) hitosClienteTemp[idxFinal].amount = total - prepagos
-    actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
+    if (idxFinal >= 0) hitosClienteTemp[idxFinal].amount = total + ajustesD - prepagos
+    actualizarResumenCobros(clienteActual.id, total, prepagos, total + ajustesD - prepagos)
     renderCobrosCliente()
     try {
         await persistirHitosCliente(clienteActual.id)
     } catch (err) {
         hitosClienteTemp.splice(idx, 0, hitoEliminado)
         const totalRev    = calcularTotalCobrarCliente(clienteActual.id)
-        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const ajustesRev  = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
         const idxFinalRev = hitosClienteTemp.findIndex(h => h.esFinal)
-        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev - prepagosRev
-        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev - prepagosRev)
+        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev + ajustesRev - prepagosRev
+        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev + ajustesRev - prepagosRev)
         renderCobrosCliente()
         alert('Error al eliminar el cobro: ' + err.message)
     }
@@ -2140,6 +2145,7 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
     const posInsercion = idxFinal >= 0 ? idxFinal : hitosClienteTemp.length
     hitosClienteTemp.splice(posInsercion, 0, {
         esFinal:   false,
+        esAjuste:  false,
         comments:  concepto,
         client_id: clienteActual.id,
         amount:    importe,
@@ -2148,9 +2154,10 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
     })
 
     const total    = calcularTotalCobrarCliente(clienteActual.id)
-    const prepagos = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const ajustesG = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
     const idxF     = hitosClienteTemp.findIndex(h => h.esFinal)
-    if (idxF >= 0) hitosClienteTemp[idxF].amount = total - prepagos
+    if (idxF >= 0) hitosClienteTemp[idxF].amount = total + ajustesG - prepagos
 
     document.getElementById('cobroConcepto').value = ''
     setPrecioValue(document.getElementById('cobroImporte'), '')
@@ -2159,7 +2166,7 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
     document.getElementById('form-nuevo-cobro-cliente').style.display = 'none'
     document.getElementById('btnNuevoCobroCliente').style.display     = 'inline-block'
 
-    actualizarResumenCobros(clienteActual.id, total, prepagos, total - prepagos)
+    actualizarResumenCobros(clienteActual.id, total, prepagos, total + ajustesG - prepagos)
     renderCobrosCliente()
 
     try {
@@ -2169,15 +2176,73 @@ document.getElementById('btnGuardarNuevoCobro').addEventListener('click', () => 
         // Revertir: eliminar el hito recién insertado de memoria
         hitosClienteTemp.splice(posInsercion, 1)
         const totalRev    = calcularTotalCobrarCliente(clienteActual.id)
-        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const ajustesRev  = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
         const idxFinalRev = hitosClienteTemp.findIndex(h => h.esFinal)
-        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev - prepagosRev
-        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev - prepagosRev)
+        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev + ajustesRev - prepagosRev
+        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev + ajustesRev - prepagosRev)
         renderCobrosCliente()
         alert('Error al guardar el cobro: ' + err.message)
     }
 }))
 
+
+document.getElementById('btnNuevoAjusteCliente').addEventListener('click', () => {
+    document.getElementById('form-nuevo-ajuste-cliente').style.display = 'block'
+    document.getElementById('btnNuevoAjusteCliente').style.display     = 'none'
+})
+
+document.getElementById('btnCancelarNuevoAjuste').addEventListener('click', () => {
+    document.getElementById('form-nuevo-ajuste-cliente').style.display = 'none'
+    document.getElementById('btnNuevoAjusteCliente').style.display     = 'inline-block'
+})
+
+document.getElementById('btnGuardarNuevoAjuste').addEventListener('click', () => confirmarSiTemporadaNoActiva('el ajuste', async () => {
+    const concepto = document.getElementById('ajusteConcepto').value.trim() || 'Ajuste'
+    const importe  = getPrecioValue(document.getElementById('ajusteImporte'))
+    if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
+
+    const idxFinal = hitosClienteTemp.findIndex(h => h.esFinal)
+    const posInsercion = idxFinal >= 0 ? idxFinal : hitosClienteTemp.length
+    hitosClienteTemp.splice(posInsercion, 0, {
+        esFinal:   false,
+        esAjuste:  true,
+        comments:  concepto,
+        client_id: clienteActual.id,
+        amount:    importe,
+        due_date:  null,
+        collected: false
+    })
+
+    const total    = calcularTotalCobrarCliente(clienteActual.id)
+    const prepagos = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const ajustesA = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const idxF     = hitosClienteTemp.findIndex(h => h.esFinal)
+    if (idxF >= 0) hitosClienteTemp[idxF].amount = total + ajustesA - prepagos
+
+    document.getElementById('ajusteConcepto').value = ''
+    setPrecioValue(document.getElementById('ajusteImporte'), '')
+    document.getElementById('form-nuevo-ajuste-cliente').style.display = 'none'
+    document.getElementById('btnNuevoAjusteCliente').style.display     = 'inline-block'
+
+    actualizarResumenCobros(clienteActual.id, total, prepagos, total + ajustesA - prepagos)
+    renderCobrosCliente()
+
+    try {
+        await persistirHitosCliente(clienteActual.id)
+        renderCobrosCliente()
+    } catch (err) {
+        hitosClienteTemp.splice(posInsercion, 1)
+        const totalRev    = calcularTotalCobrarCliente(clienteActual.id)
+        const prepagosRev = hitosClienteTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const ajustesRev  = hitosClienteTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+        const idxFinalRev = hitosClienteTemp.findIndex(h => h.esFinal)
+        if (idxFinalRev >= 0) hitosClienteTemp[idxFinalRev].amount = totalRev + ajustesRev - prepagosRev
+        actualizarResumenCobros(clienteActual.id, totalRev, prepagosRev, totalRev + ajustesRev - prepagosRev)
+        renderCobrosCliente()
+        alert('Error al guardar el ajuste: ' + err.message)
+    }
+}))
 
 // Descarga una factura ya emitida desde Supabase Storage
 // Genera una URL firmada temporal (60s) y la abre en una nueva pestana
@@ -2223,17 +2288,30 @@ window.facturarHito = async function(hitoId) {
 
     if (esHitoFinal) {
         const sinFacturar = hitosClienteTemp.filter(h =>
-            h.id && h.id !== hitoId && !h.invoice_number && !_esSfcomCharge(h)
+            h.id && h.id !== hitoId && !h.invoice_number && !h.esAjuste && !_esSfcomCharge(h)
         )
         if (sinFacturar.length > 0) {
-            const lista = sinFacturar.map(h =>
-                `- ${h.comments ?? 'Sin concepto'}: ${fmt(h.amount)}`
-            ).join('\n')
-            alert(
-                `No se puede emitir la factura final porque hay hitos pendientes de facturar:\n\n${lista}\n\n` +
-                `Factura primero esos hitos, o eliminalos si ya no van a cobrarse.`
-            )
-            return
+            const continuar = await new Promise(resolve => {
+                const { overlay, panel } = crearModal('modal-absorber-hitos', { narrow: true })
+                const lista = sinFacturar.map(h =>
+                    `<li>${h.comments ?? 'Sin concepto'}: <strong>${fmt(h.amount)}</strong></li>`
+                ).join('')
+                panel.innerHTML = `
+                    <div>
+                        <div class="modal-header-title">Cobros previos sin facturar</div>
+                        <div class="modal-header-desc">
+                            Los siguientes cobros no tienen factura propia y quedarán absorbidos en la factura final:
+                            <ul style="margin:8px 0 0 16px;padding:0">${lista}</ul>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="btn-absorber-cancel" class="btn btn-secondary">Cancelar</button>
+                        <button id="btn-absorber-ok" class="btn btn-primary" autofocus>Proceder</button>
+                    </div>`
+                panel.querySelector('#btn-absorber-cancel').onclick = () => { overlay.close(); resolve(false) }
+                panel.querySelector('#btn-absorber-ok').onclick    = () => { overlay.close(); resolve(true) }
+            })
+            if (!continuar) return
         }
     }
 

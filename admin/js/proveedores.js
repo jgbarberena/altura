@@ -2132,14 +2132,15 @@ function calcularCosteTotalProveedor(proveedorId) {
 
 async function recalcularPagoFinalProveedor(proveedorId) {
     const costTotal = calcularCosteTotalProveedor(proveedorId)
-    const prepagos  = hitosProvTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
-    const pagoFinal = costTotal - prepagos
+    const prepagos  = hitosProvTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const ajustes   = hitosProvTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const pagoFinal = costTotal + ajustes - prepagos
     const idxFinal  = hitosProvTemp.findIndex(h => h.esFinal)
 
     if (idxFinal >= 0) {
         hitosProvTemp[idxFinal].amount = pagoFinal
     } else {
-        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: fechaPagoDefault(), paid: false })
+        hitosProvTemp.push({ esFinal: true, esAjuste: false, payment_type: 'final', comments: 'Pago final', amount: pagoFinal, due_date: fechaPagoDefault(), paid: false })
     }
     renderHitosProveedor()
     actualizarResumenCoste(proveedorId, costTotal, prepagos, pagoFinal)
@@ -2169,9 +2170,9 @@ async function persistirHitosProveedor(proveedorId) {
             due_date:    h.due_date ?? null,
             paid:        h.paid ?? false,
             paid_date:   h.paid_date ?? null,
-            comments:    h.comments ?? null,
-            is_final:    h.esFinal ?? false,
-            season:      getTemporadaActiva()
+            comments:     h.comments ?? null,
+            payment_type: h.esAjuste ? 'ajuste' : (h.esFinal ? 'final' : 'prepago'),
+            season:       getTemporadaActiva()
         }
         if (h.id) {
             const { error } = await supabase.from('payments').update(payload).eq('id', h.id)
@@ -2190,14 +2191,15 @@ async function cargarPagosProveedor(proveedorId) {
     const { data } = await supabase
         .from('payments').select('*').eq('provider_id', proveedorId).eq('season', getTemporadaActiva()).order('due_date')
 
-    hitosProvTemp = (data ?? []).map(h => ({ ...h, esFinal: h.is_final ?? false }))
+    hitosProvTemp = (data ?? []).map(h => ({ ...h, esFinal: h.payment_type === 'final', esAjuste: h.payment_type === 'ajuste' }))
 
     const costTotal = calcularCosteTotalProveedor(proveedorId)
-    const prepagos  = hitosProvTemp.filter(h => !h.esFinal).reduce((s, h) => s + parseFloat(h.amount), 0)
-    const pagoFinal = costTotal - prepagos
+    const prepagos  = hitosProvTemp.filter(h => !h.esFinal && !h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const ajustes   = hitosProvTemp.filter(h => h.esAjuste).reduce((s, h) => s + parseFloat(h.amount), 0)
+    const pagoFinal = costTotal + ajustes - prepagos
 
     if (!hitosProvTemp.find(h => h.esFinal)) {
-        hitosProvTemp.push({ esFinal: true, is_final: true, comments: 'Pago final', amount: pagoFinal, due_date: fechaPagoDefault(), paid: false })
+        hitosProvTemp.push({ esFinal: true, esAjuste: false, payment_type: 'final', comments: 'Pago final', amount: pagoFinal, due_date: fechaPagoDefault(), paid: false })
     } else {
         const idx = hitosProvTemp.findIndex(h => h.esFinal)
         hitosProvTemp[idx].amount = pagoFinal
@@ -2341,7 +2343,7 @@ function renderHitosProveedor() {
     const tbody = document.getElementById('tbody-pagos-proveedor')
     tbody.innerHTML = hitosProvTemp.map((h, i) => `
         <tr>
-            <td>${h.comments}</td>
+            <td>${h.comments}${h.esAjuste ? ' <span style="font-size:10px;background:var(--accent-warn);color:#fff;border-radius:3px;padding:1px 4px;margin-left:4px">AJUSTE</span>' : ''}</td>
             <td>${fmt(h.amount)}${h.esFinal ? ' <span style="font-size:11px;color:var(--subtle)">(calculado)</span>' : ''}</td>
             <td>${h.esFinal
                 ? `<input type="date" value="${h.due_date ?? ''}"
@@ -2431,6 +2433,40 @@ window.eliminarHitoProv = async function(idx) {
     }
 }
 
+document.getElementById('btnNuevoAjusteProveedor').addEventListener('click', () => {
+    document.getElementById('form-nuevo-ajuste-proveedor').style.display = 'block'
+    document.getElementById('btnNuevoAjusteProveedor').style.display     = 'none'
+})
+
+document.getElementById('btnCancelarNuevoAjusteProv').addEventListener('click', () => {
+    document.getElementById('form-nuevo-ajuste-proveedor').style.display = 'none'
+    document.getElementById('btnNuevoAjusteProveedor').style.display     = 'inline-block'
+})
+
+document.getElementById('btnGuardarNuevoAjusteProv').addEventListener('click', () => confirmarSiTemporadaNoActiva('el ajuste', async () => {
+    const concepto = document.getElementById('ajusteProvConcepto').value.trim() || 'Ajuste'
+    const importe  = getPrecioValue(document.getElementById('ajusteProvImporte'))
+    if (!importe || importe <= 0) { alert('Introduce un importe válido'); return }
+
+    const idxFinal = hitosProvTemp.findIndex(h => h.esFinal)
+    hitosProvTemp.splice(idxFinal >= 0 ? idxFinal : hitosProvTemp.length, 0,
+        { esFinal: false, esAjuste: true, comments: concepto, amount: importe, due_date: null, paid: false })
+
+    document.getElementById('ajusteProvConcepto').value = ''
+    setPrecioValue(document.getElementById('ajusteProvImporte'), '')
+    document.getElementById('form-nuevo-ajuste-proveedor').style.display = 'none'
+    document.getElementById('btnNuevoAjusteProveedor').style.display     = 'inline-block'
+    if (proveedorActual) {
+        await recalcularPagoFinalProveedor(proveedorActual.id)
+        try {
+            await persistirHitosProveedor(proveedorActual.id)
+            mostrarToast('✅ Ajuste añadido')
+        } catch (err) {
+            console.error('Error al guardar ajuste:', err.message)
+        }
+    }
+}))
+
 document.getElementById('btnNuevoPagoProveedor').addEventListener('click', () => {
     document.getElementById('form-nuevo-pago-proveedor').style.display = 'block'
     document.getElementById('btnNuevoPagoProveedor').style.display     = 'none'
@@ -2450,7 +2486,7 @@ document.getElementById('btnGuardarPagoProveedor').addEventListener('click', () 
 
     const idxFinal = hitosProvTemp.findIndex(h => h.esFinal)
     hitosProvTemp.splice(idxFinal >= 0 ? idxFinal : hitosProvTemp.length, 0,
-        { esFinal: false, comments: concepto, amount: importe, due_date: fecha, paid: pagado })
+        { esFinal: false, esAjuste: false, comments: concepto, amount: importe, due_date: fecha, paid: pagado })
 
     document.getElementById('pagoProvConcepto').value = ''
     setPrecioValue(document.getElementById('pagoProvImporte'), '')

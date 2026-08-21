@@ -180,7 +180,7 @@ function _verificarBD(dados) {
     // Múltiples hitos finales por cliente
     const finalesPorCliente = new Map()
     for (const c of charges) {
-        if (c.is_final) finalesPorCliente.set(c.client_id, (finalesPorCliente.get(c.client_id) ?? 0) + 1)
+        if (c.charge_type === 'final') finalesPorCliente.set(c.client_id, (finalesPorCliente.get(c.client_id) ?? 0) + 1)
     }
     for (const [id, count] of finalesPorCliente) {
         if (count > 1)
@@ -225,9 +225,9 @@ function _computarFinanciero(dados) {
     for (const c of charges) {
         if (Math.abs(parseFloat(c.amount || 0)) < 0.01) {
             // El cobro final a cero es el flujo normal para clientes que solo tienen reservas sfcom:
-            // persistirCobrosCliente crea un is_final=0 porque el balance ya está cubierto por
+            // persistirCobrosCliente crea un charge_type='final' a cero porque el balance ya está cubierto por
             // los cargos "Cobrado vía sfcom". No avisar en ese caso.
-            const esSfcomNormal = c.is_final && charges.some(x => x.client_id === c.client_id && x.comments?.includes('Cobrado vía sfcom'))
+            const esSfcomNormal = c.charge_type === 'final' && charges.some(x => x.client_id === c.client_id && x.comments?.includes('Cobrado vía sfcom'))
             if (!esSfcomNormal)
                 advertencias.push(`Cobro a cero: cliente "${c.client_id}" — importe ${_fmt(c.amount)}`)
         }
@@ -238,9 +238,12 @@ function _computarFinanciero(dados) {
     }
 
     const chargesTotales   = new Map()
+    const chargesAjuste    = new Map()
     const chargesHistorial = new Map()
     for (const c of charges) {
         chargesTotales.set(c.client_id, (chargesTotales.get(c.client_id) ?? 0) + parseFloat(c.amount || 0))
+        if (c.charge_type === 'ajuste')
+            chargesAjuste.set(c.client_id, (chargesAjuste.get(c.client_id) ?? 0) + parseFloat(c.amount || 0))
         if (c.collected || c.invoice_number) chargesHistorial.set(c.client_id, true)
     }
 
@@ -257,7 +260,7 @@ function _computarFinanciero(dados) {
     for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
         if (id === 'SFCOM') continue
         const c = Math.round((chargesTotales.get(id) ?? 0) * 10000) / 10000
-        const r = Math.round((reservasTotales.get(id) ?? 0) * 10000) / 10000
+        const r = Math.round(((reservasTotales.get(id) ?? 0) + (chargesAjuste.get(id) ?? 0)) * 10000) / 10000
         if (Math.abs(c - r) < 0.01) continue
         problemasClientes.push({
             id, enBD: c, deberiasSer: r,
@@ -269,7 +272,7 @@ function _computarFinanciero(dados) {
 
     // Verificación SFCOM separada: cobros SFCOM vs total reservas de origen WEB
     const sfcomC = Math.round((chargesTotales.get('SFCOM') ?? 0) * 10000) / 10000
-    const sfcomR = Math.round(sfcomReservasTotal * 10000) / 10000
+    const sfcomR = Math.round((sfcomReservasTotal + (chargesAjuste.get('SFCOM') ?? 0)) * 10000) / 10000
     if (Math.abs(sfcomC - sfcomR) >= 0.01) {
         problemasClientes.push({
             id: 'SFCOM', enBD: sfcomC, deberiasSer: sfcomR,
@@ -281,8 +284,12 @@ function _computarFinanciero(dados) {
 
     const venueAProveedor = new Map(venues.map(v => [v.id, v.provider_id]))
     const pagosTotales    = new Map()
-    for (const p of payments)
+    const pagosAjuste     = new Map()
+    for (const p of payments) {
         pagosTotales.set(p.provider_id, (pagosTotales.get(p.provider_id) ?? 0) + parseFloat(p.amount || 0))
+        if (p.payment_type === 'ajuste')
+            pagosAjuste.set(p.provider_id, (pagosAjuste.get(p.provider_id) ?? 0) + parseFloat(p.amount || 0))
+    }
 
     const costeTeorico = new Map()
     for (const d of availability) {
@@ -306,7 +313,7 @@ function _computarFinanciero(dados) {
     const problemasProveedores = []
     for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
         const p = Math.round((pagosTotales.get(id) ?? 0) * 10000) / 10000
-        const t = Math.round((costeTeorico.get(id) ?? 0) * 10000) / 10000
+        const t = Math.round(((costeTeorico.get(id) ?? 0) + (pagosAjuste.get(id) ?? 0)) * 10000) / 10000
         if (Math.abs(p - t) < 0.01) continue
         problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 10000) / 10000 })
     }
