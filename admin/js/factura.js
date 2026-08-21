@@ -391,25 +391,28 @@ window.actualizarNivelDetalle = function() {
         const numEventos  = new Set(rsv.map(r => r.service_id)).size
         const plazasTotal = rsv.reduce((s, r) => s + (parseInt(r.slots) || 0), 0)
         const precioTotal = rsv.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
-        const resumenTabla = rsv.length > 0 ? `
+        const ajusteFilasResumen = ajustes.map(c => `
+            <tr class="factura-rsv-ajuste">
+                <td colspan="2" style="font-style:italic;color:#777">${valorO(c.comments, 'Ajuste')}</td>
+                <td>+ ${fmt(parseFloat(c.amount))}</td>
+            </tr>`).join('')
+        const resumenHtml = (rsv.length > 0 || ajustes.length > 0) ? `
             <table class="factura-rsv-table" style="margin-top:8px">
                 <thead><tr>
                     <th>Nº de eventos</th>
                     <th style="text-align:center">Plazas totales</th>
                     <th style="text-align:right">Precio total</th>
                 </tr></thead>
-                <tbody><tr>
-                    <td>${numEventos}</td>
-                    <td style="text-align:center">${plazasTotal}</td>
-                    <td style="text-align:right">${fmt(precioTotal)}</td>
-                </tr></tbody>
+                <tbody>
+                    ${rsv.length > 0 ? `<tr>
+                        <td>${numEventos}</td>
+                        <td style="text-align:center">${plazasTotal}</td>
+                        <td style="text-align:right">${fmt(precioTotal)}</td>
+                    </tr>` : ''}
+                    ${ajusteFilasResumen}
+                </tbody>
             </table>` : ''
-        const ajusteRows = ajustes.map(c => `
-            <div class="factura-liq-row" style="margin-top:4px">
-                <span style="font-style:italic;color:#666">${valorO(c.comments, 'Ajuste')}</span>
-                <span>+ ${fmt(parseFloat(c.amount))}</span>
-            </div>`).join('')
-        contenedor.innerHTML = resumenTabla + ajusteRows
+        contenedor.innerHTML = resumenHtml
         contenedor.style.display = ''
     } else {
         // omitir: ocultar título y contenido
@@ -442,8 +445,8 @@ function buildTablaReservas() {
         </tr>`).join('')
     const ajusteFilas = ajustes.map(c => `
         <tr class="factura-rsv-ajuste">
-            <td colspan="3" style="text-align:right;font-style:italic;color:#666">${valorO(c.comments, 'Ajuste')}</td>
-            <td style="text-align:right">+ ${fmt(parseFloat(c.amount))}</td>
+            <td colspan="3" style="font-style:italic;color:#777">${valorO(c.comments, 'Ajuste')}</td>
+            <td>+ ${fmt(parseFloat(c.amount))}</td>
         </tr>`).join('')
     return `
     <table class="factura-rsv-table">
