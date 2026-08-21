@@ -36,6 +36,7 @@ export function totalFacturadoDesdeBase(base, irpfRate = 0) {
 let _supabase      = null   // cliente Supabase inyectado al inicializar
 let _hitoActual    = null   // charge completo que se está facturando
 let _reservas      = []     // reservas del cliente actual (con sus charges)
+let _charges       = []     // todos los charges del cliente (para ajustes y liquidación)
 let _cliente       = null   // objeto cliente actual
 let _numFacturaSig = null   // número de factura calculado (o existente en re-emisión)
 let _logoBase64    = null   // logo en base64 para el PDF (se carga al inicializar)
@@ -47,9 +48,8 @@ let _simplificadaManual = null  // null = auto-detect, true/false = elección ex
 // 'liquidacion'— pago final con adelantos previos ya facturados
 // 'unico'      — pago único sin adelantos previos (cobro total en un solo hito)
 function tipoFactura() {
-    const esHitoFinal    = _reservas[0]?._esFinal ?? false
-    const todosCharges   = _reservas[0]?._charges ?? []
-    const facturadosPrev = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id)
+    const esHitoFinal    = _hitoActual.charge_type === 'final'
+    const facturadosPrev = _charges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number && c.charge_type !== 'ajuste')
     if (!esHitoFinal)              return 'adelanto'
     if (facturadosPrev.length > 0) return 'liquidacion'
     return 'unico'
@@ -86,6 +86,9 @@ export async function abrirPanelFactura(hitoId, clienteObj, reservasCliente) {
     if (error || !hito) { alert('Error al cargar el hito: ' + (error?.message ?? 'no encontrado')); return }
     _hitoActual = hito
 
+    const { data: chargesData } = await _supabase.from('charges').select('*').eq('client_id', hito.client_id)
+    _charges = chargesData ?? []
+
     _numFacturaSig = await calcularSiguienteNumero()
     renderPanelFactura()
     abrirPanel()
@@ -118,6 +121,9 @@ export async function abrirPanelReemision(hitoId, clienteObj, reservasCliente) {
     if (error || !hito) { alert('Error al cargar el hito: ' + (error?.message ?? 'no encontrado')); _modoReemision = false; return }
     _hitoActual    = hito
     _numFacturaSig = hito.invoice_number  // conservar número existente
+
+    const { data: chargesData } = await _supabase.from('charges').select('*').eq('client_id', hito.client_id)
+    _charges = chargesData ?? []
 
     const { data: issuedActiva } = await _supabase
         .from('issued_invoices').select('accrual_date')
@@ -336,7 +342,7 @@ function buildFacturaHTML() {
                     <div class="factura-section-label" id="titulo-detalle-servicios" style="margin:0">Detalle de servicios contratados</div>
                 </div>
                 <div id="contenedor-detalle-servicios">${buildTablaReservas()}</div>
-                ${tipo === 'adelanto' ? buildNota() : tipo === 'liquidacion' ? buildLiquidacion() : buildAjustesUnico()}
+                ${tipo === 'adelanto' ? buildNota() : tipo === 'liquidacion' ? buildLiquidacion() : ''}
             </div>
 
             <div class="factura-totales">
@@ -373,9 +379,11 @@ window.actualizarNivelDetalle = function() {
     const contenedor = document.getElementById('contenedor-detalle-servicios')
     const titulo     = document.getElementById('titulo-detalle-servicios')
     if (!contenedor) return
+    const tipo    = tipoFactura()
+    const ajustes = tipo === 'unico' ? _charges.filter(c => c.charge_type === 'ajuste') : []
     if (nivel === 'detalle') {
         if (titulo) titulo.textContent = 'Detalle de servicios contratados'
-        contenedor.innerHTML    = buildTablaReservas()
+        contenedor.innerHTML    = buildTablaReservas()  // ya incluye filas de ajuste para 'unico'
         contenedor.style.display = ''
     } else if (nivel === 'resumen') {
         if (titulo) titulo.textContent = 'Resumen de servicios contratados'
@@ -383,7 +391,7 @@ window.actualizarNivelDetalle = function() {
         const numEventos  = new Set(rsv.map(r => r.service_id)).size
         const plazasTotal = rsv.reduce((s, r) => s + (parseInt(r.slots) || 0), 0)
         const precioTotal = rsv.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
-        contenedor.innerHTML = `
+        const resumenTabla = rsv.length > 0 ? `
             <table class="factura-rsv-table" style="margin-top:8px">
                 <thead><tr>
                     <th>Nº de eventos</th>
@@ -395,7 +403,13 @@ window.actualizarNivelDetalle = function() {
                     <td style="text-align:center">${plazasTotal}</td>
                     <td style="text-align:right">${fmt(precioTotal)}</td>
                 </tr></tbody>
-            </table>`
+            </table>` : ''
+        const ajusteRows = ajustes.map(c => `
+            <div class="factura-liq-row" style="margin-top:4px">
+                <span style="font-style:italic;color:#666">${valorO(c.comments, 'Ajuste')}</span>
+                <span>+ ${fmt(parseFloat(c.amount))}</span>
+            </div>`).join('')
+        contenedor.innerHTML = resumenTabla + ajusteRows
         contenedor.style.display = ''
     } else {
         // omitir: ocultar título y contenido
@@ -411,10 +425,12 @@ function _serviceLabel(r) {
     return r.service_description ?? String(r.service_id)
 }
 
-// Tabla de reservas — usada en HTML y en PDF
+// Tabla de reservas — usada en HTML (incluye filas de ajuste para tipo 'unico')
 function buildTablaReservas() {
+    const tipo         = tipoFactura()
+    const ajustes      = tipo === 'unico' ? _charges.filter(c => c.charge_type === 'ajuste') : []
     const reservasValidas = _reservas.filter(r => r.status !== 'Cancelada')
-    if (reservasValidas.length === 0) return ''
+    if (reservasValidas.length === 0 && ajustes.length === 0) return ''
     const totalGlobal = reservasValidas.reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
     const filas = reservasValidas.map((r, i) => `
         <tr>
@@ -423,6 +439,11 @@ function buildTablaReservas() {
             <td style="text-align:center">${r.slots}</td>
             <td style="text-align:right">${fmt(parseFloat(r.price_per_slot))}</td>
             <td style="text-align:right">${fmt(parseFloat(r.total_amount ?? 0))}</td>
+        </tr>`).join('')
+    const ajusteFilas = ajustes.map(c => `
+        <tr class="factura-rsv-ajuste">
+            <td colspan="3" style="text-align:right;font-style:italic;color:#666">${valorO(c.comments, 'Ajuste')}</td>
+            <td style="text-align:right">+ ${fmt(parseFloat(c.amount))}</td>
         </tr>`).join('')
     return `
     <table class="factura-rsv-table">
@@ -434,10 +455,11 @@ function buildTablaReservas() {
         </tr></thead>
         <tbody>
             ${filas}
-            <tr class="factura-rsv-subtotal">
+            ${ajusteFilas}
+            ${reservasValidas.length > 0 ? `<tr class="factura-rsv-subtotal">
                 <td colspan="3" style="text-align:right;font-size:11px;color:#777">Total servicios contratados</td>
                 <td style="text-align:right">${fmt(totalGlobal)}</td>
-            </tr>
+            </tr>` : ''}
         </tbody>
     </table>`
 }
@@ -460,9 +482,8 @@ function buildLiquidacion() {
     const totalGlobal    = _reservas
         .filter(r => r.status !== 'Cancelada')
         .reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
-    const todosCharges   = _reservas[0]?._charges ?? []
-    const ajustesCharges = todosCharges.filter(c => c.charge_type === 'ajuste')
-    const facturados     = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number)
+    const ajustesCharges = _charges.filter(c => c.charge_type === 'ajuste')
+    const facturados     = _charges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number && c.charge_type !== 'ajuste')
     const filasAj        = ajustesCharges.map(c => `
         <div class="factura-liq-row">
             <span class="factura-liq-label">${valorO(c.comments, 'Ajuste')}</span>
@@ -491,33 +512,6 @@ function buildLiquidacion() {
     </div>`
 }
 
-// Bloque ajustes para facturas únicas (sin adelantos previos) que tienen ajuste charges
-function buildAjustesUnico() {
-    const todosCharges   = _reservas[0]?._charges ?? []
-    const ajustesCharges = todosCharges.filter(c => c.charge_type === 'ajuste')
-    if (ajustesCharges.length === 0) return ''
-    const totalGlobal = _reservas
-        .filter(r => r.status !== 'Cancelada')
-        .reduce((s, r) => s + parseFloat(r.total_amount ?? 0), 0)
-    const filasAj = ajustesCharges.map(c => `
-        <div class="factura-liq-row">
-            <span class="factura-liq-label">${valorO(c.comments, 'Ajuste')}</span>
-            <span>+ ${fmt(parseFloat(c.amount))}</span>
-        </div>`).join('')
-    return `
-    <div class="factura-section-label" style="margin-top:14px">Ajustes</div>
-    <div class="factura-liq">
-        <div class="factura-liq-row">
-            <span class="factura-liq-label">Total servicios contratados</span>
-            <span>${fmt(totalGlobal)}</span>
-        </div>
-        ${filasAj}
-        <div class="factura-liq-row">
-            <span><strong>Total facturado</strong></span>
-            <span><strong>${fmt(parseFloat(_hitoActual.amount))}</strong></span>
-        </div>
-    </div>`
-}
 
 // ===== EMISIÓN: GENERA PDF, SUBE A STORAGE Y MARCA EL HITO COMO FACTURADO =====
 async function _emitir() {
@@ -911,9 +905,21 @@ async function generarPDF({ svcLabels = [] } = {}) {
         doc.text(notaLines, M + 4, y + 4)
         y += notaLines.length * 4.5 + 6
 
+    } else if (tipo === 'unico') {
+        const ajustes = _charges.filter(c => c.charge_type === 'ajuste')
+        if (ajustes.length > 0 && (nivelDetalle === 'detalle' || nivelDetalle === 'resumen')) {
+            checkPage(8 + ajustes.length * 6)
+            ajustes.forEach(c => {
+                doc.setFontSize(8); doc.setFont('helvetica', 'italic'); setColor(GRIS)
+                doc.text(valorO(c.comments, 'Ajuste'), M + 2, y + 4)
+                doc.text(`+ ${fmt(parseFloat(c.amount))}`, W - M - 2, y + 4, { align: 'right' })
+                y += 6
+                line(M, y - 1, W - M, y - 1, [220, 220, 220], 0.2)
+            })
+            y += 2
+        }
     } else if (tipo === 'liquidacion') {
-        const todosCharges = _reservas[0]?._charges ?? []
-        const facturados   = todosCharges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number)
+        const facturados = _charges.filter(c => c.invoiced && c.id !== _hitoActual.id && c.invoice_number && c.charge_type !== 'ajuste')
 
         checkPage(10 + facturados.length * 6 + 20)
 

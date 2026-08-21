@@ -259,7 +259,7 @@ function _computarFinanciero(dados) {
     const problemasClientes = []
     for (const id of new Set([...chargesTotales.keys(), ...reservasTotales.keys()])) {
         if (id === 'SFCOM') continue
-        const c = Math.round((chargesTotales.get(id) ?? 0) * 10000) / 10000
+        const c = Math.round(((chargesTotales.get(id) ?? 0) - (chargesAjuste.get(id) ?? 0)) * 10000) / 10000
         const r = Math.round(((reservasTotales.get(id) ?? 0) + (chargesAjuste.get(id) ?? 0)) * 10000) / 10000
         if (Math.abs(c - r) < 0.01) continue
         problemasClientes.push({
@@ -271,7 +271,7 @@ function _computarFinanciero(dados) {
     }
 
     // Verificación SFCOM separada: cobros SFCOM vs total reservas de origen WEB
-    const sfcomC = Math.round((chargesTotales.get('SFCOM') ?? 0) * 10000) / 10000
+    const sfcomC = Math.round(((chargesTotales.get('SFCOM') ?? 0) - (chargesAjuste.get('SFCOM') ?? 0)) * 10000) / 10000
     const sfcomR = Math.round((sfcomReservasTotal + (chargesAjuste.get('SFCOM') ?? 0)) * 10000) / 10000
     if (Math.abs(sfcomC - sfcomR) >= 0.01) {
         problemasClientes.push({
@@ -312,7 +312,7 @@ function _computarFinanciero(dados) {
 
     const problemasProveedores = []
     for (const id of new Set([...pagosTotales.keys(), ...costeTeorico.keys()])) {
-        const p = Math.round((pagosTotales.get(id) ?? 0) * 10000) / 10000
+        const p = Math.round(((pagosTotales.get(id) ?? 0) - (pagosAjuste.get(id) ?? 0)) * 10000) / 10000
         const t = Math.round(((costeTeorico.get(id) ?? 0) + (pagosAjuste.get(id) ?? 0)) * 10000) / 10000
         if (Math.abs(p - t) < 0.01) continue
         problemasProveedores.push({ id, enBD: p, deberiasSer: t, diff: Math.round((p - t) * 10000) / 10000 })
